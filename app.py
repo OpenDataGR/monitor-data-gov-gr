@@ -314,5 +314,14 @@ def trigger_check():
     return jsonify({"ok": True, "timestamp": datetime.now(timezone.utc).isoformat()})
 
 
+@app.route("/api/admin/reset", methods=["POST"])
+def admin_reset():
+    db.session.query(HealthCheck).delete()
+    db.session.query(PortalSnapshot).delete()
+    db.session.commit()
+    threading.Thread(target=run_health_checks, daemon=True).start()
+    return jsonify({"ok": True, "message": "All data cleared, fresh check started"})
+
+
 if __name__ == "__main__":
     app.run(debug=True, use_reloader=True)

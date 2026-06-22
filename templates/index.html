@@ -45,6 +45,9 @@
       <button class="btn btn-outline-light btn-sm px-3" onclick="triggerCheck()">
         <i class="bi bi-arrow-clockwise me-1"></i>Check Now
       </button>
+      <button class="btn btn-outline-danger btn-sm px-3" onclick="resetStats()">
+        <i class="bi bi-trash me-1"></i>Reset Stats
+      </button>
     </div>
   </div>
 </nav>
@@ -597,6 +600,23 @@ async function triggerCheck() {
     show('lastChecked').textContent = new Date().toLocaleString('el-GR');
   } catch (e) {
     alert('Check failed: ' + e.message);
+  } finally {
+    showSpinner(false);
+  }
+}
+
+async function resetStats() {
+  if (!confirm('Clear all historical data and start fresh?')) return;
+  showSpinner(true);
+  try {
+    await fetch(API_BASE + 'api/admin/reset', { method: 'POST' });
+    await new Promise(r => setTimeout(r, 6000));
+    _healthLoaded = false;
+    _statsLoaded  = false;
+    await loadOverview();
+    show('lastChecked').textContent = new Date().toLocaleString('el-GR');
+  } catch (e) {
+    alert('Reset failed: ' + e.message);
   } finally {
     showSpinner(false);
   }
