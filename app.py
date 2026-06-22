@@ -309,17 +309,5 @@ def trigger_check():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
-@app.route("/debug/token")
-def debug_token():
-    import os
-    env_token  = os.environ.get("DATAGOVGR_TOKEN", "")
-    return jsonify({
-        "env_token_set":    bool(env_token),
-        "env_token_length": len(env_token),
-        "config_token_set": bool(config.TOKEN),
-        "config_token_length": len(config.TOKEN),
-    })
-
-
 if __name__ == "__main__":
     app.run(debug=True, use_reloader=True)
