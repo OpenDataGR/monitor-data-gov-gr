@@ -21,4 +21,4 @@ jobs:
           pip install -r requirements.txt
 
       - name: Restart service
-        run: sudo systemctl restart communcation_dashboard
+        run: systemctl --user restart communcation_dashboard
