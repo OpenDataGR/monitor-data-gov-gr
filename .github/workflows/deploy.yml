@@ -21,4 +21,6 @@ jobs:
           pip install -r requirements.txt
 
       - name: Restart service
-        run: systemctl --user restart communcation_dashboard
+        run: |
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          systemctl --user restart communcation_dashboard
