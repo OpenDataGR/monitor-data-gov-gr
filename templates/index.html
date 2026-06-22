@@ -275,7 +275,7 @@ function showSpinner(v) {
 async function loadOverview() {
   // Portal stats
   try {
-    const snap = await fetch('/api/stats/latest').then(r => r.ok ? r.json() : null);
+    const snap = await fetch('api/stats/latest').then(r => r.ok ? r.json() : null);
     if (snap && !snap.error) {
       show('statDatasets').textContent  = fmt(snap.total_datasets);
       show('statOrgs').textContent      = fmt(snap.total_organizations);
@@ -285,7 +285,7 @@ async function loadOverview() {
 
   // Health summary
   try {
-    const summary = await fetch('/api/health/summary').then(r => r.json());
+    const summary = await fetch('api/health/summary').then(r => r.json());
 
     // Uptime card — average of critical endpoints
     const crit = summary.filter(s => s.critical && s.uptime_pct != null);
@@ -435,7 +435,7 @@ document.getElementById('statsTabBtn').addEventListener('click', () => {
 async function loadStatsTab() {
   // Latest snapshot
   try {
-    const snap = await fetch('/api/stats/latest').then(r => r.ok ? r.json() : null);
+    const snap = await fetch('api/stats/latest').then(r => r.ok ? r.json() : null);
     const el   = show('latestSnapshot');
     if (snap && !snap.error) {
       el.innerHTML = `
@@ -454,7 +454,7 @@ async function loadStatsTab() {
 
   // History chart
   try {
-    const history = await fetch('/api/stats/history?days=30').then(r => r.json());
+    const history = await fetch('api/stats/history?days=30').then(r => r.json());
     const ctx     = show('statsChart').getContext('2d');
     if (_statsChart) _statsChart.destroy();
 
@@ -496,7 +496,7 @@ async function loadStatsTab() {
 async function runQualityCheck() {
   showSpinner(true);
   try {
-    const data = await fetch('/api/quality/check').then(r => r.json());
+    const data = await fetch('api/quality/check').then(r => r.json());
     const el   = show('qualityResults');
 
     if (data.error) {
@@ -547,7 +547,7 @@ async function runQualityCheck() {
 async function checkDatasets() {
   showSpinner(true);
   try {
-    const data = await fetch('/api/datasets/check').then(r => r.json());
+    const data = await fetch('api/datasets/check').then(r => r.json());
     const el   = show('datasetCheckResults');
 
     if (data.error) {
@@ -581,7 +581,7 @@ async function checkDatasets() {
 async function triggerCheck() {
   showSpinner(true);
   try {
-    await fetch('/api/trigger-check', { method: 'POST' });
+    await fetch('api/trigger-check', { method: 'POST' });
     // Wait 6s for the background health check to complete, then reload
     await new Promise(r => setTimeout(r, 6000));
     _healthLoaded = false;
