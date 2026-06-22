@@ -1,0 +1,24 @@
+name: Deploy to Azure VM
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Pull latest code
+        run: |
+          cd /opt/communcation_dashboard
+          git pull
+
+      - name: Install dependencies
+        run: |
+          cd /opt/communcation_dashboard
+          source venv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Restart service
+        run: sudo systemctl restart communcation_dashboard
