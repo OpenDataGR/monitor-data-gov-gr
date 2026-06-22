@@ -328,6 +328,29 @@ def trigger_check():
     return jsonify({"ok": True, "timestamp": datetime.now(timezone.utc).isoformat()})
 
 
+@app.route("/api/debug/portal")
+def debug_portal():
+    h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
+    results = {}
+    calls = [
+        ("package_search",   f"{config.PORTAL_BASE}/api/3/action/package_search",   {"rows": 0}),
+        ("organization_list",f"{config.PORTAL_BASE}/api/3/action/organization_list", {}),
+        ("resource_search",  f"{config.PORTAL_BASE}/api/3/action/resource_search",  {"query": "name:", "limit": 0}),
+        ("status_show",      f"{config.PORTAL_BASE}/api/3/action/status_show",       {}),
+    ]
+    for name, url, params in calls:
+        try:
+            r = requests.get(url, params=params, headers=h, timeout=config.REQUEST_TIMEOUT)
+            try:
+                body = r.json()
+            except Exception:
+                body = r.text[:500]
+            results[name] = {"status": r.status_code, "body": body}
+        except Exception as exc:
+            results[name] = {"error": str(exc)}
+    return jsonify(results)
+
+
 @app.route("/api/admin/reset", methods=["POST"])
 def admin_reset():
     db.session.query(HealthCheck).delete()
