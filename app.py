@@ -178,7 +178,7 @@ def health_current():
 def health_history():
     ep_name = freq.args.get("endpoint", config.ENDPOINTS_TO_MONITOR[0]["name"])
     hours   = int(freq.args.get("hours", 24))
-    since   = datetime.now(timezone.utc) - timedelta(hours=hours)
+    since   = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=hours)
     rows = (HealthCheck.query
             .filter(HealthCheck.timestamp >= since,
                     HealthCheck.endpoint_name == ep_name)
@@ -189,7 +189,7 @@ def health_history():
 
 @app.route("/api/health/summary")
 def health_summary():
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
     out = []
     for ep in config.ENDPOINTS_TO_MONITOR:
         rows = (HealthCheck.query
@@ -232,7 +232,7 @@ def stats_latest():
 @app.route("/api/stats/history")
 def stats_history():
     days  = int(freq.args.get("days", 30))
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     rows  = (PortalSnapshot.query
              .filter(PortalSnapshot.timestamp >= since)
              .order_by(PortalSnapshot.timestamp)

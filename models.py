@@ -8,7 +8,7 @@ class HealthCheck(db.Model):
     __tablename__ = "health_checks"
 
     id               = db.Column(db.Integer, primary_key=True)
-    timestamp        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    timestamp        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
     endpoint_name    = db.Column(db.String(100), nullable=False)
     endpoint_url     = db.Column(db.String(300))
     response_time_ms = db.Column(db.Float)
@@ -33,7 +33,7 @@ class PortalSnapshot(db.Model):
     __tablename__ = "portal_snapshots"
 
     id                  = db.Column(db.Integer, primary_key=True)
-    timestamp           = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    timestamp           = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
     total_datasets      = db.Column(db.Integer)
     total_organizations = db.Column(db.Integer)
     total_resources     = db.Column(db.Integer)
