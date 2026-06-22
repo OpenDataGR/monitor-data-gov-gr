@@ -302,11 +302,8 @@ def quality_check():
 
 @app.route("/api/trigger-check", methods=["POST"])
 def trigger_check():
-    try:
-        run_health_checks()
-        return jsonify({"ok": True, "timestamp": datetime.now(timezone.utc).isoformat()})
-    except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+    threading.Thread(target=run_health_checks, daemon=True).start()
+    return jsonify({"ok": True, "timestamp": datetime.now(timezone.utc).isoformat()})
 
 
 if __name__ == "__main__":

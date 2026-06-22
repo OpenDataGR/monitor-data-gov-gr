@@ -581,14 +581,13 @@ async function checkDatasets() {
 async function triggerCheck() {
   showSpinner(true);
   try {
-    const data = await fetch('/api/trigger-check', { method: 'POST' }).then(r => r.json());
-    if (data.ok) {
-      show('lastChecked').textContent = new Date(data.timestamp).toLocaleString('el-GR');
-      // Reset lazy-load flags so tabs reload fresh data
-      _healthLoaded = false;
-      _statsLoaded  = false;
-      await loadOverview();
-    }
+    await fetch('/api/trigger-check', { method: 'POST' });
+    // Wait 6s for the background health check to complete, then reload
+    await new Promise(r => setTimeout(r, 6000));
+    _healthLoaded = false;
+    _statsLoaded  = false;
+    await loadOverview();
+    show('lastChecked').textContent = new Date().toLocaleString('el-GR');
   } catch (e) {
     alert('Check failed: ' + e.message);
   } finally {
