@@ -28,7 +28,7 @@ with app.app_context():
 def _api_headers():
     h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
     if config.TOKEN:
-        h["Authorization"] = f"Token {config.TOKEN}"
+        h["Authorization"] = config.TOKEN  # CKAN uses the key directly, no prefix
     return h
 
 
@@ -242,22 +242,25 @@ def stats_history():
 
 @app.route("/api/datasets/check")
 def datasets_check():
-    if not config.TOKEN:
-        return jsonify({"error": "Set the DATAGOVGR_TOKEN environment variable"}), 401
     results = []
     for ds in config.SAMPLE_DATASETS:
         try:
             r = requests.get(
-                f"{config.API_BASE}/query/{ds}",
+                f"{config.API_BASE}/package_show",
+                params={"id": ds},
                 headers=_api_headers(),
-                params={"date_from": "2024-01-01", "date_to": "2024-01-07"},
                 timeout=config.REQUEST_TIMEOUT,
             )
+            data = r.json() if r.status_code == 200 else {}
+            success = data.get("success", False)
+            result_obj = data.get("result", {}) if success else {}
             results.append({
-                "name":         ds,
-                "status_code":  r.status_code,
-                "accessible":   r.status_code < 400,
-                "record_count": len(r.json()) if r.status_code == 200 else 0,
+                "name":           ds,
+                "status_code":    r.status_code,
+                "accessible":     success,
+                "resource_count": len(result_obj.get("resources", [])),
+                "title":          result_obj.get("title", ds),
+                "organization":   (result_obj.get("organization") or {}).get("title", ""),
             })
         except Exception as exc:
             results.append({"name": ds, "status_code": None, "accessible": False, "error": str(exc)})
@@ -266,25 +269,30 @@ def datasets_check():
 
 @app.route("/api/quality/check")
 def quality_check():
-    if not config.TOKEN:
-        return jsonify({"error": "Set the DATAGOVGR_TOKEN environment variable"}), 401
     issues = []
     for ds in config.SAMPLE_DATASETS:
         try:
             r = requests.get(
-                f"{config.API_BASE}/query/{ds}",
+                f"{config.API_BASE}/package_show",
+                params={"id": ds},
                 headers=_api_headers(),
-                params={"date_from": "2024-01-01", "date_to": "2024-01-01"},
                 timeout=config.REQUEST_TIMEOUT,
             )
-            if r.status_code == 401:
-                issues.append({"dataset": ds, "issue": "Unauthorized — check token", "severity": "critical"})
-            elif r.status_code == 404:
-                issues.append({"dataset": ds, "issue": "Dataset not found",          "severity": "critical"})
-            elif r.status_code != 200:
-                issues.append({"dataset": ds, "issue": f"HTTP {r.status_code}",      "severity": "critical"})
-            elif not r.json():
-                issues.append({"dataset": ds, "issue": "No data for date range",     "severity": "warning"})
+            if r.status_code == 404:
+                issues.append({"dataset": ds, "issue": "Dataset not found", "severity": "critical"})
+                continue
+            if r.status_code != 200:
+                issues.append({"dataset": ds, "issue": f"HTTP {r.status_code}", "severity": "critical"})
+                continue
+            data = r.json()
+            if not data.get("success"):
+                issues.append({"dataset": ds, "issue": data.get("error", {}).get("message", "API error"), "severity": "critical"})
+                continue
+            pkg = data["result"]
+            if not pkg.get("resources"):
+                issues.append({"dataset": ds, "issue": "No resources attached", "severity": "warning"})
+            if pkg.get("state") != "active":
+                issues.append({"dataset": ds, "issue": f"State is '{pkg.get('state')}'", "severity": "warning"})
         except requests.exceptions.Timeout:
             issues.append({"dataset": ds, "issue": "Timeout", "severity": "critical"})
         except Exception as exc:

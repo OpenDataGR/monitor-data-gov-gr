@@ -563,16 +563,17 @@ async function checkDatasets() {
 
     el.innerHTML = `
       <table class="table table-hover align-middle mb-0">
-        <thead><tr><th>Dataset</th><th>Accessible</th><th>HTTP</th><th>Records (sample)</th></tr></thead>
+        <thead><tr><th>Dataset</th><th>Title</th><th>Accessible</th><th>HTTP</th><th>Resources</th></tr></thead>
         <tbody>
           ${data.map(d => `
             <tr>
               <td><a href="https://data.gov.gr/datasets/${d.name}/" target="_blank" class="text-decoration-none">
                 <code>${d.name}</code> <i class="bi bi-box-arrow-up-right small text-muted"></i>
               </a></td>
+              <td class="small">${d.title ?? '—'}</td>
               <td>${statusBadge(d.accessible)}</td>
               <td class="mono">${d.status_code ?? '—'}</td>
-              <td class="mono">${d.record_count != null ? fmt(d.record_count) : (d.error ?? '—')}</td>
+              <td class="mono">${d.resource_count != null ? d.resource_count : (d.error ?? '—')}</td>
             </tr>`).join('')}
         </tbody>
       </table>`;
