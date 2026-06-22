@@ -69,10 +69,9 @@ def _check_endpoint(ep: dict) -> dict:
 
 
 def _fetch_portal_stats() -> dict:
-    """Try CKAN API first, fall back to homepage scrape."""
     stats = {}
 
-    # Strategy 1 – CKAN package search (count only)
+    # Total datasets
     try:
         r = requests.get(
             f"{config.PORTAL_BASE}/api/3/action/package_search",
@@ -87,7 +86,7 @@ def _fetch_portal_stats() -> dict:
     except Exception:
         pass
 
-    # Strategy 2 – CKAN organization list
+    # Total organizations
     try:
         r = requests.get(
             f"{config.PORTAL_BASE}/api/3/action/organization_list",
@@ -101,8 +100,24 @@ def _fetch_portal_stats() -> dict:
     except Exception:
         pass
 
-    # Strategy 3 – scrape homepage counters
-    if not stats:
+    # Total resources via resource_search
+    try:
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/resource_search",
+            params={"query": "name:", "limit": 0},
+            timeout=config.REQUEST_TIMEOUT,
+            headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("success"):
+                stats["total_resources"] = data["result"]["count"]
+    except Exception:
+        pass
+
+    # Scrape homepage for anything still missing
+    missing = {"total_datasets", "total_organizations", "total_resources"} - stats.keys()
+    if missing:
         try:
             r = requests.get(
                 config.PORTAL_BASE,
@@ -112,13 +127,12 @@ def _fetch_portal_stats() -> dict:
             if r.status_code == 200:
                 text = r.text
                 patterns = [
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Dd]atasets?',      "total_datasets"),
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Oo]rganizations?',  "total_organizations"),
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Rr]esources?',      "total_resources"),
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Ss]ervices?',       "total_services"),
+                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Dd]atasets?',     "total_datasets"),
+                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Oo]rganizations?', "total_organizations"),
+                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Rr]esources?',     "total_resources"),
                 ]
                 for pat, key in patterns:
-                    if key not in stats:
+                    if key in missing:
                         m = re.search(pat, text, re.IGNORECASE)
                         if m:
                             try:
