@@ -1,17 +1,606 @@
-<!DOCTYPE html> 
-<html> 
-<head><title>My App Kostas! Hello! Please!</title></head> 
-<body> 
-	<h1>Users</h1> 
-	<form method="POST" action="/add">
-    		<input name="name" placeholder="Name" required> 
-		<input name="email" placeholder="Email" required> 
-		<button type="submit">Add User</button>
-	</form> 
-		<ul> 
-			{% for user in users %} 
-				<li>{{ user.name }} — {{ user.email }}</li> 
-			{% endfor %}
-		</ul>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>data.gov.gr Monitor</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    body { background: #f0f2f5; }
+    .navbar { background: linear-gradient(135deg, #003366 0%, #0057b8 100%); }
+    .stat-card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); transition: transform .2s; }
+    .stat-card:hover { transform: translateY(-2px); }
+    .stat-value { font-size: 2rem; font-weight: 700; line-height: 1.1; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .nav-tabs { border-bottom: 2px solid #dee2e6; }
+    .nav-tabs .nav-link { color: #6c757d; font-weight: 500; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+    .nav-tabs .nav-link.active { color: #0057b8; border-bottom-color: #0057b8; background: transparent; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .dot-up      { background: #198754; box-shadow: 0 0 0 3px rgba(25,135,84,.2); }
+    .dot-down    { background: #dc3545; box-shadow: 0 0 0 3px rgba(220,53,69,.2); }
+    .dot-unknown { background: #6c757d; }
+    .table th { color: #6c757d; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+    .mono { font-family: monospace; }
+    .spinner-overlay { display: none; position: fixed; inset: 0; background: rgba(255,255,255,.65); z-index: 9999; align-items: center; justify-content: center; }
+    .spinner-overlay.active { display: flex; }
+    .icon-box { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<div class="spinner-overlay" id="spinner">
+  <div class="spinner-border text-primary" style="width:3rem;height:3rem;"></div>
+</div>
+
+<nav class="navbar navbar-dark py-3 mb-4">
+  <div class="container-fluid px-4">
+    <span class="navbar-brand fw-bold fs-5 mb-0">
+      <i class="bi bi-database-check me-2"></i>data.gov.gr Monitor
+    </span>
+    <div class="d-flex align-items-center gap-3">
+      <span class="text-white-50 small">Last check: <span id="lastChecked">—</span></span>
+      <button class="btn btn-outline-light btn-sm px-3" onclick="triggerCheck()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Check Now
+      </button>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid px-4">
+
+  {% if not has_token %}
+  <div class="alert alert-warning d-flex align-items-center gap-2 mb-4" style="border-radius:10px">
+    <i class="bi bi-key-fill fs-5"></i>
+    <div>
+      <strong>API token not configured.</strong>
+      Dataset queries and quality checks need one.
+      Set <code>DATAGOVGR_TOKEN</code> in your environment or
+      <a href="https://data.gov.gr/token" target="_blank">request a token here</a>.
+    </div>
+    <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
+  </div>
+  {% endif %}
+
+  <!-- ── Stats row ──────────────────────────────────────────────────── -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-xl-3">
+      <div class="card stat-card p-4 h-100">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="text-muted small mb-1">Total Datasets</div>
+            <div class="stat-value text-primary" id="statDatasets">—</div>
+          </div>
+          <div class="icon-box bg-primary bg-opacity-10"><i class="bi bi-database fs-4 text-primary"></i></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="card stat-card p-4 h-100">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="text-muted small mb-1">Organizations</div>
+            <div class="stat-value text-success" id="statOrgs">—</div>
+          </div>
+          <div class="icon-box bg-success bg-opacity-10"><i class="bi bi-building fs-4 text-success"></i></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="card stat-card p-4 h-100">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="text-muted small mb-1">Resources</div>
+            <div class="stat-value text-info" id="statResources">—</div>
+          </div>
+          <div class="icon-box bg-info bg-opacity-10"><i class="bi bi-file-earmark-bar-graph fs-4 text-info"></i></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="card stat-card p-4 h-100">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="text-muted small mb-1">Portal Uptime (24h)</div>
+            <div class="stat-value text-success" id="statUptime">—</div>
+          </div>
+          <div class="icon-box bg-success bg-opacity-10"><i class="bi bi-activity fs-4 text-success"></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tabs ────────────────────────────────────────────────────────── -->
+  <ul class="nav nav-tabs mb-4" id="mainTabs">
+    <li class="nav-item">
+      <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-overview">
+        <i class="bi bi-grid me-1"></i>Overview
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-health" id="healthTabBtn">
+        <i class="bi bi-heart-pulse me-1"></i>Health
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-stats" id="statsTabBtn">
+        <i class="bi bi-graph-up me-1"></i>Statistics
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-quality">
+        <i class="bi bi-shield-check me-1"></i>Quality
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content pb-5">
+
+    <!-- Overview -->
+    <div class="tab-pane fade show active" id="tab-overview">
+      <div class="row g-3">
+        <div class="col-12 col-lg-7">
+          <div class="card p-4">
+            <h6 class="fw-semibold mb-3"><i class="bi bi-broadcast me-2 text-primary"></i>Endpoint Status</h6>
+            <div id="endpointTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-5">
+          <div class="card p-4 h-100">
+            <h6 class="fw-semibold mb-3"><i class="bi bi-bar-chart me-2 text-primary"></i>Uptime Last 24h</h6>
+            <canvas id="uptimeChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Health -->
+    <div class="tab-pane fade" id="tab-health">
+      <div class="row g-3">
+        <div class="col-12">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <h6 class="fw-semibold mb-0"><i class="bi bi-clock-history me-2 text-primary"></i>Response Time History</h6>
+              <div class="d-flex gap-2">
+                <select class="form-select form-select-sm" id="endpointSelect" style="width:210px" onchange="loadResponseTimeChart()">
+                  {% for ep in endpoints %}<option value="{{ ep.name }}">{{ ep.name }}</option>{% endfor %}
+                </select>
+                <select class="form-select form-select-sm" id="hoursSelect" style="width:90px" onchange="loadResponseTimeChart()">
+                  <option value="6">6 h</option>
+                  <option value="24" selected>24 h</option>
+                  <option value="72">72 h</option>
+                  <option value="168">7 days</option>
+                </select>
+              </div>
+            </div>
+            <div style="height:280px"><canvas id="responseTimeChart"></canvas></div>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="card p-4">
+            <h6 class="fw-semibold mb-3"><i class="bi bi-list-check me-2 text-primary"></i>Recent Checks</h6>
+            <div id="recentChecksTable"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Statistics -->
+    <div class="tab-pane fade" id="tab-stats">
+      <div class="row g-3">
+        <div class="col-12 col-lg-8">
+          <div class="card p-4">
+            <h6 class="fw-semibold mb-3"><i class="bi bi-graph-up me-2 text-primary"></i>Dataset Count Over Time</h6>
+            <div style="height:280px"><canvas id="statsChart"></canvas></div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-4">
+          <div class="card p-4">
+            <h6 class="fw-semibold mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>Latest Snapshot</h6>
+            <div id="latestSnapshot"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quality -->
+    <div class="tab-pane fade" id="tab-quality">
+      <div class="row g-3">
+        <div class="col-12">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-semibold mb-0"><i class="bi bi-shield-check me-2 text-primary"></i>Dataset Quality Check</h6>
+              <button class="btn btn-primary btn-sm" onclick="runQualityCheck()"><i class="bi bi-play me-1"></i>Run Check</button>
+            </div>
+            <div id="qualityResults">
+              <div class="text-center py-5 text-muted">
+                <i class="bi bi-shield-slash fs-2 d-block mb-2"></i>
+                Click <strong>Run Check</strong> to validate sample datasets
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-semibold mb-0"><i class="bi bi-database me-2 text-primary"></i>Sample Dataset Accessibility</h6>
+              <button class="btn btn-outline-primary btn-sm" onclick="checkDatasets()"><i class="bi bi-arrow-repeat me-1"></i>Check</button>
+            </div>
+            <div id="datasetCheckResults">
+              <div class="text-center py-4 text-muted">
+                <i class="bi bi-database-x fs-2 d-block mb-2"></i>
+                Click <strong>Check</strong> to test dataset accessibility
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- tab-content -->
+</div><!-- container -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── Chart instances ─────────────────────────────────────────────────────────
+let _uptimeChart = null, _rtChart = null, _statsChart = null;
+
+// ── Tiny helpers ─────────────────────────────────────────────────────────────
+const fmt  = n  => n == null ? '—' : Number(n).toLocaleString('el-GR');
+const show = id => document.getElementById(id);
+
+function statusBadge(up) {
+  if (up === true)  return '<span class="badge bg-success px-2 py-1">UP</span>';
+  if (up === false) return '<span class="badge bg-danger  px-2 py-1">DOWN</span>';
+  return '<span class="badge bg-secondary px-2 py-1">?</span>';
+}
+
+function dot(up) {
+  const cls = up === true ? 'dot-up' : up === false ? 'dot-down' : 'dot-unknown';
+  return `<span class="status-dot ${cls} me-2"></span>`;
+}
+
+function uptimeColor(pct) {
+  if (pct == null) return '#6c757d';
+  return pct >= 99 ? '#198754' : pct >= 95 ? '#ffc107' : '#dc3545';
+}
+
+function showSpinner(v) {
+  show('spinner').classList.toggle('active', v);
+}
+
+// ── Overview ─────────────────────────────────────────────────────────────────
+async function loadOverview() {
+  // Portal stats
+  try {
+    const snap = await fetch('/api/stats/latest').then(r => r.ok ? r.json() : null);
+    if (snap && !snap.error) {
+      show('statDatasets').textContent  = fmt(snap.total_datasets);
+      show('statOrgs').textContent      = fmt(snap.total_organizations);
+      show('statResources').textContent = fmt(snap.total_resources);
+    }
+  } catch (_) {}
+
+  // Health summary
+  try {
+    const summary = await fetch('/api/health/summary').then(r => r.json());
+
+    // Uptime card — average of critical endpoints
+    const crit = summary.filter(s => s.critical && s.uptime_pct != null);
+    if (crit.length) {
+      const avg = crit.reduce((a, b) => a + b.uptime_pct, 0) / crit.length;
+      const el  = show('statUptime');
+      el.textContent = avg.toFixed(1) + '%';
+      el.className   = 'stat-value ' + (avg >= 99 ? 'text-success' : avg >= 95 ? 'text-warning' : 'text-danger');
+    }
+
+    renderEndpointTable(summary);
+    renderUptimeChart(summary);
+
+    const newest = summary.find(s => s.last_up);
+    if (newest) show('lastChecked').textContent = new Date(newest.last_up + 'Z').toLocaleString('el-GR');
+  } catch (_) {}
+}
+
+function renderEndpointTable(summary) {
+  const el = show('endpointTable');
+  if (!summary.length) { el.innerHTML = '<p class="text-muted mb-0">No checks recorded yet — click Check Now.</p>'; return; }
+  el.innerHTML = `
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr><th>Endpoint</th><th>Status</th><th>Uptime</th><th>Avg Response</th><th>Checks</th></tr></thead>
+      <tbody>
+        ${summary.map(s => `
+          <tr>
+            <td>
+              <div class="d-flex align-items-center">
+                ${dot(s.uptime_pct != null ? s.uptime_pct >= 95 : null)}
+                <div>
+                  <div class="fw-semibold">${s.name}</div>
+                  <div class="text-muted small">${s.url}</div>
+                </div>
+                ${s.critical ? '<span class="badge bg-warning text-dark ms-2" style="font-size:.7rem">critical</span>' : ''}
+              </div>
+            </td>
+            <td>${statusBadge(s.uptime_pct != null ? s.uptime_pct >= 95 : null)}</td>
+            <td><span style="color:${uptimeColor(s.uptime_pct)};font-weight:600">${s.uptime_pct != null ? s.uptime_pct.toFixed(1)+'%' : '—'}</span></td>
+            <td class="mono">${s.avg_response_ms != null ? s.avg_response_ms.toFixed(0)+' ms' : '—'}</td>
+            <td class="text-muted">${s.total_checks}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderUptimeChart(summary) {
+  const ctx = show('uptimeChart').getContext('2d');
+  if (_uptimeChart) _uptimeChart.destroy();
+  _uptimeChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: summary.map(s => s.name),
+      datasets: [{
+        label: 'Uptime %',
+        data: summary.map(s => s.uptime_pct ?? 0),
+        backgroundColor: summary.map(s => uptimeColor(s.uptime_pct) + '33'),
+        borderColor:     summary.map(s => uptimeColor(s.uptime_pct)),
+        borderWidth: 2, borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f0f0f0' } },
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+// ── Health tab ───────────────────────────────────────────────────────────────
+let _healthLoaded = false;
+
+document.getElementById('healthTabBtn').addEventListener('click', () => {
+  if (_healthLoaded) return;
+  _healthLoaded = true;
+  loadResponseTimeChart();
+  loadRecentChecks();
+});
+
+async function loadResponseTimeChart() {
+  const ep    = show('endpointSelect').value;
+  const hours = show('hoursSelect').value;
+  try {
+    const data = await fetch(`/api/health/history?endpoint=${encodeURIComponent(ep)}&hours=${hours}`).then(r => r.json());
+    const ctx  = show('responseTimeChart').getContext('2d');
+    if (_rtChart) _rtChart.destroy();
+
+    const pts  = data.filter(d => d.response_time_ms != null).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.response_time_ms }));
+    const down = data.filter(d => !d.is_up).map(d => ({ x: new Date(d.timestamp + 'Z'), y: 0 }));
+
+    _rtChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [
+          { label: 'Response (ms)', data: pts,  borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.3, pointRadius: 3 },
+          { label: 'Outage',        data: down, borderColor: '#dc3545', backgroundColor: '#dc354566', pointStyle: 'triangle', pointRadius: 8, showLine: false }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        scales: {
+          x: { type: 'time', time: { tooltipFormat: 'dd/MM HH:mm' }, grid: { color: '#f0f0f0' } },
+          y: { min: 0, ticks: { callback: v => v + ' ms' }, grid: { color: '#f0f0f0' } }
+        }
+      }
+    });
+  } catch (_) {}
+}
+
+async function loadRecentChecks() {
+  const ep = show('endpointSelect')?.value ?? '';
+  try {
+    const data   = await fetch(`/api/health/history?endpoint=${encodeURIComponent(ep)}&hours=2`).then(r => r.json());
+    const last20 = data.slice(-20).reverse();
+    const el     = show('recentChecksTable');
+    if (!last20.length) { el.innerHTML = '<p class="text-muted text-center py-3">No recent data — click Check Now.</p>'; return; }
+    el.innerHTML = `
+      <table class="table table-sm table-hover mb-0">
+        <thead><tr><th>Time</th><th>Status</th><th>HTTP</th><th>Response</th></tr></thead>
+        <tbody>
+          ${last20.map(d => `
+            <tr>
+              <td class="text-muted mono">${new Date(d.timestamp + 'Z').toLocaleTimeString('el-GR')}</td>
+              <td>${statusBadge(d.is_up)}</td>
+              <td class="mono">${d.status_code ?? '—'}</td>
+              <td class="mono">${d.response_time_ms != null ? d.response_time_ms.toFixed(0)+' ms' : '—'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (_) {}
+}
+
+// ── Statistics tab ───────────────────────────────────────────────────────────
+let _statsLoaded = false;
+
+document.getElementById('statsTabBtn').addEventListener('click', () => {
+  if (_statsLoaded) return;
+  _statsLoaded = true;
+  loadStatsTab();
+});
+
+async function loadStatsTab() {
+  // Latest snapshot
+  try {
+    const snap = await fetch('/api/stats/latest').then(r => r.ok ? r.json() : null);
+    const el   = show('latestSnapshot');
+    if (snap && !snap.error) {
+      el.innerHTML = `
+        <dl class="row mb-0 small">
+          <dt class="col-7 text-muted">Datasets</dt>      <dd class="col-5 fw-bold text-end mb-1">${fmt(snap.total_datasets)}</dd>
+          <dt class="col-7 text-muted">Organizations</dt> <dd class="col-5 fw-bold text-end mb-1">${fmt(snap.total_organizations)}</dd>
+          <dt class="col-7 text-muted">Resources</dt>     <dd class="col-5 fw-bold text-end mb-1">${fmt(snap.total_resources)}</dd>
+          <dt class="col-7 text-muted">Services</dt>      <dd class="col-5 fw-bold text-end mb-1">${fmt(snap.total_services)}</dd>
+          <dt class="col-12 text-muted mt-2">Updated</dt>
+          <dd class="col-12 text-end">${new Date(snap.timestamp + 'Z').toLocaleString('el-GR')}</dd>
+        </dl>`;
+    } else {
+      el.innerHTML = '<p class="text-muted text-center">No snapshot yet.</p>';
+    }
+  } catch (_) {}
+
+  // History chart
+  try {
+    const history = await fetch('/api/stats/history?days=30').then(r => r.json());
+    const ctx     = show('statsChart').getContext('2d');
+    if (_statsChart) _statsChart.destroy();
+
+    if (!history.length) {
+      show('statsChart').closest('div').innerHTML =
+        '<p class="text-muted text-center py-5">Data accumulates over time — check back later.</p>';
+      return;
+    }
+
+    _statsChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [
+          {
+            label: 'Datasets',
+            data:  history.filter(d => d.total_datasets).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.total_datasets })),
+            borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.3,
+          },
+          {
+            label: 'Resources',
+            data:  history.filter(d => d.total_resources).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.total_resources })),
+            borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.08)', fill: true, tension: 0.3,
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        scales: {
+          x: { type: 'time', time: { tooltipFormat: 'dd/MM' }, grid: { color: '#f0f0f0' } },
+          y: { min: 0, grid: { color: '#f0f0f0' } }
+        }
+      }
+    });
+  } catch (_) {}
+}
+
+// ── Quality tab ──────────────────────────────────────────────────────────────
+async function runQualityCheck() {
+  showSpinner(true);
+  try {
+    const data = await fetch('/api/quality/check').then(r => r.json());
+    const el   = show('qualityResults');
+
+    if (data.error) {
+      el.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-key me-2"></i>${data.error}</div>`;
+      return;
+    }
+
+    const overallClass = data.healthy ? 'bg-success' : 'bg-danger';
+    const overallText  = data.healthy ? 'text-success' : 'text-danger';
+    const overallIcon  = data.healthy ? '✓' : '✗';
+
+    const summary = `
+      <div class="row g-2 mb-3">
+        <div class="col-4"><div class="text-center p-3 rounded ${overallClass} bg-opacity-10">
+          <div class="fs-3 fw-bold ${overallText}">${overallIcon}</div><small class="text-muted">Overall</small>
+        </div></div>
+        <div class="col-4"><div class="text-center p-3 rounded bg-primary bg-opacity-10">
+          <div class="fs-3 fw-bold text-primary">${data.checked}</div><small class="text-muted">Checked</small>
+        </div></div>
+        <div class="col-4"><div class="text-center p-3 rounded ${data.critical > 0 ? 'bg-danger' : 'bg-success'} bg-opacity-10">
+          <div class="fs-3 fw-bold ${data.critical > 0 ? 'text-danger' : 'text-success'}">${data.critical}</div><small class="text-muted">Critical</small>
+        </div></div>
+      </div>`;
+
+    const issueRows = data.issues.length
+      ? `<table class="table table-sm mb-0">
+          <thead><tr><th>Dataset</th><th>Issue</th><th>Severity</th></tr></thead>
+          <tbody>${data.issues.map(i => `
+            <tr>
+              <td><code>${i.dataset}</code></td>
+              <td>${i.issue}</td>
+              <td>${i.severity === 'critical'
+                ? '<span class="badge bg-danger">Critical</span>'
+                : '<span class="badge bg-warning text-dark">Warning</span>'}</td>
+            </tr>`).join('')}
+          </tbody>
+         </table>`
+      : '<div class="alert alert-success mb-0"><i class="bi bi-check-circle me-2"></i>All sample datasets passed quality checks.</div>';
+
+    el.innerHTML = summary + issueRows;
+  } catch (e) {
+    show('qualityResults').innerHTML = `<div class="alert alert-danger mb-0">Error: ${e.message}</div>`;
+  } finally {
+    showSpinner(false);
+  }
+}
+
+async function checkDatasets() {
+  showSpinner(true);
+  try {
+    const data = await fetch('/api/datasets/check').then(r => r.json());
+    const el   = show('datasetCheckResults');
+
+    if (data.error) {
+      el.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-key me-2"></i>${data.error}</div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>Dataset</th><th>Accessible</th><th>HTTP</th><th>Records (sample)</th></tr></thead>
+        <tbody>
+          ${data.map(d => `
+            <tr>
+              <td><a href="https://data.gov.gr/datasets/${d.name}/" target="_blank" class="text-decoration-none">
+                <code>${d.name}</code> <i class="bi bi-box-arrow-up-right small text-muted"></i>
+              </a></td>
+              <td>${statusBadge(d.accessible)}</td>
+              <td class="mono">${d.status_code ?? '—'}</td>
+              <td class="mono">${d.record_count != null ? fmt(d.record_count) : (d.error ?? '—')}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    show('datasetCheckResults').innerHTML = `<div class="alert alert-danger mb-0">Error: ${e.message}</div>`;
+  } finally {
+    showSpinner(false);
+  }
+}
+
+// ── Manual trigger ───────────────────────────────────────────────────────────
+async function triggerCheck() {
+  showSpinner(true);
+  try {
+    const data = await fetch('/api/trigger-check', { method: 'POST' }).then(r => r.json());
+    if (data.ok) {
+      show('lastChecked').textContent = new Date(data.timestamp).toLocaleString('el-GR');
+      // Reset lazy-load flags so tabs reload fresh data
+      _healthLoaded = false;
+      _statsLoaded  = false;
+      await loadOverview();
+    }
+  } catch (e) {
+    alert('Check failed: ' + e.message);
+  } finally {
+    showSpinner(false);
+  }
+}
+
+// ── Bootstrap ────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadOverview();
+  setInterval(loadOverview, 60_000);  // auto-refresh overview every 60 s
+});
+</script>
 </body>
 </html>
