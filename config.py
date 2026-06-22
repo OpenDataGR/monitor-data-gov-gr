@@ -7,8 +7,8 @@ TOKEN = os.environ.get("DATAGOVGR_TOKEN", "")
 ENDPOINTS_TO_MONITOR = [
     {"name": "Portal Homepage",  "url": "https://data.gov.gr/",                          "critical": True},
     {"name": "CKAN API",         "url": "https://data.gov.gr/api/3/action/status_show",  "critical": True},
-    {"name": "Datasets Listing", "url": "https://data.gov.gr/datasets/",                 "critical": False},
-    {"name": "Organizations",    "url": "https://data.gov.gr/organizations/",            "critical": False},
+    {"name": "Datasets Listing", "url": "https://data.gov.gr/dataset",                   "critical": False},
+    {"name": "Organizations",    "url": "https://data.gov.gr/organization",              "critical": False},
 ]
 
 SAMPLE_DATASETS = [

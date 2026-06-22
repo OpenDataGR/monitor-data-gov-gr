@@ -567,7 +567,7 @@ async function checkDatasets() {
         <tbody>
           ${data.map(d => `
             <tr>
-              <td><a href="https://data.gov.gr/datasets/${d.name}/" target="_blank" class="text-decoration-none">
+              <td><a href="https://data.gov.gr/dataset/${d.name}" target="_blank" class="text-decoration-none">
                 <code>${d.name}</code> <i class="bi bi-box-arrow-up-right small text-muted"></i>
               </a></td>
               <td class="small">${d.title ?? '—'}</td>
