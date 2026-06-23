@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -781,15 +781,19 @@ async function loadOrgs(force = false) {
   }
 }
 
+function _ns(s) {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
 function filterOrgs() {
-  const q = show('orgSearch').value.toLowerCase();
+  const q = _ns(show('orgSearch').value);
   if (_orgsViewMode === 'all') {
     renderAllOrgsTable(q
-      ? _publicOrgs.filter(o => o.label.toLowerCase().includes(q))
+      ? _publicOrgs.filter(o => _ns(o.label).includes(q))
       : _publicOrgs);
   } else {
     renderOrgsTable(q
-      ? _orgsData.filter(o => o.title.toLowerCase().includes(q) || o.name.toLowerCase().includes(q))
+      ? _orgsData.filter(o => _ns(o.title).includes(q) || _ns(o.name).includes(q))
       : _orgsData);
   }
 }
