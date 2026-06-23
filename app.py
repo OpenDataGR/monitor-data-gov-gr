@@ -520,6 +520,63 @@ def organizations():
     })
 
 
+@app.route("/api/organizations/<org_name>")
+def organization_detail(org_name):
+    headers = {"User-Agent": "DataGovGR-Dashboard/1.0"}
+    result = {}
+
+    try:
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/organization_show",
+            params={"id": org_name},
+            timeout=config.REQUEST_TIMEOUT,
+            headers=headers,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("success"):
+                org = data["result"]
+                result["org"] = {
+                    "name":          org.get("name"),
+                    "title":         org.get("title") or org.get("name"),
+                    "description":   (org.get("description") or "").strip(),
+                    "image_url":     org.get("image_display_url") or org.get("image_url") or "",
+                    "package_count": org.get("package_count", 0),
+                    "created":       org.get("created"),
+                    "state":         org.get("state"),
+                }
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+    if not result.get("org"):
+        return jsonify({"error": "Organization not found"}), 404
+
+    try:
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/package_search",
+            params={"fq": f"organization:{org_name}", "rows": 6, "sort": "metadata_modified desc"},
+            timeout=config.REQUEST_TIMEOUT,
+            headers=headers,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("success"):
+                result["recent_datasets"] = [
+                    {
+                        "name":              pkg.get("name"),
+                        "title":             pkg.get("title") or pkg.get("name"),
+                        "metadata_modified": pkg.get("metadata_modified"),
+                        "num_resources":     pkg.get("num_resources", 0),
+                        "notes":             (pkg.get("notes") or "")[:300].strip(),
+                    }
+                    for pkg in data["result"]["results"]
+                ]
+    except Exception:
+        result["recent_datasets"] = []
+
+    return jsonify(result)
+
+
 @app.route("/api/admin/reset", methods=["POST"])
 def admin_reset():
     db.session.query(HealthCheck).delete()

@@ -270,6 +270,19 @@
   </div><!-- tab-content -->
 </div><!-- container -->
 
+<!-- Org detail offcanvas -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="orgDetailPanel" style="width:440px;max-width:95vw">
+  <div class="offcanvas-header border-bottom">
+    <h5 class="offcanvas-title fw-bold" id="orgDetailTitle">Organization</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body" id="orgDetailBody">
+    <div class="text-center py-5 text-muted">
+      <div class="spinner-border text-primary"></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 // ── Chart instances ─────────────────────────────────────────────────────────
@@ -721,7 +734,7 @@ function renderOrgsTable(orgs) {
           <tr>
             <td class="text-muted small">${i + 1}</td>
             <td>
-              <a href="https://data.gov.gr/organization/${o.name}" target="_blank" class="fw-semibold text-decoration-none">
+              <a href="#" onclick="openOrgPanel('${o.name}');return false;" class="fw-semibold text-decoration-none">
                 ${o.title}
               </a>
               <div class="mt-1" style="height:3px;border-radius:2px;background:#e9ecef;overflow:hidden">
@@ -748,6 +761,77 @@ async function _pollUntilEnriched(attempts = 0) {
     renderOrgsTable(_orgsData);
     if (json.enriching) _pollUntilEnriched(attempts + 1);
   } catch (_) {}
+}
+
+// ── Org detail panel ─────────────────────────────────────────────────────────
+let _orgPanel = null;
+
+function openOrgPanel(name) {
+  if (!_orgPanel) _orgPanel = new bootstrap.Offcanvas(document.getElementById('orgDetailPanel'));
+  document.getElementById('orgDetailTitle').textContent = 'Loading…';
+  document.getElementById('orgDetailBody').innerHTML =
+    '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+  _orgPanel.show();
+  fetch(API_BASE + 'api/organizations/' + encodeURIComponent(name))
+    .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.error || r.status)))
+    .then(data => renderOrgPanel(data))
+    .catch(err => {
+      document.getElementById('orgDetailBody').innerHTML =
+        `<div class="alert alert-danger mb-0">Failed to load: ${err}</div>`;
+    });
+}
+
+function renderOrgPanel(data) {
+  const org = data.org;
+  document.getElementById('orgDetailTitle').textContent = org.title;
+
+  const imgHtml = org.image_url
+    ? `<img src="${org.image_url}" class="d-block mb-3" style="max-height:72px;max-width:180px;object-fit:contain" onerror="this.remove()">`
+    : '';
+
+  const descHtml = org.description
+    ? `<p class="text-muted small mb-3">${org.description.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</p>`
+    : '';
+
+  const createdHtml = org.created
+    ? `<div class="text-end">
+         <div class="small text-muted">Member since</div>
+         <div class="small fw-semibold">${new Date(org.created).toLocaleDateString('el-GR')}</div>
+       </div>`
+    : '';
+
+  const datasets = data.recent_datasets || [];
+  const datasetsHtml = datasets.length
+    ? `<h6 class="fw-semibold mt-4 mb-2">Recent Datasets</h6>
+       <div class="list-group list-group-flush">
+         ${datasets.map(d => `
+           <div class="list-group-item px-0 py-2">
+             <div class="d-flex justify-content-between align-items-start gap-2">
+               <a href="https://data.gov.gr/dataset/${d.name}" target="_blank"
+                  class="small fw-semibold text-decoration-none flex-grow-1"
+                  style="word-break:break-word">${d.title.replace(/</g,'&lt;')}</a>
+               <span class="badge bg-secondary text-nowrap">${d.num_resources} res.</span>
+             </div>
+             <div class="text-muted mt-1" style="font-size:.72rem">${relativeDate(d.metadata_modified)}</div>
+           </div>`).join('')}
+       </div>`
+    : '<p class="text-muted small mt-3">No recent datasets found.</p>';
+
+  document.getElementById('orgDetailBody').innerHTML = `
+    ${imgHtml}
+    <div class="d-flex align-items-start gap-3 mb-3">
+      <div>
+        <div class="fs-2 fw-bold text-primary lh-1">${fmt(org.package_count)}</div>
+        <div class="text-muted small">datasets published</div>
+      </div>
+      ${createdHtml}
+    </div>
+    ${descHtml}
+    <a href="https://data.gov.gr/organization/${org.name}" target="_blank"
+       class="btn btn-outline-primary btn-sm w-100">
+      <i class="bi bi-box-arrow-up-right me-1"></i>View on data.gov.gr
+    </a>
+    ${datasetsHtml}`;
 }
 
 // ── Manual trigger ───────────────────────────────────────────────────────────
