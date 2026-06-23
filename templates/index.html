@@ -842,9 +842,11 @@ async function _pollUntilEnriched(attempts = 0) {
 }
 
 // ── Communications tab ───────────────────────────────────────────────────────
-let _commsLoaded = false;
-let _commsData   = [];
-let _commModal   = null;
+let _commsLoaded   = false;
+let _commsData     = [];
+let _commModal     = null;
+let _commsSortCol  = 'contact_date';
+let _commsSortDir  = 'desc';
 
 const STATUS_BADGE = {
   "Contacted":   "bg-primary",
@@ -876,6 +878,21 @@ function _populateOrgDatalist() {
   dl.innerHTML = _orgsData.map(o => `<option value="${o.title}" data-name="${o.name}">`).join('');
 }
 
+function sortComms(col) {
+  if (_commsSortCol === col) {
+    _commsSortDir = _commsSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _commsSortCol = col;
+    _commsSortDir = col === 'contact_date' ? 'desc' : 'asc';
+  }
+  filterComms();
+}
+
+function commsArrow(col) {
+  if (_commsSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
+  return _commsSortDir === 'asc' ? ' ↑' : ' ↓';
+}
+
 function filterComms() {
   const q      = (show('commsSearch').value || '').toLowerCase();
   const status = show('commsStatusFilter').value;
@@ -893,19 +910,37 @@ function renderCommsTable(rows) {
     el.innerHTML = '<p class="text-muted text-center py-4">No communications recorded yet — click <strong>Add</strong> to start.</p>';
     return;
   }
+
+  const STATUS_ORDER = { "Contacted": 0, "Responded": 1, "Uploaded": 2, "No Response": 3 };
+  const sorted = [...rows].sort((a, b) => {
+    let av, bv;
+    switch (_commsSortCol) {
+      case 'org_title':     av = a.org_title.toLowerCase(); bv = b.org_title.toLowerCase(); break;
+      case 'subject':       av = a.subject.toLowerCase();   bv = b.subject.toLowerCase();   break;
+      case 'status':        av = STATUS_ORDER[a.status] ?? 99; bv = STATUS_ORDER[b.status] ?? 99; break;
+      default:              av = a.contact_date;             bv = b.contact_date;
+    }
+    if (av < bv) return _commsSortDir === 'asc' ? -1 : 1;
+    if (av > bv) return _commsSortDir === 'asc' ?  1 : -1;
+    return 0;
+  });
+
+  const thS = (col, label, cls = '') =>
+    `<th class="${cls}" style="cursor:pointer;user-select:none;white-space:nowrap" onclick="sortComms('${col}')">${label}${commsArrow(col)}</th>`;
+
   el.innerHTML = `
     <table class="table table-hover align-middle mb-0">
       <thead><tr>
-        <th style="width:110px">Date</th>
-        <th>Organization</th>
-        <th>Subject</th>
-        <th style="width:130px">Status</th>
-        <th style="width:90px"></th>
+        ${thS('contact_date', 'Date', 'text-nowrap')}
+        ${thS('org_title',    'Organization')}
+        ${thS('subject',      'Subject')}
+        ${thS('status',       'Status')}
+        <th style="width:80px"></th>
       </tr></thead>
       <tbody>
-        ${rows.map(c => `
+        ${sorted.map(c => `
           <tr>
-            <td class="text-muted small mono">${c.contact_date}</td>
+            <td class="text-muted small mono text-nowrap">${c.contact_date}</td>
             <td>
               <div class="fw-semibold">${c.org_title}</div>
               ${c.notes ? `<div class="text-muted small" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.notes.replace(/"/g,'&quot;')}">${c.notes}</div>` : ''}
