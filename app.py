@@ -177,11 +177,20 @@ if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+def _build_date() -> str:
+    p = Path(__file__).parent / "build_date.txt"
+    try:
+        return p.read_text().strip()
+    except FileNotFoundError:
+        return "dev"
+
+
 @app.route("/")
 def index():
     return render_template("index.html",
                            endpoints=config.ENDPOINTS_TO_MONITOR,
-                           has_token=bool(config.TOKEN))
+                           has_token=bool(config.TOKEN),
+                           build_date=_build_date())
 
 
 @app.route("/api/health/current")

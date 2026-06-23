@@ -13,6 +13,7 @@ jobs:
         run: |
           cd /home/localadmin/communcation_dashboard
           git pull
+          date -u '+%Y-%m-%d %H:%M UTC' > build_date.txt
 
       - name: Install dependencies
         run: |
