@@ -782,7 +782,6 @@ function openOrgPanel(name) {
 }
 
 function renderOrgPanel(data) {
-  console.log('[org-panel] raw API response:', JSON.stringify(data, null, 2));
   const org = data.org;
   document.getElementById('orgDetailTitle').textContent = org.title;
 

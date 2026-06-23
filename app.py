@@ -123,7 +123,10 @@ def _fetch_portal_stats() -> dict:
             if not results:
                 break
             for pkg in results:
-                total_res += len(pkg.get("resources") or [])
+                total_res += sum(
+                    1 for r in (pkg.get("resources") or [])
+                    if r.get("name") != "Όλα τα δεδομένα πόρων"
+                )
             start += batch
             if start >= data["result"]["count"]:
                 break
@@ -566,12 +569,11 @@ def organization_detail(org_name):
                         "name":              pkg.get("name"),
                         "title":             pkg.get("title") or pkg.get("name"),
                         "metadata_modified": pkg.get("metadata_modified"),
-                        "num_resources":     len(pkg.get("resources") or []),
+                        "num_resources":     sum(
+                            1 for r in (pkg.get("resources") or [])
+                            if r.get("name") != "Όλα τα δεδομένα πόρων"
+                        ),
                         "notes":             (pkg.get("notes") or "")[:300].strip(),
-                        "_res_debug":        [
-                            {"format": r.get("format",""), "url_type": r.get("url_type",""), "name": (r.get("name") or "")[:40]}
-                            for r in (pkg.get("resources") or [])
-                        ],
                     }
                     for pkg in data["result"]["results"]
                 ]
