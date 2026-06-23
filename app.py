@@ -7,76 +7,20 @@ import time
 import threading
 import requests
 from datetime import datetime, timedelta, timezone
-from flask import Flask, render_template, jsonify, request as freq, redirect, url_for
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask import Flask, render_template, jsonify, request as freq
 from werkzeug.middleware.proxy_fix import ProxyFix
-from werkzeug.security import check_password_hash, generate_password_hash
 from models import db, HealthCheck, PortalSnapshot
 import config
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///dashboard.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-me-in-production")
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 db.init_app(app)
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
-
-login_manager = LoginManager(app)
-login_manager.login_view = "login"
-
-_DASHBOARD_USER   = os.environ.get("DASHBOARD_USER", "admin")
-_DASHBOARD_PWHASH = generate_password_hash(os.environ.get("DASHBOARD_PASSWORD", ""))
-
-
-class _User(UserMixin):
-    def __init__(self, username):
-        self.id = username
-
-
-@login_manager.user_loader
-def _load_user(user_id):
-    return _User(user_id) if user_id == _DASHBOARD_USER else None
-
-
-@app.before_request
-def _require_login():
-    public = {"login", "static"}
-    if current_user.is_authenticated or freq.endpoint in public:
-        return
-    if freq.path.startswith("/api/"):
-        return jsonify({"error": "Unauthorized"}), 401
-    return redirect(url_for("login", next=freq.url))
-
 with app.app_context():
     db.create_all()
-
-
-# ── Login / logout routes ─────────────────────────────────────────────────────
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for("index"))
-    error = None
-    if freq.method == "POST":
-        username = freq.form.get("username", "")
-        password = freq.form.get("password", "")
-        if username == _DASHBOARD_USER and check_password_hash(_DASHBOARD_PWHASH, password):
-            login_user(_User(username))
-            return redirect(freq.args.get("next") or url_for("index"))
-        error = "Invalid username or password."
-    return render_template("login.html", error=error)
-
-
-@app.route("/logout")
-def logout():
-    logout_user()
-    return redirect(url_for("login"))
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
