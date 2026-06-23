@@ -403,19 +403,50 @@ def organizations():
         data = r.json()
         if not data.get("success"):
             return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
-        orgs = sorted(
-            [
-                {
-                    "name":          o.get("name"),
-                    "title":         o.get("title") or o.get("name"),
-                    "package_count": o.get("package_count", 0),
-                }
-                for o in data["result"]
-            ],
-            key=lambda o: o["package_count"],
-            reverse=True,
-        )
-        return jsonify(orgs)
+
+        orgs = {
+            o["name"]: {
+                "name":          o.get("name"),
+                "title":         o.get("title") or o.get("name"),
+                "package_count": o.get("package_count", 0),
+                "last_updated":  None,
+            }
+            for o in data["result"]
+        }
+
+        # Paginate package_search sorted newest-first; first hit per org = its latest update
+        start = 0
+        batch = 500
+        seen  = set()
+        total_pkgs = None
+        while True:
+            r2 = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/package_search",
+                params={"rows": batch, "start": start, "sort": "metadata_modified desc"},
+                timeout=config.REQUEST_TIMEOUT,
+                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+            )
+            if r2.status_code != 200:
+                break
+            d2 = r2.json()
+            if not d2.get("success"):
+                break
+            results = d2["result"]["results"]
+            if total_pkgs is None:
+                total_pkgs = d2["result"]["count"]
+            if not results:
+                break
+            for pkg in results:
+                org_name = (pkg.get("organization") or {}).get("name")
+                if org_name and org_name in orgs and org_name not in seen:
+                    orgs[org_name]["last_updated"] = pkg.get("metadata_modified")
+                    seen.add(org_name)
+            start += batch
+            if len(seen) >= len(orgs) or start >= (total_pkgs or 0):
+                break
+
+        result = sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
+        return jsonify(result)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 

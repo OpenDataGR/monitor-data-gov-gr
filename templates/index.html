@@ -610,7 +610,18 @@ async function checkDatasets() {
   }
 }
 
-// ── Organizations tab ─────────────────────────────────────────────────────────
+// ── Organizations tab ────────────────────────────────────────────────────────
+function relativeDate(iso) {
+  if (!iso) return '—';
+  const d    = new Date(iso.includes('Z') ? iso : iso + 'Z');
+  const days = Math.floor((Date.now() - d) / 86400000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days <  30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+}
+
 let _orgsLoaded = false;
 let _orgsData   = [];
 
@@ -655,6 +666,7 @@ function renderOrgsTable(orgs) {
         <th style="width:3rem">#</th>
         <th>Organization</th>
         <th style="width:8rem" class="text-end">Datasets</th>
+        <th style="width:9rem" class="text-end">Last Updated</th>
       </tr></thead>
       <tbody>
         ${orgs.map((o, i) => `
@@ -669,6 +681,7 @@ function renderOrgsTable(orgs) {
               </div>
             </td>
             <td class="text-end fw-bold">${fmt(o.package_count)}</td>
+            <td class="text-end text-muted small" title="${o.last_updated ?? ''}">${relativeDate(o.last_updated)}</td>
           </tr>`).join('')}
       </tbody>
     </table>`;
