@@ -123,10 +123,7 @@ def _fetch_portal_stats() -> dict:
             if not results:
                 break
             for pkg in results:
-                total_res += sum(
-                    1 for r in (pkg.get("resources") or [])
-                    if r.get("name") != "Όλα τα δεδομένα πόρων"
-                )
+                total_res += pkg.get("num_resources", 0)
             start += batch
             if start >= data["result"]["count"]:
                 break
