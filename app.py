@@ -413,7 +413,10 @@ def datasets_check():
                 "name":           ds,
                 "status_code":    r.status_code,
                 "accessible":     success,
-                "resource_count": len(result_obj.get("resources", [])),
+                "resource_count": sum(
+                    1 for r in result_obj.get("resources", [])
+                    if r.get("name") != "Όλα τα δεδομένα πόρων"
+                ),
                 "title":          result_obj.get("title", ds),
                 "organization":   (result_obj.get("organization") or {}).get("title", ""),
             })
