@@ -173,6 +173,70 @@ def run_health_checks():
 
 
 _ORGS_REFRESH_INTERVAL = 30 * 60  # refresh org cache every 30 minutes
+_orgs_cache: dict = {"data": None, "fetched_at": None}
+
+
+def _do_refresh_orgs() -> None:
+    """Fetch all orgs with full package pagination for last_updated. Updates cache in-place."""
+    r = requests.post(
+        f"{config.PORTAL_BASE}/api/3/action/organization_list",
+        json={"all_fields": True, "include_dataset_count": True},
+        timeout=config.REQUEST_TIMEOUT,
+        headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"organization_list HTTP {r.status_code}")
+    data = r.json()
+    if not data.get("success"):
+        raise RuntimeError(data.get("error", {}).get("message", "CKAN error"))
+
+    orgs = {
+        o["name"]: {
+            "name":          o.get("name"),
+            "title":         o.get("title") or o.get("name"),
+            "package_count": o.get("package_count", 0),
+            "last_updated":  None,
+        }
+        for o in data["result"]
+    }
+
+    # Paginate all packages sorted newest-first; first hit per org = its latest update.
+    # Runs in a background thread so there is no HTTP request timeout to worry about.
+    try:
+        start      = 0
+        batch      = 500
+        seen: set  = set()
+        total_pkgs = None
+        while True:
+            r2 = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/package_search",
+                params={"rows": batch, "start": start, "sort": "metadata_modified desc"},
+                timeout=config.REQUEST_TIMEOUT,
+                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+            )
+            if r2.status_code != 200:
+                break
+            d2 = r2.json()
+            if not d2.get("success"):
+                break
+            results = d2["result"]["results"]
+            if total_pkgs is None:
+                total_pkgs = d2["result"]["count"]
+            if not results:
+                break
+            for pkg in results:
+                org_name = (pkg.get("organization") or {}).get("name")
+                if org_name and org_name in orgs and org_name not in seen:
+                    orgs[org_name]["last_updated"] = pkg.get("metadata_modified")
+                    seen.add(org_name)
+            start += batch
+            if len(seen) >= len(orgs) or start >= (total_pkgs or 0):
+                break
+    except Exception:
+        pass  # partial last_updated data is still useful
+
+    _orgs_cache["data"]       = sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
+    _orgs_cache["fetched_at"] = datetime.now(timezone.utc).isoformat()
 
 
 def _background_loop():
@@ -404,76 +468,11 @@ def debug_portal():
     return jsonify(results)
 
 
-_orgs_cache: dict = {"data": None, "fetched_at": None}
-
-
-def _do_refresh_orgs() -> None:
-    """Fetch all orgs with full package pagination for last_updated. Updates cache in-place."""
-    r = requests.post(
-        f"{config.PORTAL_BASE}/api/3/action/organization_list",
-        json={"all_fields": True, "include_dataset_count": True},
-        timeout=config.REQUEST_TIMEOUT,
-        headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
-    )
-    if r.status_code != 200:
-        raise RuntimeError(f"organization_list HTTP {r.status_code}")
-    data = r.json()
-    if not data.get("success"):
-        raise RuntimeError(data.get("error", {}).get("message", "CKAN error"))
-
-    orgs = {
-        o["name"]: {
-            "name":          o.get("name"),
-            "title":         o.get("title") or o.get("name"),
-            "package_count": o.get("package_count", 0),
-            "last_updated":  None,
-        }
-        for o in data["result"]
-    }
-
-    # Paginate all packages sorted newest-first; first hit per org = its latest update.
-    # Runs in a background thread so there is no HTTP request timeout to worry about.
-    try:
-        start      = 0
-        batch      = 500
-        seen: set  = set()
-        total_pkgs = None
-        while True:
-            r2 = requests.get(
-                f"{config.PORTAL_BASE}/api/3/action/package_search",
-                params={"rows": batch, "start": start, "sort": "metadata_modified desc"},
-                timeout=config.REQUEST_TIMEOUT,
-                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
-            )
-            if r2.status_code != 200:
-                break
-            d2 = r2.json()
-            if not d2.get("success"):
-                break
-            results = d2["result"]["results"]
-            if total_pkgs is None:
-                total_pkgs = d2["result"]["count"]
-            if not results:
-                break
-            for pkg in results:
-                org_name = (pkg.get("organization") or {}).get("name")
-                if org_name and org_name in orgs and org_name not in seen:
-                    orgs[org_name]["last_updated"] = pkg.get("metadata_modified")
-                    seen.add(org_name)
-            start += batch
-            if len(seen) >= len(orgs) or start >= (total_pkgs or 0):
-                break
-    except Exception:
-        pass  # partial last_updated data is still useful
-
-    _orgs_cache["data"]       = sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
-    _orgs_cache["fetched_at"] = datetime.now(timezone.utc).isoformat()
-
-
 @app.route("/api/organizations", methods=["GET", "POST"])
 def organizations():
-    if freq.method == "POST":
-        # User-initiated refresh: run in a thread and wait up to 25 s
+    if freq.method == "POST" or _orgs_cache["data"] is None:
+        # POST = user refresh; GET with empty cache = first load after restart.
+        # Either way: run in a thread and wait up to 25 s for data.
         done = threading.Event()
         def _bg():
             try:
@@ -485,7 +484,7 @@ def organizations():
         done.wait(timeout=25)
 
     if _orgs_cache["data"] is None:
-        return jsonify({"error": "Data not yet available — try again in a moment."}), 503
+        return jsonify({"error": "Could not load organizations — check server logs."}), 503
     return jsonify({"data": _orgs_cache["data"], "fetched_at": _orgs_cache["fetched_at"]})
 
 
