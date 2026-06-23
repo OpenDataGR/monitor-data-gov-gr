@@ -389,54 +389,66 @@ def debug_portal():
     return jsonify(results)
 
 
-@app.route("/api/organizations")
-def organizations():
+_orgs_cache: dict = {"data": None, "fetched_at": None}
+
+
+def _fetch_organizations() -> list:
+    r = requests.post(
+        f"{config.PORTAL_BASE}/api/3/action/organization_list",
+        json={"all_fields": True, "include_dataset_count": True},
+        timeout=config.REQUEST_TIMEOUT,
+        headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"organization_list HTTP {r.status_code}")
+    data = r.json()
+    if not data.get("success"):
+        raise RuntimeError(data.get("error", {}).get("message", "CKAN error"))
+
+    orgs = {
+        o["name"]: {
+            "name":          o.get("name"),
+            "title":         o.get("title") or o.get("name"),
+            "package_count": o.get("package_count", 0),
+            "last_updated":  None,
+        }
+        for o in data["result"]
+    }
+
+    # Single batch of the 500 most-recently-modified packages — first hit per org
+    # is its latest update. One batch keeps response time under any server timeout.
     try:
-        r = requests.post(
-            f"{config.PORTAL_BASE}/api/3/action/organization_list",
-            json={"all_fields": True, "include_dataset_count": True},
+        r2 = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/package_search",
+            params={"rows": 500, "start": 0, "sort": "metadata_modified desc"},
             timeout=config.REQUEST_TIMEOUT,
             headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
         )
-        if r.status_code != 200:
-            return jsonify({"error": f"HTTP {r.status_code}"}), 502
-        data = r.json()
-        if not data.get("success"):
-            return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
+        if r2.status_code == 200:
+            d2 = r2.json()
+            if d2.get("success"):
+                for pkg in d2["result"]["results"]:
+                    org_name = (pkg.get("organization") or {}).get("name")
+                    if org_name and org_name in orgs and orgs[org_name]["last_updated"] is None:
+                        orgs[org_name]["last_updated"] = pkg.get("metadata_modified")
+    except Exception:
+        pass  # last_updated stays None; non-fatal
 
-        orgs = {
-            o["name"]: {
-                "name":          o.get("name"),
-                "title":         o.get("title") or o.get("name"),
-                "package_count": o.get("package_count", 0),
-                "last_updated":  None,
-            }
-            for o in data["result"]
-        }
+    return sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
 
-        # Single batch of the 500 most-recently-modified packages — first hit per org
-        # is its latest update. One batch keeps response time well under any server timeout.
+
+@app.route("/api/organizations", methods=["GET", "POST"])
+def organizations():
+    global _orgs_cache
+    if freq.method == "POST" or _orgs_cache["data"] is None:
         try:
-            r2 = requests.get(
-                f"{config.PORTAL_BASE}/api/3/action/package_search",
-                params={"rows": 500, "start": 0, "sort": "metadata_modified desc"},
-                timeout=config.REQUEST_TIMEOUT,
-                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
-            )
-            if r2.status_code == 200:
-                d2 = r2.json()
-                if d2.get("success"):
-                    for pkg in d2["result"]["results"]:
-                        org_name = (pkg.get("organization") or {}).get("name")
-                        if org_name and org_name in orgs and orgs[org_name]["last_updated"] is None:
-                            orgs[org_name]["last_updated"] = pkg.get("metadata_modified")
-        except Exception:
-            pass  # last_updated stays None; non-fatal
-
-        result = sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
-        return jsonify(result)
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+            _orgs_cache = {
+                "data":       _fetch_organizations(),
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+            }
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+    return jsonify({"data": _orgs_cache["data"], "fetched_at": _orgs_cache["fetched_at"]})
 
 
 @app.route("/api/admin/reset", methods=["POST"])
