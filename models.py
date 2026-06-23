@@ -47,3 +47,28 @@ class PortalSnapshot(db.Model):
             "total_resources":     self.total_resources,
             "total_services":      self.total_services,
         }
+
+
+class Communication(db.Model):
+    __tablename__ = "communications"
+
+    id           = db.Column(db.Integer, primary_key=True)
+    created_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+    contact_date = db.Column(db.String(10), nullable=False)   # ISO date YYYY-MM-DD
+    org_name     = db.Column(db.String(200), nullable=False)  # slug or free text
+    org_title    = db.Column(db.String(200))
+    subject      = db.Column(db.String(500), nullable=False)
+    status       = db.Column(db.String(50), nullable=False, default="Contacted")
+    notes        = db.Column(db.Text)
+
+    def to_dict(self):
+        return {
+            "id":           self.id,
+            "created_at":   self.created_at.isoformat(),
+            "contact_date": self.contact_date,
+            "org_name":     self.org_name,
+            "org_title":    self.org_title or self.org_name,
+            "subject":      self.subject,
+            "status":       self.status,
+            "notes":        self.notes or "",
+        }

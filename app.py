@@ -9,7 +9,7 @@ import requests
 from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, jsonify, request as freq
 from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, HealthCheck, PortalSnapshot
+from models import db, HealthCheck, PortalSnapshot, Communication
 import config
 
 app = Flask(__name__)
@@ -581,6 +581,69 @@ def organization_detail(org_name):
         result["recent_datasets"] = []
 
     return jsonify(result)
+
+
+VALID_STATUSES = {"Contacted", "Responded", "Uploaded", "No Response"}
+
+
+@app.route("/api/communications", methods=["GET"])
+def communications_list():
+    rows = Communication.query.order_by(Communication.contact_date.desc(), Communication.created_at.desc()).all()
+    return jsonify([r.to_dict() for r in rows])
+
+
+@app.route("/api/communications", methods=["POST"])
+def communications_create():
+    body = freq.get_json(force=True) or {}
+    org_name  = (body.get("org_name") or "").strip()
+    subject   = (body.get("subject") or "").strip()
+    contact_date = (body.get("contact_date") or "").strip()
+    if not org_name or not subject or not contact_date:
+        return jsonify({"error": "org_name, subject and contact_date are required"}), 400
+    status = body.get("status", "Contacted")
+    if status not in VALID_STATUSES:
+        return jsonify({"error": f"status must be one of {sorted(VALID_STATUSES)}"}), 400
+    comm = Communication(
+        contact_date=contact_date,
+        org_name=org_name,
+        org_title=(body.get("org_title") or "").strip() or None,
+        subject=subject,
+        status=status,
+        notes=(body.get("notes") or "").strip() or None,
+    )
+    db.session.add(comm)
+    db.session.commit()
+    return jsonify(comm.to_dict()), 201
+
+
+@app.route("/api/communications/<int:comm_id>", methods=["PATCH"])
+def communications_update(comm_id):
+    comm = Communication.query.get_or_404(comm_id)
+    body = freq.get_json(force=True) or {}
+    if "contact_date" in body:
+        comm.contact_date = (body["contact_date"] or "").strip()
+    if "org_name" in body:
+        comm.org_name = (body["org_name"] or "").strip()
+    if "org_title" in body:
+        comm.org_title = (body["org_title"] or "").strip() or None
+    if "subject" in body:
+        comm.subject = (body["subject"] or "").strip()
+    if "status" in body:
+        if body["status"] not in VALID_STATUSES:
+            return jsonify({"error": f"status must be one of {sorted(VALID_STATUSES)}"}), 400
+        comm.status = body["status"]
+    if "notes" in body:
+        comm.notes = (body["notes"] or "").strip() or None
+    db.session.commit()
+    return jsonify(comm.to_dict())
+
+
+@app.route("/api/communications/<int:comm_id>", methods=["DELETE"])
+def communications_delete(comm_id):
+    comm = Communication.query.get_or_404(comm_id)
+    db.session.delete(comm)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/admin/reset", methods=["POST"])

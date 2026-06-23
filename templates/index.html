@@ -143,6 +143,11 @@
         <i class="bi bi-building me-1"></i>Organizations
       </button>
     </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-comms" id="commsTabBtn">
+        <i class="bi bi-envelope me-1"></i>Communications
+      </button>
+    </li>
   </ul>
 
   <div class="tab-content pb-5">
@@ -267,8 +272,81 @@
       </div>
     </div>
 
+    <!-- Communications -->
+    <div class="tab-pane fade" id="tab-comms">
+      <div class="row g-3">
+        <div class="col-12">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <h6 class="fw-semibold mb-0"><i class="bi bi-envelope me-2 text-primary"></i>Communications Log</h6>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <select id="commsStatusFilter" class="form-select form-select-sm" style="width:160px" onchange="filterComms()">
+                  <option value="">All statuses</option>
+                  <option>Contacted</option>
+                  <option>Responded</option>
+                  <option>Uploaded</option>
+                  <option>No Response</option>
+                </select>
+                <input type="search" id="commsSearch" class="form-control form-control-sm" placeholder="Search…" style="width:180px" oninput="filterComms()">
+                <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i>Add</button>
+              </div>
+            </div>
+            <div id="commsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- tab-content -->
 </div><!-- container -->
+
+<!-- Communications modal -->
+<div class="modal fade" id="commModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header border-bottom">
+        <h5 class="modal-title fw-bold" id="commModalTitle">Add Communication</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="commId">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Date <span class="text-danger">*</span></label>
+            <input type="date" id="commDate" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-8">
+            <label class="form-label small fw-semibold">Organization <span class="text-danger">*</span></label>
+            <input type="text" id="commOrg" class="form-control form-control-sm" placeholder="Organization name" list="commsOrgList" autocomplete="off">
+            <datalist id="commsOrgList"></datalist>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">Subject <span class="text-danger">*</span></label>
+            <input type="text" id="commSubject" class="form-control form-control-sm" placeholder="Dataset requested or topic">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Status</label>
+            <select id="commStatus" class="form-select form-select-sm">
+              <option>Contacted</option>
+              <option>Responded</option>
+              <option>Uploaded</option>
+              <option>No Response</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">Notes</label>
+            <textarea id="commNotes" class="form-control form-control-sm" rows="3" placeholder="Any additional context…"></textarea>
+          </div>
+        </div>
+        <div id="commError" class="alert alert-danger mt-3 mb-0 d-none"></div>
+      </div>
+      <div class="modal-footer border-top">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveComm()"><i class="bi bi-check me-1"></i>Save</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Org detail offcanvas -->
 <div class="offcanvas offcanvas-end" tabindex="-1" id="orgDetailPanel" style="width:440px;max-width:95vw">
@@ -761,6 +839,170 @@ async function _pollUntilEnriched(attempts = 0) {
     renderOrgsTable(_orgsData);
     if (json.enriching) _pollUntilEnriched(attempts + 1);
   } catch (_) {}
+}
+
+// ── Communications tab ───────────────────────────────────────────────────────
+let _commsLoaded = false;
+let _commsData   = [];
+let _commModal   = null;
+
+const STATUS_BADGE = {
+  "Contacted":   "bg-primary",
+  "Responded":   "bg-info text-dark",
+  "Uploaded":    "bg-success",
+  "No Response": "bg-secondary",
+};
+
+document.getElementById('commsTabBtn').addEventListener('click', () => {
+  if (_commsLoaded) return;
+  loadComms();
+});
+
+async function loadComms() {
+  try {
+    const data = await fetch(API_BASE + 'api/communications').then(r => r.json());
+    _commsData   = data;
+    _commsLoaded = true;
+    // Populate org autocomplete from orgs cache if available
+    if (_orgsData.length) _populateOrgDatalist();
+    filterComms();
+  } catch (e) {
+    show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">Error: ${e.message}</div>`;
+  }
+}
+
+function _populateOrgDatalist() {
+  const dl = document.getElementById('commsOrgList');
+  dl.innerHTML = _orgsData.map(o => `<option value="${o.title}" data-name="${o.name}">`).join('');
+}
+
+function filterComms() {
+  const q      = (show('commsSearch').value || '').toLowerCase();
+  const status = show('commsStatusFilter').value;
+  const filtered = _commsData.filter(c => {
+    const matchQ = !q || c.org_title.toLowerCase().includes(q) || c.subject.toLowerCase().includes(q) || (c.notes || '').toLowerCase().includes(q);
+    const matchS = !status || c.status === status;
+    return matchQ && matchS;
+  });
+  renderCommsTable(filtered);
+}
+
+function renderCommsTable(rows) {
+  const el = show('commsTable');
+  if (!rows.length) {
+    el.innerHTML = '<p class="text-muted text-center py-4">No communications recorded yet — click <strong>Add</strong> to start.</p>';
+    return;
+  }
+  el.innerHTML = `
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        <th style="width:110px">Date</th>
+        <th>Organization</th>
+        <th>Subject</th>
+        <th style="width:130px">Status</th>
+        <th style="width:90px"></th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(c => `
+          <tr>
+            <td class="text-muted small mono">${c.contact_date}</td>
+            <td>
+              <div class="fw-semibold">${c.org_title}</div>
+              ${c.notes ? `<div class="text-muted small" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.notes.replace(/"/g,'&quot;')}">${c.notes}</div>` : ''}
+            </td>
+            <td class="small">${c.subject}</td>
+            <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${c.status}</span></td>
+            <td class="text-end">
+              <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function openCommModal(id) {
+  if (!_commModal) _commModal = new bootstrap.Modal(document.getElementById('commModal'));
+  const err = show('commError');
+  err.classList.add('d-none');
+
+  // Populate org autocomplete in case orgs loaded after tab
+  if (_orgsData.length) _populateOrgDatalist();
+
+  if (id) {
+    const c = _commsData.find(x => x.id === id);
+    if (!c) return;
+    show('commModalTitle').textContent = 'Edit Communication';
+    show('commId').value      = c.id;
+    show('commDate').value    = c.contact_date;
+    show('commOrg').value     = c.org_title;
+    show('commSubject').value = c.subject;
+    show('commStatus').value  = c.status;
+    show('commNotes').value   = c.notes;
+  } else {
+    show('commModalTitle').textContent = 'Add Communication';
+    show('commId').value      = '';
+    show('commDate').value    = new Date().toISOString().slice(0, 10);
+    show('commOrg').value     = '';
+    show('commSubject').value = '';
+    show('commStatus').value  = 'Contacted';
+    show('commNotes').value   = '';
+  }
+  _commModal.show();
+}
+
+async function saveComm() {
+  const err     = show('commError');
+  const id      = show('commId').value;
+  const orgTitle = show('commOrg').value.trim();
+  // Try to find matching org slug from datalist
+  const opt     = document.querySelector(`#commsOrgList option[value="${CSS.escape ? orgTitle : orgTitle}"]`);
+  const orgName = opt ? (opt.getAttribute('data-name') || orgTitle) : orgTitle;
+
+  const body = {
+    contact_date: show('commDate').value,
+    org_name:     orgName,
+    org_title:    orgTitle,
+    subject:      show('commSubject').value.trim(),
+    status:       show('commStatus').value,
+    notes:        show('commNotes').value.trim(),
+  };
+
+  if (!body.contact_date || !body.org_name || !body.subject) {
+    err.textContent = 'Date, organization and subject are required.';
+    err.classList.remove('d-none');
+    return;
+  }
+
+  try {
+    const url    = id ? `${API_BASE}api/communications/${id}` : `${API_BASE}api/communications`;
+    const method = id ? 'PATCH' : 'POST';
+    const resp   = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    const json   = await resp.json();
+    if (!resp.ok) { err.textContent = json.error || 'Save failed.'; err.classList.remove('d-none'); return; }
+
+    if (id) {
+      _commsData = _commsData.map(c => c.id === parseInt(id) ? json : c);
+    } else {
+      _commsData.unshift(json);
+    }
+    _commModal.hide();
+    filterComms();
+  } catch (e) {
+    err.textContent = 'Network error: ' + e.message;
+    err.classList.remove('d-none');
+  }
+}
+
+async function deleteComm(id) {
+  if (!confirm('Delete this communication record?')) return;
+  try {
+    await fetch(`${API_BASE}api/communications/${id}`, { method: 'DELETE' });
+    _commsData = _commsData.filter(c => c.id !== id);
+    filterComms();
+  } catch (e) {
+    alert('Delete failed: ' + e.message);
+  }
 }
 
 // ── Org detail panel ─────────────────────────────────────────────────────────
