@@ -173,11 +173,13 @@ def run_health_checks():
 
 
 _ORGS_REFRESH_INTERVAL = 30 * 60  # refresh org cache every 30 minutes
-_orgs_cache: dict = {"data": None, "fetched_at": None}
+_orgs_cache: dict = {"data": None, "fetched_at": None, "enriching": False}
 
 
 def _fetch_orgs_quick() -> None:
-    """Fast path: org list only, no last_updated. Populates cache in ~2-3 s."""
+    """Fast path: org list only. Populates cache in ~2-3 s.
+    Preserves any last_updated values already in cache so a Refresh
+    doesn't wipe dates that background enrichment already filled in."""
     r = requests.post(
         f"{config.PORTAL_BASE}/api/3/action/organization_list",
         json={"all_fields": True, "include_dataset_count": True},
@@ -189,13 +191,14 @@ def _fetch_orgs_quick() -> None:
     data = r.json()
     if not data.get("success"):
         raise RuntimeError(data.get("error", {}).get("message", "CKAN error"))
+    existing_dates = {o["name"]: o.get("last_updated") for o in (_orgs_cache.get("data") or [])}
     _orgs_cache["data"] = sorted(
         [
             {
                 "name":          o.get("name"),
                 "title":         o.get("title") or o.get("name"),
                 "package_count": o.get("package_count", 0),
-                "last_updated":  None,
+                "last_updated":  existing_dates.get(o.get("name")),
             }
             for o in data["result"]
         ],
@@ -264,8 +267,9 @@ def _do_refresh_orgs() -> None:
     except Exception:
         pass  # partial last_updated data is still useful
 
-    _orgs_cache["data"]       = sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
+    _orgs_cache["data"]      = sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
     _orgs_cache["fetched_at"] = datetime.now(timezone.utc).isoformat()
+    _orgs_cache["enriching"]  = False
 
 
 def _background_loop():
@@ -506,9 +510,14 @@ def organizations():
         except Exception as exc:
             return jsonify({"error": str(exc)}), 503
         # Full enrichment (package pagination for last_updated) runs in background.
+        _orgs_cache["enriching"] = True
         threading.Thread(target=_do_refresh_orgs, daemon=True).start()
 
-    return jsonify({"data": _orgs_cache["data"], "fetched_at": _orgs_cache["fetched_at"]})
+    return jsonify({
+        "data":      _orgs_cache["data"],
+        "fetched_at": _orgs_cache["fetched_at"],
+        "enriching":  _orgs_cache["enriching"],
+    })
 
 
 @app.route("/api/admin/reset", methods=["POST"])

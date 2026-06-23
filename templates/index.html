@@ -673,6 +673,7 @@ async function loadOrgs(force = false) {
       ? 'Fetched ' + relativeDate(json.fetched_at)
       : '';
     renderOrgsTable(_orgsData);
+    if (json.enriching) _pollUntilEnriched();
   } catch (e) {
     el.innerHTML = `<div class="alert alert-danger mb-0">Error: ${e.message}</div>`;
   } finally {
@@ -732,6 +733,21 @@ function renderOrgsTable(orgs) {
           </tr>`).join('')}
       </tbody>
     </table>`;
+}
+
+async function _pollUntilEnriched(attempts = 0) {
+  if (attempts > 12) return;  // give up after ~2 min
+  await new Promise(r => setTimeout(r, 10000));  // wait 10 s
+  try {
+    const resp = await fetch(API_BASE + 'api/organizations');
+    if (!resp.ok) return;
+    const json = await resp.json();
+    if (json.error) return;
+    _orgsData = json.data;
+    show('orgsFetchedAt').textContent = json.fetched_at ? 'Fetched ' + relativeDate(json.fetched_at) : '';
+    renderOrgsTable(_orgsData);
+    if (json.enriching) _pollUntilEnriched(attempts + 1);
+  } catch (_) {}
 }
 
 // ── Manual trigger ───────────────────────────────────────────────────────────
