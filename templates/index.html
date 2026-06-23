@@ -284,7 +284,13 @@
         <div class="col-12">
           <div class="card p-4">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-              <h6 class="fw-semibold mb-0"><i class="bi bi-envelope me-2 text-primary"></i>Communications Log</h6>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <h6 class="fw-semibold mb-0"><i class="bi bi-envelope me-2 text-primary"></i>Communications Log</h6>
+                <div class="btn-group btn-group-sm" role="group">
+                  <button id="commsViewFlatBtn" type="button" class="btn btn-primary" onclick="setCommsView('flat')">All</button>
+                  <button id="commsViewGroupedBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('grouped')">By Organization</button>
+                </div>
+              </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <select id="commsStatusFilter" class="form-select form-select-sm" style="width:160px" onchange="filterComms()">
                   <option value="">All statuses</option>
@@ -966,8 +972,10 @@ let _commsLoaded   = false;
 let _commsData     = [];
 let _publicOrgs    = [];   // [{code, label}] from hrms.gov.gr
 let _commModal     = null;
-let _commsSortCol  = 'contact_date';
-let _commsSortDir  = 'desc';
+let _commsSortCol   = 'contact_date';
+let _commsSortDir   = 'desc';
+let _commsViewMode  = 'flat';
+let _expandedOrgs   = new Set();
 
 const STATUS_BADGE = {
   "Contacted":   "bg-primary",
@@ -1046,14 +1054,22 @@ function commsArrow(col) {
 }
 
 function filterComms() {
-  const q      = (show('commsSearch').value || '').toLowerCase();
+  const q      = _ns(show('commsSearch').value);
   const status = show('commsStatusFilter').value;
   const filtered = _commsData.filter(c => {
-    const matchQ = !q || c.org_title.toLowerCase().includes(q) || c.subject.toLowerCase().includes(q) || (c.notes || '').toLowerCase().includes(q);
+    const matchQ = !q || _ns(c.org_title).includes(q) || _ns(c.subject).includes(q) || _ns(c.notes || '').includes(q);
     const matchS = !status || c.status === status;
     return matchQ && matchS;
   });
-  renderCommsTable(filtered);
+  if (_commsViewMode === 'grouped') renderCommsGrouped(filtered);
+  else renderCommsTable(filtered);
+}
+
+function setCommsView(mode) {
+  _commsViewMode = mode;
+  show('commsViewFlatBtn').className    = 'btn btn-sm ' + (mode === 'flat'    ? 'btn-primary' : 'btn-outline-primary');
+  show('commsViewGroupedBtn').className = 'btn btn-sm ' + (mode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
+  filterComms();
 }
 
 function renderCommsTable(rows) {
@@ -1108,7 +1124,86 @@ function renderCommsTable(rows) {
     </table>`;
 }
 
-function openCommModal(id) {
+function renderCommsGrouped(data) {
+  const el = show('commsTable');
+  if (!data.length) {
+    el.innerHTML = '<p class="text-muted text-center py-4">No communications recorded yet — click <strong>Add</strong> to start.</p>';
+    return;
+  }
+
+  // Group by org_title, preserve insertion order within groups
+  const groups = new Map();
+  for (const c of data) {
+    const key = c.org_title || c.org_name;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  }
+
+  // Sort each group newest-first
+  for (const comms of groups.values()) {
+    comms.sort((a, b) => b.contact_date.localeCompare(a.contact_date));
+  }
+
+  // Sort groups by their most recent communication
+  const sorted = [...groups.entries()].sort(
+    ([, a], [, b]) => b[0].contact_date.localeCompare(a[0].contact_date)
+  );
+
+  const rows = sorted.map(([orgTitle, comms]) => {
+    const latest     = comms[0];
+    const isExpanded = _expandedOrgs.has(orgTitle);
+    const safeTitle  = orgTitle.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+    return `
+      <tr class="table-secondary" style="cursor:pointer" onclick="toggleOrgComms(${JSON.stringify(orgTitle)})">
+        <td colspan="5">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+            <span class="fw-semibold">${orgTitle}</span>
+            <span class="badge bg-primary rounded-pill" style="font-size:.7rem">${comms.length} ${comms.length === 1 ? 'entry' : 'entries'}</span>
+            <span class="badge ${STATUS_BADGE[latest.status] || 'bg-secondary'}" style="font-size:.7rem">${latest.status}</span>
+            <span class="text-muted small ms-auto">${latest.contact_date}</span>
+            <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-2"
+                    onclick="event.stopPropagation();openCommModal(null,${JSON.stringify(orgTitle)})"
+                    title="Add new communication for this organization">
+              <i class="bi bi-plus"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+      ${comms.map(c => `
+        <tr style="${isExpanded ? '' : 'display:none'}" class="comm-hist-row">
+          <td class="text-muted small mono text-nowrap ps-4" style="width:110px">${c.contact_date}</td>
+          <td class="small">${c.subject}</td>
+          <td style="width:140px"><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${c.status}</span></td>
+          <td class="small text-muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
+          <td class="text-end" style="width:80px">
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>`).join('')}`;
+  }).join('');
+
+  el.innerHTML = `
+    <table class="table table-hover align-middle mb-0 table-sm">
+      <thead><tr>
+        <th style="width:110px">Date</th>
+        <th>Subject</th>
+        <th style="width:140px">Status</th>
+        <th>Notes</th>
+        <th style="width:80px"></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function toggleOrgComms(orgTitle) {
+  if (_expandedOrgs.has(orgTitle)) _expandedOrgs.delete(orgTitle);
+  else _expandedOrgs.add(orgTitle);
+  filterComms();
+}
+
+function openCommModal(id, prefillOrg = null) {
   if (!_commModal) _commModal = new bootstrap.Modal(document.getElementById('commModal'));
   const err = show('commError');
   err.classList.add('d-none');
@@ -1125,10 +1220,10 @@ function openCommModal(id) {
     show('commStatus').value  = c.status;
     show('commNotes').value   = c.notes;
   } else {
-    show('commModalTitle').textContent = 'Add Communication';
+    show('commModalTitle').textContent = prefillOrg ? `Add — ${prefillOrg}` : 'Add Communication';
     show('commId').value      = '';
     show('commDate').value    = new Date().toISOString().slice(0, 10);
-    show('commOrg').value     = '';
+    show('commOrg').value     = prefillOrg || '';
     show('commSubject').value = '';
     show('commStatus').value  = 'Contacted';
     show('commNotes').value   = '';
