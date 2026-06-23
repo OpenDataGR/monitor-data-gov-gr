@@ -172,18 +172,33 @@ def run_health_checks():
         db.session.commit()
 
 
+_ORGS_REFRESH_INTERVAL = 30 * 60  # refresh org cache every 30 minutes
+
+
 def _background_loop():
     # Run immediately on startup, then repeat every interval
     try:
         run_health_checks()
     except Exception as exc:
         print(f"[health-check] initial error: {exc}")
+    try:
+        _do_refresh_orgs()
+    except Exception as exc:
+        print(f"[orgs] initial error: {exc}")
+
+    last_orgs_refresh = time.time()
     while True:
         time.sleep(config.CHECK_INTERVAL_SECONDS)
         try:
             run_health_checks()
         except Exception as exc:
             print(f"[health-check] error: {exc}")
+        if time.time() - last_orgs_refresh >= _ORGS_REFRESH_INTERVAL:
+            try:
+                _do_refresh_orgs()
+            except Exception as exc:
+                print(f"[orgs] refresh error: {exc}")
+            last_orgs_refresh = time.time()
 
 
 # Only start the background thread once (guard against Flask dev-reloader fork)
@@ -392,7 +407,8 @@ def debug_portal():
 _orgs_cache: dict = {"data": None, "fetched_at": None}
 
 
-def _fetch_organizations() -> list:
+def _do_refresh_orgs() -> None:
+    """Fetch all orgs with full package pagination for last_updated. Updates cache in-place."""
     r = requests.post(
         f"{config.PORTAL_BASE}/api/3/action/organization_list",
         json={"all_fields": True, "include_dataset_count": True},
@@ -415,39 +431,61 @@ def _fetch_organizations() -> list:
         for o in data["result"]
     }
 
-    # Single batch of the 500 most-recently-modified packages — first hit per org
-    # is its latest update. One batch keeps response time under any server timeout.
+    # Paginate all packages sorted newest-first; first hit per org = its latest update.
+    # Runs in a background thread so there is no HTTP request timeout to worry about.
     try:
-        r2 = requests.get(
-            f"{config.PORTAL_BASE}/api/3/action/package_search",
-            params={"rows": 500, "start": 0, "sort": "metadata_modified desc"},
-            timeout=config.REQUEST_TIMEOUT,
-            headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
-        )
-        if r2.status_code == 200:
+        start      = 0
+        batch      = 500
+        seen: set  = set()
+        total_pkgs = None
+        while True:
+            r2 = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/package_search",
+                params={"rows": batch, "start": start, "sort": "metadata_modified desc"},
+                timeout=config.REQUEST_TIMEOUT,
+                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+            )
+            if r2.status_code != 200:
+                break
             d2 = r2.json()
-            if d2.get("success"):
-                for pkg in d2["result"]["results"]:
-                    org_name = (pkg.get("organization") or {}).get("name")
-                    if org_name and org_name in orgs and orgs[org_name]["last_updated"] is None:
-                        orgs[org_name]["last_updated"] = pkg.get("metadata_modified")
+            if not d2.get("success"):
+                break
+            results = d2["result"]["results"]
+            if total_pkgs is None:
+                total_pkgs = d2["result"]["count"]
+            if not results:
+                break
+            for pkg in results:
+                org_name = (pkg.get("organization") or {}).get("name")
+                if org_name and org_name in orgs and org_name not in seen:
+                    orgs[org_name]["last_updated"] = pkg.get("metadata_modified")
+                    seen.add(org_name)
+            start += batch
+            if len(seen) >= len(orgs) or start >= (total_pkgs or 0):
+                break
     except Exception:
-        pass  # last_updated stays None; non-fatal
+        pass  # partial last_updated data is still useful
 
-    return sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
+    _orgs_cache["data"]       = sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
+    _orgs_cache["fetched_at"] = datetime.now(timezone.utc).isoformat()
 
 
 @app.route("/api/organizations", methods=["GET", "POST"])
 def organizations():
-    global _orgs_cache
-    if freq.method == "POST" or _orgs_cache["data"] is None:
-        try:
-            _orgs_cache = {
-                "data":       _fetch_organizations(),
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-            }
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 500
+    if freq.method == "POST":
+        # User-initiated refresh: run in a thread and wait up to 25 s
+        done = threading.Event()
+        def _bg():
+            try:
+                _do_refresh_orgs()
+            except Exception as exc:
+                print(f"[orgs] refresh error: {exc}")
+            done.set()
+        threading.Thread(target=_bg, daemon=True).start()
+        done.wait(timeout=25)
+
+    if _orgs_cache["data"] is None:
+        return jsonify({"error": "Data not yet available — try again in a moment."}), 503
     return jsonify({"data": _orgs_cache["data"], "fetched_at": _orgs_cache["fetched_at"]})
 
 
