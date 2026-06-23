@@ -123,7 +123,7 @@ def _fetch_portal_stats() -> dict:
             if not results:
                 break
             for pkg in results:
-                total_res += pkg.get("num_resources", 0)
+                total_res += len(pkg.get("resources") or [])
             start += batch
             if start >= data["result"]["count"]:
                 break
@@ -566,7 +566,7 @@ def organization_detail(org_name):
                         "name":              pkg.get("name"),
                         "title":             pkg.get("title") or pkg.get("name"),
                         "metadata_modified": pkg.get("metadata_modified"),
-                        "num_resources":     pkg.get("num_resources", 0),
+                        "num_resources":     len(pkg.get("resources") or []),
                         "notes":             (pkg.get("notes") or "")[:300].strip(),
                     }
                     for pkg in data["result"]["results"]
