@@ -101,18 +101,34 @@ def _fetch_portal_stats() -> dict:
     except Exception:
         pass
 
-    # Total resources via resource_search
+    # Total resources — paginate package_search and sum num_resources per package
+    # (resource_search with empty query is unreliable on many CKAN installs)
     try:
-        r = requests.get(
-            f"{config.PORTAL_BASE}/api/3/action/resource_search",
-            params={"query": "name:", "limit": 0},
-            timeout=config.REQUEST_TIMEOUT,
-            headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
-        )
-        if r.status_code == 200:
+        total_res = 0
+        start = 0
+        batch = 500
+        while True:
+            r = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/package_search",
+                params={"rows": batch, "start": start},
+                timeout=config.REQUEST_TIMEOUT,
+                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+            )
+            if r.status_code != 200:
+                break
             data = r.json()
-            if data.get("success"):
-                stats["total_resources"] = data["result"]["count"]
+            if not data.get("success"):
+                break
+            results = data["result"]["results"]
+            if not results:
+                break
+            for pkg in results:
+                total_res += pkg.get("num_resources", 0)
+            start += batch
+            if start >= data["result"]["count"]:
+                break
+        if start > 0:  # completed at least one page
+            stats["total_resources"] = total_res
     except Exception:
         pass
 
