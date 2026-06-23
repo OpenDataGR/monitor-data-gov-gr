@@ -845,6 +845,7 @@ async function _pollUntilEnriched(attempts = 0) {
 // ── Communications tab ───────────────────────────────────────────────────────
 let _commsLoaded   = false;
 let _commsData     = [];
+let _publicOrgs    = [];   // [{code, label}] from hrms.gov.gr
 let _commModal     = null;
 let _commsSortCol  = 'contact_date';
 let _commsSortDir  = 'desc';
@@ -863,10 +864,14 @@ document.getElementById('commsTabBtn').addEventListener('click', () => {
 
 async function loadComms() {
   try {
-    const data = await fetch(API_BASE + 'api/communications').then(r => r.json());
-    _commsData   = data;
+    const [commsData, publicOrgsData] = await Promise.all([
+      fetch(API_BASE + 'api/communications').then(r => r.json()),
+      fetch(API_BASE + 'api/public-orgs').then(r => r.ok ? r.json() : []),
+    ]);
+    _commsData   = commsData;
+    _publicOrgs  = Array.isArray(publicOrgsData) ? publicOrgsData : [];
     _commsLoaded = true;
-    if (_orgsData.length) _populateOrgDatalist();
+    _populateOrgDatalist();
     renderCommsSummary();
     filterComms();
   } catch (e) {
@@ -901,7 +906,9 @@ function renderCommsSummary() {
 
 function _populateOrgDatalist() {
   const dl = document.getElementById('commsOrgList');
-  dl.innerHTML = _orgsData.map(o => `<option value="${o.title}" data-name="${o.name}">`).join('');
+  dl.innerHTML = _publicOrgs
+    .map(o => `<option value="${o.label.replace(/"/g, '&quot;')}" data-code="${o.code}">`)
+    .join('');
 }
 
 function sortComms(col) {
@@ -987,8 +994,6 @@ function openCommModal(id) {
   const err = show('commError');
   err.classList.add('d-none');
 
-  // Populate org autocomplete in case orgs loaded after tab
-  if (_orgsData.length) _populateOrgDatalist();
 
   if (id) {
     const c = _commsData.find(x => x.id === id);
@@ -1016,9 +1021,8 @@ async function saveComm() {
   const err     = show('commError');
   const id      = show('commId').value;
   const orgTitle = show('commOrg').value.trim();
-  // Try to find matching org slug from datalist
-  const opt     = document.querySelector(`#commsOrgList option[value="${CSS.escape ? orgTitle : orgTitle}"]`);
-  const orgName = opt ? (opt.getAttribute('data-name') || orgTitle) : orgTitle;
+  const opt      = [...document.querySelectorAll('#commsOrgList option')].find(o => o.value === orgTitle);
+  const orgName  = opt ? (opt.dataset.code || orgTitle) : orgTitle;
 
   const body = {
     contact_date: show('commDate').value,

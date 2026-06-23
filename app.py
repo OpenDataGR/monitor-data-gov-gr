@@ -172,6 +172,37 @@ def run_health_checks():
         db.session.commit()
 
 
+_HRMS_CACHE: dict = {"data": None, "fetched_at": 0.0}
+_HRMS_TTL = 24 * 3600  # refresh once per day
+
+
+@app.route("/api/public-orgs")
+def public_orgs():
+    if _HRMS_CACHE["data"] is None or time.time() - _HRMS_CACHE["fetched_at"] > _HRMS_TTL:
+        try:
+            r = requests.get(
+                "https://hrms.gov.gr/api/public/organizations",
+                timeout=15,
+                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+            )
+            if r.status_code == 200:
+                raw = r.json()
+                orgs = raw.get("data", raw) if isinstance(raw, dict) else raw
+                _HRMS_CACHE["data"] = sorted(
+                    [
+                        {"code": o["code"], "label": o["preferredLabel"]}
+                        for o in orgs
+                        if o.get("preferredLabel") and o.get("code")
+                    ],
+                    key=lambda x: x["label"],
+                )
+                _HRMS_CACHE["fetched_at"] = time.time()
+        except Exception as exc:
+            if _HRMS_CACHE["data"] is None:
+                return jsonify({"error": str(exc)}), 503
+    return jsonify(_HRMS_CACHE["data"])
+
+
 _ORGS_REFRESH_INTERVAL = 30 * 60  # refresh org cache every 30 minutes
 _orgs_cache: dict = {"data": None, "fetched_at": None, "enriching": False}
 
