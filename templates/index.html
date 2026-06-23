@@ -291,6 +291,7 @@
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i>Add</button>
               </div>
             </div>
+            <div id="commsSummary" class="row g-2 mb-3"></div>
             <div id="commsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
           </div>
         </div>
@@ -865,12 +866,37 @@ async function loadComms() {
     const data = await fetch(API_BASE + 'api/communications').then(r => r.json());
     _commsData   = data;
     _commsLoaded = true;
-    // Populate org autocomplete from orgs cache if available
     if (_orgsData.length) _populateOrgDatalist();
+    renderCommsSummary();
     filterComms();
   } catch (e) {
     show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">Error: ${e.message}</div>`;
   }
+}
+
+function renderCommsSummary() {
+  const counts = { "Contacted": 0, "Responded": 0, "Uploaded": 0, "No Response": 0 };
+  for (const c of _commsData) if (c.status in counts) counts[c.status]++;
+  const total = _commsData.length;
+
+  const CARDS = [
+    { label: "Total",       value: total,                  bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
+    { label: "Contacted",   value: counts["Contacted"],    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-envelope" },
+    { label: "Responded",   value: counts["Responded"],    bg: "bg-info bg-opacity-10",      text: "text-info",      icon: "bi-reply" },
+    { label: "Uploaded",    value: counts["Uploaded"],     bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-cloud-upload" },
+    { label: "No Response", value: counts["No Response"],  bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-clock" },
+  ];
+
+  show('commsSummary').innerHTML = CARDS.map(c => `
+    <div class="col-6 col-sm-4 col-lg">
+      <div class="rounded-3 p-3 d-flex align-items-center gap-3 ${c.bg}" style="border:1px solid rgba(0,0,0,.06)">
+        <i class="bi ${c.icon} fs-4 ${c.text}"></i>
+        <div>
+          <div class="fw-bold fs-5 lh-1 ${c.text}">${c.value}</div>
+          <div class="text-muted" style="font-size:.75rem">${c.label}</div>
+        </div>
+      </div>
+    </div>`).join('');
 }
 
 function _populateOrgDatalist() {
@@ -1022,6 +1048,7 @@ async function saveComm() {
       _commsData.unshift(json);
     }
     _commModal.hide();
+    renderCommsSummary();
     filterComms();
   } catch (e) {
     err.textContent = 'Network error: ' + e.message;
@@ -1034,6 +1061,7 @@ async function deleteComm(id) {
   try {
     await fetch(`${API_BASE}api/communications/${id}`, { method: 'DELETE' });
     _commsData = _commsData.filter(c => c.id !== id);
+    renderCommsSummary();
     filterComms();
   } catch (e) {
     alert('Delete failed: ' + e.message);
