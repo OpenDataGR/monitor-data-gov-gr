@@ -176,6 +176,35 @@ _ORGS_REFRESH_INTERVAL = 30 * 60  # refresh org cache every 30 minutes
 _orgs_cache: dict = {"data": None, "fetched_at": None}
 
 
+def _fetch_orgs_quick() -> None:
+    """Fast path: org list only, no last_updated. Populates cache in ~2-3 s."""
+    r = requests.post(
+        f"{config.PORTAL_BASE}/api/3/action/organization_list",
+        json={"all_fields": True, "include_dataset_count": True},
+        timeout=config.REQUEST_TIMEOUT,
+        headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"organization_list HTTP {r.status_code}")
+    data = r.json()
+    if not data.get("success"):
+        raise RuntimeError(data.get("error", {}).get("message", "CKAN error"))
+    _orgs_cache["data"] = sorted(
+        [
+            {
+                "name":          o.get("name"),
+                "title":         o.get("title") or o.get("name"),
+                "package_count": o.get("package_count", 0),
+                "last_updated":  None,
+            }
+            for o in data["result"]
+        ],
+        key=lambda o: o["package_count"],
+        reverse=True,
+    )
+    _orgs_cache["fetched_at"] = datetime.now(timezone.utc).isoformat()
+
+
 def _do_refresh_orgs() -> None:
     """Fetch all orgs with full package pagination for last_updated. Updates cache in-place."""
     r = requests.post(
@@ -471,20 +500,14 @@ def debug_portal():
 @app.route("/api/organizations", methods=["GET", "POST"])
 def organizations():
     if freq.method == "POST" or _orgs_cache["data"] is None:
-        # POST = user refresh; GET with empty cache = first load after restart.
-        # Either way: run in a thread and wait up to 25 s for data.
-        done = threading.Event()
-        def _bg():
-            try:
-                _do_refresh_orgs()
-            except Exception as exc:
-                print(f"[orgs] refresh error: {exc}")
-            done.set()
-        threading.Thread(target=_bg, daemon=True).start()
-        done.wait(timeout=25)
+        # Quick fetch returns data immediately (org list only, no last_updated).
+        try:
+            _fetch_orgs_quick()
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 503
+        # Full enrichment (package pagination for last_updated) runs in background.
+        threading.Thread(target=_do_refresh_orgs, daemon=True).start()
 
-    if _orgs_cache["data"] is None:
-        return jsonify({"error": "Could not load organizations — check server logs."}), 503
     return jsonify({"data": _orgs_cache["data"], "fetched_at": _orgs_cache["fetched_at"]})
 
 
