@@ -1152,10 +1152,9 @@ function renderCommsGrouped(data) {
   const rows = sorted.map(([orgTitle, comms]) => {
     const latest     = comms[0];
     const isExpanded = _expandedOrgs.has(orgTitle);
-    const safeTitle  = orgTitle.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-
+    const safeAttr   = orgTitle.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
     return `
-      <tr class="table-secondary" style="cursor:pointer" onclick="toggleOrgComms(${JSON.stringify(orgTitle)})">
+      <tr class="table-secondary" style="cursor:pointer" data-org="${safeAttr}" onclick="toggleOrgComms(this.dataset.org)">
         <td colspan="5">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
@@ -1163,8 +1162,8 @@ function renderCommsGrouped(data) {
             <span class="badge bg-primary rounded-pill" style="font-size:.7rem">${comms.length} ${comms.length === 1 ? 'entry' : 'entries'}</span>
             <span class="badge ${STATUS_BADGE[latest.status] || 'bg-secondary'}" style="font-size:.7rem">${latest.status}</span>
             <span class="text-muted small ms-auto">${latest.contact_date}</span>
-            <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-2"
-                    onclick="event.stopPropagation();openCommModal(null,${JSON.stringify(orgTitle)})"
+            <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-2" data-org="${safeAttr}"
+                    onclick="event.stopPropagation();openCommModal(null,this.dataset.org)"
                     title="Add new communication for this organization">
               <i class="bi bi-plus"></i>
             </button>
