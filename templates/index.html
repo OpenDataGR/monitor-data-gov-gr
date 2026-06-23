@@ -137,6 +137,11 @@
         <i class="bi bi-shield-check me-1"></i>Quality
       </button>
     </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-orgs" id="orgsTabBtn">
+        <i class="bi bi-building me-1"></i>Organizations
+      </button>
+    </li>
   </ul>
 
   <div class="tab-content pb-5">
@@ -237,6 +242,24 @@
                 Click <strong>Check</strong> to test dataset accessibility
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Organizations -->
+    <div class="tab-pane fade" id="tab-orgs">
+      <div class="row g-3">
+        <div class="col-12">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <h6 class="fw-semibold mb-0"><i class="bi bi-building me-2 text-primary"></i>Organizations &amp; Dataset Counts</h6>
+              <div class="d-flex gap-2">
+                <input type="search" id="orgSearch" class="form-control form-control-sm" placeholder="Search…" style="width:200px" oninput="filterOrgs()">
+                <button class="btn btn-outline-primary btn-sm" onclick="loadOrgs(true)"><i class="bi bi-arrow-repeat me-1"></i>Refresh</button>
+              </div>
+            </div>
+            <div id="orgsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
           </div>
         </div>
       </div>
@@ -585,6 +608,70 @@ async function checkDatasets() {
   } finally {
     showSpinner(false);
   }
+}
+
+// ── Organizations tab ─────────────────────────────────────────────────────────
+let _orgsLoaded = false;
+let _orgsData   = [];
+
+document.getElementById('orgsTabBtn').addEventListener('click', () => {
+  if (_orgsLoaded) return;
+  loadOrgs();
+});
+
+async function loadOrgs(force = false) {
+  if (!force && _orgsLoaded) return;
+  const el = show('orgsTable');
+  el.innerHTML = '<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div>';
+  try {
+    const data = await fetch(API_BASE + 'api/organizations').then(r => r.json());
+    if (data.error) {
+      el.innerHTML = `<div class="alert alert-warning mb-0">${data.error}</div>`;
+      return;
+    }
+    _orgsData   = data;
+    _orgsLoaded = true;
+    show('orgSearch').value = '';
+    renderOrgsTable(data);
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger mb-0">Error: ${e.message}</div>`;
+  }
+}
+
+function filterOrgs() {
+  const q = show('orgSearch').value.toLowerCase();
+  renderOrgsTable(q
+    ? _orgsData.filter(o => o.title.toLowerCase().includes(q) || o.name.toLowerCase().includes(q))
+    : _orgsData);
+}
+
+function renderOrgsTable(orgs) {
+  const el  = show('orgsTable');
+  const max = orgs[0]?.package_count || 1;
+  if (!orgs.length) { el.innerHTML = '<p class="text-muted text-center py-3">No organizations found.</p>'; return; }
+  el.innerHTML = `
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        <th style="width:3rem">#</th>
+        <th>Organization</th>
+        <th style="width:8rem" class="text-end">Datasets</th>
+      </tr></thead>
+      <tbody>
+        ${orgs.map((o, i) => `
+          <tr>
+            <td class="text-muted small">${i + 1}</td>
+            <td>
+              <a href="https://data.gov.gr/organization/${o.name}" target="_blank" class="fw-semibold text-decoration-none">
+                ${o.title}
+              </a>
+              <div class="mt-1" style="height:3px;border-radius:2px;background:#e9ecef;overflow:hidden">
+                <div style="width:${Math.round(o.package_count / max * 100)}%;height:100%;background:#0057b8;border-radius:2px;transition:width .3s"></div>
+              </div>
+            </td>
+            <td class="text-end fw-bold">${fmt(o.package_count)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
 
 // ── Manual trigger ───────────────────────────────────────────────────────────

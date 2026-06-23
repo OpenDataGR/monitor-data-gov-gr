@@ -389,6 +389,37 @@ def debug_portal():
     return jsonify(results)
 
 
+@app.route("/api/organizations")
+def organizations():
+    try:
+        r = requests.post(
+            f"{config.PORTAL_BASE}/api/3/action/organization_list",
+            json={"all_fields": True, "include_dataset_count": True},
+            timeout=config.REQUEST_TIMEOUT,
+            headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+        )
+        if r.status_code != 200:
+            return jsonify({"error": f"HTTP {r.status_code}"}), 502
+        data = r.json()
+        if not data.get("success"):
+            return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
+        orgs = sorted(
+            [
+                {
+                    "name":          o.get("name"),
+                    "title":         o.get("title") or o.get("name"),
+                    "package_count": o.get("package_count", 0),
+                }
+                for o in data["result"]
+            ],
+            key=lambda o: o["package_count"],
+            reverse=True,
+        )
+        return jsonify(orgs)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/admin/reset", methods=["POST"])
 def admin_reset():
     db.session.query(HealthCheck).delete()
