@@ -414,36 +414,24 @@ def organizations():
             for o in data["result"]
         }
 
-        # Paginate package_search sorted newest-first; first hit per org = its latest update
-        start = 0
-        batch = 500
-        seen  = set()
-        total_pkgs = None
-        while True:
+        # Single batch of the 500 most-recently-modified packages — first hit per org
+        # is its latest update. One batch keeps response time well under any server timeout.
+        try:
             r2 = requests.get(
                 f"{config.PORTAL_BASE}/api/3/action/package_search",
-                params={"rows": batch, "start": start, "sort": "metadata_modified desc"},
+                params={"rows": 500, "start": 0, "sort": "metadata_modified desc"},
                 timeout=config.REQUEST_TIMEOUT,
                 headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
             )
-            if r2.status_code != 200:
-                break
-            d2 = r2.json()
-            if not d2.get("success"):
-                break
-            results = d2["result"]["results"]
-            if total_pkgs is None:
-                total_pkgs = d2["result"]["count"]
-            if not results:
-                break
-            for pkg in results:
-                org_name = (pkg.get("organization") or {}).get("name")
-                if org_name and org_name in orgs and org_name not in seen:
-                    orgs[org_name]["last_updated"] = pkg.get("metadata_modified")
-                    seen.add(org_name)
-            start += batch
-            if len(seen) >= len(orgs) or start >= (total_pkgs or 0):
-                break
+            if r2.status_code == 200:
+                d2 = r2.json()
+                if d2.get("success"):
+                    for pkg in d2["result"]["results"]:
+                        org_name = (pkg.get("organization") or {}).get("name")
+                        if org_name and org_name in orgs and orgs[org_name]["last_updated"] is None:
+                            orgs[org_name]["last_updated"] = pkg.get("metadata_modified")
+        except Exception:
+            pass  # last_updated stays None; non-fatal
 
         result = sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
         return jsonify(result)
