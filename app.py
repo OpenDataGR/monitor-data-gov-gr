@@ -568,6 +568,10 @@ def organization_detail(org_name):
                         "metadata_modified": pkg.get("metadata_modified"),
                         "num_resources":     len(pkg.get("resources") or []),
                         "notes":             (pkg.get("notes") or "")[:300].strip(),
+                        "_res_debug":        [
+                            {"format": r.get("format",""), "url_type": r.get("url_type",""), "name": (r.get("name") or "")[:40]}
+                            for r in (pkg.get("resources") or [])
+                        ],
                     }
                     for pkg in data["result"]["results"]
                 ]
