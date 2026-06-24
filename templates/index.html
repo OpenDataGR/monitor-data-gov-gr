@@ -656,7 +656,7 @@ async function loadResponseTimeChart() {
       type: 'line',
       data: {
         datasets: [
-          { label: 'Response (ms)', data: pts,  borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.3, pointRadius: 3 },
+          { label: 'Response (ms)', data: pts,  borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0, pointRadius: 3 },
           { label: 'Outage',        data: down, borderColor: '#dc3545', backgroundColor: '#dc354566', pointStyle: 'triangle', pointRadius: 8, showLine: false }
         ]
       },
