@@ -842,13 +842,27 @@ def matomo_visits_history():
     days = min(int(freq.args.get("days", 30)), 365)
     try:
         data = _matomo_get("VisitsSummary.get", {"period": "day", "date": f"last{days}"})
+
+        # nb_downloads in VisitsSummary is often 0; use Actions.getDownloads per day
+        dl_by_date: dict = {}
+        try:
+            dl_raw = _matomo_get("Actions.getDownloads", {
+                "period": "day", "date": f"last{days}", "filter_limit": 500,
+            })
+            if isinstance(dl_raw, dict):
+                for date_str, items in dl_raw.items():
+                    if isinstance(items, list):
+                        dl_by_date[date_str] = sum(item.get("nb_visits", 0) or 0 for item in items)
+        except Exception:
+            pass
+
         result = [
             {
                 "date":            date_str,
                 "visits":          v.get("nb_visits", 0) if isinstance(v, dict) else 0,
                 "unique_visitors": v.get("nb_uniq_visitors", 0) if isinstance(v, dict) else 0,
                 "pageviews":       (v.get("nb_pageviews") or v.get("nb_actions") or 0) if isinstance(v, dict) else 0,
-                "downloads":       v.get("nb_downloads", 0) if isinstance(v, dict) else 0,
+                "downloads":       dl_by_date.get(date_str, v.get("nb_downloads", 0) if isinstance(v, dict) else 0),
             }
             for date_str, v in data.items()
         ]
@@ -857,20 +871,53 @@ def matomo_visits_history():
         return jsonify({"error": str(exc)}), 503
 
 
+def _matomo_flat_pages(method: str, days: int, extra: dict) -> list:
+    """Fetch aggregated page/keyword data without period=range.
+
+    Maps the requested day count to standard periods (week/month) that
+    Matomo always has pre-archived.  For multi-month requests, merges the
+    per-month lists by label and sums visit counts.
+    """
+    if days <= 10:
+        period, date_str = "week", "last1"
+    elif days <= 35:
+        period, date_str = "month", "last1"
+    else:
+        months = max(2, (days + 29) // 30)
+        period, date_str = "month", f"last{months}"
+
+    raw = _matomo_get(method, {"period": period, "date": date_str, **extra})
+
+    if isinstance(raw, list):
+        return raw
+
+    if isinstance(raw, dict):
+        merged: dict = {}
+        for period_data in raw.values():
+            if not isinstance(period_data, list):
+                continue
+            for item in period_data:
+                key = item.get("label", "")
+                if key not in merged:
+                    merged[key] = dict(item)
+                    merged[key]["nb_visits"] = 0
+                    merged[key]["nb_uniq_visitors"] = 0
+                merged[key]["nb_visits"]          += item.get("nb_visits", 0) or 0
+                merged[key]["nb_uniq_visitors"]   += item.get("nb_uniq_visitors", 0) or 0
+        return sorted(merged.values(), key=lambda x: x.get("nb_visits", 0), reverse=True)
+
+    return []
+
+
 @app.route("/api/matomo/top-datasets")
 def matomo_top_datasets():
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
     limit = min(int(freq.args.get("limit", 20)), 100)
     days  = min(int(freq.args.get("days", 30)), 365)
-    start, end = _matomo_date_range(days)
     try:
-        pages = _matomo_get("Actions.getPageUrls", {
-            "period": "range", "date": f"{start},{end}",
-            "flat": 1, "filter_limit": limit * 5,
-        })
-        if not isinstance(pages, list):
-            return jsonify([])
+        pages = _matomo_flat_pages("Actions.getPageUrls", days,
+                                   {"flat": 1, "filter_limit": 300})
         result = []
         for page in pages:
             label = page.get("label", "")
@@ -897,20 +944,15 @@ def matomo_top_searches():
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
     limit = min(int(freq.args.get("limit", 20)), 100)
     days  = min(int(freq.args.get("days", 30)), 365)
-    start, end = _matomo_date_range(days)
     try:
-        data = _matomo_get("Actions.getSiteSearchKeywords", {
-            "period": "range", "date": f"{start},{end}",
-            "filter_limit": limit,
-        })
-        if not isinstance(data, list):
-            return jsonify([])
+        items = _matomo_flat_pages("Actions.getSiteSearchKeywords", days,
+                                   {"filter_limit": limit * 2})
         return jsonify([
             {
                 "keyword": item.get("label", ""),
                 "searches": item.get("nb_visits", 0) or item.get("nb_searches", 0),
             }
-            for item in data
+            for item in items[:limit]
         ])
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
