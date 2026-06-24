@@ -69,30 +69,35 @@ def _check_endpoint(ep: dict) -> dict:
 
 
 def _fetch_portal_stats() -> dict:
+    """Fetch current portal counters from the CKAN API.
+
+    - total_datasets  : package_search fq=type:dataset  (matches /dataset/ page)
+    - total_services  : package_search fq=type:data_service (matches /data-service page)
+    - total_organizations: organization_list
+    - total_resources : resource_search (fast, single call)
+    Falls back to scraping the homepage for anything the API could not provide.
+    """
     stats = {}
+    h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
 
-    # Total datasets
-    try:
-        r = requests.get(
-            f"{config.PORTAL_BASE}/api/3/action/package_search",
-            params={"rows": 0},
-            timeout=config.REQUEST_TIMEOUT,
-            headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
-        )
-        if r.status_code == 200:
-            data = r.json()
-            if data.get("success"):
-                stats["total_datasets"] = data["result"]["count"]
-    except Exception:
-        pass
+    for fq, key in [("type:dataset", "total_datasets"), ("type:data_service", "total_services")]:
+        try:
+            r = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/package_search",
+                params={"rows": 0, "fq": fq},
+                timeout=config.REQUEST_TIMEOUT, headers=h,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("success"):
+                    stats[key] = data["result"]["count"]
+        except Exception:
+            pass
 
-    # Total organizations — data.gov.gr CKAN requires POST
     try:
         r = requests.post(
             f"{config.PORTAL_BASE}/api/3/action/organization_list",
-            json={},
-            timeout=config.REQUEST_TIMEOUT,
-            headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+            json={}, timeout=config.REQUEST_TIMEOUT, headers=h,
         )
         if r.status_code == 200:
             data = r.json()
@@ -101,54 +106,32 @@ def _fetch_portal_stats() -> dict:
     except Exception:
         pass
 
-    # Total resources — paginate package_search and sum num_resources per package
-    # (resource_search with empty query is unreliable on many CKAN installs)
     try:
-        total_res = 0
-        start = 0
-        batch = 500
-        while True:
-            r = requests.get(
-                f"{config.PORTAL_BASE}/api/3/action/package_search",
-                params={"rows": batch, "start": start},
-                timeout=config.REQUEST_TIMEOUT,
-                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
-            )
-            if r.status_code != 200:
-                break
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/resource_search",
+            params={"query": "name:", "limit": 0},
+            timeout=config.REQUEST_TIMEOUT, headers=h,
+        )
+        if r.status_code == 200:
             data = r.json()
-            if not data.get("success"):
-                break
-            results = data["result"]["results"]
-            if not results:
-                break
-            for pkg in results:
-                total_res += pkg.get("num_resources", 0)
-            start += batch
-            if start >= data["result"]["count"]:
-                break
-        if start > 0:  # completed at least one page
-            stats["total_resources"] = total_res
+            if data.get("success"):
+                stats["total_resources"] = data["result"]["count"]
     except Exception:
         pass
 
-    # Scrape homepage for anything still missing
-    missing = {"total_datasets", "total_organizations", "total_resources"} - stats.keys()
+    # Scrape homepage for anything the API did not provide
+    missing = {"total_datasets", "total_organizations", "total_resources", "total_services"} - stats.keys()
     if missing:
         try:
-            r = requests.get(
-                config.PORTAL_BASE,
-                timeout=config.REQUEST_TIMEOUT,
-                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
-            )
+            r = requests.get(config.PORTAL_BASE, timeout=config.REQUEST_TIMEOUT, headers=h)
             if r.status_code == 200:
                 text = r.text
-                patterns = [
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Dd]atasets?',     "total_datasets"),
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Oo]rganizations?', "total_organizations"),
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Rr]esources?',     "total_resources"),
-                ]
-                for pat, key in patterns:
+                for pat, key in [
+                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Dd]atasets?',      "total_datasets"),
+                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Oo]rganizations?',  "total_organizations"),
+                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Rr]esources?',      "total_resources"),
+                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Ss]ervices?',       "total_services"),
+                ]:
                     if key in missing:
                         m = re.search(pat, text, re.IGNORECASE)
                         if m:
@@ -412,22 +395,46 @@ def stats_latest():
     return jsonify({"error": "No snapshot yet"}), 404
 
 
-@app.route("/api/stats/live-count")
-def stats_live_count():
+@app.route("/api/stats/live")
+def stats_live():
+    """Return all four portal counters fetched live from CKAN — no DB involved."""
+    out = {}
+    h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
+
+    for fq, key in [("type:dataset", "total_datasets"), ("type:data_service", "total_services")]:
+        try:
+            r = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/package_search",
+                params={"rows": 0, "fq": fq},
+                timeout=config.REQUEST_TIMEOUT, headers=h,
+            )
+            if r.status_code == 200 and r.json().get("success"):
+                out[key] = r.json()["result"]["count"]
+        except Exception:
+            pass
+
+    try:
+        r = requests.post(
+            f"{config.PORTAL_BASE}/api/3/action/organization_list",
+            json={}, timeout=config.REQUEST_TIMEOUT, headers=h,
+        )
+        if r.status_code == 200 and r.json().get("success"):
+            out["total_organizations"] = len(r.json()["result"])
+    except Exception:
+        pass
+
     try:
         r = requests.get(
-            f"{config.PORTAL_BASE}/api/3/action/package_search",
-            params={"rows": 0},
-            timeout=config.REQUEST_TIMEOUT,
-            headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+            f"{config.PORTAL_BASE}/api/3/action/resource_search",
+            params={"query": "name:", "limit": 0},
+            timeout=config.REQUEST_TIMEOUT, headers=h,
         )
-        if r.status_code == 200:
-            data = r.json()
-            if data.get("success"):
-                return jsonify({"total_datasets": data["result"]["count"]})
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 503
-    return jsonify({"error": "Failed to fetch"}), 503
+        if r.status_code == 200 and r.json().get("success"):
+            out["total_resources"] = r.json()["result"]["count"]
+    except Exception:
+        pass
+
+    return jsonify(out)
 
 
 @app.route("/api/stats/history")

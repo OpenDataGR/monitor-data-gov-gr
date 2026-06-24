@@ -69,8 +69,8 @@
   {% endif %}
 
   <!-- ── Stats row ──────────────────────────────────────────────────── -->
-  <div class="row g-3 mb-4">
-    <div class="col-6 col-xl-3">
+  <div class="row row-cols-2 row-cols-xl-5 g-3 mb-4">
+    <div class="col">
       <div class="card stat-card p-4 h-100">
         <div class="d-flex justify-content-between align-items-start">
           <div>
@@ -81,18 +81,18 @@
         </div>
       </div>
     </div>
-    <div class="col-6 col-xl-3">
+    <div class="col">
       <div class="card stat-card p-4 h-100">
         <div class="d-flex justify-content-between align-items-start">
           <div>
-            <div class="text-muted small mb-1">Organizations</div>
-            <div class="stat-value text-success" id="statOrgs">—</div>
+            <div class="text-muted small mb-1">Data Services</div>
+            <div class="stat-value text-warning" id="statServices">—</div>
           </div>
-          <div class="icon-box bg-success bg-opacity-10"><i class="bi bi-building fs-4 text-success"></i></div>
+          <div class="icon-box bg-warning bg-opacity-10"><i class="bi bi-cloud-arrow-up fs-4 text-warning"></i></div>
         </div>
       </div>
     </div>
-    <div class="col-6 col-xl-3">
+    <div class="col">
       <div class="card stat-card p-4 h-100">
         <div class="d-flex justify-content-between align-items-start">
           <div>
@@ -103,7 +103,18 @@
         </div>
       </div>
     </div>
-    <div class="col-6 col-xl-3">
+    <div class="col">
+      <div class="card stat-card p-4 h-100">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="text-muted small mb-1">Organizations</div>
+            <div class="stat-value text-success" id="statOrgs">—</div>
+          </div>
+          <div class="icon-box bg-success bg-opacity-10"><i class="bi bi-building fs-4 text-success"></i></div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
       <div class="card stat-card p-4 h-100">
         <div class="d-flex justify-content-between align-items-start">
           <div>
@@ -411,20 +422,24 @@ function showSpinner(v) {
 
 // ── Overview ─────────────────────────────────────────────────────────────────
 async function loadOverview() {
-  // Portal stats — snapshot first, then live count
+  // Portal stats — snapshot first (fast), then live fetch updates all cards
   try {
     const snap = await fetch(API_BASE + 'api/stats/latest').then(r => r.ok ? r.json() : null);
     if (snap && !snap.error) {
       show('statDatasets').textContent  = fmt(snap.total_datasets);
-      show('statOrgs').textContent      = fmt(snap.total_organizations);
+      show('statServices').textContent  = fmt(snap.total_services);
       show('statResources').textContent = fmt(snap.total_resources);
+      show('statOrgs').textContent      = fmt(snap.total_organizations);
     }
   } catch (_) {}
-  // Refresh dataset count live from CKAN (fast: rows=0, no data transferred)
+  // Live fetch from CKAN — corrects any snapshot staleness
   try {
-    const live = await fetch(API_BASE + 'api/stats/live-count').then(r => r.ok ? r.json() : null);
-    if (live && live.total_datasets != null) {
-      show('statDatasets').textContent = fmt(live.total_datasets);
+    const live = await fetch(API_BASE + 'api/stats/live').then(r => r.ok ? r.json() : null);
+    if (live) {
+      if (live.total_datasets     != null) show('statDatasets').textContent  = fmt(live.total_datasets);
+      if (live.total_services     != null) show('statServices').textContent  = fmt(live.total_services);
+      if (live.total_resources    != null) show('statResources').textContent = fmt(live.total_resources);
+      if (live.total_organizations != null) show('statOrgs').textContent     = fmt(live.total_organizations);
     }
   } catch (_) {}
 
