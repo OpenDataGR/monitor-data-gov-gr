@@ -420,17 +420,34 @@ def datasets_since():
     except ValueError:
         return jsonify({"error": "invalid date, use YYYY-MM-DD"}), 400
     solr_date = dt.strftime("%Y-%m-%dT00:00:00Z")
+    fq = f"type:dataset AND metadata_created:[{solr_date} TO NOW]"
     h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
     try:
         r = requests.get(
             f"{config.PORTAL_BASE}/api/3/action/package_search",
-            params={"rows": 0, "fq": f"type:dataset AND metadata_created:[{solr_date} TO NOW]"},
+            params={
+                "rows": 0,
+                "fq": fq,
+                "facet.field": '["organization"]',
+                "facet.limit": 500,
+                "facet.mincount": 1,
+            },
             timeout=config.REQUEST_TIMEOUT, headers=h,
         )
         if r.status_code == 200:
             data = r.json()
             if data.get("success"):
-                return jsonify({"count": data["result"]["count"], "since": date_str})
+                orgs = (
+                    data.get("result", {})
+                        .get("search_facets", {})
+                        .get("organization", {})
+                        .get("items", [])
+                )
+                return jsonify({
+                    "count": data["result"]["count"],
+                    "since": date_str,
+                    "organizations": sorted(orgs, key=lambda o: o["count"], reverse=True),
+                })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
     return jsonify({"error": "CKAN API error"}), 503

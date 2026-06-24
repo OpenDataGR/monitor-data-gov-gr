@@ -240,6 +240,7 @@
                 <span class="text-muted small" id="datasetsSinceLabel"></span>
               </div>
             </div>
+            <div id="datasetsSinceOrgs"></div>
           </div>
         </div>
       </div>
@@ -679,19 +680,44 @@ async function checkDatasetsSince() {
   const resultEl = show('datasetsSinceResult');
   const countEl  = show('datasetsSinceCount');
   const labelEl  = show('datasetsSinceLabel');
+  const orgsEl   = show('datasetsSinceOrgs');
   countEl.textContent = '…';
   labelEl.textContent = '';
+  orgsEl.innerHTML    = '';
   resultEl.classList.remove('d-none');
   try {
     const data = await fetch(API_BASE + 'api/stats/datasets-since?date=' + encodeURIComponent(date)).then(r => r.json());
     if (data.error) {
       countEl.textContent = '';
       labelEl.textContent = 'Error: ' + data.error;
-    } else {
-      const d    = new Date(date + 'T00:00:00');
-      const lbl  = d.toLocaleDateString('el-GR', { day: 'numeric', month: 'long', year: 'numeric' });
-      countEl.textContent = fmt(data.count);
-      labelEl.textContent = 'datasets uploaded since ' + lbl;
+      return;
+    }
+    const d   = new Date(date + 'T00:00:00');
+    const lbl = d.toLocaleDateString('el-GR', { day: 'numeric', month: 'long', year: 'numeric' });
+    countEl.textContent = fmt(data.count);
+    labelEl.textContent = `datasets uploaded since ${lbl} across ${fmt(data.organizations.length)} organizations`;
+
+    if (data.organizations.length) {
+      orgsEl.innerHTML = `
+        <div class="table-responsive mt-3" style="max-height:320px;overflow-y:auto">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>#</th>
+                <th>Organization</th>
+                <th class="text-end">Datasets</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.organizations.map((o, i) => `
+                <tr style="cursor:pointer" onclick="openOrgPanel('${o.name}')">
+                  <td class="text-muted small">${i + 1}</td>
+                  <td>${o.display_name || o.name}</td>
+                  <td class="text-end fw-semibold">${fmt(o.count)}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
     }
   } catch (_) {
     countEl.textContent = '';
