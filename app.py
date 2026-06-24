@@ -44,7 +44,7 @@ def require_login():
         return
     if freq.path.startswith("/api/"):
         return jsonify({"error": "Unauthorized"}), 401
-    return redirect(url_for("login", next=freq.path))
+    return redirect(url_for("login", next=freq.script_root + freq.path))
 
 
 @app.route("/login", methods=["GET", "POST"])
