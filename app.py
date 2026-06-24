@@ -453,6 +453,42 @@ def datasets_since():
     return jsonify({"error": "CKAN API error"}), 503
 
 
+@app.route("/api/stats/org-datasets-since")
+def org_datasets_since():
+    date_str = freq.args.get("date", "").strip()
+    org_name = freq.args.get("org",  "").strip()
+    if not date_str or not org_name:
+        return jsonify({"error": "date and org parameters required"}), 400
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"error": "invalid date, use YYYY-MM-DD"}), 400
+    solr_date = dt.strftime("%Y-%m-%dT00:00:00Z")
+    fq = f"type:dataset AND metadata_created:[{solr_date} TO NOW] AND organization:{org_name}"
+    h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
+    try:
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/package_search",
+            params={"rows": 500, "fq": fq, "sort": "metadata_created desc"},
+            timeout=config.REQUEST_TIMEOUT, headers=h,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("success"):
+                datasets = [
+                    {
+                        "name":             pkg.get("name"),
+                        "title":            pkg.get("title") or pkg.get("name"),
+                        "metadata_created": (pkg.get("metadata_created") or "")[:10],
+                    }
+                    for pkg in data["result"]["results"]
+                ]
+                return jsonify({"datasets": datasets, "org": org_name, "since": date_str})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+    return jsonify({"error": "CKAN API error"}), 503
+
+
 @app.route("/api/stats/history")
 def stats_history():
     days  = int(freq.args.get("days", 30))
