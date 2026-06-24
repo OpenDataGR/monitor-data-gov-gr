@@ -1006,10 +1006,12 @@ def matomo_top_searches():
 
 @app.route("/api/matomo/top-api-calls")
 def matomo_top_api_calls():
+    """Data-service page views — direct CKAN API calls are not captured by JS tracking."""
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
     limit = min(int(freq.args.get("limit", 20)), 100)
     days  = min(int(freq.args.get("days", 30)), 365)
+    _DATA_SERVICE_PREFIXES = ("/data-service", "/pages/api")
     try:
         pages = _matomo_flat_pages("Actions.getPageUrls", days,
                                    {"flat": 1, "filter_limit": 500})
@@ -1018,13 +1020,10 @@ def matomo_top_api_calls():
             label = page.get("label", "")
             if not label:
                 continue
-            # flat=1 uses ' > ' as path separator; reconstruct the URL path
             path = "/" + "/".join(p.strip() for p in label.split(" > "))
-            # Only include CKAN API endpoints (data.gov.gr uses /api/3/action/)
-            if "/api/3/" not in path.lower() and "/api/action/" not in path.lower():
+            path = path.split("?")[0].rstrip("/") or "/"
+            if not any(path.lower().startswith(p) for p in _DATA_SERVICE_PREFIXES):
                 continue
-            # Strip query string — CKAN action is fully identified by path
-            path = path.split("?")[0].rstrip("/")
             result.append({
                 "path":   path,
                 "visits": page.get("nb_visits", 0),
