@@ -847,6 +847,8 @@ def matomo_visits_history():
                 "date":            date_str,
                 "visits":          v.get("nb_visits", 0) if isinstance(v, dict) else 0,
                 "unique_visitors": v.get("nb_uniq_visitors", 0) if isinstance(v, dict) else 0,
+                "pageviews":       (v.get("nb_pageviews") or v.get("nb_actions") or 0) if isinstance(v, dict) else 0,
+                "downloads":       v.get("nb_downloads", 0) if isinstance(v, dict) else 0,
             }
             for date_str, v in data.items()
         ]
