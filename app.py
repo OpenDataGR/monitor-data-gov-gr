@@ -8,7 +8,6 @@ import threading
 import requests
 from datetime import datetime, timedelta, timezone
 import hashlib
-import secrets
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, HealthCheck, PortalSnapshot, Communication
@@ -17,7 +16,10 @@ import config
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///dashboard.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.secret_key = config.FLASK_SECRET_KEY or secrets.token_hex(32)
+_fallback_key = hashlib.sha256(
+    (config.DASHBOARD_PASSWORD or "insecure-no-password").encode()
+).hexdigest()
+app.secret_key = config.FLASK_SECRET_KEY or _fallback_key
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 db.init_app(app)
