@@ -921,11 +921,14 @@ def matomo_top_datasets():
         result = []
         for page in pages:
             label = page.get("label", "")
-            if "dataset" not in label.lower():
+            if not label or "dataset" not in label.lower():
                 continue
-            parts  = label.strip("/").split("/")
-            ds_idx = next((i for i, p in enumerate(parts) if p.lower() == "dataset"), None)
-            slug   = parts[ds_idx + 1] if ds_idx is not None and ds_idx + 1 < len(parts) else label
+            # flat=1 uses ' > ' as path separator; reconstruct the URL path
+            path = "/" + "/".join(p.strip() for p in label.split(" > "))
+            m = re.search(r"/dataset/([^/?#\s]+)", path, re.IGNORECASE)
+            if not m:
+                continue
+            slug = m.group(1)
             result.append({
                 "slug":            slug,
                 "label":           label,
@@ -970,10 +973,14 @@ def matomo_top_api_calls():
         result = []
         for page in pages:
             label = page.get("label", "")
-            if "/api/" not in label.lower():
+            if not label:
+                continue
+            # flat=1 uses ' > ' as path separator; reconstruct the URL path
+            path = "/" + "/".join(p.strip() for p in label.split(" > "))
+            if "/api/" not in path.lower():
                 continue
             result.append({
-                "path":   label,
+                "path":   path,
                 "visits": page.get("nb_visits", 0),
             })
         result.sort(key=lambda x: x["visits"], reverse=True)
