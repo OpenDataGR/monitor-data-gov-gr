@@ -958,6 +958,31 @@ def matomo_top_searches():
         return jsonify({"error": str(exc)}), 503
 
 
+@app.route("/api/matomo/top-api-calls")
+def matomo_top_api_calls():
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    limit = min(int(freq.args.get("limit", 20)), 100)
+    days  = min(int(freq.args.get("days", 30)), 365)
+    try:
+        pages = _matomo_flat_pages("Actions.getPageUrls", days,
+                                   {"flat": 1, "filter_limit": 500})
+        result = []
+        for page in pages:
+            label = page.get("label", "")
+            if "/api/" not in label.lower():
+                continue
+            result.append({
+                "path":   label,
+                "visits": page.get("nb_visits", 0),
+            })
+        result.sort(key=lambda x: x["visits"], reverse=True)
+        total = sum(r["visits"] for r in result)
+        return jsonify({"total": total, "endpoints": result[:limit]})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/admin/reset", methods=["POST"])
 def admin_reset():
     db.session.query(HealthCheck).delete()
