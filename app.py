@@ -80,7 +80,7 @@ def _fetch_portal_stats() -> dict:
     stats = {}
     h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
 
-    for fq, key in [("type:dataset", "total_datasets"), ("type:data_service", "total_services")]:
+    for fq, key in [("type:dataset", "total_datasets"), ("type:data-service", "total_services")]:
         try:
             r = requests.get(
                 f"{config.PORTAL_BASE}/api/3/action/package_search",
@@ -401,7 +401,7 @@ def stats_live():
     out = {}
     h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
 
-    for fq, key in [("type:dataset", "total_datasets"), ("type:data_service", "total_services")]:
+    for fq, key in [("type:dataset", "total_datasets"), ("type:data-service", "total_services")]:
         try:
             r = requests.get(
                 f"{config.PORTAL_BASE}/api/3/action/package_search",
@@ -530,9 +530,10 @@ def debug_portal():
     h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
     results = {}
     get_calls = [
-        ("package_search",  f"{config.PORTAL_BASE}/api/3/action/package_search",  {"rows": 0}),
-        ("resource_search", f"{config.PORTAL_BASE}/api/3/action/resource_search", {"query": "name:", "limit": 0}),
-        ("status_show",     f"{config.PORTAL_BASE}/api/3/action/status_show",     {}),
+        ("package_search",        f"{config.PORTAL_BASE}/api/3/action/package_search",  {"rows": 0}),
+        ("package_search_types",  f"{config.PORTAL_BASE}/api/3/action/package_search",  {"rows": 0, "facet.field": '["type"]', "facet.limit": 50}),
+        ("resource_search",       f"{config.PORTAL_BASE}/api/3/action/resource_search", {"query": "name:", "limit": 0}),
+        ("status_show",           f"{config.PORTAL_BASE}/api/3/action/status_show",     {}),
     ]
     post_calls = [
         ("organization_list", f"{config.PORTAL_BASE}/api/3/action/organization_list", {}),
