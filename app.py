@@ -68,18 +68,63 @@ def _check_endpoint(ep: dict) -> dict:
         }
 
 
-def _fetch_portal_stats() -> dict:
-    """Fetch current portal counters from the CKAN API.
+def _parse_homepage_stats(text: str) -> dict:
+    """Extract portal counters from the data.gov.gr homepage HTML.
 
-    - total_datasets  : package_search fq=type:dataset  (matches /dataset/ page)
-    - total_services  : package_search fq=type:data_service (matches /data-service page)
-    - total_organizations: organization_list
-    - total_resources : resource_search (fast, single call)
-    Falls back to scraping the homepage for anything the API could not provide.
+    The homepage uses space-separated Greek numbers ("87 121") and Greek labels
+    ("Πόροι Δεδομένων", "Σύνολα Δεδομένων", etc.).  Numbers may be separated
+    from their label by arbitrary HTML tags, so we allow tag sequences between them.
     """
-    stats = {}
-    h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
+    results = {}
+    # number pattern: digits optionally separated by spaces/nbsp in groups of 3
+    num_pat = r'(\d[\d  ]*\d|\d{1,3})'
+    tag_gap = r'(?:\s*<[^>]*>)*\s*'
+    for keyword, key in [
+        ("Σύνολα",    "total_datasets"),
+        ("Οργανισμ",  "total_organizations"),
+        ("Πόρ",       "total_resources"),
+        ("Υπηρεσί",   "total_services"),
+    ]:
+        # number immediately before the keyword (most common layout)
+        m = re.search(num_pat + tag_gap + re.escape(keyword), text)
+        if m:
+            raw = re.sub(r'[\s ]', '', m.group(1))
+            try:
+                results[key] = int(raw)
+                continue
+            except ValueError:
+                pass
+        # keyword before number (fallback)
+        m = re.search(re.escape(keyword) + tag_gap + num_pat, text)
+        if m:
+            raw = re.sub(r'[\s ]', '', m.group(1))
+            try:
+                results[key] = int(raw)
+            except ValueError:
+                pass
+    return results
 
+
+def _fetch_portal_stats() -> dict:
+    """Fetch current portal counters.
+
+    Strategy:
+    - Scrape homepage first — it is the authoritative source for resources and
+      services (Greek labels, space-separated numbers like "87 121").
+    - Override datasets and organizations with CKAN API counts (more precise).
+    """
+    h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
+    stats: dict = {}
+
+    # ── 1. Homepage scrape (covers all four counters) ──────────────────────
+    try:
+        r = requests.get(config.PORTAL_BASE, timeout=config.REQUEST_TIMEOUT, headers=h)
+        if r.status_code == 200:
+            stats = _parse_homepage_stats(r.text)
+    except Exception:
+        pass
+
+    # ── 2. API overrides for datasets and organizations ─────────────────────
     for fq, key in [("type:dataset", "total_datasets"), ("type:data-service", "total_services")]:
         try:
             r = requests.get(
@@ -89,7 +134,7 @@ def _fetch_portal_stats() -> dict:
             )
             if r.status_code == 200:
                 data = r.json()
-                if data.get("success"):
+                if data.get("success") and data["result"]["count"] > 0:
                     stats[key] = data["result"]["count"]
         except Exception:
             pass
@@ -105,42 +150,6 @@ def _fetch_portal_stats() -> dict:
                 stats["total_organizations"] = len(data["result"])
     except Exception:
         pass
-
-    try:
-        r = requests.get(
-            f"{config.PORTAL_BASE}/api/3/action/resource_search",
-            params={"query": "name:", "limit": 0},
-            timeout=config.REQUEST_TIMEOUT, headers=h,
-        )
-        if r.status_code == 200:
-            data = r.json()
-            if data.get("success"):
-                stats["total_resources"] = data["result"]["count"]
-    except Exception:
-        pass
-
-    # Scrape homepage for anything the API did not provide
-    missing = {"total_datasets", "total_organizations", "total_resources", "total_services"} - stats.keys()
-    if missing:
-        try:
-            r = requests.get(config.PORTAL_BASE, timeout=config.REQUEST_TIMEOUT, headers=h)
-            if r.status_code == 200:
-                text = r.text
-                for pat, key in [
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Dd]atasets?',      "total_datasets"),
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Oo]rganizations?',  "total_organizations"),
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Rr]esources?',      "total_resources"),
-                    (r'(\d[\d,\.]*)\s*(?:<[^>]*>)*\s*[Ss]ervices?',       "total_services"),
-                ]:
-                    if key in missing:
-                        m = re.search(pat, text, re.IGNORECASE)
-                        if m:
-                            try:
-                                stats[key] = int(m.group(1).replace(",", "").replace(".", ""))
-                            except ValueError:
-                                pass
-        except Exception:
-            pass
 
     return stats
 
@@ -397,44 +406,8 @@ def stats_latest():
 
 @app.route("/api/stats/live")
 def stats_live():
-    """Return all four portal counters fetched live from CKAN — no DB involved."""
-    out = {}
-    h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
-
-    for fq, key in [("type:dataset", "total_datasets"), ("type:data-service", "total_services")]:
-        try:
-            r = requests.get(
-                f"{config.PORTAL_BASE}/api/3/action/package_search",
-                params={"rows": 0, "fq": fq},
-                timeout=config.REQUEST_TIMEOUT, headers=h,
-            )
-            if r.status_code == 200 and r.json().get("success"):
-                out[key] = r.json()["result"]["count"]
-        except Exception:
-            pass
-
-    try:
-        r = requests.post(
-            f"{config.PORTAL_BASE}/api/3/action/organization_list",
-            json={}, timeout=config.REQUEST_TIMEOUT, headers=h,
-        )
-        if r.status_code == 200 and r.json().get("success"):
-            out["total_organizations"] = len(r.json()["result"])
-    except Exception:
-        pass
-
-    try:
-        r = requests.get(
-            f"{config.PORTAL_BASE}/api/3/action/resource_search",
-            params={"query": "name:", "limit": 0},
-            timeout=config.REQUEST_TIMEOUT, headers=h,
-        )
-        if r.status_code == 200 and r.json().get("success"):
-            out["total_resources"] = r.json()["result"]["count"]
-    except Exception:
-        pass
-
-    return jsonify(out)
+    """Return current portal stats fetched live — no DB involved."""
+    return jsonify(_fetch_portal_stats())
 
 
 @app.route("/api/stats/history")
