@@ -282,7 +282,7 @@
         </div>
         <div class="col">
           <div class="card stat-card p-3 h-100">
-            <div class="text-muted small mb-1">Unique Visitors</div>
+            <div class="text-muted small mb-1" id="trafficUniqueLabel">Unique Visitors</div>
             <div class="stat-value text-success" id="trafficUnique">—</div>
           </div>
         </div>
@@ -912,9 +912,12 @@ async function loadTrafficTab() {
   const s = summary.status === 'fulfilled' ? summary.value : null;
   if (s && !s.error) {
     show('trafficVisits').textContent    = fmt(s.visits);
-    show('trafficUnique').textContent    = fmt(s.unique_visitors);
+    show('trafficUnique').textContent    = (s.unique_approx ? '~' : '') + fmt(s.unique_visitors);
     show('trafficPageviews').textContent = fmt(s.pageviews);
     show('trafficDownloads').textContent = fmt(s.downloads);
+    // Show a subtle note when unique visitors is an approximation
+    const uniqueLabel = show('trafficUniqueLabel');
+    if (uniqueLabel) uniqueLabel.textContent = s.unique_approx ? 'Unique Visitors (est.)' : 'Unique Visitors';
   } else if (s && s.error) {
     show('trafficError').textContent = s.error;
     show('trafficError').classList.remove('d-none');

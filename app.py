@@ -797,11 +797,38 @@ def matomo_summary():
     start, end = _matomo_date_range(days)
     try:
         data = _matomo_get("VisitsSummary.get", {"period": "range", "date": f"{start},{end}"})
+        visits    = data.get("nb_visits", 0) or 0
+        pageviews = data.get("nb_pageviews") or data.get("nb_actions") or 0
+
+        # nb_uniq_visitors is not computed by Matomo for range periods; sum daily instead
+        uniq = data.get("nb_uniq_visitors") or 0
+        uniq_approx = False
+        if not uniq:
+            try:
+                daily = _matomo_get("VisitsSummary.get", {"period": "day", "date": f"last{days}"})
+                uniq = sum(v.get("nb_uniq_visitors", 0) or 0 for v in daily.values() if isinstance(v, dict))
+                uniq_approx = True
+            except Exception:
+                pass
+
+        # nb_downloads in VisitsSummary may be 0; Actions.getDownloads is authoritative
+        downloads = data.get("nb_downloads") or 0
+        if not downloads:
+            try:
+                dl = _matomo_get("Actions.getDownloads", {
+                    "period": "range", "date": f"{start},{end}", "filter_limit": 500,
+                })
+                if isinstance(dl, list):
+                    downloads = sum(item.get("nb_visits", 0) or 0 for item in dl)
+            except Exception:
+                pass
+
         return jsonify({
-            "visits":          data.get("nb_visits", 0),
-            "unique_visitors": data.get("nb_uniq_visitors", 0),
-            "pageviews":       data.get("nb_pageviews") or data.get("nb_actions", 0),
-            "downloads":       data.get("nb_downloads", 0),
+            "visits":          visits,
+            "unique_visitors": uniq,
+            "unique_approx":   uniq_approx,
+            "pageviews":       pageviews,
+            "downloads":       downloads,
             "period_days":     days,
         })
     except Exception as exc:
