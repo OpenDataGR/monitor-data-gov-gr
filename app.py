@@ -977,8 +977,11 @@ def matomo_top_api_calls():
                 continue
             # flat=1 uses ' > ' as path separator; reconstruct the URL path
             path = "/" + "/".join(p.strip() for p in label.split(" > "))
-            if "/api/" not in path.lower():
+            # Only include CKAN API endpoints (data.gov.gr uses /api/3/action/)
+            if "/api/3/" not in path.lower() and "/api/action/" not in path.lower():
                 continue
+            # Strip query string — CKAN action is fully identified by path
+            path = path.split("?")[0].rstrip("/")
             result.append({
                 "path":   path,
                 "visits": page.get("nb_visits", 0),
