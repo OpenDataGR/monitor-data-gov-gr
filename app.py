@@ -773,8 +773,8 @@ def _matomo_get(method: str, params: dict):
         "token_auth": config.MATOMO_TOKEN,
         **params,
     }
-    r = requests.get(config.MATOMO_URL, params=full, timeout=20,
-                     headers={"User-Agent": "DataGovGR-Dashboard/1.0"})
+    r = requests.post(config.MATOMO_URL, data=full, timeout=20,
+                      headers={"User-Agent": "DataGovGR-Dashboard/1.0"})
     r.raise_for_status()
     data = r.json()
     if isinstance(data, dict) and data.get("result") == "error":
