@@ -1036,6 +1036,22 @@ def matomo_top_api_calls():
         return jsonify({"error": str(exc)}), 503
 
 
+@app.route("/api/matomo/debug-pages")
+def matomo_debug_pages():
+    """Return top 30 raw page labels from Matomo — for diagnosing missing data."""
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    days = min(int(freq.args.get("days", 30)), 365)
+    try:
+        pages = _matomo_flat_pages("Actions.getPageUrls", days,
+                                   {"flat": 1, "filter_limit": 500})
+        sample = [{"label": p.get("label", ""), "visits": p.get("nb_visits", 0)}
+                  for p in pages[:30]]
+        return jsonify({"total_returned": len(pages), "sample": sample})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/admin/reset", methods=["POST"])
 def admin_reset():
     db.session.query(HealthCheck).delete()
