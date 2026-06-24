@@ -33,7 +33,7 @@
       <div class="text-white-50 small mt-1">Sign in to continue</div>
     </div>
     <div class="card-body p-4">
-      <form method="post" action="/login">
+      <form method="post" action="{{ url_for('login') }}">
         <input type="hidden" name="next" value="{{ next }}">
         <div class="mb-3">
           <label class="form-label fw-semibold small">Password</label>
