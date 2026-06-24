@@ -412,6 +412,24 @@ def stats_latest():
     return jsonify({"error": "No snapshot yet"}), 404
 
 
+@app.route("/api/stats/live-count")
+def stats_live_count():
+    try:
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/package_search",
+            params={"rows": 0},
+            timeout=config.REQUEST_TIMEOUT,
+            headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("success"):
+                return jsonify({"total_datasets": data["result"]["count"]})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+    return jsonify({"error": "Failed to fetch"}), 503
+
+
 @app.route("/api/stats/history")
 def stats_history():
     days  = int(freq.args.get("days", 30))

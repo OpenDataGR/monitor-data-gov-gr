@@ -411,13 +411,20 @@ function showSpinner(v) {
 
 // ── Overview ─────────────────────────────────────────────────────────────────
 async function loadOverview() {
-  // Portal stats
+  // Portal stats — snapshot first, then live count
   try {
     const snap = await fetch(API_BASE + 'api/stats/latest').then(r => r.ok ? r.json() : null);
     if (snap && !snap.error) {
       show('statDatasets').textContent  = fmt(snap.total_datasets);
       show('statOrgs').textContent      = fmt(snap.total_organizations);
       show('statResources').textContent = fmt(snap.total_resources);
+    }
+  } catch (_) {}
+  // Refresh dataset count live from CKAN (fast: rows=0, no data transferred)
+  try {
+    const live = await fetch(API_BASE + 'api/stats/live-count').then(r => r.ok ? r.json() : null);
+    if (live && live.total_datasets != null) {
+      show('statDatasets').textContent = fmt(live.total_datasets);
     }
   } catch (_) {}
 
