@@ -776,7 +776,7 @@ document.getElementById('datasetsTabBtn').addEventListener('click', () => {
   if (_datasetsTabLoaded) return;
   _datasetsTabLoaded = true;
   const input = show('datasetsSinceDate');
-  if (input && !input.value) input.value = new Date().getFullYear() + '-01-01';
+  if (input && !input.value) input.value = '2026-05-15';
 });
 
 async function checkDatasetsSince() {
