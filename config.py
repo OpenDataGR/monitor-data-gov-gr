@@ -4,6 +4,10 @@ PORTAL_BASE = "https://data.gov.gr"
 API_BASE = "https://data.gov.gr/api/3/action"
 TOKEN = os.environ.get("DATAGOVGR_TOKEN", "")
 
+MATOMO_URL     = "https://matomo.open1.eu/index.php"
+MATOMO_SITE_ID = 3
+MATOMO_TOKEN   = os.environ.get("MATOMO_TOKEN", "")
+
 ENDPOINTS_TO_MONITOR = [
     {"name": "Portal Homepage",  "url": "https://data.gov.gr/",                          "critical": True},
     {"name": "CKAN API",         "url": "https://data.gov.gr/api/3/action/status_show",  "critical": True},

@@ -755,6 +755,138 @@ def communications_delete(comm_id):
     return jsonify({"ok": True})
 
 
+# ── Matomo Analytics ─────────────────────────────────────────────────────────
+
+_MATOMO_CACHE: dict = {}
+_MATOMO_CACHE_TTL = 3600  # 1 hour
+
+
+def _matomo_get(method: str, params: dict):
+    import json as _json
+    key = method + "|" + _json.dumps(params, sort_keys=True)
+    entry = _MATOMO_CACHE.get(key)
+    if entry and time.time() - entry["ts"] < _MATOMO_CACHE_TTL:
+        return entry["data"]
+    full = {
+        "module": "API", "method": method,
+        "idSite": config.MATOMO_SITE_ID, "format": "JSON",
+        "token_auth": config.MATOMO_TOKEN,
+        **params,
+    }
+    r = requests.get(config.MATOMO_URL, params=full, timeout=20,
+                     headers={"User-Agent": "DataGovGR-Dashboard/1.0"})
+    r.raise_for_status()
+    data = r.json()
+    if isinstance(data, dict) and data.get("result") == "error":
+        raise RuntimeError(data.get("message", "Matomo API error"))
+    _MATOMO_CACHE[key] = {"data": data, "ts": time.time()}
+    return data
+
+
+def _matomo_date_range(days: int):
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=days - 1)
+    return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+
+
+@app.route("/api/matomo/summary")
+def matomo_summary():
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    days = min(int(freq.args.get("days", 30)), 365)
+    start, end = _matomo_date_range(days)
+    try:
+        data = _matomo_get("VisitsSummary.get", {"period": "range", "date": f"{start},{end}"})
+        return jsonify({
+            "visits":          data.get("nb_visits", 0),
+            "unique_visitors": data.get("nb_uniq_visitors", 0),
+            "pageviews":       data.get("nb_pageviews") or data.get("nb_actions", 0),
+            "downloads":       data.get("nb_downloads", 0),
+            "period_days":     days,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.route("/api/matomo/visits-history")
+def matomo_visits_history():
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    days = min(int(freq.args.get("days", 30)), 365)
+    try:
+        data = _matomo_get("VisitsSummary.get", {"period": "day", "date": f"last{days}"})
+        result = [
+            {
+                "date":            date_str,
+                "visits":          v.get("nb_visits", 0) if isinstance(v, dict) else 0,
+                "unique_visitors": v.get("nb_uniq_visitors", 0) if isinstance(v, dict) else 0,
+            }
+            for date_str, v in data.items()
+        ]
+        return jsonify(result)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.route("/api/matomo/top-datasets")
+def matomo_top_datasets():
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    limit = min(int(freq.args.get("limit", 20)), 100)
+    days  = min(int(freq.args.get("days", 30)), 365)
+    start, end = _matomo_date_range(days)
+    try:
+        pages = _matomo_get("Actions.getPageUrls", {
+            "period": "range", "date": f"{start},{end}",
+            "flat": 1, "filter_limit": limit * 5,
+        })
+        if not isinstance(pages, list):
+            return jsonify([])
+        result = []
+        for page in pages:
+            label = page.get("label", "")
+            if "dataset" not in label.lower():
+                continue
+            parts  = label.strip("/").split("/")
+            ds_idx = next((i for i, p in enumerate(parts) if p.lower() == "dataset"), None)
+            slug   = parts[ds_idx + 1] if ds_idx is not None and ds_idx + 1 < len(parts) else label
+            result.append({
+                "slug":            slug,
+                "label":           label,
+                "visits":          page.get("nb_visits", 0),
+                "unique_visitors": page.get("nb_uniq_visitors", 0),
+            })
+        result.sort(key=lambda x: x["visits"], reverse=True)
+        return jsonify(result[:limit])
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.route("/api/matomo/top-searches")
+def matomo_top_searches():
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    limit = min(int(freq.args.get("limit", 20)), 100)
+    days  = min(int(freq.args.get("days", 30)), 365)
+    start, end = _matomo_date_range(days)
+    try:
+        data = _matomo_get("Actions.getSiteSearchKeywords", {
+            "period": "range", "date": f"{start},{end}",
+            "filter_limit": limit,
+        })
+        if not isinstance(data, list):
+            return jsonify([])
+        return jsonify([
+            {
+                "keyword": item.get("label", ""),
+                "searches": item.get("nb_visits", 0) or item.get("nb_searches", 0),
+            }
+            for item in data
+        ])
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/admin/reset", methods=["POST"])
 def admin_reset():
     db.session.query(HealthCheck).delete()
