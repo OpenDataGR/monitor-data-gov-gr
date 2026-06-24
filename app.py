@@ -410,6 +410,32 @@ def stats_live():
     return jsonify(_fetch_portal_stats())
 
 
+@app.route("/api/stats/datasets-since")
+def datasets_since():
+    date_str = freq.args.get("date", "").strip()
+    if not date_str:
+        return jsonify({"error": "date parameter required (YYYY-MM-DD)"}), 400
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"error": "invalid date, use YYYY-MM-DD"}), 400
+    solr_date = dt.strftime("%Y-%m-%dT00:00:00Z")
+    h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
+    try:
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/package_search",
+            params={"rows": 0, "fq": f"type:dataset AND metadata_created:[{solr_date} TO NOW]"},
+            timeout=config.REQUEST_TIMEOUT, headers=h,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("success"):
+                return jsonify({"count": data["result"]["count"], "since": date_str})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+    return jsonify({"error": "CKAN API error"}), 503
+
+
 @app.route("/api/stats/history")
 def stats_history():
     days  = int(freq.args.get("days", 30))

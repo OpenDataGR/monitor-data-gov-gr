@@ -227,6 +227,21 @@
             <div id="latestSnapshot"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
           </div>
         </div>
+        <div class="col-12">
+          <div class="card p-4">
+            <h6 class="fw-semibold mb-3"><i class="bi bi-calendar-range me-2 text-primary"></i>Datasets Uploaded Since…</h6>
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <input type="date" id="datasetsSinceDate" class="form-control form-control-sm" style="width:180px">
+              <button class="btn btn-primary btn-sm" onclick="checkDatasetsSince()">
+                <i class="bi bi-search me-1"></i>Check
+              </button>
+              <div id="datasetsSinceResult" class="d-none">
+                <span class="stat-value text-primary me-1" id="datasetsSinceCount"></span>
+                <span class="text-muted small" id="datasetsSinceLabel"></span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -650,6 +665,38 @@ async function loadStatsTab() {
       }
     });
   } catch (_) {}
+
+  // Pre-fill date with start of current year
+  const sinceInput = show('datasetsSinceDate');
+  if (sinceInput && !sinceInput.value) {
+    sinceInput.value = new Date().getFullYear() + '-01-01';
+  }
+}
+
+async function checkDatasetsSince() {
+  const date = show('datasetsSinceDate').value;
+  if (!date) return;
+  const resultEl = show('datasetsSinceResult');
+  const countEl  = show('datasetsSinceCount');
+  const labelEl  = show('datasetsSinceLabel');
+  countEl.textContent = '…';
+  labelEl.textContent = '';
+  resultEl.classList.remove('d-none');
+  try {
+    const data = await fetch(API_BASE + 'api/stats/datasets-since?date=' + encodeURIComponent(date)).then(r => r.json());
+    if (data.error) {
+      countEl.textContent = '';
+      labelEl.textContent = 'Error: ' + data.error;
+    } else {
+      const d    = new Date(date + 'T00:00:00');
+      const lbl  = d.toLocaleDateString('el-GR', { day: 'numeric', month: 'long', year: 'numeric' });
+      countEl.textContent = fmt(data.count);
+      labelEl.textContent = 'datasets uploaded since ' + lbl;
+    }
+  } catch (_) {
+    countEl.textContent = '';
+    labelEl.textContent = 'Request failed';
+  }
 }
 
 // ── Quality tab ──────────────────────────────────────────────────────────────
