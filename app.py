@@ -967,7 +967,7 @@ def matomo_top_datasets():
             if not label or "dataset" not in label.lower():
                 continue
             # flat=1 uses ' > ' as path separator; reconstruct the URL path
-            path = "/" + "/".join(p.strip() for p in label.split(" > "))
+            path = "/" + "/".join(p.strip().lstrip("/") for p in label.split(" > "))
             m = re.search(r"/dataset/([^/?#\s]+)", path, re.IGNORECASE)
             if not m:
                 continue
@@ -1020,7 +1020,7 @@ def matomo_top_api_calls():
             label = page.get("label", "")
             if not label:
                 continue
-            path = "/" + "/".join(p.strip() for p in label.split(" > "))
+            path = "/" + "/".join(p.strip().lstrip("/") for p in label.split(" > "))
             path = path.split("?")[0].rstrip("/") or "/"
             if not any(path.lower().startswith(p) for p in _DATA_SERVICE_PREFIXES):
                 continue
