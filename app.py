@@ -7,7 +7,9 @@ import time
 import threading
 import requests
 from datetime import datetime, timedelta, timezone
-from flask import Flask, render_template, jsonify, request as freq
+import hashlib
+import secrets
+from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, HealthCheck, PortalSnapshot, Communication
 import config
@@ -15,12 +17,51 @@ import config
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///dashboard.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.secret_key = config.FLASK_SECRET_KEY or secrets.token_hex(32)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 db.init_app(app)
 
 with app.app_context():
     db.create_all()
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+def _pw_hash(pw: str) -> str:
+    return hashlib.sha256(pw.encode()).hexdigest()
+
+
+@app.before_request
+def require_login():
+    if not config.DASHBOARD_PASSWORD:
+        return  # auth disabled — no password configured
+    if freq.path in ("/login", "/logout") or freq.path.startswith("/static/"):
+        return
+    if session.get("authenticated"):
+        return
+    if freq.path.startswith("/api/"):
+        return jsonify({"error": "Unauthorized"}), 401
+    return redirect(url_for("login", next=freq.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if freq.method == "POST":
+        pw = freq.form.get("password", "")
+        if config.DASHBOARD_PASSWORD and _pw_hash(pw) == _pw_hash(config.DASHBOARD_PASSWORD):
+            session["authenticated"] = True
+            return redirect(freq.form.get("next") or url_for("index"))
+        error = "Incorrect password."
+    return render_template("login.html", error=error,
+                           next=freq.args.get("next", ""))
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

@@ -8,6 +8,9 @@ MATOMO_URL     = "https://matomo.open1.eu/index.php"
 MATOMO_SITE_ID = 3
 MATOMO_TOKEN   = os.environ.get("MATOMO_TOKEN", "")
 
+DASHBOARD_PASSWORD  = os.environ.get("DASHBOARD_PASSWORD", "")
+FLASK_SECRET_KEY    = os.environ.get("FLASK_SECRET_KEY", "")
+
 ENDPOINTS_TO_MONITOR = [
     {"name": "Portal Homepage",  "url": "https://data.gov.gr/",                          "critical": True},
     {"name": "CKAN API",         "url": "https://data.gov.gr/api/3/action/status_show",  "critical": True},
