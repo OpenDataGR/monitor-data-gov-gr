@@ -231,7 +231,11 @@
           <div class="card p-4">
             <h6 class="fw-semibold mb-3"><i class="bi bi-calendar-range me-2 text-primary"></i>Datasets Uploaded Since…</h6>
             <div class="d-flex align-items-center gap-3 flex-wrap">
-              <input type="date" id="datasetsSinceDate" class="form-control form-control-sm" style="width:180px">
+              <div class="input-group input-group-sm" style="width:220px">
+                <input type="date" id="datasetsSinceDate" class="form-control form-control-sm">
+                <button class="btn btn-outline-secondary btn-sm" type="button"
+                        onclick="show('datasetsSinceDate').value=new Date().toISOString().slice(0,10)">Today</button>
+              </div>
               <button class="btn btn-primary btn-sm" onclick="checkDatasetsSince()">
                 <i class="bi bi-search me-1"></i>Check
               </button>
