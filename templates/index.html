@@ -545,6 +545,61 @@
   </div>
 </div>
 
+<!-- Org contacts offcanvas -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="orgContactsPanel" style="width:440px;max-width:95vw">
+  <div class="offcanvas-header border-bottom">
+    <div>
+      <h5 class="offcanvas-title fw-bold mb-0" id="orgContactsTitle">Contacts</h5>
+      <div class="text-muted small" id="orgContactsSubtitle"></div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body" id="orgContactsBody">
+    <div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>
+  </div>
+</div>
+
+<!-- Contact add/edit modal -->
+<div class="modal fade" id="contactModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-bottom">
+        <h5 class="modal-title fw-bold" id="contactModalTitle">Add Contact</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="contactId">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-semibold">First Name</label>
+            <input type="text" id="contactFirstName" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-semibold">Last Name</label>
+            <input type="text" id="contactLastName" class="form-control form-control-sm">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">Position</label>
+            <input type="text" id="contactPosition" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-7">
+            <label class="form-label small fw-semibold">Email</label>
+            <input type="email" id="contactEmail" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-5">
+            <label class="form-label small fw-semibold">Tel</label>
+            <input type="tel" id="contactTel" class="form-control form-control-sm">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveContact()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Org detail offcanvas -->
 <div class="offcanvas offcanvas-end" tabindex="-1" id="orgDetailPanel" style="width:440px;max-width:95vw">
   <div class="offcanvas-header border-bottom">
