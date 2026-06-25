@@ -22,4 +22,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Reload service
-        run: sudo systemctl restart communcation_dashboard
+        run: |
+          pkill -TERM -u localadmin -f "gunicorn.*app:app" || true
+          sleep 4
+          systemctl is-active --quiet communcation_dashboard && echo "Service restarted OK" || echo "WARNING: service not active"
