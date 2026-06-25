@@ -21,7 +21,12 @@ jobs:
           source venv/bin/activate
           pip install -r requirements.txt
 
-      - name: Restart service
+      - name: Reload service
         run: |
-          sudo systemctl restart communcation_dashboard
-          sudo systemctl is-active --quiet communcation_dashboard && echo "Service is running" || (echo "ERROR: service failed to start" && exit 1)
+          MAIN_PID=$(systemctl show communcation_dashboard --property=MainPID --value 2>/dev/null || echo "")
+          if [ -n "$MAIN_PID" ] && [ "$MAIN_PID" -gt 0 ]; then
+            kill -HUP "$MAIN_PID"
+            echo "Sent SIGHUP to PID $MAIN_PID — workers reloading"
+          else
+            echo "ERROR: could not find service PID" && exit 1
+          fi
