@@ -14,7 +14,7 @@ from models import db, HealthCheck, PortalSnapshot, Communication
 import config
 
 app = Flask(__name__)
-_db_url = config.DATABASE_URL or f"sqlite:///{Path(__file__).parent / 'dashboard.db'}"
+_db_url = config.DATABASE_URL or f"sqlite:///{Path(__file__).parent / 'instance' / 'dashboard.db'}"
 if _db_url.startswith("postgres://"):  # normalize legacy Heroku-style prefix
     _db_url = _db_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url

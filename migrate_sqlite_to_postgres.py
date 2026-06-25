@@ -21,7 +21,7 @@ if PG_URL.startswith("postgres://"):
 if "sqlite" in PG_URL:
     sys.exit("ERROR: DATABASE_URL must point to PostgreSQL, not SQLite.")
 
-SQLITE_PATH = Path(__file__).parent / "dashboard.db"
+SQLITE_PATH = Path(__file__).parent / "instance" / "dashboard.db"
 if not SQLITE_PATH.exists():
     sys.exit(f"ERROR: SQLite database not found at {SQLITE_PATH}")
 
