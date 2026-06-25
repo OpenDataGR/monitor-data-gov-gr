@@ -1534,6 +1534,7 @@ function renderAllOrgsTable(orgs) {
   const regCount   = annotated.filter(o => o.ckan).length;
   const unregCount = annotated.length - regCount;
 
+  _displayedPublicOrgs = annotated;
   el.innerHTML = `
     <div class="d-flex gap-2 mb-3 flex-wrap">
       <span class="badge bg-success px-3 py-2" style="font-size:.85rem">
@@ -1551,6 +1552,7 @@ function renderAllOrgsTable(orgs) {
           <th>Organization</th>
           <th style="width:165px">Status</th>
           <th class="text-end" style="width:90px">Datasets</th>
+          <th class="text-center" style="width:80px">Contacts</th>
         </tr></thead>
         <tbody>
           ${annotated.map((o, i) => `<tr>
@@ -1566,6 +1568,7 @@ function renderAllOrgsTable(orgs) {
                 : '<span class="badge bg-secondary">Not registered</span>'}
             </td>
             <td class="text-end fw-bold small">${o.ckan ? fmt(o.ckan.package_count) : '—'}</td>
+            <td class="text-center"><button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsByIdx(${i})" title="View contacts"><i class="bi bi-people"></i>${_contactSummary[o.code] ? '<span class="badge bg-primary rounded-pill ms-1">' + _contactSummary[o.code] + '</span>' : ''}</button></td>
           </tr>`).join('')}
         </tbody>
       </table>
