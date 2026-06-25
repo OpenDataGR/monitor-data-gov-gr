@@ -1467,9 +1467,13 @@ function renderOrgsTable(orgs) {
 // ── All Public Sector view (hrms.gov.gr) ────────────────────────────────────
 
 function _normOrg(s) {
-  return (s || '').normalize('NFC').toLowerCase().trim()
-    .replace(/[.,\-–—·()«»"""''']/g, ' ')
-    .replace(/\s+/g, ' ').trim();
+  // NFD splits ά → α + combining-tonos; \p{M} removes all combining marks
+  // so ΑΘΗΝΑΙΩΝ (no accents) matches Αθηναίων (with accents)
+  return (s || ‘’).normalize(‘NFD’)
+    .replace(/\p{M}/gu, ‘’)
+    .toLowerCase().trim()
+    .replace(/[.,\-–—·()«»””’’]/g, ‘ ‘)
+    .replace(/\s+/g, ‘ ‘).trim();
 }
 
 function _buildCkanLookup() {
