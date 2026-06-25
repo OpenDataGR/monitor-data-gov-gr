@@ -37,6 +37,14 @@ def _pw_hash(pw: str) -> str:
     return hashlib.sha256(pw.encode()).hexdigest()
 
 
+@app.after_request
+def no_cache(response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 @app.before_request
 def require_login():
     if not config.DASHBOARD_PASSWORD:
