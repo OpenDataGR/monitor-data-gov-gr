@@ -1469,11 +1469,11 @@ function renderOrgsTable(orgs) {
 function _normOrg(s) {
   // NFD splits ά → α + combining-tonos; \p{M} removes all combining marks
   // so ΑΘΗΝΑΙΩΝ (no accents) matches Αθηναίων (with accents)
-  return (s || ‘’).normalize(‘NFD’)
-    .replace(/\p{M}/gu, ‘’)
+  return (s || '').normalize('NFD')
+    .replace(/\p{M}/gu, '')
     .toLowerCase().trim()
-    .replace(/[.,\-()]/g, ‘ ‘)
-    .replace(/\s+/g, ‘ ‘).trim();
+    .replace(/[.,\-()]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
 }
 
 function _buildCkanLookup() {
@@ -2022,3 +2022,4 @@ document.addEventListener('DOMContentLoaded', () => {
 </footer>
 </body>
 </html>
+
