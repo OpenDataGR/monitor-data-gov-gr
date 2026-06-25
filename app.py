@@ -1035,6 +1035,35 @@ def matomo_top_api_calls():
         return jsonify({"error": str(exc)}), 503
 
 
+@app.route("/api/matomo/today")
+def matomo_today():
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    try:
+        data = _matomo_get("VisitsSummary.get", {"period": "day", "date": "today"})
+        visits    = data.get("nb_visits", 0) or 0
+        pageviews = data.get("nb_pageviews") or data.get("nb_actions") or 0
+        uniq      = data.get("nb_uniq_visitors", 0) or 0
+        downloads = data.get("nb_downloads", 0) or 0
+        if not downloads:
+            try:
+                dl = _matomo_get("Actions.getDownloads", {
+                    "period": "day", "date": "today", "filter_limit": 500,
+                })
+                if isinstance(dl, list):
+                    downloads = sum(item.get("nb_visits", 0) or 0 for item in dl)
+            except Exception:
+                pass
+        return jsonify({
+            "visits":          visits,
+            "unique_visitors": uniq,
+            "pageviews":       pageviews,
+            "downloads":       downloads,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/matomo/debug-pages")
 def matomo_debug_pages():
     """Return top 30 raw page labels from Matomo — for diagnosing missing data."""
