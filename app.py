@@ -1016,7 +1016,7 @@ def matomo_top_downloads():
     limit = min(int(freq.args.get("limit", 20)), 100)
     days  = min(int(freq.args.get("days", 30)), 365)
     try:
-        items = _matomo_flat_pages("Actions.getDownloads", days, {"filter_limit": limit * 2})
+        items = _matomo_flat_pages("Actions.getDownloads", days, {"flat": 1, "filter_limit": limit * 2})
         result = [
             {"url": item.get("label", ""), "visits": item.get("nb_visits", 0)}
             for item in items
