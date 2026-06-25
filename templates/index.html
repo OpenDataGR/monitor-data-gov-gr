@@ -1467,7 +1467,9 @@ function renderOrgsTable(orgs) {
 // ── All Public Sector view (hrms.gov.gr) ────────────────────────────────────
 
 function _normOrg(s) {
-  return (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  return (s || '').normalize('NFC').toLowerCase().trim()
+    .replace(/[.,\-–—·()«»"""''']/g, ' ')
+    .replace(/\s+/g, ' ').trim();
 }
 
 function _buildCkanLookup() {
@@ -1550,7 +1552,7 @@ function renderAllOrgsTable(orgs) {
             <td class="text-muted small">${i + 1}</td>
             <td class="small${o.ckan ? ' fw-semibold' : ''}">
               ${o.ckan
-                ? `<a href="#" onclick="openOrgPanel('${o.ckan.name}');return false;" class="text-decoration-none">${o.label}</a>`
+                ? `<a href="#" onclick="openOrgPanel('${o.ckan.name}');return false;" class="text-decoration-none">${o.label}${_normOrg(o.ckan.title) !== _normOrg(o.label) ? ` <span class="text-muted fw-normal">(${o.ckan.title})</span>` : ''}</a>`
                 : o.label}
             </td>
             <td>
