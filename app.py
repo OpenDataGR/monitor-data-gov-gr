@@ -11,7 +11,7 @@ import hashlib
 import io
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file
 from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, HealthCheck, PortalSnapshot, Communication
+from models import db, HealthCheck, PortalSnapshot, Communication, OrgContact
 import config
 
 app = Flask(__name__)
@@ -893,6 +893,57 @@ def communications_export():
     )
 
 
+
+
+# ── Org Contacts ─────────────────────────────────────────────────────────────
+
+@app.route("/api/contacts/summary", methods=["GET"])
+def contacts_summary():
+    from sqlalchemy import func
+    rows = db.session.query(OrgContact.org_code, func.count(OrgContact.id)).group_by(OrgContact.org_code).all()
+    return jsonify({code: cnt for code, cnt in rows})
+
+
+@app.route("/api/contacts/<path:org_code>", methods=["GET"])
+def contacts_list(org_code):
+    contacts = OrgContact.query.filter_by(org_code=org_code).all()
+    return jsonify([c.to_dict() for c in contacts])
+
+
+@app.route("/api/contacts/<path:org_code>", methods=["POST"])
+def contacts_create(org_code):
+    body = freq.get_json(force=True) or {}
+    contact = OrgContact(
+        org_code=org_code,
+        org_label=(body.get("org_label") or "").strip() or None,
+        first_name=(body.get("first_name") or "").strip() or None,
+        last_name=(body.get("last_name") or "").strip() or None,
+        position=(body.get("position") or "").strip() or None,
+        email=(body.get("email") or "").strip() or None,
+        tel=(body.get("tel") or "").strip() or None,
+    )
+    db.session.add(contact)
+    db.session.commit()
+    return jsonify(contact.to_dict()), 201
+
+
+@app.route("/api/contacts/id/<int:contact_id>", methods=["PATCH"])
+def contacts_update(contact_id):
+    contact = OrgContact.query.get_or_404(contact_id)
+    body = freq.get_json(force=True) or {}
+    for field in ("first_name", "last_name", "position", "email", "tel", "org_label"):
+        if field in body:
+            setattr(contact, field, (body[field] or "").strip() or None)
+    db.session.commit()
+    return jsonify(contact.to_dict())
+
+
+@app.route("/api/contacts/id/<int:contact_id>", methods=["DELETE"])
+def contacts_delete(contact_id):
+    contact = OrgContact.query.get_or_404(contact_id)
+    db.session.delete(contact)
+    db.session.commit()
+    return jsonify({"ok": True})
 # ── Matomo Analytics ─────────────────────────────────────────────────────────
 
 _MATOMO_CACHE: dict = {}

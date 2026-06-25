@@ -72,3 +72,27 @@ class Communication(db.Model):
             "status":       self.status,
             "notes":        self.notes or "",
         }
+
+class OrgContact(db.Model):
+    __tablename__ = "org_contacts"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    org_code   = db.Column(db.String(200), nullable=False, index=True)  # HRMS code
+    org_label  = db.Column(db.String(300))
+    first_name = db.Column(db.String(100))
+    last_name  = db.Column(db.String(100))
+    position   = db.Column(db.String(200))
+    email      = db.Column(db.String(200))
+    tel        = db.Column(db.String(50))
+
+    def to_dict(self):
+        return {
+            "id":         self.id,
+            "org_code":   self.org_code,
+            "org_label":  self.org_label or "",
+            "first_name": self.first_name or "",
+            "last_name":  self.last_name or "",
+            "position":   self.position or "",
+            "email":      self.email or "",
+            "tel":        self.tel or "",
+        }
