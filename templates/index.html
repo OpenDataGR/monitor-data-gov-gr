@@ -365,9 +365,9 @@
         <div style="height:240px"><canvas id="trafficChart"></canvas></div>
       </div>
 
-      <!-- Top datasets, searches, API calls -->
+      <!-- Top datasets, searches, API calls, downloads -->
       <div class="row g-3">
-        <div class="col-12 col-lg-4">
+        <div class="col-12 col-lg-6">
           <div class="card p-4 h-100">
             <h6 class="fw-semibold mb-3"><i class="bi bi-fire me-2 text-danger"></i>Top Dataset Pages</h6>
             <div id="trafficTopDatasets">
@@ -375,7 +375,7 @@
             </div>
           </div>
         </div>
-        <div class="col-12 col-lg-4">
+        <div class="col-12 col-lg-6">
           <div class="card p-4 h-100">
             <h6 class="fw-semibold mb-3"><i class="bi bi-search me-2 text-primary"></i>Top Search Queries</h6>
             <div id="trafficTopSearches">
@@ -383,10 +383,18 @@
             </div>
           </div>
         </div>
-        <div class="col-12 col-lg-4">
+        <div class="col-12 col-lg-6">
           <div class="card p-4 h-100">
             <h6 class="fw-semibold mb-3"><i class="bi bi-code-slash me-2 text-danger"></i>Top API Calls</h6>
             <div id="trafficTopApi">
+              <div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <div class="card p-4 h-100">
+            <h6 class="fw-semibold mb-3"><i class="bi bi-download me-2 text-warning"></i>Top Downloads</h6>
+            <div id="trafficTopDownloads">
               <div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div>
             </div>
           </div>
@@ -982,12 +990,13 @@ async function loadTrafficTab() {
   const days = _trafficPeriod;
   show('trafficError').classList.add('d-none');
 
-  const [summary, history, topDatasets, topSearches, topApi] = await Promise.allSettled([
+  const [summary, history, topDatasets, topSearches, topApi, topDownloads] = await Promise.allSettled([
     fetch(API_BASE + 'api/matomo/summary?days=' + days).then(r => r.json()),
     fetch(API_BASE + 'api/matomo/visits-history?days=' + days).then(r => r.json()),
     fetch(API_BASE + 'api/matomo/top-datasets?days=' + days + '&limit=20').then(r => r.json()),
     fetch(API_BASE + 'api/matomo/top-searches?days=' + days + '&limit=20').then(r => r.json()),
     fetch(API_BASE + 'api/matomo/top-api-calls?days=' + days + '&limit=20').then(r => r.json()),
+    fetch(API_BASE + 'api/matomo/top-downloads?days=' + days + '&limit=20').then(r => r.json()),
   ]);
 
   // Summary cards
@@ -1034,6 +1043,15 @@ async function loadTrafficTab() {
     renderTrafficTopApi(topApi.value.endpoints || []);
   } else {
     show('trafficTopApi').innerHTML = '<p class="text-muted small">No API tracking data found.</p>';
+  }
+
+  // Top downloads
+  if (topDownloads.status === 'fulfilled' && Array.isArray(topDownloads.value)) {
+    renderTrafficTopDownloads(topDownloads.value);
+  } else {
+    const msg = topDownloads.status === 'fulfilled' && topDownloads.value.error
+      ? topDownloads.value.error : 'Failed to load';
+    show('trafficTopDownloads').innerHTML = `<p class="text-muted small">${msg}</p>`;
   }
 }
 
@@ -1181,6 +1199,39 @@ function renderTrafficTopApi(endpoints) {
               </td>
               <td class="text-end fw-semibold small">${fmt(e.visits)}</td>
             </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderTrafficTopDownloads(downloads) {
+  const el = show('trafficTopDownloads');
+  if (!downloads.length) {
+    el.innerHTML = '<p class="text-muted small">No download data available.</p>';
+    return;
+  }
+  const max = Math.max(...downloads.map(d => d.visits), 1);
+  el.innerHTML = `
+    <div style="max-height:380px;overflow-y:auto">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="sticky-top bg-white">
+          <tr><th>File</th><th class="text-end" style="width:80px">Downloads</th></tr>
+        </thead>
+        <tbody>
+          ${downloads.map(d => {
+            const name = d.url.split('/').pop().split('?')[0] || d.url;
+            return `
+            <tr>
+              <td style="max-width:260px">
+                <a href="${d.url.replace(/"/g,'&quot;')}" target="_blank"
+                   class="small text-decoration-none text-truncate d-block" title="${d.url.replace(/"/g,'&quot;')}">${name.replace(/</g,'&lt;')}</a>
+                <div class="mt-1" style="height:2px;border-radius:1px;background:#e9ecef">
+                  <div style="width:${Math.round(d.visits/max*100)}%;height:100%;background:#ffc107;border-radius:1px"></div>
+                </div>
+              </td>
+              <td class="text-end fw-semibold small">${fmt(d.visits)}</td>
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>`;

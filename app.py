@@ -1009,6 +1009,25 @@ def matomo_top_searches():
         return jsonify({"error": str(exc)}), 503
 
 
+@app.route("/api/matomo/top-downloads")
+def matomo_top_downloads():
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    limit = min(int(freq.args.get("limit", 20)), 100)
+    days  = min(int(freq.args.get("days", 30)), 365)
+    try:
+        items = _matomo_flat_pages("Actions.getDownloads", days, {"filter_limit": limit * 2})
+        result = [
+            {"url": item.get("label", ""), "visits": item.get("nb_visits", 0)}
+            for item in items
+            if item.get("label")
+        ]
+        result.sort(key=lambda x: x["visits"], reverse=True)
+        return jsonify(result[:limit])
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/matomo/top-api-calls")
 def matomo_top_api_calls():
     """CKAN API calls tracked as Matomo events (category=API, action=ckan_action_name)."""
