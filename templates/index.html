@@ -514,8 +514,15 @@
           </div>
           <div class="col-md-8">
             <label class="form-label small fw-semibold">Organization <span class="text-danger">*</span></label>
-            <input type="text" id="commOrg" class="form-control form-control-sm" placeholder="Organization name" list="commsOrgList" autocomplete="off">
+            <input type="text" id="commOrg" class="form-control form-control-sm" placeholder="Organization name" list="commsOrgList" autocomplete="off" oninput="onCommOrgInput()">
             <datalist id="commsOrgList"></datalist>
+          </div>
+          <div class="col-12 d-none" id="commContactSection">
+            <label class="form-label small fw-semibold">Contact Person</label>
+            <select id="commContact" class="form-select form-select-sm" onchange="onCommContactChange()">
+              <option value="">— select contact —</option>
+            </select>
+            <div id="commContactInfo" class="mt-1 small d-none"></div>
           </div>
           <div class="col-12">
             <label class="form-label small fw-semibold">Subject <span class="text-danger">*</span></label>
@@ -1908,7 +1915,61 @@ function openCommModal(id, prefillOrg = null) {
     show('commStatus').value  = 'Contacted';
     show('commNotes').value   = '';
   }
+  _resetCommContact();
+  if (id) {
+    const c = _commsData.find(x => x.id === id);
+    if (c) onCommOrgInput(c.contact_person || '');
+  } else if (prefillOrg) {
+    onCommOrgInput();
+  }
   _commModal.show();
+}
+
+function _resetCommContact() {
+  show('commContactSection').classList.add('d-none');
+  show('commContact').innerHTML = '<option value="">— select contact —</option>';
+  show('commContactInfo').classList.add('d-none');
+  show('commContactInfo').innerHTML = '';
+}
+
+function onCommOrgInput(preselectName) {
+  _resetCommContact();
+  const orgTitle = show('commOrg').value.trim();
+  const opt = [...document.querySelectorAll('#commsOrgList option')].find(o => o.value === orgTitle);
+  const orgCode = opt ? opt.dataset.code : null;
+  if (!orgCode) return;
+  fetch(API_BASE + 'api/contacts/' + encodeURIComponent(orgCode))
+    .then(r => r.json())
+    .then(contacts => {
+      if (!contacts.length) return;
+      const sel = show('commContact');
+      contacts.forEach(c => {
+        const label = [c.first_name, c.last_name].filter(Boolean).join(' ') +
+                      (c.position ? ' (' + c.position + ')' : '');
+        const o = document.createElement('option');
+        o.value = label;
+        o.textContent = label;
+        o.dataset.email = c.email || '';
+        o.dataset.tel   = c.tel   || '';
+        if (preselectName && label === preselectName) o.selected = true;
+        sel.appendChild(o);
+      });
+      show('commContactSection').classList.remove('d-none');
+      if (preselectName) onCommContactChange();
+    })
+    .catch(() => {});
+}
+
+function onCommContactChange() {
+  const sel  = show('commContact');
+  const info = show('commContactInfo');
+  if (!sel.value) { info.classList.add('d-none'); info.innerHTML = ''; return; }
+  const o = sel.options[sel.selectedIndex];
+  const parts = [];
+  if (o.dataset.email) parts.push('<i class="bi bi-envelope me-1"></i><a href="mailto:' + esc(o.dataset.email) + '">' + esc(o.dataset.email) + '</a>');
+  if (o.dataset.tel)   parts.push('<i class="bi bi-telephone me-1"></i><a href="tel:'   + esc(o.dataset.tel)   + '">' + esc(o.dataset.tel)   + '</a>');
+  if (parts.length) { info.innerHTML = parts.join(' &nbsp;'); info.classList.remove('d-none'); }
+  else { info.classList.add('d-none'); }
 }
 
 async function saveComm() {
@@ -1925,6 +1986,7 @@ async function saveComm() {
     subject:      show('commSubject').value.trim(),
     status:       show('commStatus').value,
     notes:        show('commNotes').value.trim(),
+    contact_person: (() => { const s = show('commContact'); return s.value ? s.options[s.selectedIndex].textContent : ''; })(),
   };
 
   if (!body.contact_date || !body.org_name || !body.subject) {

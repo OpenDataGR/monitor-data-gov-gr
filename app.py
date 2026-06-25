@@ -793,6 +793,7 @@ def communications_create():
         subject=subject,
         status=status,
         notes=(body.get("notes") or "").strip() or None,
+        contact_person=(body.get("contact_person") or "").strip() or None,
     )
     db.session.add(comm)
     db.session.commit()
@@ -817,6 +818,8 @@ def communications_update(comm_id):
         comm.status = body["status"]
     if "notes" in body:
         comm.notes = (body["notes"] or "").strip() or None
+    if "contact_person" in body:
+        comm.contact_person = (body["contact_person"] or "").strip() or None
     db.session.commit()
     return jsonify(comm.to_dict())
 
