@@ -1050,11 +1050,14 @@ def matomo_top_downloads():
         })
         if not isinstance(items, list):
             items = []
-        result = [
-            {"url": item.get("label", ""), "visits": item.get("nb_visits", 0) or item.get("nb_hits", 0)}
-            for item in items
-            if item.get("label")
-        ]
+        result = []
+        for item in items:
+            label = item.get("label", "")
+            if not label or " - " in label:   # skip empty / Matomo aggregation rows ("Άλλα" etc.)
+                continue
+            url = label if label.startswith("http") else f"https://{label}"
+            visits = item.get("nb_visits", 0) or item.get("nb_hits", 0)
+            result.append({"url": url, "visits": visits})
         result.sort(key=lambda x: x["visits"], reverse=True)
         return jsonify(result[:limit])
     except Exception as exc:
