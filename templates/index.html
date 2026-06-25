@@ -563,6 +563,9 @@
 <script>
 // ── Chart instances ─────────────────────────────────────────────────────────
 let _uptimeChart = null, _rtChart = null, _statsChart = null;
+let _contactsPanel = null, _contactModal = null;
+let _panelOrgCode = '', _panelOrgLabel = '';
+let _contactsCache = {}, _displayedPublicOrgs = [], _contactSummary = {};
 
 // Absolute base URL so API calls work regardless of sub-path prefix
 const API_BASE = (() => {
