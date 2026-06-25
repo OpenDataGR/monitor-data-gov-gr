@@ -1043,18 +1043,17 @@ def matomo_top_api_calls():
             0,
         )
 
-        # Per-action breakdown filtered to category=API via Matomo segment
-        actions = _matomo_flat_pages("Events.getAction", days, {
-            "filter_limit": limit * 2,
-            "segment": "eventCategory==API",
-        })
+        # Per-action breakdown — CKAN actions are always lowercase_with_underscores;
+        # filter out non-API event actions (e.g. "Open", "ClickStatTile") that leak in
+        _ckan_action = re.compile(r'^[a-z][a-z0-9_]+$')
+        actions = _matomo_flat_pages("Events.getAction", days, {"filter_limit": limit * 2})
         result = [
             {
                 "path":   a.get("label", ""),
                 "visits": a.get("nb_events", 0) or a.get("nb_visits", 0),
             }
             for a in actions
-            if a.get("label")
+            if a.get("label") and _ckan_action.match(a.get("label", ""))
         ]
         result.sort(key=lambda x: x["visits"], reverse=True)
         return jsonify({"total": api_total, "endpoints": result[:limit]})
