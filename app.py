@@ -382,12 +382,29 @@ def _build_date() -> str:
         return "dev"
 
 
+def _git_sha() -> str:
+    try:
+        import subprocess
+        r = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True,
+            cwd=Path(__file__).parent, timeout=3,
+        )
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+_BUILD_SHA = _git_sha()
+
+
 @app.route("/")
 def index():
     return render_template("index.html",
                            endpoints=config.ENDPOINTS_TO_MONITOR,
                            has_token=bool(config.TOKEN),
-                           build_date=_build_date())
+                           build_date=_build_date(),
+                           git_sha=_BUILD_SHA)
 
 
 @app.route("/api/health/current")
