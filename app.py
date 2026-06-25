@@ -945,8 +945,10 @@ def _matomo_flat_pages(method: str, days: int, extra: dict) -> list:
                     merged[key] = dict(item)
                     merged[key]["nb_visits"] = 0
                     merged[key]["nb_uniq_visitors"] = 0
-                merged[key]["nb_visits"]          += item.get("nb_visits", 0) or 0
-                merged[key]["nb_uniq_visitors"]   += item.get("nb_uniq_visitors", 0) or 0
+                    merged[key]["nb_events"] = 0
+                merged[key]["nb_visits"]        += item.get("nb_visits", 0) or 0
+                merged[key]["nb_uniq_visitors"] += item.get("nb_uniq_visitors", 0) or 0
+                merged[key]["nb_events"]        += item.get("nb_events", 0) or 0
         return sorted(merged.values(), key=lambda x: x.get("nb_visits", 0), reverse=True)
 
     return []
@@ -1006,31 +1008,34 @@ def matomo_top_searches():
 
 @app.route("/api/matomo/top-api-calls")
 def matomo_top_api_calls():
-    """Data-service page views — direct CKAN API calls are not captured by JS tracking."""
+    """CKAN API calls tracked as Matomo events (category=API, action=ckan_action_name)."""
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
     limit = min(int(freq.args.get("limit", 20)), 100)
     days  = min(int(freq.args.get("days", 30)), 365)
-    _DATA_SERVICE_PREFIXES = ("/data-service", "/pages/api")
     try:
-        pages = _matomo_flat_pages("Actions.getPageUrls", days,
-                                   {"flat": 1, "filter_limit": 500})
-        result = []
-        for page in pages:
-            label = page.get("label", "")
-            if not label:
-                continue
-            path = "/" + "/".join(p.strip().lstrip("/") for p in label.split(" > "))
-            path = path.split("?")[0].rstrip("/") or "/"
-            if not any(path.lower().startswith(p) for p in _DATA_SERVICE_PREFIXES):
-                continue
-            result.append({
-                "path":   path,
-                "visits": page.get("nb_visits", 0),
-            })
+        # Total from the "API" event category
+        cats = _matomo_flat_pages("Events.getCategory", days, {"filter_limit": 50})
+        api_total = next(
+            (c.get("nb_events", 0) or c.get("nb_visits", 0) for c in cats if c.get("label") == "API"),
+            0,
+        )
+
+        # Per-action breakdown filtered to category=API via Matomo segment
+        actions = _matomo_flat_pages("Events.getAction", days, {
+            "filter_limit": limit * 2,
+            "segment": "eventCategory==API",
+        })
+        result = [
+            {
+                "path":   a.get("label", ""),
+                "visits": a.get("nb_events", 0) or a.get("nb_visits", 0),
+            }
+            for a in actions
+            if a.get("label")
+        ]
         result.sort(key=lambda x: x["visits"], reverse=True)
-        total = sum(r["visits"] for r in result)
-        return jsonify({"total": total, "endpoints": result[:limit]})
+        return jsonify({"total": api_total, "endpoints": result[:limit]})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 
