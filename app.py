@@ -8,7 +8,8 @@ import threading
 import requests
 from datetime import datetime, timedelta, timezone
 import hashlib
-from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for
+import io
+from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, HealthCheck, PortalSnapshot, Communication
 import config
@@ -826,6 +827,70 @@ def communications_delete(comm_id):
     db.session.delete(comm)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@app.route("/api/communications/export", methods=["GET"])
+def communications_export():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    status_filter = (freq.args.get("status") or "").strip()
+    q = (freq.args.get("q") or "").strip().lower()
+
+    rows = Communication.query.order_by(
+        Communication.contact_date.desc(), Communication.created_at.desc()
+    ).all()
+
+    if status_filter:
+        rows = [r for r in rows if r.status == status_filter]
+    if q:
+        rows = [r for r in rows if any(
+            q in (v or "").lower()
+            for v in [r.org_title, r.org_name, r.subject, r.notes, r.status]
+        )]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Communications"
+
+    headers = ["Date", "Organization", "Subject", "Status", "Notes", "Created At"]
+    header_fill = PatternFill("solid", fgColor="1E3A5F")
+    header_font = Font(bold=True, color="FFFFFF")
+    col_widths  = [14, 36, 42, 16, 48, 22]
+
+    for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.column_dimensions[cell.column_letter].width = width
+
+    ws.row_dimensions[1].height = 20
+
+    for row_idx, r in enumerate(rows, start=2):
+        ws.cell(row=row_idx, column=1, value=r.contact_date)
+        ws.cell(row=row_idx, column=2, value=r.org_title or r.org_name)
+        ws.cell(row=row_idx, column=3, value=r.subject)
+        ws.cell(row=row_idx, column=4, value=r.status)
+        ws.cell(row=row_idx, column=5, value=r.notes or "")
+        ws.cell(row=row_idx, column=6, value=(
+            r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else ""
+        ))
+        for col_idx in range(1, 7):
+            ws.cell(row=row_idx, column=col_idx).alignment = Alignment(wrap_text=True, vertical="top")
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    filename = f"communications_{today}.xlsx"
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
+    )
 
 
 # ── Matomo Analytics ─────────────────────────────────────────────────────────

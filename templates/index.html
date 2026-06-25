@@ -483,6 +483,7 @@
                   <option>No Response</option>
                 </select>
                 <input type="search" id="commsSearch" class="form-control form-control-sm" placeholder="Search…" style="width:180px" oninput="filterComms()">
+                <button class="btn btn-success btn-sm" onclick="downloadCommsExcel()" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i>Add</button>
               </div>
             </div>
@@ -1902,6 +1903,15 @@ async function deleteComm(id) {
   } catch (e) {
     alert('Delete failed: ' + e.message);
   }
+}
+
+function downloadCommsExcel() {
+  const status = document.getElementById('commsStatusFilter').value;
+  const q = document.getElementById('commsSearch').value;
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (q) params.set('q', q);
+  window.location.href = `${API_BASE}api/communications/export?${params}`;
 }
 
 // ── Org detail panel ─────────────────────────────────────────────────────────
