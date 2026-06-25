@@ -30,6 +30,13 @@ db.init_app(app)
 
 with app.app_context():
     db.create_all()
+    # Inline migrations: add columns that db.create_all() won't add to existing tables
+    from sqlalchemy import text, inspect as sa_inspect
+    _insp = sa_inspect(db.engine)
+    _comm_cols = [c['name'] for c in _insp.get_columns('communications')]
+    if 'contact_person' not in _comm_cols:
+        db.session.execute(text('ALTER TABLE communications ADD COLUMN contact_person VARCHAR(200)'))
+        db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
