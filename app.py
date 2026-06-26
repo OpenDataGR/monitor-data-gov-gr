@@ -1133,6 +1133,81 @@ def contacts_fix_org_codes():
             c.org_code = new_code
             fixed += 1
 
+    # Pass 3: match remaining unmatched contacts against CKAN org titles/slugs,
+    # then cross-reference back to HRMS so they appear in both dashboard views.
+    ckan_orgs = _orgs_cache.get("data") or []
+    if not ckan_orgs:
+        try:
+            r = requests.post(
+                f"{config.PORTAL_BASE}/api/3/action/organization_list",
+                json={"all_fields": True, "include_dataset_count": True},
+                timeout=15,
+                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+            )
+            if r.status_code == 200 and r.json().get("success"):
+                ckan_orgs = [
+                    {"name": o.get("name"), "title": o.get("title") or o.get("name")}
+                    for o in r.json()["result"]
+                ]
+        except Exception:
+            pass  # CKAN unavailable — skip Pass 3
+
+    if ckan_orgs:
+        ckan_norm_lookup: dict = {}
+        for org in ckan_orgs:
+            title = (org.get("title") or "").strip()
+            name = (org.get("name") or "").strip()
+            if title:
+                ckan_norm_lookup.setdefault(_norm(title), {"name": name, "title": title})
+            if name:
+                ckan_norm_lookup.setdefault(_norm(name.replace("-", " ")), {"name": name, "title": title})
+
+        hrms_labels_set = set(hrms_label_lookup.values())
+
+        for c in contacts:
+            if not c.org_label:
+                continue
+            if c.org_code in hrms_labels_set:
+                continue  # already resolved to an HRMS label in passes 1/2
+
+            # Build candidate label variants to try: full, paren-stripped, dash-stripped
+            candidates = [c.org_label]
+            paren_stripped = re.sub(r'\s*[\(\[«][^\)\]»]*[\)\]»]\s*', ' ', c.org_label).strip()
+            if paren_stripped != c.org_label:
+                candidates.append(paren_stripped)
+            for dash in (' - ', ' – ', ' — '):
+                if dash in c.org_label:
+                    candidates.append(c.org_label.split(dash)[0].strip())
+                    break
+
+            matched_code = None
+            for candidate in candidates:
+                norm_cand = _norm(candidate)
+
+                # Retry HRMS label (catches variants missed by passes 1/2)
+                hrms_code = hrms_label_lookup.get(norm_cand)
+                if hrms_code:
+                    matched_code = hrms_code
+                    break
+
+                # Retry HRMS acronym
+                acro = hrms_acro_lookup.get(norm_cand)
+                if acro:
+                    matched_code = acro
+                    break
+
+                # Try CKAN title / slug
+                ckan_match = ckan_norm_lookup.get(norm_cand)
+                if ckan_match:
+                    # Cross-reference: prefer HRMS label when CKAN title is also in HRMS
+                    hrms_from_ckan = hrms_label_lookup.get(_norm(ckan_match.get("title", "")))
+                    matched_code = hrms_from_ckan if hrms_from_ckan else ckan_match["name"]
+                    break
+
+            if matched_code and matched_code != c.org_code:
+                c.org_code = matched_code
+                fixed += 1
+
     db.session.commit()
     return jsonify({"fixed": fixed, "total": len(contacts)})
 
