@@ -593,6 +593,16 @@
             <label class="form-label small fw-semibold" data-i18n="contacts.position">Position</label>
             <input type="text" id="contactPosition" class="form-control form-control-sm">
           </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold" data-i18n="contacts.type">Contact Type</label>
+            <select id="contactType" class="form-select form-select-sm">
+              <option value="" data-i18n="contacts.type_none">— none —</option>
+              <option value="Portal Administrator" data-i18n="contacts.type_portal_admin">Portal Administrator</option>
+              <option value="Portal User" data-i18n="contacts.type_portal_user">Portal User</option>
+              <option value="Data Officer" data-i18n="contacts.type_data_officer">Data Officer</option>
+              <option value="Data Steward" data-i18n="contacts.type_data_steward">Data Steward</option>
+            </select>
+          </div>
           <div class="col-md-7">
             <label class="form-label small fw-semibold" data-i18n="contacts.email">Email</label>
             <input type="email" id="contactEmail" class="form-control form-control-sm">
@@ -785,6 +795,12 @@ const TRANSLATIONS = {
     'contacts.first_name': 'First Name',
     'contacts.last_name': 'Last Name',
     'contacts.position': 'Position',
+    'contacts.type': 'Contact Type',
+    'contacts.type_none': '— none —',
+    'contacts.type_portal_administrator': 'Portal Administrator',
+    'contacts.type_portal_user': 'Portal User',
+    'contacts.type_data_officer': 'Data Officer',
+    'contacts.type_data_steward': 'Data Steward',
     'contacts.email': 'Email',
     'contacts.tel': 'Tel',
     'contacts.cancel': 'Cancel',
@@ -992,6 +1008,12 @@ const TRANSLATIONS = {
     'contacts.first_name': 'Όνομα',
     'contacts.last_name': 'Επώνυμο',
     'contacts.position': 'Θέση',
+    'contacts.type': 'Τύπος Επαφής',
+    'contacts.type_none': '— κανένας —',
+    'contacts.type_portal_administrator': 'Διαχειριστής Πύλης',
+    'contacts.type_portal_user': 'Χρήστης Πύλης',
+    'contacts.type_data_officer': 'Υπεύθυνος Δεδομένων',
+    'contacts.type_data_steward': 'Θεματοφύλακας Δεδομένων',
     'contacts.email': 'Email',
     'contacts.tel': 'Τηλ',
     'contacts.cancel': 'Ακύρωση',
@@ -2571,6 +2593,20 @@ function openContactsPanel(orgCode, orgLabel) {
     .catch(err => { show('orgContactsBody').innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`; });
 }
 
+const CONTACT_TYPE_BADGE = {
+  'Portal Administrator': 'bg-primary',
+  'Portal User':          'bg-info text-dark',
+  'Data Officer':         'bg-success',
+  'Data Steward':         'bg-warning text-dark',
+};
+
+function _contactTypeBadge(type) {
+  if (!type) return '';
+  const cls = CONTACT_TYPE_BADGE[type] || 'bg-secondary';
+  const label = t('contacts.type_' + type.toLowerCase().replace(/ /g, '_')) || type;
+  return `<span class="badge ${cls} me-1">${label}</span>`;
+}
+
 function renderContactsPanel(contacts) {
   _contactsCache = {};
   contacts.forEach(c => { _contactsCache[c.id] = c; });
@@ -2582,7 +2618,7 @@ function renderContactsPanel(contacts) {
       <div class="card-body py-2 px-3">
         <div class="d-flex justify-content-between align-items-start gap-2">
           <div class="flex-grow-1" style="min-width:0">
-            <div class="fw-semibold">${esc(c.first_name)} ${esc(c.last_name)}</div>
+            <div class="fw-semibold">${esc(c.first_name)} ${esc(c.last_name)}${_contactTypeBadge(c.contact_type) ? ' ' + _contactTypeBadge(c.contact_type) : ''}</div>
             ${c.position ? `<div class="text-muted small">${esc(c.position)}</div>` : ''}
             ${c.email    ? `<div class="small"><i class="bi bi-envelope me-1 text-muted"></i><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></div>` : ''}
             ${c.tel      ? `<div class="small"><i class="bi bi-telephone me-1 text-muted"></i><a href="tel:${esc(c.tel)}">${esc(c.tel)}</a></div>` : ''}
@@ -2601,23 +2637,25 @@ function openContactModal(contact = null) {
   if (!_contactModal) _contactModal = new bootstrap.Modal(document.getElementById('contactModal'));
   show('contactModalTitle').textContent = contact ? t('contacts.modal_edit') : t('contacts.modal_add');
   show('contactId').value        = contact ? contact.id        : '';
-  show('contactFirstName').value = contact ? (contact.first_name || '') : '';
-  show('contactLastName').value  = contact ? (contact.last_name  || '') : '';
-  show('contactPosition').value  = contact ? (contact.position   || '') : '';
-  show('contactEmail').value     = contact ? (contact.email      || '') : '';
-  show('contactTel').value       = contact ? (contact.tel        || '') : '';
+  show('contactFirstName').value = contact ? (contact.first_name   || '') : '';
+  show('contactLastName').value  = contact ? (contact.last_name    || '') : '';
+  show('contactPosition').value  = contact ? (contact.position     || '') : '';
+  show('contactType').value      = contact ? (contact.contact_type || '') : '';
+  show('contactEmail').value     = contact ? (contact.email        || '') : '';
+  show('contactTel').value       = contact ? (contact.tel          || '') : '';
   _contactModal.show();
 }
 
 async function saveContact() {
   const id   = show('contactId').value;
   const body = {
-    first_name: show('contactFirstName').value.trim(),
-    last_name:  show('contactLastName').value.trim(),
-    position:   show('contactPosition').value.trim(),
-    email:      show('contactEmail').value.trim(),
-    tel:        show('contactTel').value.trim(),
-    org_label:  _panelOrgLabel,
+    first_name:   show('contactFirstName').value.trim(),
+    last_name:    show('contactLastName').value.trim(),
+    position:     show('contactPosition').value.trim(),
+    contact_type: show('contactType').value,
+    email:        show('contactEmail').value.trim(),
+    tel:          show('contactTel').value.trim(),
+    org_label:    _panelOrgLabel,
   };
   try {
     const url    = id ? `${API_BASE}api/contacts/id/${id}` : `${API_BASE}api/contacts/${encodeURIComponent(_panelOrgCode)}`;

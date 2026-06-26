@@ -37,6 +37,10 @@ with app.app_context():
     if 'contact_person' not in _comm_cols:
         db.session.execute(text('ALTER TABLE communications ADD COLUMN contact_person VARCHAR(200)'))
         db.session.commit()
+    _contact_cols = [c['name'] for c in _insp.get_columns('org_contacts')]
+    if 'contact_type' not in _contact_cols:
+        db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN contact_type VARCHAR(50)'))
+        db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -929,6 +933,7 @@ def contacts_create(org_code):
         first_name=(body.get("first_name") or "").strip() or None,
         last_name=(body.get("last_name") or "").strip() or None,
         position=(body.get("position") or "").strip() or None,
+        contact_type=(body.get("contact_type") or "").strip() or None,
         email=(body.get("email") or "").strip() or None,
         tel=(body.get("tel") or "").strip() or None,
     )
@@ -941,7 +946,7 @@ def contacts_create(org_code):
 def contacts_update(contact_id):
     contact = OrgContact.query.get_or_404(contact_id)
     body = freq.get_json(force=True) or {}
-    for field in ("first_name", "last_name", "position", "email", "tel", "org_label"):
+    for field in ("first_name", "last_name", "position", "contact_type", "email", "tel", "org_label"):
         if field in body:
             setattr(contact, field, (body[field] or "").strip() or None)
     db.session.commit()
