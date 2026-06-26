@@ -736,6 +736,7 @@ const TRANSLATIONS = {
     'orgs.col_updated': 'Last Updated',
     'orgs.col_contacts': 'Contacts',
     'orgs.col_status': 'Status',
+    'orgs.as': 'as',
     'orgs.on_portal': 'On portal',
     'orgs.not_registered': 'Not registered',
     'orgs.loading': 'Loading…',
@@ -949,6 +950,7 @@ const TRANSLATIONS = {
     'orgs.col_updated': 'Τελευταία Ενημέρωση',
     'orgs.col_contacts': 'Επαφές',
     'orgs.col_status': 'Κατάσταση',
+    'orgs.as': 'ως',
     'orgs.on_portal': 'Στην πύλη',
     'orgs.not_registered': 'Μη εγγεγραμμένος',
     'orgs.loading': 'Φόρτωση…',
@@ -2151,7 +2153,7 @@ function renderAllOrgsTable(orgs) {
             <td class="text-muted small">${i + 1}</td>
             <td class="small${o.ckan ? ' fw-semibold' : ''}">
               ${o.ckan
-                ? '<a href="#" onclick="openOrgPanel(\'' + o.ckan.name + '\');return false;" class="text-decoration-none">' + o.label + (_normOrg(o.ckan.title) !== _normOrg(o.label) ? ' <span class="text-muted fw-normal">(' + o.ckan.title + ')</span>' : '') + '</a>'
+                ? '<a href="#" onclick="openOrgPanel(\'' + o.ckan.name + '\');return false;" class="text-decoration-none">' + o.label + (_normOrg(o.ckan.title) !== _normOrg(o.label) ? ' <span class="text-muted fw-normal">(' + t('orgs.as') + ' ' + o.ckan.title + ')</span>' : '') + '</a>'
                 : o.label}
             </td>
             <td>
