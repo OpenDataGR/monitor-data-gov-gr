@@ -84,7 +84,7 @@ class OrgContact(db.Model):
     first_name   = db.Column(db.String(100))
     last_name    = db.Column(db.String(100))
     position     = db.Column(db.String(200))
-    contact_type = db.Column(db.String(50))   # Portal Administrator | Portal User | Data Officer | Data Steward
+    contact_type = db.Column(db.String(200))  # comma-separated: Portal Administrator | Portal Editor | Portal User | Data Officer | Data Steward
     email        = db.Column(db.String(200))
     tel          = db.Column(db.String(50))
 

@@ -39,7 +39,10 @@ with app.app_context():
         db.session.commit()
     _contact_cols = [c['name'] for c in _insp.get_columns('org_contacts')]
     if 'contact_type' not in _contact_cols:
-        db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN contact_type VARCHAR(50)'))
+        db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN contact_type VARCHAR(200)'))
+        db.session.commit()
+    elif db.engine.dialect.name == 'postgresql':
+        db.session.execute(text('ALTER TABLE org_contacts ALTER COLUMN contact_type TYPE VARCHAR(200)'))
         db.session.commit()
 
 
