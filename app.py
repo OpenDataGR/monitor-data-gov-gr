@@ -245,27 +245,6 @@ _HRMS_CACHE: dict = {"data": None, "fetched_at": 0.0}
 _HRMS_TTL = 24 * 3600  # refresh once per day
 
 
-@app.route("/api/debug/hrms-raw")
-def debug_hrms_raw():
-    try:
-        r = requests.get(
-            "https://hrms.gov.gr/api/public/organizations",
-            timeout=15,
-            headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
-        )
-        raw = r.json()
-        if isinstance(raw, dict):
-            return jsonify({
-                "type": "dict",
-                "top_keys": list(raw.keys()),
-                "data_count": len(raw.get("data", [])),
-                "sample": raw.get("data", [])[:2],
-                "non_data_keys": {k: v for k, v in raw.items() if k != "data"},
-            })
-        return jsonify({"type": "list", "count": len(raw), "sample": raw[:2]})
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
-
 
 @app.route("/api/public-orgs")
 def public_orgs():
@@ -1101,7 +1080,6 @@ def contacts_fix_org_codes():
             hrms_label_lookup[key] = clean_label
 
     fixed = 0
-    unmatched_samples = []
     contacts = OrgContact.query.all()
     for c in contacts:
         if c.org_label:
@@ -1109,24 +1087,8 @@ def contacts_fix_org_codes():
             if new_code and new_code != c.org_code:
                 c.org_code = new_code
                 fixed += 1
-            elif not new_code and len(unmatched_samples) < 10:
-                unmatched_samples.append({
-                    "org_label": c.org_label,
-                    "norm": _norm(c.org_label),
-                })
     db.session.commit()
-    # Show a few HRMS entries for comparison
-    hrms_samples = [
-        {"label": lbl, "norm": _norm(lbl)}
-        for lbl in list(hrms_label_lookup.values())[:5]
-    ]
-    return jsonify({
-        "fixed": fixed,
-        "total": len(contacts),
-        "hrms_total": len(hrms_label_lookup),
-        "unmatched_samples": unmatched_samples,
-        "hrms_samples": hrms_samples,
-    })
+    return jsonify({"fixed": fixed, "total": len(contacts)})
 
 
 # ── Org Contacts ─────────────────────────────────────────────────────────────
