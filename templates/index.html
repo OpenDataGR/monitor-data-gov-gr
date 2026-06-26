@@ -2178,7 +2178,7 @@ function renderAllOrgsTable(orgs) {
                 : `<span class="badge bg-secondary">${t('orgs.not_registered')}</span>`}
             </td>
             <td class="text-end fw-bold small">${o.ckan ? fmt(o.ckan.package_count) : '—'}</td>
-            <td class="text-center"><button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsByIdx(${i})" title="View contacts"><i class="bi bi-people"></i>${_contactSummary[o.code] ? '<span class="badge bg-primary rounded-pill ms-1">' + _contactSummary[o.code] + '</span>' : ''}</button></td>
+            <td class="text-center"><button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsByIdx(${i})" title="View contacts"><i class="bi bi-people"></i>${_contactSummary[o.label] ? '<span class="badge bg-primary rounded-pill ms-1">' + _contactSummary[o.label] + '</span>' : ''}</button></td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -2594,7 +2594,7 @@ function esc(s) {
 
 function openContactsByIdx(i) {
   const o = _displayedPublicOrgs[i];
-  if (o) openContactsPanel(o.code, o.label);
+  if (o) openContactsPanel(o.label, o.label);
 }
 
 function openContactsPanel(orgCode, orgLabel) {
