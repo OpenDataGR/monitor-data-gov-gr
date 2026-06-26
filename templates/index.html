@@ -2751,8 +2751,7 @@ async function importContactsExcel(input) {
     try {
       const fix = await fetch(API_BASE + 'api/contacts/fix-org-codes', {method:'POST'});
       const fixJson = await fix.json();
-      if (fixJson.fixed) msg += '
-Fixed ' + fixJson.fixed + ' org code(s).';
+      if (fixJson.fixed) msg += ' (fixed ' + fixJson.fixed + ' org code(s))';
     } catch (_) {}
     alert(msg);
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
