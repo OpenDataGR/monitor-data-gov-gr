@@ -606,14 +606,17 @@
           <div class="col-12">
             <label class="form-label small fw-semibold" data-i18n="contacts.email">Email</label>
             <input type="email" id="contactEmail" class="form-control form-control-sm">
+            <div class="invalid-feedback" data-i18n="contacts.err_email">Μη έγκυρη διεύθυνση email.</div>
           </div>
           <div class="col-md-6">
             <label class="form-label small fw-semibold" data-i18n="contacts.tel">Tel</label>
             <input type="tel" id="contactTel" class="form-control form-control-sm">
+            <div class="invalid-feedback" data-i18n="contacts.err_phone">Μη έγκυρος αριθμός.</div>
           </div>
           <div class="col-md-6">
             <label class="form-label small fw-semibold" data-i18n="contacts.mobile">Mobile</label>
             <input type="tel" id="contactMobile" class="form-control form-control-sm">
+            <div class="invalid-feedback" data-i18n="contacts.err_phone">Μη έγκυρος αριθμός.</div>
           </div>
         </div>
       </div>
@@ -809,6 +812,8 @@ const TRANSLATIONS = {
     'contacts.email': 'Email',
     'contacts.tel': 'Tel',
     'contacts.mobile': 'Mobile',
+    'contacts.err_email': 'Invalid email address.',
+    'contacts.err_phone': 'Invalid phone number.',
     'contacts.cancel': 'Cancel',
     'contacts.save': 'Save',
     'contacts.delete_confirm': 'Delete this contact?',
@@ -1024,6 +1029,8 @@ const TRANSLATIONS = {
     'contacts.email': 'Email',
     'contacts.tel': 'Τηλ',
     'contacts.mobile': 'Κινητό',
+    'contacts.err_email': 'Μη έγκυρη διεύθυνση email.',
+    'contacts.err_phone': 'Μη έγκυρος αριθμός τηλεφώνου.',
     'contacts.cancel': 'Ακύρωση',
     'contacts.save': 'Αποθήκευση',
     'contacts.delete_confirm': 'Διαγραφή αυτής της επαφής;',
@@ -2658,6 +2665,7 @@ function openContactModal(contact = null) {
   show('contactEmail').value     = contact ? (contact.email        || '') : '';
   show('contactTel').value       = contact ? (contact.tel          || '') : '';
   show('contactMobile').value    = contact ? (contact.mobile       || '') : '';
+  ['contactEmail', 'contactTel', 'contactMobile'].forEach(id => show(id).classList.remove('is-invalid'));
   _contactModal.show();
 }
 
@@ -2667,15 +2675,12 @@ async function saveContact() {
   const _telVal    = show('contactTel').value.trim();
   const _mobileVal = show('contactMobile').value.trim();
   const _phoneRe   = /^[+\d][\d\s\-().]{4,19}$/;
-  if (_emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(_emailVal)) {
-    show('contactEmail').focus(); alert(t('contacts.err_email') || 'Μη έγκυρη διεύθυνση email.'); return;
-  }
-  if (_telVal && !_phoneRe.test(_telVal)) {
-    show('contactTel').focus(); alert(t('contacts.err_phone') || 'Μη έγκυρος αριθμός τηλεφώνου.'); return;
-  }
-  if (_mobileVal && !_phoneRe.test(_mobileVal)) {
-    show('contactMobile').focus(); alert(t('contacts.err_phone') || 'Μη έγκυρος αριθμός τηλεφώνου.'); return;
-  }
+  let _valid = true;
+  const _setErr = (fieldId, bad) => { show(fieldId).classList.toggle('is-invalid', bad); if (bad) _valid = false; };
+  _setErr('contactEmail',  _emailVal  && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(_emailVal));
+  _setErr('contactTel',    _telVal    && !_phoneRe.test(_telVal));
+  _setErr('contactMobile', _mobileVal && !_phoneRe.test(_mobileVal));
+  if (!_valid) return;
   const body = {
     first_name:   show('contactFirstName').value.trim(),
     last_name:    show('contactLastName').value.trim(),
