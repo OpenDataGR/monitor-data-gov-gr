@@ -1573,10 +1573,10 @@ async function _loadPublicOrgsForPortal() {
 }
 
 function _portalContactCell(orgName, orgTitle) {
-  const hc  = _hrmsLookup ? _hrmsLookup.get(orgName) : null;
-  const cnt = hc ? (_contactSummary[hc] || 0) : 0;
-  if (!hc) return '<span class="text-muted">—</span>';
-  return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + hc + '\',\'' + esc(orgTitle) + '\')" title="View contacts">'
+  const hc   = _hrmsLookup ? _hrmsLookup.get(orgName) : null;
+  const code = hc || orgName;  // share HRMS contacts if matched, else use CKAN slug
+  const cnt  = _contactSummary[code] || 0;
+  return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + code + '\',\'' + esc(orgTitle) + '\')" title="View contacts">'
     + '<i class="bi bi-people"></i>'
     + (cnt ? '<span class="badge bg-primary rounded-pill ms-1">' + cnt + '</span>' : '')
     + '</button>';
