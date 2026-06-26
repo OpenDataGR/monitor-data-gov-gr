@@ -2663,14 +2663,27 @@ function openContactModal(contact = null) {
 
 async function saveContact() {
   const id   = show('contactId').value;
+  const _emailVal  = show('contactEmail').value.trim();
+  const _telVal    = show('contactTel').value.trim();
+  const _mobileVal = show('contactMobile').value.trim();
+  const _phoneRe   = /^[+\d][\d\s\-().]{4,19}$/;
+  if (_emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(_emailVal)) {
+    show('contactEmail').focus(); alert(t('contacts.err_email') || 'Μη έγκυρη διεύθυνση email.'); return;
+  }
+  if (_telVal && !_phoneRe.test(_telVal)) {
+    show('contactTel').focus(); alert(t('contacts.err_phone') || 'Μη έγκυρος αριθμός τηλεφώνου.'); return;
+  }
+  if (_mobileVal && !_phoneRe.test(_mobileVal)) {
+    show('contactMobile').focus(); alert(t('contacts.err_phone') || 'Μη έγκυρος αριθμός τηλεφώνου.'); return;
+  }
   const body = {
     first_name:   show('contactFirstName').value.trim(),
     last_name:    show('contactLastName').value.trim(),
     position:     show('contactPosition').value.trim(),
     contact_type: Array.from(show('contactType').selectedOptions).map(o => o.value).join(','),
-    email:        show('contactEmail').value.trim(),
-    tel:          show('contactTel').value.trim(),
-    mobile:       show('contactMobile').value.trim(),
+    email:        _emailVal,
+    tel:          _telVal,
+    mobile:       _mobileVal,
     org_label:    _panelOrgLabel,
   };
   try {
