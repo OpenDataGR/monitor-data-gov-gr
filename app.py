@@ -1100,6 +1100,7 @@ def contacts_fix_org_codes():
             hrms_label_lookup[key] = clean_label
 
     fixed = 0
+    unmatched_samples = []
     contacts = OrgContact.query.all()
     for c in contacts:
         if c.org_label:
@@ -1107,8 +1108,24 @@ def contacts_fix_org_codes():
             if new_code and new_code != c.org_code:
                 c.org_code = new_code
                 fixed += 1
+            elif not new_code and len(unmatched_samples) < 10:
+                unmatched_samples.append({
+                    "org_label": c.org_label,
+                    "norm": _norm(c.org_label),
+                })
     db.session.commit()
-    return jsonify({"fixed": fixed, "total": len(contacts)})
+    # Show a few HRMS entries for comparison
+    hrms_samples = [
+        {"label": lbl, "norm": _norm(lbl)}
+        for lbl in list(hrms_label_lookup.values())[:5]
+    ]
+    return jsonify({
+        "fixed": fixed,
+        "total": len(contacts),
+        "hrms_total": len(hrms_label_lookup),
+        "unmatched_samples": unmatched_samples,
+        "hrms_samples": hrms_samples,
+    })
 
 
 # ── Org Contacts ─────────────────────────────────────────────────────────────
