@@ -281,7 +281,7 @@ def public_orgs():
                 orgs = raw.get("data", raw) if isinstance(raw, dict) else raw
                 _HRMS_CACHE["data"] = sorted(
                     [
-                        {"code": o["code"], "label": o["preferredLabel"]}
+                        {"code": o["code"], "label": o["preferredLabel"].strip('"').strip()}
                         for o in orgs
                         if o.get("preferredLabel") and o.get("code")
                     ],
@@ -956,9 +956,10 @@ def contacts_import():
         def _norm(s):
             if not s:
                 return ""
-            s = unicodedata.normalize("NFD", str(s).strip())
+            s = unicodedata.normalize("NFD", str(s).strip().strip('"'))
             s = "".join(c for c in s if not unicodedata.combining(c))
-            return re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
+            s = re.sub(r"[^\w\s]", " ", s.lower())
+            return re.sub(r"\s+", " ", s).strip()
 
         # Build HRMS lookup: normalised label -> code
         # Fetch HRMS data live if the cache hasn't been populated yet
@@ -1089,18 +1090,21 @@ def contacts_fix_org_codes():
         except Exception as exc:
             return jsonify({"error": f"Could not fetch HRMS data: {exc}"}), 503
 
-    hrms_lookup = {}
+    # Build lookup: normalized_label → clean display label (NOT numeric code)
+    # so contacts end up keyed the same way the UI looks them up (by o.label)
+    hrms_label_lookup = {}
     for o in hrms_orgs:
-        key = _norm(o.get("label", ""))
+        clean_label = o.get("label", "").strip('"').strip()
+        key = _norm(clean_label)
         if key:
-            hrms_lookup[key] = o.get("code", o.get("label", ""))
+            hrms_label_lookup[key] = clean_label
 
     fixed = 0
     contacts = OrgContact.query.all()
     for c in contacts:
         if c.org_label:
-            new_code = hrms_lookup.get(_norm(c.org_label), c.org_label)
-            if new_code != c.org_code:
+            new_code = hrms_label_lookup.get(_norm(c.org_label))
+            if new_code and new_code != c.org_code:
                 c.org_code = new_code
                 fixed += 1
     db.session.commit()
