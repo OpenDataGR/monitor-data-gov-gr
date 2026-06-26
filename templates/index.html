@@ -1413,6 +1413,7 @@ let _orgsSortCol  = 'package_count';
 let _orgsSortDir  = 'desc';
 let _orgsViewMode = 'portal';
 let _ckanLookup   = null;
+let _hrmsLookup   = null;   // reverse: ckan org name → hrms org code
 
 function sortOrgs(col) {
   if (_orgsSortCol === col) {
@@ -1459,6 +1460,7 @@ async function loadOrgs(force = false) {
       : '';
     renderOrgsTable(_orgsData);
     if (json.enriching) _pollUntilEnriched();
+    _loadPublicOrgsForPortal();
   } catch (e) {
     el.innerHTML = `<div class="alert alert-danger mb-0">Error: ${e.message}</div>`;
   } finally {
@@ -1510,6 +1512,7 @@ function renderOrgsTable(orgs) {
         ${th('title', 'Organization')}
         ${th('package_count', 'Datasets', 'text-end')}
         ${th('last_updated', 'Last Updated', 'text-end')}
+        <th class="text-center" style="width:80px">Contacts</th>
       </tr></thead>
       <tbody>
         ${sorted.map((o, i) => `
@@ -1525,6 +1528,7 @@ function renderOrgsTable(orgs) {
             </td>
             <td class="text-end fw-bold">${fmt(o.package_count)}</td>
             <td class="text-end text-muted small" title="${o.last_updated ?? ''}">${relativeDate(o.last_updated)}</td>
+            <td class="text-center">${_portalContactCell(o.name, o.title)}</td>
           </tr>`).join('')}
       </tbody>
     </table>`;
@@ -1548,6 +1552,34 @@ function _buildCkanLookup() {
     _ckanLookup.set(_normOrg(org.title), org);
     _ckanLookup.set(_normOrg(org.name), org);
   }
+  _hrmsLookup = new Map();
+  for (const hrmsOrg of _publicOrgs) {
+    const matched = _ckanLookup.get(_normOrg(hrmsOrg.label));
+    if (matched) _hrmsLookup.set(matched.name, hrmsOrg.code);
+  }
+}
+
+async function _loadPublicOrgsForPortal() {
+  if (!_publicOrgs.length) {
+    try {
+      const data = await fetch(API_BASE + 'api/public-orgs').then(r => r.json());
+      if (Array.isArray(data)) _publicOrgs = data;
+    } catch (_) { return; }
+  }
+  if (_publicOrgs.length && _orgsData.length) {
+    _buildCkanLookup();
+    await loadContactSummary();
+  }
+}
+
+function _portalContactCell(orgName, orgTitle) {
+  const hc  = _hrmsLookup ? _hrmsLookup.get(orgName) : null;
+  const cnt = hc ? (_contactSummary[hc] || 0) : 0;
+  if (!hc) return '<span class="text-muted">—</span>';
+  return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + hc + '\',\'' + esc(orgTitle) + '\')" title="View contacts">'
+    + '<i class="bi bi-people"></i>'
+    + (cnt ? '<span class="badge bg-primary rounded-pill ms-1">' + cnt + '</span>' : '')
+    + '</button>';
 }
 
 async function setOrgsView(mode) {
@@ -1649,6 +1681,7 @@ async function _pollUntilEnriched(attempts = 0) {
     const json = await resp.json();
     if (json.error) return;
     _orgsData = json.data;
+    if (_publicOrgs.length) _buildCkanLookup();
     show('orgsFetchedAt').textContent = json.fetched_at ? 'Fetched ' + relativeDate(json.fetched_at) : '';
     if (_orgsViewMode === 'portal') renderOrgsTable(_orgsData);
     if (json.enriching) _pollUntilEnriched(attempts + 1);
@@ -2120,6 +2153,7 @@ async function saveContact() {
     openContactsPanel(_panelOrgCode, _panelOrgLabel);
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
+    else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
   } catch (e) {
     alert('Save failed: ' + e.message);
   }
@@ -2132,6 +2166,7 @@ async function deleteContact(id) {
     openContactsPanel(_panelOrgCode, _panelOrgLabel);
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
+    else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
   } catch (e) {
     alert('Delete failed: ' + e.message);
   }
@@ -2141,6 +2176,7 @@ async function loadContactSummary() {
   try {
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
+    else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
   } catch (_) {}
 }
 // ── Org detail panel ─────────────────────────────────────────────────────────
