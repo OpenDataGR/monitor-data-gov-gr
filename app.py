@@ -939,8 +939,29 @@ def contacts_import():
             return re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
 
         # Build HRMS lookup: normalised label -> code
-        hrms_lookup = {}
+        # Fetch HRMS data live if the cache hasn't been populated yet
         hrms_orgs = _HRMS_CACHE.get("data") or []
+        if not hrms_orgs:
+            try:
+                r = requests.get(
+                    "https://hrms.gov.gr/api/public/organizations",
+                    timeout=15,
+                    headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+                )
+                if r.status_code == 200:
+                    raw = r.json()
+                    orgs = raw.get("data", raw) if isinstance(raw, dict) else raw
+                    hrms_orgs = [
+                        {"code": o["code"], "label": o["preferredLabel"]}
+                        for o in orgs
+                        if o.get("preferredLabel") and o.get("code")
+                    ]
+                    _HRMS_CACHE["data"] = hrms_orgs
+                    _HRMS_CACHE["fetched_at"] = time.time()
+            except Exception:
+                pass
+
+        hrms_lookup = {}
         for o in hrms_orgs:
             key = _norm(o.get("label", ""))
             if key:
@@ -1010,6 +1031,58 @@ def contacts_import():
     except Exception as exc:
         db.session.rollback()
         return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/contacts/fix-org-codes", methods=["POST"])
+def contacts_fix_org_codes():
+    """Re-map org_code for all contacts using their stored org_label + HRMS lookup.
+    Needed when contacts were imported before the HRMS cache was populated."""
+    import unicodedata
+
+    def _norm(s):
+        if not s:
+            return ""
+        s = unicodedata.normalize("NFD", str(s).strip())
+        s = "".join(c for c in s if not unicodedata.combining(c))
+        return re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
+
+    hrms_orgs = _HRMS_CACHE.get("data") or []
+    if not hrms_orgs:
+        try:
+            r = requests.get(
+                "https://hrms.gov.gr/api/public/organizations",
+                timeout=15,
+                headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+            )
+            if r.status_code == 200:
+                raw = r.json()
+                orgs = raw.get("data", raw) if isinstance(raw, dict) else raw
+                hrms_orgs = [
+                    {"code": o["code"], "label": o["preferredLabel"]}
+                    for o in orgs
+                    if o.get("preferredLabel") and o.get("code")
+                ]
+                _HRMS_CACHE["data"] = hrms_orgs
+                _HRMS_CACHE["fetched_at"] = time.time()
+        except Exception as exc:
+            return jsonify({"error": f"Could not fetch HRMS data: {exc}"}), 503
+
+    hrms_lookup = {}
+    for o in hrms_orgs:
+        key = _norm(o.get("label", ""))
+        if key:
+            hrms_lookup[key] = o.get("code", o.get("label", ""))
+
+    fixed = 0
+    contacts = OrgContact.query.all()
+    for c in contacts:
+        if c.org_label:
+            new_code = hrms_lookup.get(_norm(c.org_label), c.org_label)
+            if new_code != c.org_code:
+                c.org_code = new_code
+                fixed += 1
+    db.session.commit()
+    return jsonify({"fixed": fixed, "total": len(contacts)})
 
 
 # ── Org Contacts ─────────────────────────────────────────────────────────────

@@ -2747,6 +2747,13 @@ async function importContactsExcel(input) {
     if (!resp.ok) throw new Error(json.error || resp.status);
     let msg = `Imported ${json.imported} contact(s), skipped ${json.skipped}.`;
     if (json.errors && json.errors.length) msg += '\nErrors:\n' + json.errors.join('\n');
+    // Repair org_codes in case the HRMS cache was empty during import
+    try {
+      const fix = await fetch(API_BASE + 'api/contacts/fix-org-codes', {method:'POST'});
+      const fixJson = await fix.json();
+      if (fixJson.fixed) msg += '
+Fixed ' + fixJson.fixed + ' org code(s).';
+    } catch (_) {}
     alert(msg);
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
