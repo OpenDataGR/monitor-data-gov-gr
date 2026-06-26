@@ -1065,9 +1065,10 @@ def contacts_fix_org_codes():
     def _norm(s):
         if not s:
             return ""
-        s = unicodedata.normalize("NFD", str(s).strip())
+        s = unicodedata.normalize("NFD", str(s).strip().strip('"'))
         s = "".join(c for c in s if not unicodedata.combining(c))
-        return re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
+        s = re.sub(r"[^\w\s]", " ", s.lower())
+        return re.sub(r"\s+", " ", s).strip()
 
     hrms_orgs = _HRMS_CACHE.get("data") or []
     if not hrms_orgs:
