@@ -603,13 +603,17 @@
               <option value="Data Steward" data-i18n="contacts.type_data_steward">Data Steward</option>
             </select>
           </div>
-          <div class="col-md-7">
+          <div class="col-12">
             <label class="form-label small fw-semibold" data-i18n="contacts.email">Email</label>
             <input type="email" id="contactEmail" class="form-control form-control-sm">
           </div>
-          <div class="col-md-5">
+          <div class="col-md-6">
             <label class="form-label small fw-semibold" data-i18n="contacts.tel">Tel</label>
             <input type="tel" id="contactTel" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-semibold" data-i18n="contacts.mobile">Mobile</label>
+            <input type="tel" id="contactMobile" class="form-control form-control-sm">
           </div>
         </div>
       </div>
@@ -804,6 +808,7 @@ const TRANSLATIONS = {
     'contacts.type_portal_editor': 'Portal Editor',
     'contacts.email': 'Email',
     'contacts.tel': 'Tel',
+    'contacts.mobile': 'Mobile',
     'contacts.cancel': 'Cancel',
     'contacts.save': 'Save',
     'contacts.delete_confirm': 'Delete this contact?',
@@ -1018,6 +1023,7 @@ const TRANSLATIONS = {
     'contacts.type_portal_editor': 'Συντάκτης Πύλης',
     'contacts.email': 'Email',
     'contacts.tel': 'Τηλ',
+    'contacts.mobile': 'Κινητό',
     'contacts.cancel': 'Ακύρωση',
     'contacts.save': 'Αποθήκευση',
     'contacts.delete_confirm': 'Διαγραφή αυτής της επαφής;',
@@ -2628,6 +2634,7 @@ function renderContactsPanel(contacts) {
             ${c.position ? `<div class="text-muted small">${esc(c.position)}</div>` : ''}
             ${c.email    ? `<div class="small"><i class="bi bi-envelope me-1 text-muted"></i><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></div>` : ''}
             ${c.tel      ? `<div class="small"><i class="bi bi-telephone me-1 text-muted"></i><a href="tel:${esc(c.tel)}">${esc(c.tel)}</a></div>` : ''}
+            ${c.mobile   ? `<div class="small"><i class="bi bi-phone me-1 text-muted"></i><a href="tel:${esc(c.mobile)}">${esc(c.mobile)}</a></div>` : ''}
           </div>
           <div class="d-flex gap-1 flex-shrink-0">
             <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openContactModal(_contactsCache[${c.id}])" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -2650,6 +2657,7 @@ function openContactModal(contact = null) {
   Array.from(show('contactType').options).forEach(opt => { opt.selected = _selTypes.includes(opt.value); });
   show('contactEmail').value     = contact ? (contact.email        || '') : '';
   show('contactTel').value       = contact ? (contact.tel          || '') : '';
+  show('contactMobile').value    = contact ? (contact.mobile       || '') : '';
   _contactModal.show();
 }
 
@@ -2662,6 +2670,7 @@ async function saveContact() {
     contact_type: Array.from(show('contactType').selectedOptions).map(o => o.value).join(','),
     email:        show('contactEmail').value.trim(),
     tel:          show('contactTel').value.trim(),
+    mobile:       show('contactMobile').value.trim(),
     org_label:    _panelOrgLabel,
   };
   try {

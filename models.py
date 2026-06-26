@@ -87,6 +87,7 @@ class OrgContact(db.Model):
     contact_type = db.Column(db.String(200))  # comma-separated: Portal Administrator | Portal Editor | Portal User | Data Officer | Data Steward
     email        = db.Column(db.String(200))
     tel          = db.Column(db.String(50))
+    mobile       = db.Column(db.String(50))
 
     def to_dict(self):
         return {
@@ -99,4 +100,5 @@ class OrgContact(db.Model):
             "contact_type": self.contact_type or "",
             "email":        self.email or "",
             "tel":          self.tel or "",
+            "mobile":       self.mobile or "",
         }

@@ -44,6 +44,9 @@ with app.app_context():
     elif db.engine.dialect.name == 'postgresql':
         db.session.execute(text('ALTER TABLE org_contacts ALTER COLUMN contact_type TYPE VARCHAR(200)'))
         db.session.commit()
+    if 'mobile' not in _contact_cols:
+        db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN mobile VARCHAR(50)'))
+        db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -939,6 +942,7 @@ def contacts_create(org_code):
         contact_type=(body.get("contact_type") or "").strip() or None,
         email=(body.get("email") or "").strip() or None,
         tel=(body.get("tel") or "").strip() or None,
+        mobile=(body.get("mobile") or "").strip() or None,
     )
     db.session.add(contact)
     db.session.commit()
@@ -949,7 +953,7 @@ def contacts_create(org_code):
 def contacts_update(contact_id):
     contact = OrgContact.query.get_or_404(contact_id)
     body = freq.get_json(force=True) or {}
-    for field in ("first_name", "last_name", "position", "contact_type", "email", "tel", "org_label"):
+    for field in ("first_name", "last_name", "position", "contact_type", "email", "tel", "mobile", "org_label"):
         if field in body:
             setattr(contact, field, (body[field] or "").strip() or None)
     db.session.commit()
