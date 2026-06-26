@@ -915,6 +915,93 @@ def communications_export():
 
 
 
+
+@app.route("/api/contacts/import", methods=["POST"])
+def contacts_import():
+    import unicodedata
+    from openpyxl import load_workbook
+
+    file = freq.files.get("file")
+    if not file:
+        return jsonify({"error": "No file provided"}), 400
+
+    def _norm(s):
+        if not s:
+            return ""
+        s = unicodedata.normalize("NFD", str(s).strip())
+        s = "".join(c for c in s if not unicodedata.combining(c))
+        return re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
+
+    # Build HRMS lookup: normalised label -> code
+    hrms_lookup = {}
+    hrms_orgs = _HRMS_CACHE.get("data") or []
+    for o in hrms_orgs:
+        key = _norm(o.get("label", ""))
+        if key:
+            hrms_lookup[key] = o.get("code", o.get("label", ""))
+
+    wb = load_workbook(file, read_only=True, data_only=True)
+    # Pick the sheet whose name contains STAGING, fall back to last sheet
+    sheet_name = next(
+        (s for s in wb.sheetnames if "STAGING" in s.upper()),
+        wb.sheetnames[-1],
+    )
+    ws = wb[sheet_name]
+
+    # Pre-load existing (org_code, email) pairs for dedup
+    existing = {
+        (c.org_code, (c.email or "").strip().lower())
+        for c in OrgContact.query.with_entities(OrgContact.org_code, OrgContact.email).all()
+    }
+
+    imported = skipped = 0
+    errors = []
+
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_col=10, values_only=True), start=2):
+        try:
+            org_label   = str(row[1] or "").strip()
+            first_name  = str(row[2] or "").strip()
+            last_name   = str(row[3] or "").strip()
+            position    = str(row[4] or "").strip()
+            portal_role = str(row[5] or "").strip()
+            tel         = str(int(row[6])) if isinstance(row[6], float) else str(row[6] or "").strip()
+            email       = str(row[7] or "").strip()
+
+            if not org_label or (not first_name and not last_name):
+                skipped += 1
+                continue
+
+            # Combine position + portal_role
+            if portal_role and portal_role not in position:
+                position = f"{position} [{portal_role}]".strip(" []") if position else portal_role
+
+            # Match to HRMS code
+            org_code = hrms_lookup.get(_norm(org_label), org_label)
+
+            # Deduplicate by (org_code, email)
+            email_key = email.lower()
+            if (org_code, email_key) in existing:
+                skipped += 1
+                continue
+            existing.add((org_code, email_key))
+
+            db.session.add(OrgContact(
+                org_code   = org_code,
+                org_label  = org_label,
+                first_name = first_name or None,
+                last_name  = last_name  or None,
+                position   = position   or None,
+                email      = email      or None,
+                tel        = tel        or None,
+            ))
+            imported += 1
+        except Exception as exc:
+            errors.append(f"Row {row_idx}: {exc}")
+
+    db.session.commit()
+    return jsonify({"imported": imported, "skipped": skipped, "errors": errors[:20]})
+
+
 # ── Org Contacts ─────────────────────────────────────────────────────────────
 
 @app.route("/api/contacts/summary", methods=["GET"])

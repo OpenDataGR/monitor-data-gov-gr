@@ -457,6 +457,8 @@
                 <span id="orgsFetchedAt" class="text-muted small"></span>
                 <input type="search" id="orgSearch" class="form-control form-control-sm" placeholder="Search…" data-i18n-ph="orgs.search" style="width:200px" oninput="filterOrgs()">
                 <button id="orgsRefreshBtn" class="btn btn-outline-primary btn-sm" onclick="loadOrgs(true)"><i class="bi bi-arrow-repeat me-1"></i><span data-i18n="orgs.refresh">Refresh</span></button>
+                <input type="file" id="contactsImportFile" accept=".xlsx" class="d-none" onchange="importContactsExcel(this)">
+                <button class="btn btn-outline-success btn-sm" onclick="document.getElementById('contactsImportFile').click()" title="Import contacts from Excel"><i class="bi bi-file-earmark-arrow-up me-1"></i>Import Contacts</button>
               </div>
             </div>
             <div id="orgsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
@@ -2726,6 +2728,33 @@ async function deleteContact(id) {
     else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
   } catch (e) {
     alert(t('contacts.delete_failed') + ' ' + e.message);
+  }
+}
+
+async function importContactsExcel(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const fd = new FormData();
+  fd.append('file', file);
+  const btn = document.querySelector('[onclick*="contactsImportFile"]');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importing…';
+  try {
+    const resp = await fetch(API_BASE + 'api/contacts/import', { method: 'POST', body: fd });
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || resp.status);
+    let msg = `Imported ${json.imported} contact(s), skipped ${json.skipped}.`;
+    if (json.errors && json.errors.length) msg += '\nErrors:\n' + json.errors.join('\n');
+    alert(msg);
+    _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
+    if (_orgsViewMode === 'all') filterOrgs();
+  } catch (e) {
+    alert('Import failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
   }
 }
 
