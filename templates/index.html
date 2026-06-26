@@ -2653,8 +2653,23 @@ function renderContactsPanel(contacts) {
   show('orgContactsBody').innerHTML = addBtn + listHtml;
 }
 
+const _PHONE_RE = /^[+\d][\d\s\-().]{4,19}$/;
+function _validateContactField(fieldId) {
+  const val = show(fieldId).value.trim();
+  const bad = fieldId === 'contactEmail'
+    ? (val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val))
+    : (val && !_PHONE_RE.test(val));
+  show(fieldId).classList.toggle('is-invalid', !!bad);
+  return !bad;
+}
+
 function openContactModal(contact = null) {
-  if (!_contactModal) _contactModal = new bootstrap.Modal(document.getElementById('contactModal'));
+  if (!_contactModal) {
+    _contactModal = new bootstrap.Modal(document.getElementById('contactModal'));
+    ['contactEmail', 'contactTel', 'contactMobile'].forEach(id =>
+      show(id).addEventListener('blur', () => _validateContactField(id))
+    );
+  }
   show('contactModalTitle').textContent = contact ? t('contacts.modal_edit') : t('contacts.modal_add');
   show('contactId').value        = contact ? contact.id        : '';
   show('contactFirstName').value = contact ? (contact.first_name   || '') : '';
@@ -2671,16 +2686,11 @@ function openContactModal(contact = null) {
 
 async function saveContact() {
   const id   = show('contactId').value;
+  const valid = ['contactEmail', 'contactTel', 'contactMobile'].map(_validateContactField).every(Boolean);
+  if (!valid) return;
   const _emailVal  = show('contactEmail').value.trim();
   const _telVal    = show('contactTel').value.trim();
   const _mobileVal = show('contactMobile').value.trim();
-  const _phoneRe   = /^[+\d][\d\s\-().]{4,19}$/;
-  let _valid = true;
-  const _setErr = (fieldId, bad) => { show(fieldId).classList.toggle('is-invalid', bad); if (bad) _valid = false; };
-  _setErr('contactEmail',  _emailVal  && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(_emailVal));
-  _setErr('contactTel',    _telVal    && !_phoneRe.test(_telVal));
-  _setErr('contactMobile', _mobileVal && !_phoneRe.test(_mobileVal));
-  if (!_valid) return;
   const body = {
     first_name:   show('contactFirstName').value.trim(),
     last_name:    show('contactLastName').value.trim(),
