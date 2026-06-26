@@ -41,15 +41,15 @@ with app.app_context():
     if 'contact_type' not in _contact_cols:
         db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN contact_type VARCHAR(200)'))
         db.session.commit()
-    elif db.engine.dialect.name == 'postgresql':
-        db.session.execute(text('ALTER TABLE org_contacts ALTER COLUMN contact_type TYPE VARCHAR(200)'))
-        db.session.commit()
     if 'mobile' not in _contact_cols:
         db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN mobile VARCHAR(50)'))
         db.session.commit()
     if db.engine.dialect.name == 'postgresql':
-        db.session.execute(text('ALTER TABLE org_contacts ALTER COLUMN position TYPE TEXT'))
-        db.session.commit()
+        try:
+            db.session.execute(text('ALTER TABLE org_contacts ALTER COLUMN position TYPE TEXT'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
