@@ -1075,6 +1075,7 @@ def contacts_fix_org_codes():
 
     fixed = 0
     contacts = OrgContact.query.all()
+    sample_before = [{"org_code": c.org_code, "org_label": c.org_label} for c in contacts[:3]]
     for c in contacts:
         if c.org_label:
             new_code = hrms_lookup.get(_norm(c.org_label), c.org_label)
@@ -1082,7 +1083,14 @@ def contacts_fix_org_codes():
                 c.org_code = new_code
                 fixed += 1
     db.session.commit()
-    return jsonify({"fixed": fixed, "total": len(contacts)})
+    sample_hrms = list(hrms_lookup.items())[:3]
+    return jsonify({
+        "fixed": fixed,
+        "total": len(contacts),
+        "hrms_loaded": len(hrms_lookup),
+        "sample_db": sample_before,
+        "sample_hrms": sample_hrms,
+    })
 
 
 # ── Org Contacts ─────────────────────────────────────────────────────────────
