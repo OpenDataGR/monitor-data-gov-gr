@@ -595,13 +595,12 @@
           </div>
           <div class="col-12">
             <label class="form-label small fw-semibold" data-i18n="contacts.type">Contact Type</label>
-            <select id="contactType" class="form-select form-select-sm">
-              <option value="" data-i18n="contacts.type_none">— none —</option>
+            <select id="contactType" class="form-select form-select-sm" multiple size="5">
               <option value="Portal Administrator" data-i18n="contacts.type_portal_administrator">Portal Administrator</option>
+              <option value="Portal Editor" data-i18n="contacts.type_portal_editor">Portal Editor</option>
               <option value="Portal User" data-i18n="contacts.type_portal_user">Portal User</option>
               <option value="Data Officer" data-i18n="contacts.type_data_officer">Data Officer</option>
               <option value="Data Steward" data-i18n="contacts.type_data_steward">Data Steward</option>
-              <option value="Portal Editor" data-i18n="contacts.type_portal_editor">Portal Editor</option>
             </select>
           </div>
           <div class="col-md-7">
@@ -798,7 +797,6 @@ const TRANSLATIONS = {
     'contacts.last_name': 'Last Name',
     'contacts.position': 'Position',
     'contacts.type': 'Contact Type',
-    'contacts.type_none': '— none —',
     'contacts.type_portal_administrator': 'Portal Administrator',
     'contacts.type_portal_user': 'Portal User',
     'contacts.type_data_officer': 'Data Officer',
@@ -1013,7 +1011,6 @@ const TRANSLATIONS = {
     'contacts.last_name': 'Επώνυμο',
     'contacts.position': 'Θέση',
     'contacts.type': 'Τύπος Επαφής',
-    'contacts.type_none': '— κανένας —',
     'contacts.type_portal_administrator': 'Διαχειριστής Πύλης',
     'contacts.type_portal_user': 'Χρήστης Πύλης',
     'contacts.type_data_officer': 'Υπεύθυνος Δεδομένων',
@@ -2608,9 +2605,11 @@ const CONTACT_TYPE_BADGE = {
 
 function _contactTypeBadge(type) {
   if (!type) return '';
-  const cls = CONTACT_TYPE_BADGE[type] || 'bg-secondary';
-  const label = t('contacts.type_' + type.toLowerCase().replace(/ /g, '_')) || type;
-  return `<span class="badge ${cls} me-1">${label}</span>`;
+  return type.split(',').map(s => s.trim()).filter(Boolean).map(typ => {
+    const cls = CONTACT_TYPE_BADGE[typ] || 'bg-secondary';
+    const label = t('contacts.type_' + typ.toLowerCase().replace(/ /g, '_')) || typ;
+    return `<span class="badge ${cls} me-1">${label}</span>`;
+  }).join('');
 }
 
 function renderContactsPanel(contacts) {
@@ -2646,7 +2645,8 @@ function openContactModal(contact = null) {
   show('contactFirstName').value = contact ? (contact.first_name   || '') : '';
   show('contactLastName').value  = contact ? (contact.last_name    || '') : '';
   show('contactPosition').value  = contact ? (contact.position     || '') : '';
-  show('contactType').value      = contact ? (contact.contact_type || '') : '';
+  const _selTypes = (contact && contact.contact_type ? contact.contact_type : '').split(',').map(s => s.trim());
+  Array.from(show('contactType').options).forEach(opt => { opt.selected = _selTypes.includes(opt.value); });
   show('contactEmail').value     = contact ? (contact.email        || '') : '';
   show('contactTel').value       = contact ? (contact.tel          || '') : '';
   _contactModal.show();
@@ -2658,7 +2658,7 @@ async function saveContact() {
     first_name:   show('contactFirstName').value.trim(),
     last_name:    show('contactLastName').value.trim(),
     position:     show('contactPosition').value.trim(),
-    contact_type: show('contactType').value,
+    contact_type: Array.from(show('contactType').selectedOptions).map(o => o.value).join(','),
     email:        show('contactEmail').value.trim(),
     tel:          show('contactTel').value.trim(),
     org_label:    _panelOrgLabel,
