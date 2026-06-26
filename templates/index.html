@@ -623,6 +623,35 @@
   </div>
 </div>
 
+<!-- Reset Stats password modal -->
+<div class="modal fade" id="resetModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-danger">
+      <div class="modal-header bg-danger text-white border-0">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i><span data-i18n="reset.modal_title">Reset Statistics</span>
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-4">
+        <p class="fw-semibold text-danger mb-1" data-i18n="reset.modal_warning">This action is irreversible.</p>
+        <p class="text-muted small mb-4" data-i18n="reset.modal_desc">All historical health checks and portal snapshots will be permanently deleted.</p>
+        <label class="form-label small fw-semibold" data-i18n="reset.modal_pw_label">Enter your password to confirm</label>
+        <input type="password" id="resetPassword" class="form-control form-control-sm"
+               data-i18n-ph="reset.modal_pw_ph" placeholder="Password"
+               onkeydown="if(event.key==='Enter')confirmReset()">
+        <div id="resetError" class="text-danger small mt-2 d-none" data-i18n="reset.modal_wrong_pw">Incorrect password.</div>
+      </div>
+      <div class="modal-footer border-top">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="comm_modal.cancel">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="confirmReset()">
+          <i class="bi bi-trash me-1"></i><span data-i18n="reset.modal_confirm">Delete all data</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
@@ -817,6 +846,13 @@ const TRANSLATIONS = {
     'datasets.none': 'No datasets found.',
     'reset.confirm': 'Clear all historical data and start fresh?',
     'reset.failed': 'Reset failed:',
+    'reset.modal_title': 'Reset Statistics',
+    'reset.modal_warning': 'This action is irreversible.',
+    'reset.modal_desc': 'All historical health checks and portal snapshots will be permanently deleted.',
+    'reset.modal_pw_label': 'Enter your password to confirm',
+    'reset.modal_pw_ph': 'Password',
+    'reset.modal_wrong_pw': 'Incorrect password.',
+    'reset.modal_confirm': 'Delete all data',
     'loading': 'Loading…',
     'error': 'Error:',
     'date.never': '—',
@@ -1017,6 +1053,13 @@ const TRANSLATIONS = {
     'datasets.none': 'Δεν βρέθηκαν σύνολα δεδομένων.',
     'reset.confirm': 'Εκκαθάριση όλων των ιστορικών δεδομένων;',
     'reset.failed': 'Η επαναφορά απέτυχε:',
+    'reset.modal_title': 'Επαναφορά Στατιστικών',
+    'reset.modal_warning': 'Η ενέργεια αυτή είναι μη αναστρέψιμη.',
+    'reset.modal_desc': 'Όλοι οι ιστορικοί έλεγχοι και τα στιγμιότυπα πύλης θα διαγραφούν οριστικά.',
+    'reset.modal_pw_label': 'Εισάγετε τον κωδικό σας για επιβεβαίωση',
+    'reset.modal_pw_ph': 'Κωδικός',
+    'reset.modal_wrong_pw': 'Λανθασμένος κωδικός.',
+    'reset.modal_confirm': 'Διαγραφή όλων των δεδομένων',
     'loading': 'Φόρτωση…',
     'error': 'Σφάλμα:',
     'date.never': '—',
@@ -2699,11 +2742,35 @@ async function triggerCheck() {
   }
 }
 
-async function resetStats() {
-  if (!confirm(t('reset.confirm'))) return;
+let _resetModal = null;
+
+function resetStats() {
+  if (!_resetModal) _resetModal = new bootstrap.Modal(document.getElementById('resetModal'));
+  document.getElementById('resetPassword').value = '';
+  document.getElementById('resetError').classList.add('d-none');
+  _resetModal.show();
+  setTimeout(() => document.getElementById('resetPassword').focus(), 400);
+}
+
+async function confirmReset() {
+  const pw    = document.getElementById('resetPassword').value;
+  const errEl = document.getElementById('resetError');
+  errEl.classList.add('d-none');
   showSpinner(true);
   try {
-    await fetch(API_BASE + 'api/admin/reset', { method: 'POST' });
+    const resp = await fetch(API_BASE + 'api/admin/reset', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ password: pw }),
+    });
+    if (resp.status === 403) {
+      errEl.textContent = t('reset.modal_wrong_pw');
+      errEl.classList.remove('d-none');
+      document.getElementById('resetPassword').select();
+      return;
+    }
+    if (!resp.ok) throw new Error(await resp.text());
+    _resetModal.hide();
     await new Promise(r => setTimeout(r, 6000));
     _healthLoaded = false;
     _statsLoaded  = false;

@@ -1272,6 +1272,10 @@ def matomo_debug_pages():
 
 @app.route("/api/admin/reset", methods=["POST"])
 def admin_reset():
+    if config.DASHBOARD_PASSWORD:
+        body = freq.get_json(silent=True) or {}
+        if _pw_hash(body.get("password", "")) != _pw_hash(config.DASHBOARD_PASSWORD):
+            return jsonify({"error": "Incorrect password"}), 403
     db.session.query(HealthCheck).delete()
     db.session.query(PortalSnapshot).delete()
     db.session.commit()
