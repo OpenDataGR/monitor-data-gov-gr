@@ -1079,14 +1079,60 @@ def contacts_fix_org_codes():
         if key:
             hrms_label_lookup[key] = clean_label
 
+    # Build acronym reverse index: initial letters of non-stop words → HRMS label
+    # e.g. "ΑΝΩΤΑΤΟ ΣΥΜΒΟΥΛΙΟ ΕΠΙΛΟΓΗΣ ΠΡΟΣΩΠΙΚΟΥ" → "ασεπ"
+    _STOPS = {
+        'και', 'η', 'τα', 'το', 'της', 'του', 'των', 'την', 'τον',
+        'τις', 'τους', 'για', 'με', 'απο', 'εως', 'ως', 'προς', 'εκ',
+        'εις', 'εν', 'στο', 'στη', 'στα', 'στον', 'στην', 'στους', 'στις',
+    }
+
+    def _make_acro(norm_lbl):
+        words = norm_lbl.split()
+        letters = [w[0] for w in words if w and w not in _STOPS and len(w) > 1]
+        return ''.join(letters) if len(letters) >= 3 else ''
+
+    hrms_acro_lookup = {}
+    for norm_key, lbl in hrms_label_lookup.items():
+        acro = _make_acro(norm_key)
+        if acro:
+            hrms_acro_lookup.setdefault(acro, lbl)
+
     fixed = 0
     contacts = OrgContact.query.all()
+
+    # Pass 1: exact normalized label match
     for c in contacts:
         if c.org_label:
             new_code = hrms_label_lookup.get(_norm(c.org_label))
             if new_code and new_code != c.org_code:
                 c.org_code = new_code
                 fixed += 1
+
+    # Pass 2: strip parenthetical acronyms then re-match; also try acronym index
+    for c in contacts:
+        if not c.org_label:
+            continue
+        if hrms_label_lookup.get(_norm(c.org_label)):
+            continue  # already covered by pass 1
+
+        norm_label = _norm(c.org_label)
+
+        # 2a: strip (ΕΚΤ) / «...» / [...] parenthetical suffixes and retry
+        stripped = re.sub(r'\s*[\(\[«][^\)\]»]*[\)\]»]\s*', ' ', c.org_label).strip()
+        if stripped != c.org_label:
+            new_code = hrms_label_lookup.get(_norm(stripped))
+            if new_code and new_code != c.org_code:
+                c.org_code = new_code
+                fixed += 1
+                continue
+
+        # 2b: contact label is itself an acronym (e.g. ΑΣΕΠ, ΕΕΤΤ)
+        new_code = hrms_acro_lookup.get(norm_label)
+        if new_code and new_code != c.org_code:
+            c.org_code = new_code
+            fixed += 1
+
     db.session.commit()
     return jsonify({"fixed": fixed, "total": len(contacts)})
 
