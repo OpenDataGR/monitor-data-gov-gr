@@ -245,6 +245,28 @@ _HRMS_CACHE: dict = {"data": None, "fetched_at": 0.0}
 _HRMS_TTL = 24 * 3600  # refresh once per day
 
 
+@app.route("/api/debug/hrms-raw")
+def debug_hrms_raw():
+    try:
+        r = requests.get(
+            "https://hrms.gov.gr/api/public/organizations",
+            timeout=15,
+            headers={"User-Agent": "DataGovGR-Dashboard/1.0"},
+        )
+        raw = r.json()
+        if isinstance(raw, dict):
+            return jsonify({
+                "type": "dict",
+                "top_keys": list(raw.keys()),
+                "data_count": len(raw.get("data", [])),
+                "sample": raw.get("data", [])[:2],
+                "non_data_keys": {k: v for k, v in raw.items() if k != "data"},
+            })
+        return jsonify({"type": "list", "count": len(raw), "sample": raw[:2]})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/public-orgs")
 def public_orgs():
     if _HRMS_CACHE["data"] is None or time.time() - _HRMS_CACHE["fetched_at"] > _HRMS_TTL:
