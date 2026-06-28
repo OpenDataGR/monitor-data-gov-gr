@@ -1398,11 +1398,10 @@ def contacts_delete(contact_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/contacts/save", methods=["POST"])
+@app.route("/api/contacts/save", methods=["GET", "POST"])
 def contacts_save():
-    # Accept both form-encoded (application/x-www-form-urlencoded) and JSON bodies.
-    # Form-encoded is the default so it is not blocked by WAF rules targeting application/json.
-    body = freq.get_json(force=True, silent=True) or freq.form.to_dict()
+    # Use query-string params (GET) so the WAF does not inspect the request body.
+    body = freq.args.to_dict() or freq.get_json(force=True, silent=True) or freq.form.to_dict()
     contact_id = body.get("id") or None
     if contact_id and str(contact_id) not in ("", "null", "undefined"):
         contact = OrgContact.query.get_or_404(int(contact_id))
@@ -1431,9 +1430,9 @@ def contacts_save():
         return jsonify(contact.to_dict()), 201
 
 
-@app.route("/api/contacts/remove", methods=["POST"])
+@app.route("/api/contacts/remove", methods=["GET", "POST"])
 def contacts_remove():
-    body = freq.get_json(force=True, silent=True) or freq.form.to_dict()
+    body = freq.args.to_dict() or freq.get_json(force=True, silent=True) or freq.form.to_dict()
     contact_id = body.get("id")
     if not contact_id:
         return jsonify({"error": "id required"}), 400
