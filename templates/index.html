@@ -2982,7 +2982,9 @@ async function confirmReset() {
 }
 
 // ── Contacts tab ─────────────────────────────────────────────────────────────
-let _allContacts = null;
+let _allContacts     = null;
+let _contactsSortCol = 'org';
+let _contactsSortDir = 'asc';
 
 document.getElementById('contactsTabBtn').addEventListener('click', () => {
   loadContactsTab();
@@ -2999,6 +3001,21 @@ async function loadContactsTab() {
     show('contactsTableBody').innerHTML =
       `<tr><td colspan="7" class="text-center text-danger py-4">Error: ${esc(e.message)}</td></tr>`;
   }
+}
+
+function sortContacts(col) {
+  if (_contactsSortCol === col) {
+    _contactsSortDir = _contactsSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _contactsSortCol = col;
+    _contactsSortDir = 'asc';
+  }
+  filterContactsTab();
+}
+
+function _contactsSortArrow(col) {
+  if (_contactsSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
+  return _contactsSortDir === 'asc' ? ' ↑' : ' ↓';
 }
 
 function filterContactsTab() {
@@ -3018,10 +3035,42 @@ function filterContactsTab() {
   }
   if (typeF) rows = rows.filter(c => (c.contact_type || '').includes(typeF));
 
+  // Sort
+  rows = [...rows].sort((a, b) => {
+    let av, bv;
+    switch (_contactsSortCol) {
+      case 'name': av = `${a.last_name} ${a.first_name}`.toLowerCase();
+                   bv = `${b.last_name} ${b.first_name}`.toLowerCase(); break;
+      case 'type': av = (a.contact_type || '').toLowerCase();
+                   bv = (b.contact_type || '').toLowerCase(); break;
+      case 'position': av = (a.position || '').toLowerCase();
+                       bv = (b.position || '').toLowerCase(); break;
+      case 'email': av = (a.email || '').toLowerCase();
+                    bv = (b.email || '').toLowerCase(); break;
+      default:      av = (a.org_label || a.org_code || '').toLowerCase();
+                    bv = (b.org_label || b.org_code || '').toLowerCase();
+    }
+    if (av < bv) return _contactsSortDir === 'asc' ? -1 : 1;
+    if (av > bv) return _contactsSortDir === 'asc' ?  1 : -1;
+    return 0;
+  });
+
   const total = _allContacts.length;
   show('contactsCount').textContent = rows.length < total
     ? `${rows.length} / ${total}`
     : `${total}`;
+
+  const th = (col, label, cls = '') =>
+    `<th class="text-nowrap${cls ? ' ' + cls : ''}" style="cursor:pointer;user-select:none" onclick="sortContacts('${col}')">${label}${_contactsSortArrow(col)}</th>`;
+
+  document.querySelector('#contactsTable thead tr').innerHTML =
+    `<th class="text-muted fw-normal" style="width:2.5rem">#</th>` +
+    th('org',      t('contacts.col_org')) +
+    th('name',     t('contacts.col_name')) +
+    th('type',     t('contacts.type')) +
+    th('position', t('contacts.position')) +
+    th('email',    t('contacts.email')) +
+    th('tel',      t('contacts.col_tel'));
 
   if (!rows.length) {
     show('contactsTableBody').innerHTML =
