@@ -3111,9 +3111,9 @@ function filterContactsTab() {
     const orgCode  = c.org_code  || '';
     const orgLabel = c.org_label || orgCode;
     const tel      = c.tel || c.mobile || '';
-    // Use data attributes to avoid double-quote collision inside onclick="..."
-    return `<tr style="cursor:pointer" data-code="${esc(orgCode)}" data-label="${esc(orgLabel)}"
-      onclick="openContactsPanel(this.dataset.code,this.dataset.label)">
+    // Row click = edit; data attributes avoid double-quote collision in onclick
+    return `<tr style="cursor:pointer" title="${t('contacts.modal_edit')}"
+      onclick="editContactInTab(_tabContactRows[${i}])">
       <td class="text-muted small">${i + 1}</td>
       <td class="small fw-semibold">${esc(orgLabel)}</td>
       <td class="text-nowrap">${esc(c.first_name)} ${esc(c.last_name)}</td>
@@ -3122,8 +3122,6 @@ function filterContactsTab() {
       <td class="small">${c.email ? `<a href="mailto:${esc(c.email)}" onclick="event.stopPropagation()">${esc(c.email)}</a>` : ''}</td>
       <td class="small text-nowrap">${esc(tel)}</td>
       <td onclick="event.stopPropagation()" class="text-nowrap">
-        <button class="btn btn-outline-secondary btn-sm py-0 px-1 me-1" title="${t('contacts.modal_edit')}"
-          onclick="editContactInTab(_tabContactRows[${i}])"><i class="bi bi-pencil"></i></button>
         <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('contacts.delete_confirm')}"
           data-id="${c.id}" data-code="${esc(orgCode)}" data-label="${esc(orgLabel)}"
           onclick="deleteContactFromTab(+this.dataset.id,this.dataset.code,this.dataset.label)"><i class="bi bi-trash"></i></button>
