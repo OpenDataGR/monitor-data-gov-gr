@@ -55,6 +55,9 @@
       <button class="btn btn-outline-danger btn-sm px-3" onclick="resetStats()">
         <i class="bi bi-trash me-1"></i><span data-i18n="nav.reset_stats">Reset Stats</span>
       </button>
+      <a href="{{ url_for('static', filename='manual.html') }}" target="_blank" class="btn btn-outline-light btn-sm px-3">
+        <i class="bi bi-book me-1"></i><span data-i18n="nav.manual">Οδηγός</span>
+      </a>
       <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm px-3">
         <i class="bi bi-box-arrow-right me-1"></i><span data-i18n="nav.sign_out">Sign out</span>
       </a>
@@ -732,6 +735,7 @@ const TRANSLATIONS = {
     'nav.last_check': 'Last check:',
     'nav.check_now': 'Check Now',
     'nav.reset_stats': 'Reset Stats',
+    'nav.manual': 'Manual',
     'nav.sign_out': 'Sign out',
     'token.missing': 'API token not configured.',
     'token.desc': 'Dataset queries and quality checks need one. Set DATAGOVGR_TOKEN in your environment or',
@@ -959,6 +963,7 @@ const TRANSLATIONS = {
     'nav.last_check': 'Τελευταίος έλεγχος:',
     'nav.check_now': 'Έλεγχος τώρα',
     'nav.reset_stats': 'Επαναφορά',
+    'nav.manual': 'Οδηγός',
     'nav.sign_out': 'Αποσύνδεση',
     'token.missing': 'Το API token δεν έχει ρυθμιστεί.',
     'token.desc': 'Τα ερωτήματα συνόλων δεδομένων και οι ποιοτικοί έλεγχοι το χρειάζονται. Ορίστε DATAGOVGR_TOKEN στο περιβάλλον σας ή',
