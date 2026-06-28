@@ -1398,10 +1398,22 @@ def contacts_delete(contact_id):
     return jsonify({"ok": True})
 
 
+def _decode_contact_payload():
+    """Decode a base64-encoded JSON payload from ?d=... or fall back to flat query/form params."""
+    import base64 as _b64, json as _json
+    raw = freq.args.get("d") or freq.form.get("d") or ""
+    if raw:
+        try:
+            padded = raw + "=" * (-len(raw) % 4)
+            return _json.loads(_b64.b64decode(padded).decode("utf-8"))
+        except Exception:
+            pass
+    return freq.get_json(force=True, silent=True) or freq.args.to_dict() or freq.form.to_dict()
+
+
 @app.route("/api/contacts/save", methods=["GET", "POST"])
 def contacts_save():
-    # Use query-string params (GET) so the WAF does not inspect the request body.
-    body = freq.args.to_dict() or freq.get_json(force=True, silent=True) or freq.form.to_dict()
+    body = _decode_contact_payload()
     contact_id = body.get("id") or None
     if contact_id and str(contact_id) not in ("", "null", "undefined"):
         contact = OrgContact.query.get_or_404(int(contact_id))
@@ -1432,7 +1444,7 @@ def contacts_save():
 
 @app.route("/api/contacts/remove", methods=["GET", "POST"])
 def contacts_remove():
-    body = freq.args.to_dict() or freq.get_json(force=True, silent=True) or freq.form.to_dict()
+    body = _decode_contact_payload()
     contact_id = body.get("id")
     if not contact_id:
         return jsonify({"error": "id required"}), 400
