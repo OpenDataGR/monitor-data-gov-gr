@@ -1411,7 +1411,7 @@ def _decode_contact_payload():
     return freq.get_json(force=True, silent=True) or freq.args.to_dict() or freq.form.to_dict()
 
 
-@app.route("/api/contacts/save", methods=["GET", "POST"])
+@app.route("/api/contacts/save", methods=["GET", "POST", "PATCH"])
 def contacts_save():
     body = _decode_contact_payload()
     contact_id = body.get("id") or None
@@ -1442,7 +1442,7 @@ def contacts_save():
         return jsonify(contact.to_dict()), 201
 
 
-@app.route("/api/contacts/remove", methods=["GET", "POST"])
+@app.route("/api/contacts/remove", methods=["GET", "POST", "DELETE"])
 def contacts_remove():
     body = _decode_contact_payload()
     contact_id = body.get("id")

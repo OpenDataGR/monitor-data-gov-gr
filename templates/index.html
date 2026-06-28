@@ -2775,7 +2775,7 @@ async function saveContact() {
     org_label:    _panelOrgLabel,
   };
   try {
-    const resp = await fetch(`${API_BASE}api/contacts/save?d=${_b64enc(body)}`, { method: 'GET', cache: 'no-store' });
+    const resp = await fetch(`${API_BASE}api/contacts/save?d=${_b64enc(body)}`, { method: 'PATCH', cache: 'no-store' });
     if (!resp.ok) {
       const txt = await resp.text();
       _allContacts = null;
@@ -2802,7 +2802,7 @@ async function saveContact() {
 async function deleteContact(id) {
   if (!confirm(t('contacts.delete_confirm'))) return;
   try {
-    await fetch(`${API_BASE}api/contacts/remove?d=${_b64enc({id})}`, { method: 'GET', cache: 'no-store' });
+    await fetch(`${API_BASE}api/contacts/remove?d=${_b64enc({id})}`, { method: 'DELETE', cache: 'no-store' });
     if (_contactFromTab) {
       _contactFromTab = false;
       _allContacts = null;
