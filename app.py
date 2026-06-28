@@ -1272,6 +1272,81 @@ def contacts_fix_contact_types():
 
 # ── Org Contacts ─────────────────────────────────────────────────────────────
 
+@app.route("/api/contacts", methods=["GET"])
+def contacts_all():
+    contacts = (
+        OrgContact.query
+        .order_by(OrgContact.org_code, OrgContact.last_name, OrgContact.first_name)
+        .all()
+    )
+    return jsonify([c.to_dict() for c in contacts])
+
+
+@app.route("/api/contacts/export", methods=["GET"])
+def contacts_export():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    search = freq.args.get("search", "").strip().lower()
+    type_filter = [t.strip() for t in freq.args.getlist("type") if t.strip()]
+
+    contacts = (
+        OrgContact.query
+        .order_by(OrgContact.org_code, OrgContact.last_name, OrgContact.first_name)
+        .all()
+    )
+
+    if search:
+        contacts = [
+            c for c in contacts
+            if any(search in (v or "").lower() for v in
+                   [c.org_label, c.org_code, c.first_name, c.last_name, c.position, c.email])
+        ]
+    if type_filter:
+        contacts = [
+            c for c in contacts
+            if any(t in (c.contact_type or "") for t in type_filter)
+        ]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Contacts"
+
+    headers = ["Organization", "First Name", "Last Name", "Position",
+               "Contact Type", "Email", "Tel", "Mobile"]
+    hdr_font = Font(bold=True, color="FFFFFF")
+    hdr_fill = PatternFill("solid", fgColor="2563EB")
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    for ri, c in enumerate(contacts, 2):
+        ws.cell(ri, 1, c.org_label or c.org_code)
+        ws.cell(ri, 2, c.first_name)
+        ws.cell(ri, 3, c.last_name)
+        ws.cell(ri, 4, c.position)
+        ws.cell(ri, 5, c.contact_type)
+        ws.cell(ri, 6, c.email)
+        ws.cell(ri, 7, c.tel)
+        ws.cell(ri, 8, c.mobile)
+
+    for col in ws.columns:
+        width = max((len(str(cell.value or "")) for cell in col), default=0)
+        ws.column_dimensions[col[0].column_letter].width = min(width + 2, 55)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name="contacts_export.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @app.route("/api/contacts/summary", methods=["GET"])
 def contacts_summary():
     from sqlalchemy import func

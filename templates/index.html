@@ -177,6 +177,11 @@
         <i class="bi bi-envelope me-1"></i><span data-i18n="tab.communications">Communications</span>
       </button>
     </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-contacts" id="contactsTabBtn">
+        <i class="bi bi-people me-1"></i><span data-i18n="tab.contacts">Contacts</span>
+      </button>
+    </li>
   </ul>
 
   <div class="tab-content pb-5">
@@ -500,6 +505,52 @@
       </div>
     </div>
 
+    <!-- Contacts -->
+    <div class="tab-pane fade" id="tab-contacts">
+      <div class="card p-4">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <input type="text" id="contactsSearch" class="form-control form-control-sm" style="max-width:220px"
+            placeholder="Search…" data-i18n-ph="contacts.search_ph" oninput="filterContactsTab()">
+          <select id="contactsTypeFilter" class="form-select form-select-sm" style="max-width:200px" onchange="filterContactsTab()">
+            <option value="" data-i18n="contacts.all_types">All Types</option>
+            <option value="Portal Administrator" data-i18n="contacts.type_portal_administrator">Portal Administrator</option>
+            <option value="Portal Editor"        data-i18n="contacts.type_portal_editor">Portal Editor</option>
+            <option value="Portal User"          data-i18n="contacts.type_portal_user">Portal User</option>
+            <option value="Data Officer"         data-i18n="contacts.type_data_officer">Data Officer</option>
+            <option value="Data Steward"         data-i18n="contacts.type_data_steward">Data Steward</option>
+          </select>
+          <span class="text-muted small ms-1" id="contactsCount"></span>
+          <div class="ms-auto d-flex gap-2 flex-wrap">
+            <button class="btn btn-outline-success btn-sm" onclick="exportContactsExcel()">
+              <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="contacts.export">Export Excel</span>
+            </button>
+            <label class="btn btn-outline-primary btn-sm mb-0">
+              <i class="bi bi-upload me-1"></i><span data-i18n="contacts.import">Import Excel</span>
+              <input type="file" accept=".xlsx,.xls" hidden onchange="importContactsExcel(this)">
+            </label>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover table-sm align-middle mb-0" id="contactsTable">
+            <thead class="table-light">
+              <tr>
+                <th class="text-muted fw-normal" style="width:2.5rem">#</th>
+                <th data-i18n="contacts.col_org">Organization</th>
+                <th data-i18n="contacts.col_name">Name</th>
+                <th data-i18n="contacts.type">Type</th>
+                <th data-i18n="contacts.position">Position</th>
+                <th data-i18n="contacts.email">Email</th>
+                <th data-i18n="contacts.col_tel">Tel / Mobile</th>
+              </tr>
+            </thead>
+            <tbody id="contactsTableBody">
+              <tr><td colspan="7" class="text-center py-5 text-muted"><span data-i18n="contacts.tab_hint">Open this tab to load contacts.</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </div><!-- tab-content -->
 </div><!-- container -->
 
@@ -699,6 +750,16 @@ const TRANSLATIONS = {
     'tab.quality': 'Quality',
     'tab.organizations': 'Organizations',
     'tab.communications': 'Communications',
+    'tab.contacts': 'Contacts',
+    'contacts.all_types': 'All Types',
+    'contacts.search_ph': 'Search…',
+    'contacts.export': 'Export Excel',
+    'contacts.import': 'Import Excel',
+    'contacts.col_org': 'Organization',
+    'contacts.col_name': 'Name',
+    'contacts.col_tel': 'Tel / Mobile',
+    'contacts.tab_hint': 'Open this tab to load contacts.',
+    'contacts.no_results': 'No contacts match the current filter.',
     'traffic.today_title': "Today's Traffic",
     'traffic.today': 'Today',
     'traffic.visits': 'Visits',
@@ -916,6 +977,16 @@ const TRANSLATIONS = {
     'tab.quality': 'Ποιότητα',
     'tab.organizations': 'Οργανισμοί',
     'tab.communications': 'Επικοινωνίες',
+    'tab.contacts': 'Επαφές',
+    'contacts.all_types': 'Όλοι οι τύποι',
+    'contacts.search_ph': 'Αναζήτηση…',
+    'contacts.export': 'Εξαγωγή Excel',
+    'contacts.import': 'Εισαγωγή Excel',
+    'contacts.col_org': 'Οργανισμός',
+    'contacts.col_name': 'Όνομα',
+    'contacts.col_tel': 'Τηλ / Κινητό',
+    'contacts.tab_hint': 'Ανοίξτε αυτή την καρτέλα για φόρτωση επαφών.',
+    'contacts.no_results': 'Δεν βρέθηκαν επαφές με τα τρέχοντα κριτήρια.',
     'traffic.today_title': 'Σημερινή Επισκεψιμότητα',
     'traffic.today': 'Σήμερα',
     'traffic.visits': 'Επισκέψεις',
@@ -2710,6 +2781,7 @@ async function saveContact() {
     if (!resp.ok) throw new Error(await resp.text());
     if (_contactModal) _contactModal.hide();
     openContactsPanel(_panelOrgCode, _panelOrgLabel);
+    _allContacts = null;
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
     else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
@@ -2723,6 +2795,7 @@ async function deleteContact(id) {
   try {
     await fetch(`${API_BASE}api/contacts/id/${id}`, { method: 'DELETE' });
     openContactsPanel(_panelOrgCode, _panelOrgLabel);
+    _allContacts = null;
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
     else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
@@ -2760,6 +2833,7 @@ async function importContactsExcel(input) {
       if (fixTJson.fixed) msg += ' (fixed ' + fixTJson.fixed + ' contact type(s))';
     } catch (_) {}
     alert(msg);
+    _allContacts = null;  // invalidate contacts tab cache
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
   } catch (e) {
@@ -2905,6 +2979,79 @@ async function confirmReset() {
   } finally {
     showSpinner(false);
   }
+}
+
+// ── Contacts tab ─────────────────────────────────────────────────────────────
+let _allContacts = null;
+
+document.getElementById('contactsTabBtn').addEventListener('click', () => {
+  loadContactsTab();
+});
+
+async function loadContactsTab() {
+  if (_allContacts !== null) { filterContactsTab(); return; }
+  show('contactsTableBody').innerHTML =
+    '<tr><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>';
+  try {
+    _allContacts = await fetch(API_BASE + 'api/contacts').then(r => r.json());
+    filterContactsTab();
+  } catch (e) {
+    show('contactsTableBody').innerHTML =
+      `<tr><td colspan="7" class="text-center text-danger py-4">Error: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+function filterContactsTab() {
+  if (!_allContacts) return;
+  const search = (show('contactsSearch').value || '').toLowerCase().trim();
+  const typeF  = show('contactsTypeFilter').value;
+
+  let rows = _allContacts;
+  if (search) {
+    rows = rows.filter(c =>
+      (c.org_label || c.org_code || '').toLowerCase().includes(search) ||
+      (c.first_name || '').toLowerCase().includes(search) ||
+      (c.last_name  || '').toLowerCase().includes(search) ||
+      (c.position   || '').toLowerCase().includes(search) ||
+      (c.email      || '').toLowerCase().includes(search)
+    );
+  }
+  if (typeF) rows = rows.filter(c => (c.contact_type || '').includes(typeF));
+
+  const total = _allContacts.length;
+  show('contactsCount').textContent = rows.length < total
+    ? `${rows.length} / ${total}`
+    : `${total}`;
+
+  if (!rows.length) {
+    show('contactsTableBody').innerHTML =
+      `<tr><td colspan="7" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+    return;
+  }
+
+  show('contactsTableBody').innerHTML = rows.map((c, i) => {
+    const orgCode  = c.org_code  || '';
+    const orgLabel = c.org_label || orgCode;
+    const tel      = c.tel || c.mobile || '';
+    return `<tr style="cursor:pointer" onclick="openContactsPanel(${JSON.stringify(orgCode)},${JSON.stringify(orgLabel)})">
+      <td class="text-muted small">${i + 1}</td>
+      <td class="small fw-semibold">${esc(orgLabel)}</td>
+      <td class="text-nowrap">${esc(c.first_name)} ${esc(c.last_name)}</td>
+      <td>${_contactTypeBadge(c.contact_type)}</td>
+      <td class="text-muted small">${esc(c.position)}</td>
+      <td class="small">${c.email ? `<a href="mailto:${esc(c.email)}" onclick="event.stopPropagation()">${esc(c.email)}</a>` : ''}</td>
+      <td class="small text-nowrap">${esc(tel)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function exportContactsExcel() {
+  const search = (show('contactsSearch').value || '').trim();
+  const typeF  = show('contactsTypeFilter').value;
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (typeF)  params.set('type', typeF);
+  window.location = API_BASE + 'api/contacts/export?' + params.toString();
 }
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
