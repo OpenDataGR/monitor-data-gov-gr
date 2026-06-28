@@ -539,10 +539,11 @@
                 <th data-i18n="contacts.position">Position</th>
                 <th data-i18n="contacts.email">Email</th>
                 <th data-i18n="contacts.col_tel">Tel / Mobile</th>
+                <th style="width:5rem"></th>
               </tr>
             </thead>
             <tbody id="contactsTableBody">
-              <tr><td colspan="7" class="text-center py-5 text-muted"><span data-i18n="contacts.tab_hint">Open this tab to load contacts.</span></td></tr>
+              <tr><td colspan="8" class="text-center py-5 text-muted"><span data-i18n="contacts.tab_hint">Open this tab to load contacts.</span></td></tr>
             </tbody>
           </table>
         </div>
@@ -2778,7 +2779,13 @@ async function saveContact() {
     const resp   = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
     if (!resp.ok) throw new Error(await resp.text());
     if (_contactModal) _contactModal.hide();
-    openContactsPanel(_panelOrgCode, _panelOrgLabel);
+    if (_contactFromTab) {
+      _contactFromTab = false;
+      _allContacts = null;
+      loadContactsTab();
+    } else {
+      openContactsPanel(_panelOrgCode, _panelOrgLabel);
+    }
     _allContacts = null;
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
@@ -2792,7 +2799,13 @@ async function deleteContact(id) {
   if (!confirm(t('contacts.delete_confirm'))) return;
   try {
     await fetch(`${API_BASE}api/contacts/id/${id}`, { method: 'DELETE' });
-    openContactsPanel(_panelOrgCode, _panelOrgLabel);
+    if (_contactFromTab) {
+      _contactFromTab = false;
+      _allContacts = null;
+      loadContactsTab();
+    } else {
+      openContactsPanel(_panelOrgCode, _panelOrgLabel);
+    }
     _allContacts = null;
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
@@ -2979,8 +2992,25 @@ async function confirmReset() {
 
 // ── Contacts tab ─────────────────────────────────────────────────────────────
 let _allContacts     = null;
+let _tabContactRows  = [];
 let _contactsSortCol = 'org';
 let _contactsSortDir = 'asc';
+let _contactFromTab  = false;
+
+function editContactInTab(c) {
+  _contactFromTab = true;
+  _panelOrgCode   = c.org_code  || '';
+  _panelOrgLabel  = c.org_label || _panelOrgCode;
+  if (!_contactModal) _contactModal = new bootstrap.Modal(document.getElementById('contactModal'));
+  openContactModal(c);
+}
+
+function deleteContactFromTab(id, orgCode, orgLabel) {
+  _contactFromTab = true;
+  _panelOrgCode   = orgCode;
+  _panelOrgLabel  = orgLabel;
+  deleteContact(id);
+}
 
 document.getElementById('contactsTabBtn').addEventListener('click', () => {
   loadContactsTab();
@@ -2989,13 +3019,13 @@ document.getElementById('contactsTabBtn').addEventListener('click', () => {
 async function loadContactsTab() {
   if (_allContacts !== null) { filterContactsTab(); return; }
   show('contactsTableBody').innerHTML =
-    '<tr><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>';
+    '<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>';
   try {
     _allContacts = await fetch(API_BASE + 'api/contacts').then(r => r.json());
     filterContactsTab();
   } catch (e) {
     show('contactsTableBody').innerHTML =
-      `<tr><td colspan="7" class="text-center text-danger py-4">Error: ${esc(e.message)}</td></tr>`;
+      `<tr><td colspan="8" class="text-center text-danger py-4">Error: ${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -3066,13 +3096,16 @@ function filterContactsTab() {
     th('type',     t('contacts.type')) +
     th('position', t('contacts.position')) +
     th('email',    t('contacts.email')) +
-    th('tel',      t('contacts.col_tel'));
+    th('tel',      t('contacts.col_tel')) +
+    `<th style="width:5rem"></th>`;
 
   if (!rows.length) {
     show('contactsTableBody').innerHTML =
-      `<tr><td colspan="7" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+      `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
     return;
   }
+
+  _tabContactRows = rows;  // keep reference so edit buttons can look up by index
 
   show('contactsTableBody').innerHTML = rows.map((c, i) => {
     const orgCode  = c.org_code  || '';
@@ -3086,6 +3119,12 @@ function filterContactsTab() {
       <td class="text-muted small">${esc(c.position)}</td>
       <td class="small">${c.email ? `<a href="mailto:${esc(c.email)}" onclick="event.stopPropagation()">${esc(c.email)}</a>` : ''}</td>
       <td class="small text-nowrap">${esc(tel)}</td>
+      <td onclick="event.stopPropagation()" class="text-nowrap">
+        <button class="btn btn-outline-secondary btn-sm py-0 px-1 me-1" title="${t('contacts.modal_edit')}"
+          onclick="editContactInTab(_tabContactRows[${i}])"><i class="bi bi-pencil"></i></button>
+        <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('contacts.delete_confirm')}"
+          onclick="deleteContactFromTab(${c.id},${JSON.stringify(orgCode)},${JSON.stringify(orgLabel)})"><i class="bi bi-trash"></i></button>
+      </td>
     </tr>`;
   }).join('');
 }
