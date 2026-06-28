@@ -3107,7 +3107,7 @@ function filterContactsTab() {
     th('position', t('contacts.position')) +
     th('email',    t('contacts.email')) +
     th('tel',      t('contacts.col_tel')) +
-    `<th style="width:5rem"></th>`;
+    `<th style="width:6rem"></th>`;
 
   if (!rows.length) {
     show('contactsTableBody').innerHTML =
@@ -3121,9 +3121,10 @@ function filterContactsTab() {
     const orgCode  = c.org_code  || '';
     const orgLabel = c.org_label || orgCode;
     const tel      = c.tel || c.mobile || '';
-    // Row click = edit; data attributes avoid double-quote collision in onclick
-    return `<tr style="cursor:pointer" title="${t('contacts.modal_edit')}"
-      onclick="editContactInTab(_tabContactRows[${i}])">
+    // Row click = open org contacts panel; action buttons handle edit/delete
+    return `<tr style="cursor:pointer" title="${esc(orgLabel)}"
+      onclick="openContactsPanel(this.dataset.code, this.dataset.label)"
+      data-code="${esc(orgCode)}" data-label="${esc(orgLabel)}">
       <td class="text-muted small">${i + 1}</td>
       <td class="small fw-semibold">${esc(orgLabel)}</td>
       <td class="text-nowrap">${esc(c.first_name)} ${esc(c.last_name)}</td>
@@ -3131,7 +3132,9 @@ function filterContactsTab() {
       <td class="text-muted small">${esc(c.position)}</td>
       <td class="small">${c.email ? `<a href="mailto:${esc(c.email)}" onclick="event.stopPropagation()">${esc(c.email)}</a>` : ''}</td>
       <td class="small text-nowrap">${esc(tel)}</td>
-      <td onclick="event.stopPropagation()" class="text-nowrap">
+      <td onclick="event.stopPropagation()" class="text-nowrap d-flex gap-1">
+        <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('contacts.modal_edit')}"
+          onclick="editContactInTab(_tabContactRows[${i}])"><i class="bi bi-pencil"></i></button>
         <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('contacts.delete_confirm')}"
           data-id="${c.id}" data-code="${esc(orgCode)}" data-label="${esc(orgLabel)}"
           onclick="deleteContactFromTab(+this.dataset.id,this.dataset.code,this.dataset.label)"><i class="bi bi-trash"></i></button>
