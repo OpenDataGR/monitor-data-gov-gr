@@ -2614,8 +2614,8 @@ async function saveComm() {
   }
 
   try {
-    const url  = id ? `${API_BASE}api/communications/${id}` : `${API_BASE}api/communications`;
-    const resp = await fetch(url, { method: 'POST', body: new URLSearchParams(body) });
+    const url  = id ? `${API_BASE}api/communications/${id}?d=${_b64enc(body)}` : `${API_BASE}api/communications?d=${_b64enc(body)}`;
+    const resp = await fetch(url, { method: id ? 'PATCH' : 'POST', cache: 'no-store' });
     const json   = await resp.json();
     if (!resp.ok) { err.textContent = json.error || 'Save failed.'; err.classList.remove('d-none'); return; }
 
@@ -2636,7 +2636,7 @@ async function saveComm() {
 async function deleteComm(id) {
   if (!confirm(t('comm_modal.delete_confirm'))) return;
   try {
-    await fetch(`${API_BASE}api/communications/${id}/delete`, { method: 'POST' });
+    await fetch(`${API_BASE}api/communications/${id}/delete`, { method: 'DELETE', cache: 'no-store' });
     _commsData = _commsData.filter(c => c.id !== id);
     renderCommsSummary();
     filterComms();
@@ -2969,9 +2969,8 @@ async function confirmReset() {
   errEl.classList.add('d-none');
   showSpinner(true);
   try {
-    const resp = await fetch(API_BASE + 'api/admin/reset', {
-      method: 'POST',
-      body:   new URLSearchParams({ password: pw }),
+    const resp = await fetch(`${API_BASE}api/admin/reset?d=${_b64enc({password: pw})}`, {
+      method: 'POST', cache: 'no-store',
     });
     if (resp.status === 403) {
       errEl.textContent = t('reset.modal_wrong_pw');

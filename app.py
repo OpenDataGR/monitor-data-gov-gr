@@ -814,9 +814,9 @@ def communications_list():
     return jsonify([r.to_dict() for r in rows])
 
 
-@app.route("/api/communications", methods=["POST"])
+@app.route("/api/communications", methods=["GET", "POST"])
 def communications_create():
-    body = freq.get_json(force=True, silent=True) or freq.form.to_dict()
+    body = _decode_payload()
     org_name  = (body.get("org_name") or "").strip()
     subject   = (body.get("subject") or "").strip()
     contact_date = (body.get("contact_date") or "").strip()
@@ -839,10 +839,10 @@ def communications_create():
     return jsonify(comm.to_dict()), 201
 
 
-@app.route("/api/communications/<int:comm_id>", methods=["PATCH", "POST"])
+@app.route("/api/communications/<int:comm_id>", methods=["GET", "PATCH", "POST"])
 def communications_update(comm_id):
     comm = Communication.query.get_or_404(comm_id)
-    body = freq.get_json(force=True, silent=True) or freq.form.to_dict()
+    body = _decode_payload()
     if "contact_date" in body:
         comm.contact_date = (body["contact_date"] or "").strip()
     if "org_name" in body:
@@ -863,7 +863,7 @@ def communications_update(comm_id):
     return jsonify(comm.to_dict())
 
 
-@app.route("/api/communications/<int:comm_id>/delete", methods=["DELETE", "POST"])
+@app.route("/api/communications/<int:comm_id>/delete", methods=["GET", "DELETE", "POST"])
 def communications_delete(comm_id):
     comm = Communication.query.get_or_404(comm_id)
     db.session.delete(comm)
@@ -1398,8 +1398,8 @@ def contacts_delete(contact_id):
     return jsonify({"ok": True})
 
 
-def _decode_contact_payload():
-    """Decode a base64-encoded JSON payload from ?d=... or fall back to flat query/form params."""
+def _decode_payload():
+    """Decode a base64-encoded JSON payload from ?d=... or fall back to JSON/form/query params."""
     import base64 as _b64, json as _json
     raw = freq.args.get("d") or freq.form.get("d") or ""
     if raw:
@@ -1408,12 +1408,12 @@ def _decode_contact_payload():
             return _json.loads(_b64.b64decode(padded).decode("utf-8"))
         except Exception:
             pass
-    return freq.get_json(force=True, silent=True) or freq.args.to_dict() or freq.form.to_dict()
+    return freq.get_json(force=True, silent=True) or freq.form.to_dict() or freq.args.to_dict()
 
 
 @app.route("/api/contacts/save", methods=["GET", "POST", "PATCH"])
 def contacts_save():
-    body = _decode_contact_payload()
+    body = _decode_payload()
     contact_id = body.get("id") or None
     if contact_id and str(contact_id) not in ("", "null", "undefined"):
         contact = OrgContact.query.get_or_404(int(contact_id))
@@ -1444,7 +1444,7 @@ def contacts_save():
 
 @app.route("/api/contacts/remove", methods=["GET", "POST", "DELETE"])
 def contacts_remove():
-    body = _decode_contact_payload()
+    body = _decode_payload()
     contact_id = body.get("id")
     if not contact_id:
         return jsonify({"error": "id required"}), 400
@@ -1768,10 +1768,10 @@ def matomo_debug_pages():
         return jsonify({"error": str(exc)}), 503
 
 
-@app.route("/api/admin/reset", methods=["POST"])
+@app.route("/api/admin/reset", methods=["GET", "POST"])
 def admin_reset():
     if config.DASHBOARD_PASSWORD:
-        body = freq.get_json(silent=True) or freq.form.to_dict()
+        body = _decode_payload()
         if _pw_hash(body.get("password", "")) != _pw_hash(config.DASHBOARD_PASSWORD):
             return jsonify({"error": "Incorrect password"}), 403
     db.session.query(HealthCheck).delete()
