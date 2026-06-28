@@ -839,7 +839,7 @@ def communications_create():
     return jsonify(comm.to_dict()), 201
 
 
-@app.route("/api/communications/<int:comm_id>", methods=["PATCH"])
+@app.route("/api/communications/<int:comm_id>", methods=["PATCH", "POST"])
 def communications_update(comm_id):
     comm = Communication.query.get_or_404(comm_id)
     body = freq.get_json(force=True) or {}
@@ -863,7 +863,7 @@ def communications_update(comm_id):
     return jsonify(comm.to_dict())
 
 
-@app.route("/api/communications/<int:comm_id>", methods=["DELETE"])
+@app.route("/api/communications/<int:comm_id>/delete", methods=["DELETE", "POST"])
 def communications_delete(comm_id):
     comm = Communication.query.get_or_404(comm_id)
     db.session.delete(comm)
@@ -1379,7 +1379,7 @@ def contacts_create(org_code):
     return jsonify(contact.to_dict()), 201
 
 
-@app.route("/api/contacts/id/<int:contact_id>", methods=["PATCH"])
+@app.route("/api/contacts/id/<int:contact_id>", methods=["PATCH", "POST"])
 def contacts_update(contact_id):
     contact = OrgContact.query.get_or_404(contact_id)
     body = freq.get_json(force=True) or {}
@@ -1390,7 +1390,7 @@ def contacts_update(contact_id):
     return jsonify(contact.to_dict())
 
 
-@app.route("/api/contacts/id/<int:contact_id>", methods=["DELETE"])
+@app.route("/api/contacts/id/<int:contact_id>/delete", methods=["DELETE", "POST"])
 def contacts_delete(contact_id):
     contact = OrgContact.query.get_or_404(contact_id)
     db.session.delete(contact)
