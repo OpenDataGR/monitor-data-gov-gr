@@ -2777,7 +2777,12 @@ async function saveContact() {
     const url    = id ? `${API_BASE}api/contacts/id/${id}` : `${API_BASE}api/contacts/${encodeURIComponent(_panelOrgCode)}`;
     const method = 'POST';
     const resp   = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
-    if (!resp.ok) throw new Error(await resp.text());
+    if (!resp.ok) {
+      const txt = await resp.text();
+      _allContacts = null;
+      if (_contactFromTab) { _contactFromTab = false; loadContactsTab(); }
+      throw new Error(`HTTP ${resp.status} – ${txt.slice(0, 200)}`);
+    }
     if (_contactModal) _contactModal.hide();
     if (_contactFromTab) {
       _contactFromTab = false;
