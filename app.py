@@ -816,7 +816,7 @@ def communications_list():
 
 @app.route("/api/communications", methods=["POST"])
 def communications_create():
-    body = freq.get_json(force=True) or {}
+    body = freq.get_json(force=True, silent=True) or freq.form.to_dict()
     org_name  = (body.get("org_name") or "").strip()
     subject   = (body.get("subject") or "").strip()
     contact_date = (body.get("contact_date") or "").strip()
@@ -842,7 +842,7 @@ def communications_create():
 @app.route("/api/communications/<int:comm_id>", methods=["PATCH", "POST"])
 def communications_update(comm_id):
     comm = Communication.query.get_or_404(comm_id)
-    body = freq.get_json(force=True) or {}
+    body = freq.get_json(force=True, silent=True) or freq.form.to_dict()
     if "contact_date" in body:
         comm.contact_date = (body["contact_date"] or "").strip()
     if "org_name" in body:
@@ -1400,9 +1400,11 @@ def contacts_delete(contact_id):
 
 @app.route("/api/contacts/save", methods=["POST"])
 def contacts_save():
-    body = freq.get_json(force=True) or {}
-    contact_id = body.get("id")
-    if contact_id:
+    # Accept both form-encoded (application/x-www-form-urlencoded) and JSON bodies.
+    # Form-encoded is the default so it is not blocked by WAF rules targeting application/json.
+    body = freq.get_json(force=True, silent=True) or freq.form.to_dict()
+    contact_id = body.get("id") or None
+    if contact_id and str(contact_id) not in ("", "null", "undefined"):
         contact = OrgContact.query.get_or_404(int(contact_id))
         for field in ("first_name", "last_name", "position", "contact_type", "email", "tel", "mobile", "org_label"):
             if field in body:
@@ -1431,7 +1433,7 @@ def contacts_save():
 
 @app.route("/api/contacts/remove", methods=["POST"])
 def contacts_remove():
-    body = freq.get_json(force=True) or {}
+    body = freq.get_json(force=True, silent=True) or freq.form.to_dict()
     contact_id = body.get("id")
     if not contact_id:
         return jsonify({"error": "id required"}), 400
@@ -1758,7 +1760,7 @@ def matomo_debug_pages():
 @app.route("/api/admin/reset", methods=["POST"])
 def admin_reset():
     if config.DASHBOARD_PASSWORD:
-        body = freq.get_json(silent=True) or {}
+        body = freq.get_json(silent=True) or freq.form.to_dict()
         if _pw_hash(body.get("password", "")) != _pw_hash(config.DASHBOARD_PASSWORD):
             return jsonify({"error": "Incorrect password"}), 403
     db.session.query(HealthCheck).delete()

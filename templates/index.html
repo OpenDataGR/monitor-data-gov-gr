@@ -2614,9 +2614,8 @@ async function saveComm() {
   }
 
   try {
-    const url    = id ? `${API_BASE}api/communications/${id}` : `${API_BASE}api/communications`;
-    const method = 'POST';
-    const resp   = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    const url  = id ? `${API_BASE}api/communications/${id}` : `${API_BASE}api/communications`;
+    const resp = await fetch(url, { method: 'POST', body: new URLSearchParams(body) });
     const json   = await resp.json();
     if (!resp.ok) { err.textContent = json.error || 'Save failed.'; err.classList.remove('d-none'); return; }
 
@@ -2777,7 +2776,7 @@ async function saveContact() {
   };
   try {
     const url  = `${API_BASE}api/contacts/save`;
-    const resp = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    const resp = await fetch(url, { method: 'POST', body: new URLSearchParams(Object.fromEntries(Object.entries(body).filter(([,v]) => v !== null))) });
     if (!resp.ok) {
       const txt = await resp.text();
       _allContacts = null;
@@ -2804,7 +2803,7 @@ async function saveContact() {
 async function deleteContact(id) {
   if (!confirm(t('contacts.delete_confirm'))) return;
   try {
-    await fetch(`${API_BASE}api/contacts/remove`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id}) });
+    await fetch(`${API_BASE}api/contacts/remove`, { method: 'POST', body: new URLSearchParams({id}) });
     if (_contactFromTab) {
       _contactFromTab = false;
       _allContacts = null;
@@ -2972,9 +2971,8 @@ async function confirmReset() {
   showSpinner(true);
   try {
     const resp = await fetch(API_BASE + 'api/admin/reset', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ password: pw }),
+      method: 'POST',
+      body:   new URLSearchParams({ password: pw }),
     });
     if (resp.status === 403) {
       errEl.textContent = t('reset.modal_wrong_pw');
