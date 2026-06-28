@@ -2753,6 +2753,12 @@ async function importContactsExcel(input) {
       const fixJson = await fix.json();
       if (fixJson.fixed) msg += ' (fixed ' + fixJson.fixed + ' org code(s))';
     } catch (_) {}
+    // Normalize contact types (Greek role names → canonical English values)
+    try {
+      const fixT = await fetch(API_BASE + 'api/contacts/fix-contact-types', {method:'POST'});
+      const fixTJson = await fixT.json();
+      if (fixTJson.fixed) msg += ' (fixed ' + fixTJson.fixed + ' contact type(s))';
+    } catch (_) {}
     alert(msg);
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();

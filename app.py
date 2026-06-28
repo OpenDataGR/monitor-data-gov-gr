@@ -244,6 +244,24 @@ def run_health_checks():
 _HRMS_CACHE: dict = {"data": None, "fetched_at": 0.0}
 _HRMS_TTL = 24 * 3600  # refresh once per day
 
+# Canonical contact-type values (norm'd Greek or English → stored value)
+# Keys are already accent-stripped lowercase (output of _norm()).
+_ROLE_MAP = {
+    "διαχειριστης πυλης":       "Portal Administrator",
+    "διαχειριστης":             "Portal Administrator",
+    "συντακτης πυλης":          "Portal Editor",
+    "συντακτης":                "Portal Editor",
+    "χρηστης πυλης":            "Portal User",
+    "χρηστης":                  "Portal User",
+    "υπευθυνος δεδομενων":      "Data Officer",
+    "θεματοφυλακας δεδομενων":  "Data Steward",
+    "portal administrator":     "Portal Administrator",
+    "portal editor":            "Portal Editor",
+    "portal user":              "Portal User",
+    "data officer":             "Data Officer",
+    "data steward":             "Data Steward",
+}
+
 
 
 @app.route("/api/public-orgs")
@@ -1000,9 +1018,8 @@ def contacts_import():
                     skipped += 1
                     continue
 
-                # Combine position + portal_role
-                if portal_role and portal_role not in position:
-                    position = (position + " [" + portal_role + "]").strip() if position else portal_role
+                # Map portal_role (Greek or English) → canonical contact_type
+                contact_type = _ROLE_MAP.get(_norm(portal_role)) if portal_role else None
 
                 # Match to HRMS code
                 org_code = hrms_lookup.get(_norm(org_label), org_label)
@@ -1015,13 +1032,14 @@ def contacts_import():
                 existing.add((org_code, email_key))
 
                 db.session.add(OrgContact(
-                    org_code   = org_code,
-                    org_label  = org_label,
-                    first_name = first_name or None,
-                    last_name  = last_name  or None,
-                    position   = position   or None,
-                    email      = email      or None,
-                    tel        = tel        or None,
+                    org_code     = org_code,
+                    org_label    = org_label,
+                    first_name   = first_name    or None,
+                    last_name    = last_name     or None,
+                    position     = position      or None,
+                    contact_type = contact_type  or None,
+                    email        = email         or None,
+                    tel          = tel           or None,
                 ))
                 imported += 1
             except Exception as exc:
@@ -1207,6 +1225,46 @@ def contacts_fix_org_codes():
             if matched_code and matched_code != c.org_code:
                 c.org_code = matched_code
                 fixed += 1
+
+    db.session.commit()
+    return jsonify({"fixed": fixed, "total": len(contacts)})
+
+
+@app.route("/api/contacts/fix-contact-types", methods=["POST"])
+def contacts_fix_contact_types():
+    """Backfill contact_type from [role] suffixes left in the position field by old imports."""
+    import unicodedata
+
+    def _norm(s):
+        if not s:
+            return ""
+        s = unicodedata.normalize("NFD", str(s).strip().strip('"'))
+        s = "".join(c for c in s if not unicodedata.combining(c))
+        s = re.sub(r"[^\w\s]", " ", s.lower())
+        return re.sub(r"\s+", " ", s).strip()
+
+    fixed = 0
+    contacts = OrgContact.query.all()
+    for c in contacts:
+        # Extract [role] suffix from position (e.g. "Προϊστάμενος [Διαχειριστής]")
+        role_in_pos = None
+        clean_pos = c.position or ""
+        m = re.search(r'\[([^\]]+)\]\s*$', clean_pos)
+        if m:
+            role_in_pos = m.group(1).strip()
+            clean_pos = clean_pos[:m.start()].strip()
+
+        canonical = _ROLE_MAP.get(_norm(role_in_pos)) if role_in_pos else None
+
+        changed = False
+        if canonical and not c.contact_type:
+            c.contact_type = canonical
+            changed = True
+        if role_in_pos and clean_pos != (c.position or ""):
+            c.position = clean_pos or None
+            changed = True
+        if changed:
+            fixed += 1
 
     db.session.commit()
     return jsonify({"fixed": fixed, "total": len(contacts)})
