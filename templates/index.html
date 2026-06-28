@@ -2764,6 +2764,8 @@ async function saveContact() {
   const _telVal    = show('contactTel').value.trim();
   const _mobileVal = show('contactMobile').value.trim();
   const body = {
+    id:           id ? parseInt(id, 10) : null,
+    org_code:     _panelOrgCode,
     first_name:   show('contactFirstName').value.trim(),
     last_name:    show('contactLastName').value.trim(),
     position:     show('contactPosition').value.trim(),
@@ -2774,9 +2776,8 @@ async function saveContact() {
     org_label:    _panelOrgLabel,
   };
   try {
-    const url    = id ? `${API_BASE}api/contacts/id/${id}` : `${API_BASE}api/contacts/${encodeURIComponent(_panelOrgCode)}`;
-    const method = 'POST';
-    const resp   = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    const url  = `${API_BASE}api/contacts/save`;
+    const resp = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
     if (!resp.ok) {
       const txt = await resp.text();
       _allContacts = null;
@@ -2803,7 +2804,7 @@ async function saveContact() {
 async function deleteContact(id) {
   if (!confirm(t('contacts.delete_confirm'))) return;
   try {
-    await fetch(`${API_BASE}api/contacts/id/${id}/delete`, { method: 'POST' });
+    await fetch(`${API_BASE}api/contacts/remove`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id}) });
     if (_contactFromTab) {
       _contactFromTab = false;
       _allContacts = null;

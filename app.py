@@ -1396,6 +1396,49 @@ def contacts_delete(contact_id):
     db.session.delete(contact)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@app.route("/api/contacts/save", methods=["POST"])
+def contacts_save():
+    body = freq.get_json(force=True) or {}
+    contact_id = body.get("id")
+    if contact_id:
+        contact = OrgContact.query.get_or_404(int(contact_id))
+        for field in ("first_name", "last_name", "position", "contact_type", "email", "tel", "mobile", "org_label"):
+            if field in body:
+                setattr(contact, field, (body[field] or "").strip() or None)
+        db.session.commit()
+        return jsonify(contact.to_dict())
+    else:
+        org_code = (body.get("org_code") or "").strip()
+        if not org_code:
+            return jsonify({"error": "org_code required"}), 400
+        contact = OrgContact(
+            org_code=org_code,
+            org_label=(body.get("org_label") or "").strip() or None,
+            first_name=(body.get("first_name") or "").strip() or None,
+            last_name=(body.get("last_name") or "").strip() or None,
+            position=(body.get("position") or "").strip() or None,
+            contact_type=(body.get("contact_type") or "").strip() or None,
+            email=(body.get("email") or "").strip() or None,
+            tel=(body.get("tel") or "").strip() or None,
+            mobile=(body.get("mobile") or "").strip() or None,
+        )
+        db.session.add(contact)
+        db.session.commit()
+        return jsonify(contact.to_dict()), 201
+
+
+@app.route("/api/contacts/remove", methods=["POST"])
+def contacts_remove():
+    body = freq.get_json(force=True) or {}
+    contact_id = body.get("id")
+    if not contact_id:
+        return jsonify({"error": "id required"}), 400
+    contact = OrgContact.query.get_or_404(int(contact_id))
+    db.session.delete(contact)
+    db.session.commit()
+    return jsonify({"ok": True})
 # ── Matomo Analytics ─────────────────────────────────────────────────────────
 
 _MATOMO_CACHE: dict = {}
