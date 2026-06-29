@@ -1471,12 +1471,12 @@ async function loadStatsTab() {
           {
             label: t('stats.col_datasets'),
             data:  history.filter(d => d.total_datasets).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.total_datasets })),
-            borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.3,
+            borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.3, pointRadius: 0,
           },
           {
             label: t('stats.col_resources'),
             data:  history.filter(d => d.total_resources).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.total_resources })),
-            borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.08)', fill: true, tension: 0.3,
+            borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.08)', fill: true, tension: 0.3, pointRadius: 0,
           }
         ]
       },
