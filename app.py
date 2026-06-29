@@ -753,7 +753,7 @@ def organization_detail(org_name):
     try:
         r = requests.get(
             f"{config.PORTAL_BASE}/api/3/action/organization_show",
-            params={"id": org_name},
+            params={"id": org_name, "include_users": True},
             timeout=config.REQUEST_TIMEOUT,
             headers=headers,
         )
@@ -769,6 +769,14 @@ def organization_detail(org_name):
                     "package_count": org.get("package_count", 0),
                     "created":       org.get("created"),
                     "state":         org.get("state"),
+                    "members":       [
+                        {
+                            "name":         u.get("name", ""),
+                            "display_name": u.get("display_name") or u.get("fullname") or u.get("name", ""),
+                            "capacity":     u.get("capacity", "member"),
+                        }
+                        for u in (org.get("users") or [])
+                    ],
                 }
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
