@@ -1003,16 +1003,21 @@ def contacts_import():
         imported = skipped = 0
         errors = []
 
-        for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_col=10, values_only=True), start=2):
+        # Expected columns (matches export format):
+        # A=Organization  B=First Name  C=Last Name  D=Position
+        # E=Contact Type  F=Email  G=Tel  H=Mobile
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2, max_col=9, values_only=True), start=2):
             try:
-                org_label   = str(row[1] or "").strip()
-                first_name  = str(row[2] or "").strip()
-                last_name   = str(row[3] or "").strip()
-                position    = str(row[4] or "").strip()
-                portal_role = str(row[5] or "").strip()
+                org_label   = str(row[0] or "").strip()
+                first_name  = str(row[1] or "").strip()
+                last_name   = str(row[2] or "").strip()
+                position    = str(row[3] or "").strip()
+                portal_role = str(row[4] or "").strip()
+                email       = str(row[5] or "").strip()
                 tel_raw     = row[6]
                 tel         = str(int(tel_raw)) if isinstance(tel_raw, (int, float)) else str(tel_raw or "").strip()
-                email       = str(row[7] or "").strip()
+                mob_raw     = row[7] if len(row) > 7 else None
+                mobile      = str(int(mob_raw)) if isinstance(mob_raw, (int, float)) else str(mob_raw or "").strip()
 
                 if not org_label or (not first_name and not last_name):
                     skipped += 1
@@ -1040,6 +1045,7 @@ def contacts_import():
                     contact_type = contact_type  or None,
                     email        = email         or None,
                     tel          = tel           or None,
+                    mobile       = mobile        or None,
                 ))
                 imported += 1
             except Exception as exc:
