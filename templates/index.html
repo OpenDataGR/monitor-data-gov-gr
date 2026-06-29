@@ -525,6 +525,14 @@
             <option value="db"     data-i18n="contacts.source_db">File</option>
             <option value="portal" data-i18n="contacts.source_portal">Portal</option>
           </select>
+          <select id="contactsOrgFilter" class="form-select form-select-sm" style="max-width:220px" onchange="filterContactsTab()">
+            <option value="" data-i18n="contacts.all_orgs">All organizations</option>
+          </select>
+          <select id="contactsStateFilter" class="form-select form-select-sm" style="max-width:160px" onchange="filterContactsTab()">
+            <option value=""        data-i18n="contacts.state_all">All states</option>
+            <option value="active"  data-i18n="contacts.state_active">Active</option>
+            <option value="pending" data-i18n="contacts.state_pending">Pending</option>
+          </select>
           <span class="text-muted small ms-1" id="contactsCount"></span>
           <div class="ms-auto d-flex gap-2 flex-wrap">
             <button class="btn btn-outline-success btn-sm" onclick="exportContactsExcel()">
@@ -772,6 +780,10 @@ const TRANSLATIONS = {
     'contacts.tab_hint': 'Open this tab to load contacts.',
     'contacts.no_results': 'No contacts match the current filter.',
     'contacts.portal_loading': 'Loading portal users…',
+    'contacts.all_orgs':    'All organizations',
+    'contacts.state_all':   'All states',
+    'contacts.state_active':  'Active',
+    'contacts.state_pending': 'Pending',
     'traffic.today_title': "Today's Traffic",
     'traffic.today': 'Today',
     'traffic.visits': 'Visits',
@@ -1004,6 +1016,10 @@ const TRANSLATIONS = {
     'contacts.tab_hint': 'Ανοίξτε αυτή την καρτέλα για φόρτωση επαφών.',
     'contacts.no_results': 'Δεν βρέθηκαν επαφές με τα τρέχοντα κριτήρια.',
     'contacts.portal_loading': 'Φόρτωση χρηστών πύλης…',
+    'contacts.all_orgs':    'Όλοι οι φορείς',
+    'contacts.state_all':   'Όλες οι καταστάσεις',
+    'contacts.state_active':  'Ενεργοί',
+    'contacts.state_pending': 'Σε εκκρεμότητα',
     'traffic.today_title': 'Σημερινή Επισκεψιμότητα',
     'traffic.today': 'Σήμερα',
     'traffic.visits': 'Επισκέψεις',
@@ -3209,14 +3225,29 @@ function _contactsSortArrow(col) {
   return _contactsSortDir === 'asc' ? ' ↑' : ' ↓';
 }
 
+function _rebuildOrgFilter() {
+  const el = show('contactsOrgFilter');
+  if (!el || !_allUnified) return;
+  const current = el.value;
+  const orgs = [...new Set(_allUnified.map(c => c.org_label || c.org_code || '').filter(Boolean))].sort((a, b) => a.localeCompare(b, 'el'));
+  el.innerHTML = `<option value="">${t('contacts.all_orgs')}</option>` +
+    orgs.map(o => `<option value="${esc(o)}"${o === current ? ' selected' : ''}>${esc(o)}</option>`).join('');
+}
+
 function filterContactsTab() {
   if (!_allUnified) return;
+  _rebuildOrgFilter();
   const search  = (show('contactsSearch').value || '').toLowerCase().trim();
   const typeF   = show('contactsTypeFilter').value;
   const sourceF = (show('contactsSourceFilter') || {}).value || '';
+  const orgF    = (show('contactsOrgFilter')    || {}).value || '';
+  const stateF  = (show('contactsStateFilter')  || {}).value || '';
 
   let rows = _allUnified;
   if (sourceF) rows = rows.filter(c => c._source === sourceF);
+  if (orgF)    rows = rows.filter(c => (c.org_label || c.org_code || '') === orgF);
+  if (stateF === 'active')  rows = rows.filter(c => !c._state || c._state === 'active');
+  if (stateF === 'pending') rows = rows.filter(c => c._state && c._state !== 'active');
   if (search) {
     rows = rows.filter(c =>
       (c.org_label || c.org_code || '').toLowerCase().includes(search) ||
