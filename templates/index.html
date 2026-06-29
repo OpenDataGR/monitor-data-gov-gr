@@ -520,6 +520,11 @@
             <option value="Data Officer"         data-i18n="contacts.type_data_officer">Data Officer</option>
             <option value="Data Steward"         data-i18n="contacts.type_data_steward">Data Steward</option>
           </select>
+          <select id="contactsSourceFilter" class="form-select form-select-sm" style="max-width:150px" onchange="filterContactsTab()">
+            <option value=""       data-i18n="contacts.all_sources">All sources</option>
+            <option value="db"     data-i18n="contacts.source_db">File</option>
+            <option value="portal" data-i18n="contacts.source_portal">Portal</option>
+          </select>
           <span class="text-muted small ms-1" id="contactsCount"></span>
           <div class="ms-auto d-flex gap-2 flex-wrap">
             <button class="btn btn-outline-success btn-sm" onclick="exportContactsExcel()">
@@ -755,6 +760,9 @@ const TRANSLATIONS = {
     'tab.communications': 'Communications',
     'tab.contacts': 'Contacts',
     'contacts.all_types': 'All Types',
+    'contacts.all_sources': 'All sources',
+    'contacts.source_db': 'File',
+    'contacts.source_portal': 'Portal',
     'contacts.search_ph': 'Search…',
     'contacts.export': 'Export Excel',
     'contacts.import': 'Import Excel',
@@ -763,6 +771,7 @@ const TRANSLATIONS = {
     'contacts.col_tel': 'Tel / Mobile',
     'contacts.tab_hint': 'Open this tab to load contacts.',
     'contacts.no_results': 'No contacts match the current filter.',
+    'contacts.portal_loading': 'Loading portal users…',
     'traffic.today_title': "Today's Traffic",
     'traffic.today': 'Today',
     'traffic.visits': 'Visits',
@@ -983,6 +992,9 @@ const TRANSLATIONS = {
     'tab.communications': 'Επικοινωνίες',
     'tab.contacts': 'Επαφές',
     'contacts.all_types': 'Όλοι οι τύποι',
+    'contacts.all_sources': 'Όλες οι πηγές',
+    'contacts.source_db': 'Αρχείο',
+    'contacts.source_portal': 'Πύλη',
     'contacts.search_ph': 'Αναζήτηση…',
     'contacts.export': 'Εξαγωγή Excel',
     'contacts.import': 'Εισαγωγή Excel',
@@ -991,6 +1003,7 @@ const TRANSLATIONS = {
     'contacts.col_tel': 'Τηλ / Κινητό',
     'contacts.tab_hint': 'Ανοίξτε αυτή την καρτέλα για φόρτωση επαφών.',
     'contacts.no_results': 'Δεν βρέθηκαν επαφές με τα τρέχοντα κριτήρια.',
+    'contacts.portal_loading': 'Φόρτωση χρηστών πύλης…',
     'traffic.today_title': 'Σημερινή Επισκεψιμότητα',
     'traffic.today': 'Σήμερα',
     'traffic.visits': 'Επισκέψεις',
@@ -2819,19 +2832,19 @@ async function saveContact() {
     const resp = await fetch(`${API_BASE}api/contacts/save?d=${_b64enc(body)}`, { method: 'PATCH', cache: 'no-store' });
     if (!resp.ok) {
       const txt = await resp.text();
-      _allContacts = null;
+      _allContacts = null; _allUnified = null;
       if (_contactFromTab) { _contactFromTab = false; loadContactsTab(); }
       throw new Error(`HTTP ${resp.status} – ${txt.slice(0, 200)}`);
     }
     if (_contactModal) _contactModal.hide();
     if (_contactFromTab) {
       _contactFromTab = false;
-      _allContacts = null;
+      _allContacts = null; _allUnified = null;
       loadContactsTab();
     } else {
       openContactsPanel(_panelOrgCode, _panelOrgLabel, _panelCkanName);
     }
-    _allContacts = null;
+    _allContacts = null; _allUnified = null;
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
     else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
@@ -2846,12 +2859,12 @@ async function deleteContact(id) {
     await fetch(`${API_BASE}api/contacts/remove?d=${_b64enc({id})}`, { method: 'DELETE', cache: 'no-store' });
     if (_contactFromTab) {
       _contactFromTab = false;
-      _allContacts = null;
+      _allContacts = null; _allUnified = null;
       loadContactsTab();
     } else {
       openContactsPanel(_panelOrgCode, _panelOrgLabel, _panelCkanName);
     }
-    _allContacts = null;
+    _allContacts = null; _allUnified = null;
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
     else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
@@ -2888,7 +2901,7 @@ async function importContactsExcel(input) {
       if (fixTJson.fixed) msg += ' (fixed ' + fixTJson.fixed + ' contact type(s))';
     } catch (_) {}
     alert(msg);
-    _allContacts = null;  // invalidate contacts tab cache
+    _allContacts = null; _allUnified = null;  // invalidate contacts tab cache
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
   } catch (e) {
@@ -3101,10 +3114,33 @@ function _b64enc(obj) {
   return encodeURIComponent(btoa(bin));
 }
 
-let _allContacts     = null;
+let _allContacts     = null;   // raw local DB contacts
+let _portalRows      = null;   // normalised portal-member rows (persists across reloads)
+let _allUnified      = null;   // merged display list; null = needs rebuild
 let _tabContactRows  = [];
 let _contactsSortCol = 'org';
 let _contactsSortDir = 'asc';
+
+function _capacityToType(cap) {
+  return { admin: 'Portal Administrator', editor: 'Portal Editor', member: 'Portal User' }[cap] || cap;
+}
+function _normalisePortalMember(m) {
+  return {
+    _source:      'portal',
+    id:           null,
+    org_code:     m.org_code,
+    org_label:    m.org_label,
+    first_name:   m.display_name || m.username || '',
+    last_name:    '',
+    position:     m.username ? `@${m.username}` : '',
+    contact_type: _capacityToType(m.capacity),
+    email:        m.email || '',
+    tel:          '',
+    mobile:       '',
+    _capacity:    m.capacity,
+    _state:       m.state || 'active',
+  };
+}
 let _contactFromTab  = false;
 
 function editContactInTab(c) {
@@ -3127,12 +3163,31 @@ document.getElementById('contactsTabBtn').addEventListener('click', () => {
 });
 
 async function loadContactsTab() {
-  if (_allContacts !== null) { filterContactsTab(); return; }
+  if (_allUnified !== null) { filterContactsTab(); return; }
   show('contactsTableBody').innerHTML =
     '<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>';
+
+  // Fire portal-member fetch immediately — it may be slow on first call (server caches for 2 h)
+  const portalPromise = (_portalRows !== null)
+    ? Promise.resolve(_portalRows)  // already cached in memory, reuse
+    : fetch(API_BASE + 'api/portal-members').then(r => r.ok ? r.json() : []).catch(() => []);
+
   try {
+    // Show local contacts as soon as they arrive (fast)
     _allContacts = await fetch(API_BASE + 'api/contacts').then(r => r.json());
-    filterContactsTab();
+    _allUnified  = _allContacts.map(c => ({ ...c, _source: 'db' }));
+    filterContactsTab();  // show immediately with a "loading portal…" note
+
+    // Wait for portal members (may be instant from memory/server cache)
+    const raw = await portalPromise;
+    if (_portalRows === null) {
+      _portalRows = Array.isArray(raw) ? raw.map(_normalisePortalMember) : [];
+    }
+    _allUnified = [
+      ..._allContacts.map(c => ({ ...c, _source: 'db' })),
+      ..._portalRows,
+    ];
+    filterContactsTab();  // update with both types
   } catch (e) {
     show('contactsTableBody').innerHTML =
       `<tr><td colspan="8" class="text-center text-danger py-4">Error: ${esc(e.message)}</td></tr>`;
@@ -3155,11 +3210,13 @@ function _contactsSortArrow(col) {
 }
 
 function filterContactsTab() {
-  if (!_allContacts) return;
-  const search = (show('contactsSearch').value || '').toLowerCase().trim();
-  const typeF  = show('contactsTypeFilter').value;
+  if (!_allUnified) return;
+  const search  = (show('contactsSearch').value || '').toLowerCase().trim();
+  const typeF   = show('contactsTypeFilter').value;
+  const sourceF = (show('contactsSourceFilter') || {}).value || '';
 
-  let rows = _allContacts;
+  let rows = _allUnified;
+  if (sourceF) rows = rows.filter(c => c._source === sourceF);
   if (search) {
     rows = rows.filter(c =>
       (c.org_label || c.org_code || '').toLowerCase().includes(search) ||
@@ -3191,10 +3248,11 @@ function filterContactsTab() {
     return 0;
   });
 
-  const total = _allContacts.length;
-  show('contactsCount').textContent = rows.length < total
-    ? `${rows.length} / ${total}`
-    : `${total}`;
+  const total = _allUnified.length;
+  const portalLoading = _portalRows === null;
+  let countText = rows.length < total ? `${rows.length} / ${total}` : `${total}`;
+  if (portalLoading) countText += ` <span class="text-muted small ms-1">(${t('contacts.portal_loading')})</span>`;
+  show('contactsCount').innerHTML = countText;
 
   const th = (col, label, cls = '') =>
     `<th class="text-nowrap${cls ? ' ' + cls : ''}" style="cursor:pointer;user-select:none" onclick="sortContacts('${col}')">${label}${_contactsSortArrow(col)}</th>`;
@@ -3207,7 +3265,7 @@ function filterContactsTab() {
     th('position', t('contacts.position')) +
     th('email',    t('contacts.email')) +
     th('tel',      t('contacts.col_tel')) +
-    `<th style="width:6rem"></th>`;
+    `<th style="width:7rem"></th>`;
 
   if (!rows.length) {
     show('contactsTableBody').innerHTML =
@@ -3221,26 +3279,42 @@ function filterContactsTab() {
     const orgCode  = c.org_code  || '';
     const orgLabel = c.org_label || orgCode;
     const tel      = c.tel || c.mobile || '';
-    // Row click = open org contacts panel; action buttons handle edit/delete
+    const isPortal = c._source === 'portal';
+
+    // Source badge
+    const srcBadge = isPortal
+      ? `<span class="badge rounded-pill text-bg-info ms-1" style="font-size:.65rem">Πύλη</span>`
+      : `<span class="badge rounded-pill text-bg-secondary ms-1" style="font-size:.65rem">Αρχείο</span>`;
+
+    // State badge for portal accounts that are not active
+    const stateBadge = (isPortal && c._state && c._state !== 'active')
+      ? `<span class="badge rounded-pill text-bg-warning ms-1" style="font-size:.65rem">${esc(c._state)}</span>`
+      : '';
+
+    // Actions column: portal rows have no edit/delete
+    const actionsCell = isPortal
+      ? `<td></td>`
+      : `<td onclick="event.stopPropagation()" class="text-nowrap">
+          <div class="d-flex gap-1">
+            <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('contacts.modal_edit')}"
+              onclick="editContactInTab(_tabContactRows[${i}])"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('contacts.delete_confirm')}"
+              data-id="${c.id}" data-code="${esc(orgCode)}" data-label="${esc(orgLabel)}"
+              onclick="deleteContactFromTab(+this.dataset.id,this.dataset.code,this.dataset.label)"><i class="bi bi-trash"></i></button>
+          </div>
+        </td>`;
+
     return `<tr style="cursor:pointer" title="${esc(orgLabel)}"
       onclick="openContactsPanel(this.dataset.code, this.dataset.label)"
       data-code="${esc(orgCode)}" data-label="${esc(orgLabel)}">
       <td class="text-muted small">${i + 1}</td>
-      <td class="small fw-semibold">${esc(orgLabel)}</td>
-      <td class="text-nowrap">${esc(c.first_name)} ${esc(c.last_name)}</td>
+      <td class="small fw-semibold">${esc(orgLabel)}${srcBadge}</td>
+      <td class="text-nowrap">${esc(c.first_name)}${c.last_name ? ' ' + esc(c.last_name) : ''}${stateBadge}</td>
       <td>${_contactTypeBadge(c.contact_type)}</td>
       <td class="text-muted small">${esc(c.position)}</td>
       <td class="small">${c.email ? `<a href="mailto:${esc(c.email)}" onclick="event.stopPropagation()">${esc(c.email)}</a>` : ''}</td>
       <td class="small text-nowrap">${esc(tel)}</td>
-      <td onclick="event.stopPropagation()" class="text-nowrap">
-        <div class="d-flex gap-1">
-          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('contacts.modal_edit')}"
-            onclick="editContactInTab(_tabContactRows[${i}])"><i class="bi bi-pencil"></i></button>
-          <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('contacts.delete_confirm')}"
-            data-id="${c.id}" data-code="${esc(orgCode)}" data-label="${esc(orgLabel)}"
-            onclick="deleteContactFromTab(+this.dataset.id,this.dataset.code,this.dataset.label)"><i class="bi bi-trash"></i></button>
-        </div>
-      </td>
+      ${actionsCell}
     </tr>`;
   }).join('');
 }

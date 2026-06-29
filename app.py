@@ -1535,6 +1535,78 @@ def contacts_remove():
     db.session.delete(contact)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+# ── Portal Members (all orgs) ─────────────────────────────────────────────────
+
+_pm_cache: dict = {"data": None, "ts": 0}
+
+
+@app.route("/api/portal-members", methods=["GET"])
+def portal_members_all():
+    """Return all portal users across every CKAN organisation, cached for 2 hours."""
+    now = time.time()
+    if _pm_cache["data"] is not None and now - _pm_cache["ts"] < 7200:
+        return jsonify(_pm_cache["data"])
+
+    try:
+        # Step 1 – get the list of all portal organisations
+        r = requests.get(
+            f"{config.API_BASE}/organization_list",
+            params={"all_fields": "true"},
+            timeout=20,
+        )
+        r.raise_for_status()
+        org_list = r.json().get("result") or []
+
+        auth_headers = {"Authorization": config.TOKEN} if config.TOKEN else {}
+
+        # Step 2 – fetch members per org in parallel
+        def _fetch_org_members(org):
+            slug  = org.get("name", "")
+            title = org.get("title") or org.get("display_name") or slug
+            try:
+                r2 = requests.get(
+                    f"{config.API_BASE}/organization_show",
+                    params={"id": slug, "include_users": "true"},
+                    headers=auth_headers,
+                    timeout=12,
+                )
+                d = r2.json()
+                if d.get("success"):
+                    return [
+                        {
+                            "org_code":     slug,
+                            "org_label":    title,
+                            "username":     u.get("name", ""),
+                            "display_name": (u.get("display_name") or u.get("fullname") or u.get("name", "")).strip(),
+                            "capacity":     u.get("capacity", "member"),
+                            "email":        (u.get("email") or "").lower().strip(),
+                            "state":        u.get("state", "active"),
+                        }
+                        for u in (d["result"].get("users") or [])
+                    ]
+            except Exception:
+                pass
+            return []
+
+        all_members: list = []
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            futs = {pool.submit(_fetch_org_members, org): org for org in org_list}
+            for fut in as_completed(futs):
+                try:
+                    all_members.extend(fut.result())
+                except Exception:
+                    pass
+
+        _pm_cache["data"] = all_members
+        _pm_cache["ts"]   = now
+        return jsonify(all_members)
+
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 # ── Matomo Analytics ─────────────────────────────────────────────────────────
 
 _MATOMO_CACHE: dict = {}
