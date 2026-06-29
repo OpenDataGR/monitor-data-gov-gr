@@ -2928,19 +2928,21 @@ function renderOrgPanel(data) {
     const order = { admin: 0, editor: 1, member: 2 };
     return (order[a.capacity] ?? 3) - (order[b.capacity] ?? 3);
   });
-  const membersHtml = members.length
-    ? `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-person-badge me-1 text-primary"></i>Portal Members</h6>
-       <div class="list-group list-group-flush">
-         ${members.map(m => `
-           <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center gap-2">
-             <div>
-               <div class="small fw-semibold">${m.display_name.replace(/</g,'&lt;')}</div>
-               <div class="text-muted" style="font-size:.72rem">@${m.name.replace(/</g,'&lt;')}</div>
-             </div>
-             <span class="badge ${ROLE_BADGE[m.capacity] || 'bg-secondary'}">${m.capacity}</span>
-           </div>`).join('')}
-       </div>`
-    : '';
+  const membersHtml = `
+    <h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-person-badge me-1 text-primary"></i>Portal Members</h6>
+    ${members.length
+      ? `<div class="list-group list-group-flush">
+           ${members.map(m => `
+             <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center gap-2">
+               <div>
+                 <div class="small fw-semibold">${m.display_name.replace(/</g,'&lt;')}</div>
+                 <div class="text-muted" style="font-size:.72rem">@${m.name.replace(/</g,'&lt;')}</div>
+               </div>
+               <span class="badge ${ROLE_BADGE[m.capacity] || 'bg-secondary'}">${m.capacity}</span>
+             </div>`).join('')}
+         </div>`
+      : '<p class="text-muted small">No members found.</p>'
+    }`;
 
   document.getElementById('orgDetailBody').innerHTML = `
     ${imgHtml}

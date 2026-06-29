@@ -803,27 +803,29 @@ def organization_detail(org_name):
     except Exception:
         result["recent_datasets"] = []
 
-    # Members — separate call; silently skipped if the API requires auth or fails
-    try:
-        r = requests.get(
-            f"{config.PORTAL_BASE}/api/3/action/organization_show",
-            params={"id": org_name, "include_users": True},
-            timeout=config.REQUEST_TIMEOUT,
-            headers=headers,
-        )
-        if r.status_code == 200:
-            data = r.json()
-            if data.get("success"):
-                result["org"]["members"] = [
-                    {
-                        "name":         u.get("name", ""),
-                        "display_name": u.get("display_name") or u.get("fullname") or u.get("name", ""),
-                        "capacity":     u.get("capacity", "member"),
-                    }
-                    for u in (data["result"].get("users") or [])
-                ]
-    except Exception:
-        pass
+    # Members — requires auth; silently skipped if token absent or API fails
+    if config.TOKEN:
+        try:
+            auth_headers = {**headers, "Authorization": config.TOKEN}
+            r = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/organization_show",
+                params={"id": org_name, "include_users": True},
+                timeout=config.REQUEST_TIMEOUT,
+                headers=auth_headers,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("success"):
+                    result["org"]["members"] = [
+                        {
+                            "name":         u.get("name", ""),
+                            "display_name": u.get("display_name") or u.get("fullname") or u.get("name", ""),
+                            "capacity":     u.get("capacity", "member"),
+                        }
+                        for u in (data["result"].get("users") or [])
+                    ]
+        except Exception:
+            pass
 
     return jsonify(result)
 
