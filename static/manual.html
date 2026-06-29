@@ -170,6 +170,15 @@
       margin: 1.5rem 0 .6rem;
     }
 
+    h4 {
+      font-size: .9rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin: 1.2rem 0 .4rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
     p { margin-bottom: .85rem; }
 
     ul, ol {
@@ -181,6 +190,16 @@
     strong { color: var(--navy); font-weight: 600; }
 
     a { color: var(--blue); }
+
+    code {
+      font-family: "Consolas", "Menlo", monospace;
+      font-size: .82em;
+      background: #eef2f8;
+      border: 1px solid var(--divider);
+      border-radius: 3px;
+      padding: .1em .35em;
+      color: var(--slate);
+    }
 
     /* ── Tab chip ─────────────────────────────────────── */
     .tab-chip {
@@ -255,10 +274,27 @@
       border-radius: 20px;
       white-space: nowrap;
     }
-    .badge-contacted { background: #dbeafe; color: #1d4ed8; }
-    .badge-responded { background: #d1fae5; color: #065f46; }
-    .badge-uploaded  { background: #ede9fe; color: #5b21b6; }
-    .badge-noresponse{ background: #fee2e2; color: #991b1b; }
+    .badge-contacted  { background: #dbeafe; color: #1d4ed8; }
+    .badge-responded  { background: #cffafe; color: #0e7490; }
+    .badge-uploaded   { background: #d1fae5; color: #065f46; }
+    .badge-noresponse { background: #f1f5f9; color: #475569; }
+
+    /* ── Contact type badge ───────────────────────────── */
+    .type-badge {
+      display: inline-block;
+      font-size: .72rem;
+      font-weight: 600;
+      padding: .12rem .45rem;
+      border-radius: 4px;
+      white-space: nowrap;
+      color: #fff;
+      margin-right: .2rem;
+    }
+    .type-admin  { background: #0d6efd; }
+    .type-editor { background: #212529; }
+    .type-user   { background: #0dcaf0; color: #212529; }
+    .type-officer{ background: #198754; }
+    .type-steward{ background: #ffc107; color: #212529; }
 
     /* ── Icon reference ───────────────────────────────── */
     .icon-ref {
@@ -271,6 +307,54 @@
       padding: .1rem .45rem;
       font-size: .82rem;
       color: var(--slate);
+    }
+
+    /* ── Field list ───────────────────────────────────── */
+    .field-list {
+      list-style: none;
+      padding: 0;
+      margin-bottom: .85rem;
+    }
+    .field-list li {
+      display: flex;
+      gap: .75rem;
+      padding: .4rem 0;
+      border-bottom: 1px solid var(--divider);
+      font-size: .88rem;
+    }
+    .field-list li:last-child { border-bottom: none; }
+    .field-name {
+      font-weight: 600;
+      color: var(--navy);
+      min-width: 160px;
+      flex-shrink: 0;
+    }
+    .field-req {
+      font-size: .7rem;
+      background: #fee2e2;
+      color: #991b1b;
+      border-radius: 3px;
+      padding: .05rem .3rem;
+      font-weight: 700;
+      letter-spacing: .03em;
+      align-self: flex-start;
+      margin-top: .2rem;
+    }
+
+    /* ── Column key ───────────────────────────────────── */
+    .col-key {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.5rem;
+      height: 1.5rem;
+      background: var(--navy);
+      color: #fff;
+      font-size: .72rem;
+      font-weight: 700;
+      border-radius: 3px;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
     }
 
     /* ── Mobile sidebar toggle ────────────────────────── */
@@ -317,6 +401,7 @@
       .sidebar-overlay.open { display: block; }
       .sidebar-toggle { display: flex; }
       .content { padding: 1.5rem 1.25rem 4rem; }
+      .field-name { min-width: 120px; }
     }
 
     @media print {
@@ -360,6 +445,13 @@
         <li><a href="#tab-contacts">12. Επαφές</a></li>
       </ul>
     </div>
+    <div class="toc-section">
+      <div class="sidebar-label">Παράρτημα</div>
+      <ul class="toc-list">
+        <li><a href="#appendix-search">Α. Αναζήτηση και φίλτρα</a></li>
+        <li><a href="#appendix-import">Β. Μορφή αρχείου εισαγωγής</a></li>
+      </ul>
+    </div>
   </nav>
 
   <!-- Overlay for mobile -->
@@ -375,15 +467,19 @@
       <p>Το <strong>data.gov.gr Monitor</strong> είναι το εσωτερικό dashboard παρακολούθησης της Πύλης Ανοικτών Δεδομένων του Δημοσίου. Παρέχει σε πραγματικό χρόνο πληροφορίες για:</p>
       <ul>
         <li>Την <strong>υγεία</strong> (διαθεσιμότητα και χρόνο απόκρισης) των κρίσιμων endpoints</li>
-        <li>Τα <strong>στατιστικά</strong> του καταλόγου δεδομένων (datasets, οργανισμοί, πόροι)</li>
+        <li>Τα <strong>στατιστικά</strong> του καταλόγου δεδομένων (datasets, οργανισμοί, πόροι, υπηρεσίες)</li>
         <li>Την <strong>επισκεψιμότητα</strong> μέσω του Matomo Analytics</li>
         <li>Την <strong>ποιότητα</strong> των δεδομένων και την προσβασιμότητα των αρχείων</li>
-        <li>Τη διαχείριση <strong>επικοινωνιών</strong> και <strong>επαφών</strong> ανά οργανισμό</li>
+        <li>Τη διαχείριση <strong>επικοινωνιών</strong> με φορείς για την ανάρτηση datasets</li>
+        <li>Το μητρώο <strong>επαφών</strong> ανά οργανισμό με στοιχεία επικοινωνίας</li>
       </ul>
       <div class="callout">
         <div class="callout-title">Σημείωση</div>
-        Το dashboard απευθύνεται αποκλειστικά σε εξουσιοδοτημένο προσωπικό του Τμήματος Τεχνολογιών Δεδομένων. Απαιτείται κωδικός πρόσβασης.
+        Το dashboard απευθύνεται αποκλειστικά σε εξουσιοδοτημένο προσωπικό του Τμήματος Τεχνολογιών Δεδομένων. Απαιτείται κωδικός πρόσβασης για οποιαδήποτε λειτουργία.
       </div>
+
+      <h3>Αυτόματη ανανέωση</h3>
+      <p>Η καρτέλα <strong>Επισκόπηση</strong> ανανεώνεται αυτόματα κάθε <strong>60 δευτερόλεπτα</strong>. Οι υπόλοιπες καρτέλες ανανεώνονται μόνο κατά τη φόρτωσή τους ή όταν πατηθεί το κουμπί ανανέωσης. Ο έλεγχος endpoints εκτελείται αυτόματα σε τακτά διαστήματα· ο χρόνος του τελευταίου ελέγχου εμφανίζεται στη γραμμή πλοήγησης.</p>
     </section>
 
     <!-- 2. Σύνδεση -->
@@ -396,11 +492,12 @@
         <li>Πατήστε <strong>Σύνδεση</strong>.</li>
         <li>Μετά την επιτυχή σύνδεση ανακατευθύνεστε αυτόματα στο κεντρικό dashboard.</li>
       </ol>
+      <p>Η σύνδεση διατηρείται για όλη τη διάρκεια του browser session. Αν κλείσετε το παράθυρο χωρίς αποσύνδεση, η επόμενη επίσκεψη πιθανόν να μην απαιτεί νέα σύνδεση έως ότου λήξει το session.</p>
       <div class="callout warn">
         <div class="callout-title">Προσοχή</div>
         Μην κοινοποιείτε τον κωδικό. Για επαναφορά ή αλλαγή κωδικού απευθυνθείτε στον διαχειριστή του συστήματος.
       </div>
-      <p>Για να αποσυνδεθείτε χρησιμοποιήστε το κουμπί <span class="icon-ref"><i class="bi bi-box-arrow-right"></i> Αποσύνδεση</span> στην επάνω δεξιά γωνία.</p>
+      <p>Για να αποσυνδεθείτε χρησιμοποιήστε το κουμπί <span class="icon-ref"><i class="bi bi-box-arrow-right"></i> Αποσύνδεση</span> στην επάνω δεξιά γωνία. Μετά την αποσύνδεση το session ακυρώνεται πλήρως.</p>
     </section>
 
     <!-- 3. Navbar -->
@@ -412,19 +509,16 @@
       <div class="action-table-wrap">
         <table class="action-table">
           <thead>
-            <tr>
-              <th>Στοιχείο</th>
-              <th>Λειτουργία</th>
-            </tr>
+            <tr><th>Στοιχείο</th><th>Λειτουργία</th></tr>
           </thead>
           <tbody>
             <tr>
               <td><span class="icon-ref"><i class="bi bi-database-check"></i> data.gov.gr Monitor</span></td>
-              <td>Κλικ στον τίτλο για επιστροφή πάντα στην καρτέλα <strong>Επισκόπηση</strong>.</td>
+              <td>Κλικ στον τίτλο για επιστροφή πάντα στην καρτέλα <strong>Επισκόπηση</strong>, ανεξάρτητα από το πού βρίσκεστε.</td>
             </tr>
             <tr>
               <td><span class="icon-ref">ΕΛ / EN</span></td>
-              <td>Εναλλαγή γλώσσας διεπαφής (Ελληνικά / Αγγλικά). Η επιλογή ισχύει άμεσα χωρίς ανανέωση.</td>
+              <td>Εναλλαγή γλώσσας διεπαφής (Ελληνικά / Αγγλικά). Ισχύει άμεσα για όλες τις ετικέτες, κεφαλίδες και κείμενα — χωρίς ανανέωση σελίδας.</td>
             </tr>
             <tr>
               <td><strong>Τελευταίος έλεγχος</strong></td>
@@ -432,11 +526,11 @@
             </tr>
             <tr>
               <td><span class="icon-ref"><i class="bi bi-arrow-clockwise"></i> Έλεγχος τώρα</span></td>
-              <td>Εκκινεί αμέσως νέο έλεγχο διαθεσιμότητας για όλα τα καταγεγραμμένα endpoints. Χρήσιμο μετά από ύποπτη αποτυχία.</td>
+              <td>Εκκινεί αμέσως νέο έλεγχο διαθεσιμότητας για όλα τα καταγεγραμμένα endpoints. Το αποτέλεσμα εμφανίζεται στις καρτέλες Επισκόπηση και Υγεία.</td>
             </tr>
             <tr>
               <td><span class="icon-ref"><i class="bi bi-trash"></i> Επαναφορά στατιστικών</span></td>
-              <td>Διαγράφει το ιστορικό ελέγχων και snapshot. Απαιτεί επιβεβαίωση κωδικού. <strong>Η ενέργεια δεν αναιρείται.</strong></td>
+              <td>Διαγράφει το ιστορικό ελέγχων και snapshots. Απαιτεί επιβεβαίωση κωδικού. <strong>Η ενέργεια είναι μη αναστρέψιμη.</strong></td>
             </tr>
             <tr>
               <td><span class="icon-ref"><i class="bi bi-book"></i> Οδηγός</span></td>
@@ -450,22 +544,35 @@
         </table>
       </div>
 
-      <p>Κάτω από τη μπάρα εμφανίζονται οι <strong>5 κάρτες συνοπτικών μετρικών</strong> (Total Datasets, Data Services, Resources, Organizations, Portal Uptime 24h) που ενημερώνονται αυτόματα κατά τη φόρτωση.</p>
+      <h3>Κάρτες συνοπτικών μετρικών</h3>
+      <p>Κάτω από τη γραμμή πλοήγησης εμφανίζονται πάντα ορατές οι <strong>5 κάρτες</strong> με τις τελευταίες τιμές:</p>
+      <div class="action-table-wrap">
+        <table class="action-table">
+          <thead><tr><th>Κάρτα</th><th>Τι μετράει</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Total Datasets</strong></td><td>Σύνολο datasets που είναι καταχωρημένα στο data.gov.gr κατά το τελευταίο snapshot.</td></tr>
+            <tr><td><strong>Data Services</strong></td><td>Αριθμός υπηρεσιών δεδομένων (APIs, SPARQL endpoints κ.λπ.).</td></tr>
+            <tr><td><strong>Resources</strong></td><td>Συνολικός αριθμός πόρων (αρχεία, URLs) σε όλα τα datasets.</td></tr>
+            <tr><td><strong>Organizations</strong></td><td>Αριθμός οργανισμών με τουλάχιστον ένα δημοσιευμένο dataset.</td></tr>
+            <tr><td><strong>Portal Uptime 24h</strong></td><td>Ποσοστό διαθεσιμότητας των κρίσιμων endpoints τις τελευταίες 24 ώρες. Στόχος ≥ 99%.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- 4. Overview -->
     <section id="tab-overview">
       <div class="section-eyebrow">Καρτέλα 4</div>
       <h2><span class="tab-chip"><i class="bi bi-grid"></i> Επισκόπηση</span></h2>
-      <p>Η αρχική καρτέλα δίνει μια ολοκληρωμένη εικόνα της κατάστασης της πύλης σε ένα βλέμμα.</p>
+      <p>Η αρχική καρτέλα παρέχει μια ολοκληρωμένη εικόνα της κατάστασης της πύλης. Ανανεώνεται αυτόματα κάθε 60 δευτερόλεπτα.</p>
 
       <h3>Σημερινή Επισκεψιμότητα</h3>
-      <p>Ευρετήριο στο πάνω μέρος με τέσσερις μετρικές από το Matomo για την τρέχουσα ημέρα:</p>
+      <p>Τέσσερις κάρτες με δεδομένα Matomo για την <em>τρέχουσα ημέρα</em>:</p>
       <ul>
-        <li><strong>Επισκέψεις</strong> — συνολικές επισκέψεις</li>
-        <li><strong>Μοναδικοί επισκέπτες</strong></li>
-        <li><strong>Προβολές σελίδων</strong></li>
-        <li><strong>Λήψεις</strong> αρχείων δεδομένων</li>
+        <li><strong>Επισκέψεις</strong> — συνολικές επισκέψεις στην πύλη σήμερα</li>
+        <li><strong>Μοναδικοί επισκέπτες</strong> — μοναδικές IP/browser sessions</li>
+        <li><strong>Προβολές σελίδων</strong> — συνολικές φορτώσεις σελίδας</li>
+        <li><strong>Λήψεις</strong> — λήψεις αρχείων δεδομένων μέσω της πύλης</li>
       </ul>
 
       <h3>Κατάσταση Endpoints</h3>
@@ -476,25 +583,48 @@
         <li>HTTP status code</li>
       </ul>
 
-      <h3>Γράφημα Uptime 24h</h3>
-      <p>Κυκλικό γράφημα που απεικονίζει το ποσοστό διαθεσιμότητας της πύλης τις τελευταίες 24 ώρες. Στόχος ≥ 99%.</p>
+      <h3>Γράφημα Uptime ανά Endpoint</h3>
+      <p>Ραβδόγραμμα που απεικονίζει το ποσοστό διαθεσιμότητας <em>ανά endpoint</em> τις τελευταίες 24 ώρες. Τα χρώματα των ράβδων κωδικοποιούν την κατάσταση:</p>
+      <ul>
+        <li><strong style="color:#198754">Πράσινο</strong> — uptime ≥ 99% (φυσιολογικό)</li>
+        <li><strong style="color:#ffc107">Κίτρινο</strong> — uptime ≥ 95% (προσοχή)</li>
+        <li><strong style="color:#dc3545">Κόκκινο</strong> — uptime &lt; 95% (κρίσιμο)</li>
+      </ul>
+      <p>Η τιμή <strong>Portal Uptime 24h</strong> στην κεφαλίδα υπολογίζεται από τα κρίσιμα endpoints μόνο.</p>
     </section>
 
     <!-- 5. Health -->
     <section id="tab-health">
       <div class="section-eyebrow">Καρτέλα 5</div>
       <h2><span class="tab-chip"><i class="bi bi-heart-pulse"></i> Υγεία</span></h2>
-      <p>Λεπτομερής προβολή του ιστορικού χρόνου απόκρισης και των πρόσφατων ελέγχων.</p>
+      <p>Λεπτομερής προβολή του ιστορικού χρόνου απόκρισης και των αποτελεσμάτων κάθε ελέγχου.</p>
 
       <h3>Γράφημα Χρόνου Απόκρισης</h3>
-      <p>Επιλέξτε <strong>endpoint</strong> και <strong>χρονικό παράθυρο</strong> (6 ώρες, 24 ώρες, 72 ώρες, 7 ημέρες) από τα dropdown. Το γράφημα ανανεώνεται αυτόματα.</p>
+      <p>Επιλέξτε <strong>endpoint</strong> από το πρώτο dropdown και <strong>χρονικό παράθυρο</strong> από το δεύτερο. Διαθέσιμα παράθυρα:</p>
+      <ul>
+        <li><strong>6 h</strong> — τελευταίες 6 ώρες (υψηλή ανάλυση)</li>
+        <li><strong>24 h</strong> — τελευταίες 24 ώρες (προεπιλογή)</li>
+        <li><strong>72 h</strong> — τελευταίες 3 ημέρες</li>
+        <li><strong>7 days</strong> — τελευταία εβδομάδα (τάση)</li>
+      </ul>
+      <p>Το γράφημα ανανεώνεται αυτόματα κατά την αλλαγή επιλογής. Αιωρηθείτε πάνω από σημείο για να δείτε την ακριβή τιμή και τη χρονική σήμανση.</p>
 
       <h3>Πρόσφατοι Έλεγχοι</h3>
-      <p>Πίνακας με τις πιο πρόσφατες καταχωρήσεις, χρονική σήμανση, endpoint, status και χρόνο απόκρισης.</p>
-
+      <p>Πίνακας με τις πιο πρόσφατες καταχωρήσεις για το επιλεγμένο endpoint:</p>
+      <div class="action-table-wrap">
+        <table class="action-table">
+          <thead><tr><th>Στήλη</th><th>Περιεχόμενο</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Time</strong></td><td>Χρονική σήμανση του ελέγχου</td></tr>
+            <tr><td><strong>Status</strong></td><td>Ενεργό / Εκτός με χρωματική ένδειξη</td></tr>
+            <tr><td><strong>HTTP</strong></td><td>HTTP status code (π.χ. 200, 404, 503)</td></tr>
+            <tr><td><strong>Response</strong></td><td>Χρόνος απόκρισης σε ms· «—» αν δεν ήταν διαθέσιμο</td></tr>
+          </tbody>
+        </table>
+      </div>
       <div class="callout">
         <div class="callout-title">Συμβουλή</div>
-        Χρησιμοποιήστε το «Έλεγχος τώρα» στη γραμμή πλοήγησης για να αναγκάσετε νέο έλεγχο και να δείτε αμέσως το αποτέλεσμα σε αυτήν την καρτέλα.
+        Χρησιμοποιήστε «Έλεγχος τώρα» στη γραμμή πλοήγησης για να αναγκάσετε νέο έλεγχο και να δείτε αμέσως το αποτέλεσμα. Μια εκτός υπηρεσία επαληθεύεται καλύτερα με 2–3 διαδοχικά «Έλεγχος τώρα» με μεσοδιάστημα λίγων δευτερολέπτων.
       </div>
     </section>
 
@@ -502,25 +632,42 @@
     <section id="tab-stats">
       <div class="section-eyebrow">Καρτέλα 6</div>
       <h2><span class="tab-chip"><i class="bi bi-graph-up"></i> Στατιστικά</span></h2>
-      <p>Χρονοσειρά του αριθμού datasets, οργανισμών και πόρων που καταγράφονται σε κάθε αυτόματο snapshot.</p>
+      <p>Χρονοσειρά βασικών μετρικών του καταλόγου, όπως καταγράφονται σε κάθε αυτόματο snapshot.</p>
 
       <h3>Γράφημα εξέλιξης</h3>
-      <p>Γραμμικό γράφημα (Chart.js) με τον αριθμό datasets ανά στιγμιότυπο. Αιωρηθείτε πάνω από σημείο για να δείτε την ακριβή τιμή και τη χρονική σήμανση.</p>
+      <p>Γραμμικό γράφημα (Chart.js) με δύο σειρές δεδομένων για τα τελευταία 30 ημερολογιακά snapshots:</p>
+      <ul>
+        <li><strong style="color:#2563eb">Datasets</strong> (μπλε γραμμή) — εξέλιξη συνόλου datasets</li>
+        <li><strong style="color:#06b6d4">Resources</strong> (κυανή γραμμή) — εξέλιξη συνόλου πόρων</li>
+      </ul>
+      <p>Ο άξονας Χ δείχνει ημερομηνία/ώρα. Αιωρηθείτε πάνω από σημείο για να δείτε τις ακριβείς τιμές.</p>
 
       <h3>Τελευταίο Snapshot</h3>
-      <p>Κάρτα δεξιά με τις πιο πρόσφατες τιμές: σύνολο datasets, data services, resources, organizations.</p>
+      <p>Κάρτα δεξιά από το γράφημα με τις πιο πρόσφατες τιμές:</p>
+      <ul>
+        <li><strong>Datasets</strong> — σύνολο δημοσιευμένων συνόλων δεδομένων</li>
+        <li><strong>Organizations</strong> — ενεργοί οργανισμοί με datasets</li>
+        <li><strong>Resources</strong> — σύνολο πόρων (αρχεία, APIs)</li>
+        <li><strong>Services</strong> — υπηρεσίες δεδομένων</li>
+        <li><em>Χρονική σήμανση</em> του snapshot</li>
+      </ul>
     </section>
 
     <!-- 7. Datasets -->
     <section id="tab-datasets">
       <div class="section-eyebrow">Καρτέλα 7</div>
       <h2><span class="tab-chip"><i class="bi bi-database"></i> Σύνολα Δεδομένων</span></h2>
-      <p>Αναζήτηση στον κατάλογο datasets του data.gov.gr απευθείας μέσα από το dashboard.</p>
+      <p>Αναζήτηση στον κατάλογο datasets του data.gov.gr απευθείας μέσα από το dashboard, χωρίς να χρειαστεί να ανοίξετε την πύλη.</p>
       <ul>
         <li>Πληκτρολογήστε στο πεδίο αναζήτησης και πατήστε Enter ή το κουμπί <strong>Αναζήτηση</strong>.</li>
-        <li>Τα αποτελέσματα εμφανίζονται σε πίνακα με τίτλο, οργανισμό, αριθμό πόρων και ημερομηνία τελευταίας τροποποίησης.</li>
-        <li>Πατήστε τον τίτλο dataset για να ανοίξει στη νέα καρτέλα του data.gov.gr.</li>
+        <li>Τα αποτελέσματα εμφανίζονται σε πίνακα με: τίτλο, οργανισμό, αριθμό πόρων και ημερομηνία τελευταίας τροποποίησης.</li>
+        <li>Πατήστε τον τίτλο dataset για να ανοίξει η σελίδα του στο data.gov.gr σε νέα καρτέλα.</li>
+        <li>Αν δεν υπάρχουν αποτελέσματα, επαληθεύστε την ορθογραφία ή χρησιμοποιήστε λιγότερες λέξεις.</li>
       </ul>
+      <div class="callout">
+        <div class="callout-title">Σημείωση</div>
+        Η αναζήτηση εκτελείται απευθείας στο CKAN API· τα αποτελέσματα εξαρτώνται από τη διαθεσιμότητα της πύλης εκείνη τη στιγμή.
+      </div>
     </section>
 
     <!-- 8. Traffic -->
@@ -529,21 +676,25 @@
       <h2><span class="tab-chip"><i class="bi bi-bar-chart-line"></i> Επισκεψιμότητα</span></h2>
       <p>Αναλυτικά στοιχεία επισκεψιμότητας που αντλούνται από το <strong>Matomo Analytics</strong>.</p>
 
-      <h3>Διαθέσιμα γραφήματα</h3>
-      <ul>
-        <li><strong>Επισκέψεις ανά ημέρα</strong> — ραβδόγραμμα για το επιλεγμένο διάστημα</li>
-        <li><strong>Μοναδικοί επισκέπτες</strong> — γραμμικό γράφημα</li>
-        <li><strong>Δημοφιλέστερες σελίδες</strong> — πίνακας κατάταξης</li>
-        <li><strong>Πηγές επισκεψιμότητας</strong> — πηγές παραπομπής</li>
-        <li><strong>Λήψεις</strong> — πιο δημοφιλή αρχεία δεδομένων που κατεβαίνουν</li>
-      </ul>
-
       <h3>Χρονικό παράθυρο</h3>
-      <p>Επιλέξτε διάστημα (7, 30, 90 ημέρες) από το dropdown στην επάνω δεξιά γωνία της καρτέλας.</p>
+      <p>Επιλέξτε διάστημα (<strong>7</strong>, <strong>30</strong> ή <strong>90 ημέρες</strong>) από το dropdown στην επάνω δεξιά γωνία της καρτέλας. Όλα τα παρακάτω γραφήματα ανανεώνονται αυτόματα.</p>
 
+      <h3>Διαθέσιμα γραφήματα</h3>
+      <div class="action-table-wrap">
+        <table class="action-table">
+          <thead><tr><th>Γράφημα</th><th>Τι δείχνει</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Επισκέψεις ανά ημέρα</strong></td><td>Ραβδόγραμμα με τον αριθμό επισκέψεων για κάθε ημέρα του επιλεγμένου διαστήματος.</td></tr>
+            <tr><td><strong>Μοναδικοί επισκέπτες</strong></td><td>Γραμμικό γράφημα μοναδικών χρηστών ανά ημέρα.</td></tr>
+            <tr><td><strong>Δημοφιλέστερες σελίδες</strong></td><td>Πίνακας με τις πιο πολυεπισκεπτόμενες σελίδες της πύλης, ταξινομημένες κατά αριθμό επισκέψεων.</td></tr>
+            <tr><td><strong>Πηγές επισκεψιμότητας</strong></td><td>Ποσοστό επισκεψιμότητας ανά πηγή παραπομπής (direct, search engines, referers).</td></tr>
+            <tr><td><strong>Λήψεις</strong></td><td>Πιο δημοφιλή αρχεία δεδομένων που κατεβαίνουν, ταξινομημένα κατά αριθμό λήψεων.</td></tr>
+          </tbody>
+        </table>
+      </div>
       <div class="callout">
         <div class="callout-title">Σημείωση</div>
-        Τα δεδομένα Matomo ενημερώνονται μία φορά την ημέρα. Τα στοιχεία της τρέχουσας ημέρας εμφανίζονται στην καρτέλα Επισκόπηση.
+        Τα δεδομένα Matomo ενημερώνονται <strong>μία φορά την ημέρα</strong>. Τα στοιχεία της τρέχουσας ημέρας (real-time) εμφανίζονται στην καρτέλα <strong>Επισκόπηση</strong>, όχι εδώ.
       </div>
     </section>
 
@@ -551,98 +702,142 @@
     <section id="tab-quality">
       <div class="section-eyebrow">Καρτέλα 9</div>
       <h2><span class="tab-chip"><i class="bi bi-shield-check"></i> Ποιότητα</span></h2>
-      <p>Έλεγχος ποιότητας και προσβασιμότητας επιλεγμένων δειγματικών datasets.</p>
+      <p>Αυτοματοποιημένος έλεγχος ποιότητας και προσβασιμότητας επιλεγμένων δειγματικών datasets.</p>
 
       <h3>Έλεγχος Ποιότητας Dataset</h3>
-      <p>Πατήστε <span class="icon-ref"><i class="bi bi-play"></i> Εκτέλεση ελέγχου</span>. Το σύστημα ελέγχει δειγματικά datasets για:</p>
+      <p>Πατήστε <span class="icon-ref"><i class="bi bi-play"></i> Εκτέλεση ελέγχου</span>. Το σύστημα αξιολογεί δειγματικά datasets για:</p>
       <ul>
-        <li>Ύπαρξη metadata (τίτλος, περιγραφή, ετικέτες, άδεια)</li>
-        <li>Εγκυρότητα URL πόρων</li>
-        <li>Πρόσφατη ενημέρωση</li>
+        <li><strong>Πληρότητα metadata</strong> — τίτλος, περιγραφή, ετικέτες, άδεια</li>
+        <li><strong>Εγκυρότητα URL πόρων</strong> — είναι προσβάσιμοι οι σύνδεσμοι;</li>
+        <li><strong>Πρόσφατη ενημέρωση</strong> — πότε τελευταία τροποποιήθηκε το dataset;</li>
       </ul>
-      <p>Τα αποτελέσματα εμφανίζονται με χρωματική ένδειξη ανά πεδίο (πράσινο / κίτρινο / κόκκινο).</p>
+      <p>Τα αποτελέσματα εμφανίζουν:</p>
+      <ul>
+        <li><strong>Συνολική βαθμολογία</strong> (Healthy / Critical) με αριθμό κρίσιμων προβλημάτων</li>
+        <li><strong>Πίνακας ευρημάτων</strong> με στήλες: Dataset, Πρόβλημα, Σοβαρότητα (<span class="status-badge badge-noresponse">Critical</span> ή <span class="status-badge badge-responded">Warning</span>)</li>
+      </ul>
 
       <h3>Προσβασιμότητα Δειγματικών Datasets</h3>
-      <p>Πατήστε <span class="icon-ref"><i class="bi bi-arrow-repeat"></i> Έλεγχος</span>. Το σύστημα προσπαθεί να κατεβάσει τα αρχεία και αναφέρει:</p>
+      <p>Πατήστε <span class="icon-ref"><i class="bi bi-arrow-repeat"></i> Έλεγχος</span>. Το σύστημα προσπαθεί να προσπελάσει τους πόρους και επιστρέφει για κάθε dataset:</p>
       <ul>
-        <li>HTTP status κάθε πόρου</li>
+        <li>Ένδειξη <span class="status-badge badge-uploaded">UP</span> ή <span class="status-badge badge-noresponse">DOWN</span></li>
+        <li>HTTP status code κάθε πόρου</li>
         <li>Χρόνο απόκρισης (ms)</li>
-        <li>Μέγεθος αρχείου (KB)</li>
+        <li>Αριθμό πόρων που ελέγχθηκαν</li>
       </ul>
+      <div class="callout">
+        <div class="callout-title">Συμβουλή</div>
+        Ο έλεγχος εκτελείται σε δείγμα, όχι στο σύνολο των datasets. Για πλήρη αποτίμηση απαιτείται χωριστή διαδικασία μαζικού ελέγχου.
+      </div>
     </section>
 
     <!-- 10. Organizations -->
     <section id="tab-orgs">
       <div class="section-eyebrow">Καρτέλα 10</div>
       <h2><span class="tab-chip"><i class="bi bi-building"></i> Οργανισμοί</span></h2>
-      <p>Λίστα οργανισμών με τον αριθμό των datasets τους.</p>
+      <p>Λίστα οργανισμών με στατιστικά datasets και πρόσβαση στις επαφές τους.</p>
 
       <h3>Δύο προβολές</h3>
       <div class="action-table-wrap">
         <table class="action-table">
-          <thead><tr><th>Κουμπί</th><th>Τι εμφανίζει</th></tr></thead>
+          <thead><tr><th>Κουμπί</th><th>Τι εμφανίζει</th><th>Ταξινόμηση</th></tr></thead>
           <tbody>
             <tr>
               <td><strong>data.gov.gr</strong></td>
-              <td>Μόνο οργανισμοί που έχουν ήδη datasets στο data.gov.gr, ταξινομημένοι κατά αριθμό datasets.</td>
+              <td>Μόνο οργανισμοί που έχουν ήδη datasets στο data.gov.gr.</td>
+              <td>Κατά αριθμό datasets (φθίνουσα)</td>
             </tr>
             <tr>
               <td><strong>Όλο το Δημόσιο</strong></td>
-              <td>Όλοι οι εγγεγραμμένοι φορείς (από CKAN), ακόμη και αν δεν έχουν datasets.</td>
+              <td>Όλοι οι εγγεγραμμένοι φορείς από το HRMS, με ένδειξη αν είναι ή όχι στο data.gov.gr.</td>
+              <td>Εγγεγραμμένοι πρώτα (κατά datasets), μετά μη-εγγεγραμμένοι αλφαβητικά</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <h3>Αναζήτηση και ανανέωση</h3>
+      <h3>Προβολή «Όλο το Δημόσιο» — Λεπτομέρειες</h3>
+      <p>Η προβολή αντλεί δεδομένα από το <strong>HRMS</strong> (hrms.gov.gr) και τα εμπλουτίζει με πληροφορίες CKAN. Στήλες:</p>
       <ul>
-        <li>Χρησιμοποιήστε το πεδίο αναζήτησης για φιλτράρισμα κατά όνομα οργανισμού.</li>
-        <li>Πατήστε <span class="icon-ref"><i class="bi bi-arrow-repeat"></i> Ανανέωση</span> για άμεση ανάκτηση των δεδομένων από το CKAN API.</li>
-        <li>Κάτω δεξιά από τον τίτλο εμφανίζεται ο χρόνος τελευταίας ανάκτησης.</li>
+        <li><strong>#</strong> — αύξων αριθμός</li>
+        <li><strong>Οργανισμός</strong> — επίσημος τίτλος φορέα</li>
+        <li><strong>Κατάσταση</strong> — <span class="status-badge badge-uploaded">On portal</span> αν υπάρχει στο data.gov.gr, <span class="status-badge badge-noresponse">Not registered</span> αν απουσιάζει</li>
+        <li><strong>Datasets</strong> — αριθμός δημοσιευμένων datasets (εμφανίζεται μόνο για εγγεγραμμένους)</li>
+        <li><strong>Επαφές</strong> — κουμπί με αριθμό καταχωρημένων επαφών για τον φορέα</li>
       </ul>
+      <p>Στο πάνω μέρος εμφανίζονται <strong>3 σύνοψη-badges</strong>: πλήθος εγγεγραμμένων, μη-εγγεγραμμένων, και σύνολο.</p>
 
-      <h3>Επαφές οργανισμού</h3>
-      <p>Κάνοντας κλικ σε μια γραμμή του πίνακα ανοίγει το πλαϊνό πάνελ <strong>Επαφές οργανισμού</strong> (βλ. και καρτέλα <a href="#tab-contacts">Επαφές</a>).</p>
+      <h3>Αντιστοίχιση ονομάτων μεταξύ HRMS και data.gov.gr</h3>
+      <p>Το σύστημα αντιστοιχεί αυτόματα τους φορείς μεταξύ των δύο πηγών με τεχνική κανονικοποίησης ονομάτων: αγνοεί τόνους, πεζά/κεφαλαία, σημεία στίξης και <strong>περιεχόμενο εντός παρενθέσεων</strong>. Έτσι π.χ. «Υπουργείο Παιδείας (Β΄ Βαθμίδα)» αντιστοιχεί με «Υπουργείο Παιδείας».</p>
+
+      <h3>Αναζήτηση, ανανέωση και επαφές</h3>
+      <ul>
+        <li>Χρησιμοποιήστε το πεδίο αναζήτησης για φιλτράρισμα κατά όνομα (ανεξαρτήτως τόνων).</li>
+        <li>Πατήστε <span class="icon-ref"><i class="bi bi-arrow-repeat"></i> Ανανέωση</span> για άμεση ανάκτηση από το CKAN API.</li>
+        <li>Κλικ σε οποιαδήποτε γραμμή ή στο κουμπί <span class="icon-ref"><i class="bi bi-people"></i></span> ανοίγει το πλαϊνό πάνελ επαφών του φορέα.</li>
+      </ul>
     </section>
 
     <!-- 11. Communications -->
     <section id="tab-comms">
       <div class="section-eyebrow">Καρτέλα 11</div>
       <h2><span class="tab-chip"><i class="bi bi-envelope"></i> Επικοινωνίες</span></h2>
-      <p>Καταγραφή επικοινωνιών με φορείς σχετικά με ανάρτηση datasets — εσωτερικό CRM για παρακολούθηση της πορείας κάθε αίτημος.</p>
+      <p>Εσωτερικό CRM για την παρακολούθηση επικοινωνιών με φορείς σχετικά με ανάρτηση datasets.</p>
 
-      <h3>Κατάσταση εγγραφών</h3>
-      <p>Κάθε επικοινωνία έχει μια από τις παρακάτω καταστάσεις:</p>
-      <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem">
+      <h3>Καταστάσεις εγγραφών</h3>
+      <p>Κάθε επικοινωνία φέρει μια κατάσταση που απεικονίζει το στάδιο της διαδικασίας:</p>
+      <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center">
         <span class="status-badge badge-contacted">Contacted</span>
+        <span style="font-size:.82rem;color:var(--muted)">Η επικοινωνία έγινε, αναμένουμε απάντηση</span>
+      </div>
+      <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center">
         <span class="status-badge badge-responded">Responded</span>
+        <span style="font-size:.82rem;color:var(--muted)">Ο φορέας απάντησε και υπάρχει αλληλογραφία</span>
+      </div>
+      <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center">
         <span class="status-badge badge-uploaded">Uploaded</span>
+        <span style="font-size:.82rem;color:var(--muted)">Τα δεδομένα ανέβηκαν στην πύλη</span>
+      </div>
+      <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1.5rem; align-items:center">
         <span class="status-badge badge-noresponse">No Response</span>
+        <span style="font-size:.82rem;color:var(--muted)">Δεν ελήφθη απάντηση</span>
       </div>
 
       <h3>Φιλτράρισμα και αναζήτηση</h3>
       <ul>
         <li>Dropdown <strong>Κατάσταση</strong> για φιλτράρισμα κατά στάδιο.</li>
-        <li>Πεδίο αναζήτησης για ελεύθερο κείμενο (οργανισμός, θέμα, σημειώσεις).</li>
-        <li>Κουμπιά <strong>Όλα</strong> / <strong>Ανά Οργανισμό</strong> για εναλλαγή μεταξύ επίπεδης λίστας και ομαδοποιημένης προβολής.</li>
+        <li>Πεδίο αναζήτησης για ελεύθερο κείμενο — ψάχνει σε οργανισμό, θέμα, σημειώσεις και υπεύθυνο επικοινωνίας.</li>
+        <li>Κουμπιά <strong>Όλα</strong> / <strong>Ανά Οργανισμό</strong> για εναλλαγή προβολής.</li>
       </ul>
 
-      <h3>Προσθήκη επικοινωνίας</h3>
-      <ol>
-        <li>Πατήστε <span class="icon-ref"><i class="bi bi-plus"></i> Προσθήκη</span>.</li>
-        <li>Συμπληρώστε <strong>Ημερομηνία</strong>, <strong>Οργανισμό</strong> (autocomplete), <strong>Θέμα</strong> και <strong>Κατάσταση</strong>.</li>
-        <li>Προαιρετικά επιλέξτε <strong>Επαφή</strong> (αν υπάρχουν καταχωρημένες επαφές για τον οργανισμό) και προσθέστε <strong>Σημειώσεις</strong>.</li>
-        <li>Πατήστε <strong>Αποθήκευση</strong>.</li>
-      </ol>
+      <h3>Προβολή «Ανά Οργανισμό»</h3>
+      <p>Ομαδοποιεί τις εγγραφές ανά φορέα. Κάθε γραμμή οργανισμού δείχνει:</p>
+      <ul>
+        <li>Τίτλο φορέα και πλήθος εγγραφών (badge)</li>
+        <li>Τελευταία κατάσταση επικοινωνίας και ημερομηνία</li>
+        <li>Κουμπί γρήγορης προσθήκης <span class="icon-ref"><i class="bi bi-plus"></i></span> για νέα εγγραφή με προσυμπληρωμένο τον φορέα</li>
+      </ul>
+      <p>Κλικ στη γραμμή αναπτύσσει τις επιμέρους εγγραφές (ταξινομημένες από νεότερη προς παλαιότερη). Η κατάσταση ανάπτυξης / σύμπτυξης διατηρείται κατά το φιλτράρισμα.</p>
+
+      <h3>Προσθήκη / Επεξεργασία επικοινωνίας</h3>
+      <p>Πατήστε <span class="icon-ref"><i class="bi bi-plus"></i> Προσθήκη</span>. Το modal περιέχει τα παρακάτω πεδία:</p>
+      <ul class="field-list">
+        <li><span class="field-name">Ημερομηνία <span class="field-req">Υποχρεωτικό</span></span><span>Ημερομηνία επικοινωνίας σε μορφή ημερομηνίας.</span></li>
+        <li><span class="field-name">Οργανισμός <span class="field-req">Υποχρεωτικό</span></span><span>Ελεύθερο κείμενο με autocomplete από τη λίστα φορέων.</span></li>
+        <li><span class="field-name">Επαφή</span><span>Dropdown που φορτώνει αυτόματα τις καταχωρημένες επαφές του επιλεγμένου οργανισμού. Κατά την επιλογή εμφανίζονται email και τηλέφωνο της επαφής.</span></li>
+        <li><span class="field-name">Θέμα <span class="field-req">Υποχρεωτικό</span></span><span>Σύντομη περιγραφή του αιτήματος ή του dataset που αφορά.</span></li>
+        <li><span class="field-name">Κατάσταση</span><span>Dropdown με τις 4 καταστάσεις· προεπιλογή: <em>Contacted</em>.</span></li>
+        <li><span class="field-name">Σημειώσεις</span><span>Ελεύθερο κείμενο για πρόσθετο πλαίσιο ή ιστορικό.</span></li>
+      </ul>
 
       <h3>Επεξεργασία / Διαγραφή</h3>
       <ul>
-        <li>Κλικ στο εικονίδιο <span class="icon-ref"><i class="bi bi-pencil"></i></span> της γραμμής για επεξεργασία.</li>
+        <li>Κλικ στο <span class="icon-ref"><i class="bi bi-pencil"></i></span> για επεξεργασία εγγραφής.</li>
         <li>Κλικ στο <span class="icon-ref"><i class="bi bi-trash"></i></span> για διαγραφή (απαιτεί επιβεβαίωση).</li>
       </ul>
 
       <h3>Εξαγωγή Excel</h3>
-      <p>Πατήστε <span class="icon-ref"><i class="bi bi-file-earmark-excel"></i> Excel</span> για λήψη της <em>τρέχουσας</em> (φιλτραρισμένης) προβολής ως αρχείο <code>.xlsx</code>.</p>
+      <p>Πατήστε <span class="icon-ref"><i class="bi bi-file-earmark-excel"></i> Excel</span> για λήψη της <em>τρέχουσας</em> (φιλτραρισμένης) προβολής ως αρχείο <code>.xlsx</code>. Αν δεν υπάρχει ενεργό φίλτρο, εξάγονται όλες οι εγγραφές.</p>
     </section>
 
     <!-- 12. Contacts -->
@@ -651,41 +846,61 @@
       <h2><span class="tab-chip"><i class="bi bi-people"></i> Επαφές</span></h2>
       <p>Κεντρική βάση επαφών ανά οργανισμό — στοιχεία προσώπων επικοινωνίας με ρόλο στη διαχείριση ανοικτών δεδομένων.</p>
 
-      <h3>Προβολή λίστας</h3>
-      <p>Ο πίνακας εμφανίζει όλες τις επαφές με τα εξής πεδία:</p>
-      <ul>
-        <li><strong>Οργανισμός</strong> — φορέας που ανήκει η επαφή</li>
-        <li><strong>Ονοματεπώνυμο</strong></li>
-        <li><strong>Τύπος</strong> — ρόλος (Portal Administrator, Portal Editor, Portal User, Data Officer, Data Steward)</li>
-        <li><strong>Θέση</strong> — τίτλος στον οργανισμό</li>
-        <li><strong>Email</strong> — κλικ για αποστολή email</li>
-        <li><strong>Τηλέφωνο / Κινητό</strong></li>
-      </ul>
+      <h3>Στήλες πίνακα</h3>
+      <div class="action-table-wrap">
+        <table class="action-table">
+          <thead><tr><th>#</th><th>Στήλη</th><th>Σημειώσεις</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td><strong>Οργανισμός</strong></td><td>Φορέας που ανήκει η επαφή</td></tr>
+            <tr><td>2</td><td><strong>Ονοματεπώνυμο</strong></td><td>Επώνυμο + Όνομα</td></tr>
+            <tr><td>3</td><td><strong>Τύπος</strong></td><td>Ένας ή περισσότεροι ρόλοι ως χρωματιστά badges</td></tr>
+            <tr><td>4</td><td><strong>Θέση</strong></td><td>Τίτλος στον οργανισμό</td></tr>
+            <tr><td>5</td><td><strong>Email</strong></td><td>Κλικ για άμεση αποστολή email</td></tr>
+            <tr><td>6</td><td><strong>Τηλ / Κινητό</strong></td><td>Εμφανίζεται το τηλέφωνο ή το κινητό (ό,τι είναι συμπληρωμένο· προτεραιότητα στο σταθερό)</td></tr>
+            <tr><td>7</td><td><strong>Ενέργειες</strong></td><td>Κουμπιά επεξεργασίας και διαγραφής</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Ταξινόμηση</h3>
+      <p>Ο πίνακας είναι ταξινομήσιμος σε όλες τις στήλες — κλικ στην κεφαλίδα εναλλάσσει αύξουσα/φθίνουσα σειρά. Βέλη (↑/↓) δείχνουν την ενεργή ταξινόμηση. Προεπιλογή: αλφαβητικά κατά <strong>Οργανισμό</strong>.</p>
 
       <h3>Φιλτράρισμα</h3>
       <ul>
-        <li>Πεδίο αναζήτησης για ελεύθερο κείμενο (όνομα, email, οργανισμός).</li>
-        <li>Dropdown <strong>Τύπος</strong> για φιλτράρισμα κατά ρόλο.</li>
-        <li>Ο αριθμός αποτελεσμάτων εμφανίζεται δίπλα στα φίλτρα.</li>
+        <li>Πεδίο αναζήτησης — ελεύθερο κείμενο σε όνομα, email, οργανισμό (ανεξαρτήτως τόνων).</li>
+        <li>Dropdown <strong>Τύπος</strong> — φιλτράρει κατά ρόλο επαφής.</li>
+        <li>Αριθμός αποτελεσμάτων ενημερώνεται δίπλα στα φίλτρα.</li>
       </ul>
 
-      <h3>Άνοιγμα πάνελ επαφών οργανισμού</h3>
-      <p>Κλικ σε οποιαδήποτε γραμμή ανοίγει το πλαϊνό πάνελ που εμφανίζει <strong>όλες τις επαφές</strong> του συγκεκριμένου οργανισμού. Εκεί μπορείτε επίσης να προσθέσετε νέα επαφή για τον οργανισμό.</p>
-
-      <h3>Επεξεργασία επαφής</h3>
-      <p>Στο τέλος κάθε γραμμής υπάρχουν δύο κουμπιά:</p>
+      <h3>Άνοιγμα πάνελ οργανισμού vs. επεξεργασία επαφής</h3>
       <ul>
-        <li><span class="icon-ref"><i class="bi bi-pencil"></i></span> — Ανοίγει το modal επεξεργασίας για την επαφή.</li>
-        <li><span class="icon-ref"><i class="bi bi-trash"></i></span> — Διαγραφή επαφής (απαιτεί επιβεβαίωση).</li>
+        <li><strong>Κλικ στη γραμμή</strong> → Ανοίγει το πλαϊνό πάνελ με <em>όλες τις επαφές</em> του συγκεκριμένου οργανισμού.</li>
+        <li><strong>Κλικ στο <span class="icon-ref"><i class="bi bi-pencil"></i></span></strong> → Ανοίγει το modal επεξεργασίας της <em>συγκεκριμένης επαφής</em>.</li>
+        <li><strong>Κλικ στο <span class="icon-ref"><i class="bi bi-trash"></i></span></strong> → Διαγραφή μετά από επιβεβαίωση.</li>
       </ul>
 
-      <div class="callout">
-        <div class="callout-title">Συμβουλή</div>
-        Στο modal επεξεργασίας το πεδίο <strong>Τύπος</strong> είναι λίστα πολλαπλής επιλογής (Ctrl+κλικ ή Cmd+κλικ για πολλαπλές επιλογές).
+      <h3>Ρόλοι επαφής (Τύπος)</h3>
+      <p>Κάθε επαφή μπορεί να έχει έναν ή περισσότερους ρόλους ταυτόχρονα:</p>
+      <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin:0 0 1rem">
+        <span class="type-badge type-admin">Διαχειριστής Πύλης</span>
+        <span class="type-badge type-editor">Συντάκτης Πύλης</span>
+        <span class="type-badge type-user">Χρήστης Πύλης</span>
+        <span class="type-badge type-officer">Υπεύθυνος Δεδομένων</span>
+        <span class="type-badge type-steward">Θεματοφύλακας Δεδομένων</span>
       </div>
+      <p>Στο modal επεξεργασίας το πεδίο <strong>Τύπος</strong> είναι λίστα πολλαπλής επιλογής. Χρησιμοποιήστε <kbd>Ctrl</kbd>+κλικ (Windows) ή <kbd>⌘</kbd>+κλικ (Mac) για να επιλέξετε πολλαπλούς ρόλους. Για να αποεπιλέξετε, ξανακλικάρετε κρατώντας πατημένο το <kbd>Ctrl</kbd>/<kbd>⌘</kbd>.</p>
 
-      <h3>Προσθήκη νέας επαφής</h3>
-      <p>Μέσα από το πάνελ οργανισμού πατήστε <span class="icon-ref"><i class="bi bi-plus"></i> Νέα επαφή</span> ή χρησιμοποιήστε το κουμπί Προσθήκη μέσα στο πάνελ για να φορτώσει προσυμπληρωμένο το modal με τον οργανισμό.</p>
+      <h3>Πεδία επαφής και επικύρωση</h3>
+      <ul class="field-list">
+        <li><span class="field-name">Όνομα</span><span>Ελεύθερο κείμενο.</span></li>
+        <li><span class="field-name">Επώνυμο</span><span>Ελεύθερο κείμενο.</span></li>
+        <li><span class="field-name">Θέση</span><span>Τίτλος ή ρόλος στον οργανισμό.</span></li>
+        <li><span class="field-name">Τύπος</span><span>Πολλαπλής επιλογής — βλ. παραπάνω.</span></li>
+        <li><span class="field-name">Email</span><span>Επικυρώνεται αυτόματα κατά την εξαγωγή του πεδίου (<em>blur</em>) και κατά την αποθήκευση. Απαιτεί μορφή <code>χχχ@yyy.zzz</code>.</span></li>
+        <li><span class="field-name">Τηλέφωνο</span><span>Επικυρώνεται κατά blur και αποθήκευση. Αποδεκτοί χαρακτήρες: ψηφία, κενά, <code>+</code>, <code>-</code>, <code>()</code>. Ελάχιστο μήκος 6 χαρακτήρες.</span></li>
+        <li><span class="field-name">Κινητό</span><span>Ίδια επικύρωση με το Τηλέφωνο.</span></li>
+      </ul>
+      <p>Σε περίπτωση σφάλματος εμφανίζεται κόκκινο περίγραμμα και μήνυμα <em>κάτω από το πεδίο</em> — χωρίς popup. Η αποθήκευση αποκλείεται έως ότου διορθωθούν όλα τα σφάλματα.</p>
 
       <h3>Εξαγωγή / Εισαγωγή Excel</h3>
       <div class="action-table-wrap">
@@ -693,20 +908,80 @@
           <thead><tr><th>Κουμπί</th><th>Λειτουργία</th></tr></thead>
           <tbody>
             <tr>
-              <td><span class="icon-ref"><i class="bi bi-file-earmark-excel"></i> Export Excel</span></td>
-              <td>Λήψη της <em>τρέχουσας</em> (φιλτραρισμένης) λίστας επαφών ως <code>.xlsx</code>.</td>
+              <td><span class="icon-ref"><i class="bi bi-file-earmark-excel"></i> Εξαγωγή Excel</span></td>
+              <td>Λήψη της <em>τρέχουσας</em> (φιλτραρισμένης) λίστας επαφών ως <code>.xlsx</code>. Αν δεν υπάρχει φίλτρο, εξάγονται όλες.</td>
             </tr>
             <tr>
-              <td><span class="icon-ref"><i class="bi bi-upload"></i> Import Excel</span></td>
-              <td>Εισαγωγή νέων επαφών από αρχείο <code>.xlsx</code>. Οι ήδη υπάρχουσες εγγραφές δεν αντικαθίστανται· προστίθενται μόνο νέες. Χρησιμοποιήστε το template από εξαγωγή.</td>
+              <td><span class="icon-ref"><i class="bi bi-upload"></i> Εισαγωγή Excel</span></td>
+              <td>Εισαγωγή νέων επαφών από αρχείο <code>.xlsx</code>. Οι ήδη υπάρχουσες εγγραφές <strong>δεν αντικαθίστανται</strong>· προστίθενται μόνο νέες. Χρησιμοποιήστε ως template ένα αρχείο εξαγωγής.</td>
             </tr>
           </tbody>
         </table>
       </div>
-
       <div class="callout warn">
         <div class="callout-title">Προσοχή — Import</div>
-        Πριν από μαζική εισαγωγή εξάγετε πρώτα τη λίστα ώστε να έχετε το σωστό format. Τα πεδία <code>org_code</code> και <code>email</code> χρησιμοποιούνται ως μοναδικά αναγνωριστικά για τον εντοπισμό διπλότυπων.
+        Πριν από μαζική εισαγωγή εξάγετε πρώτα τη λίστα ώστε να έχετε το σωστό format. Ο συνδυασμός <strong>Οργανισμός + Email</strong> χρησιμοποιείται ως μοναδικό αναγνωριστικό για τον εντοπισμό διπλότυπων — εγγραφές με ίδιο ζεύγος οργανισμός/email παραλείπονται. Βλ. <a href="#appendix-import">Παράρτημα Β</a> για λεπτομέρειες της δομής αρχείου.
+      </div>
+    </section>
+
+    <!-- Appendix A: Search -->
+    <section id="appendix-search">
+      <div class="section-eyebrow">Παράρτημα Α</div>
+      <h2>Αναζήτηση και φίλτρα</h2>
+
+      <h3>Κανονικοποίηση αναζήτησης</h3>
+      <p>Σε όλα τα πεδία αναζήτησης του dashboard η σύγκριση γίνεται με <strong>κανονικοποίηση</strong>:</p>
+      <ul>
+        <li><strong>Αγνόηση τόνων</strong> — «Αθηναιων» βρίσκει «Αθηναίων»</li>
+        <li><strong>Πεζά/κεφαλαία</strong> — αδιάφορο</li>
+        <li><strong>Παρενθέσεις</strong> — το περιεχόμενο εντός παρενθέσεων αγνοείται κατά την αντιστοίχιση οργανισμών</li>
+      </ul>
+
+      <h3>Ταυτόχρονα φίλτρα</h3>
+      <p>Στις καρτέλες Επαφών και Επικοινωνιών το φίλτρο κειμένου και το dropdown τύπου/κατάστασης λειτουργούν ταυτόχρονα (λογική AND). Ο αριθμός αποτελεσμάτων ενημερώνεται σε πραγματικό χρόνο.</p>
+    </section>
+
+    <!-- Appendix B: Import format -->
+    <section id="appendix-import">
+      <div class="section-eyebrow">Παράρτημα Β</div>
+      <h2>Μορφή αρχείου εισαγωγής επαφών</h2>
+      <p>Το αρχείο <code>.xlsx</code> πρέπει να έχει κεφαλίδες στην <strong>πρώτη γραμμή</strong> και δεδομένα από τη γραμμή 2 και κάτω. Η σειρά των στηλών είναι:</p>
+
+      <div class="action-table-wrap">
+        <table class="action-table">
+          <thead>
+            <tr><th style="width:3rem">Στήλη</th><th>Πεδίο</th><th>Κεφαλίδα (αγγλικά)</th><th>Σημειώσεις</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="col-key">A</span></td><td><strong>Οργανισμός</strong></td><td><code>Organization</code></td><td>Επίσημος τίτλος φορέα· αντιστοιχίζεται αυτόματα με HRMS</td></tr>
+            <tr><td><span class="col-key">B</span></td><td><strong>Όνομα</strong></td><td><code>First Name</code></td><td></td></tr>
+            <tr><td><span class="col-key">C</span></td><td><strong>Επώνυμο</strong></td><td><code>Last Name</code></td><td></td></tr>
+            <tr><td><span class="col-key">D</span></td><td><strong>Θέση</strong></td><td><code>Position</code></td><td></td></tr>
+            <tr><td><span class="col-key">E</span></td><td><strong>Τύπος</strong></td><td><code>Contact Type</code></td><td>Αγγλικές ή Ελληνικές ονομασίες ρόλων· διαχωρίζονται με κόμμα αν είναι πολλαπλοί</td></tr>
+            <tr><td><span class="col-key">F</span></td><td><strong>Email</strong></td><td><code>Email</code></td><td>Χρησιμοποιείται ως μέρος του κλειδιού deduplication</td></tr>
+            <tr><td><span class="col-key">G</span></td><td><strong>Τηλέφωνο</strong></td><td><code>Tel</code></td><td>Αν είναι αριθμός, μετατρέπεται αυτόματα σε string</td></tr>
+            <tr><td><span class="col-key">H</span></td><td><strong>Κινητό</strong></td><td><code>Mobile</code></td><td>Προαιρετικό</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <div class="callout-title">Συμβουλή</div>
+        Ο ευκολότερος τρόπος να δημιουργήσετε ένα σωστό template είναι να πατήσετε <strong>Εξαγωγή Excel</strong> — το αρχείο που κατεβάζει έχει ακριβώς αυτή τη δομή και μπορεί να χρησιμοποιηθεί άμεσα για εισαγωγή αφού συμπληρωθούν νέες γραμμές.
+      </div>
+
+      <h3>Αποδεκτές τιμές στήλης «Τύπος»</h3>
+      <div class="action-table-wrap">
+        <table class="action-table">
+          <thead><tr><th>Αγγλική τιμή</th><th>Ελληνική τιμή</th></tr></thead>
+          <tbody>
+            <tr><td><code>Portal Administrator</code></td><td><code>Διαχειριστής Πύλης</code></td></tr>
+            <tr><td><code>Portal Editor</code></td><td><code>Συντάκτης Πύλης</code></td></tr>
+            <tr><td><code>Portal User</code></td><td><code>Χρήστης Πύλης</code></td></tr>
+            <tr><td><code>Data Officer</code></td><td><code>Υπεύθυνος Δεδομένων</code></td></tr>
+            <tr><td><code>Data Steward</code></td><td><code>Θεματοφύλακας Δεδομένων</code></td></tr>
+          </tbody>
+        </table>
       </div>
     </section>
 
