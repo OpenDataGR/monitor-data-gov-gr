@@ -6,6 +6,7 @@ load_dotenv(Path(__file__).parent / ".env")
 import time
 import threading
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import hashlib
 import io
@@ -816,15 +817,48 @@ def organization_detail(org_name):
             if r.status_code == 200:
                 data = r.json()
                 if data.get("success"):
-                    result["org"]["members"] = [
+                    raw_users = data["result"].get("users") or []
+                    members = [
                         {
                             "name":         u.get("name", ""),
                             "display_name": u.get("display_name") or u.get("fullname") or u.get("name", ""),
                             "capacity":     u.get("capacity", "member"),
-                            "email":        (u.get("email") or "").lower().strip(),
+                            "email":        "",
+                            "state":        u.get("state", "active"),
                         }
-                        for u in (data["result"].get("users") or [])
+                        for u in raw_users
                     ]
+
+                    # Fetch email + state per user in parallel via user_show
+                    def _user_show(username):
+                        try:
+                            resp = requests.get(
+                                f"{config.PORTAL_BASE}/api/3/action/user_show",
+                                params={"id": username},
+                                timeout=8,
+                                headers=auth_headers,
+                            )
+                            if resp.status_code == 200:
+                                ud = resp.json()
+                                if ud.get("success"):
+                                    return username, ud["result"]
+                        except Exception:
+                            pass
+                        return username, {}
+
+                    with ThreadPoolExecutor(max_workers=10) as pool:
+                        futures = {pool.submit(_user_show, m["name"]): m["name"] for m in members}
+                        user_details = {}
+                        for fut in as_completed(futures):
+                            uname, details = fut.result()
+                            user_details[uname] = details
+
+                    for m in members:
+                        d = user_details.get(m["name"], {})
+                        m["email"] = (d.get("email") or "").lower().strip()
+                        m["state"] = d.get("state", m["state"])
+
+                    result["org"]["members"] = members
         except Exception:
             pass
 
