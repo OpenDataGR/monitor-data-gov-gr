@@ -2916,6 +2916,12 @@ async function importContactsExcel(input) {
       const fixTJson = await fixT.json();
       if (fixTJson.fixed) msg += ' (fixed ' + fixTJson.fixed + ' contact type(s))';
     } catch (_) {}
+    // Move 69x numbers from tel to mobile
+    try {
+      const fixM = await fetch(API_BASE + 'api/contacts/fix-tel-mobile', {method:'POST'});
+      const fixMJson = await fixM.json();
+      if (fixMJson.fixed) msg += ' (fixed ' + fixMJson.fixed + ' tel→mobile)';
+    } catch (_) {}
     alert(msg);
     _allContacts = null; _allUnified = null;  // invalidate contacts tab cache
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());

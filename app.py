@@ -264,6 +264,18 @@ _ROLE_MAP = {
 }
 
 
+def _fix_tel_mobile(tel: str, mobile: str):
+    """Move tel to mobile when the number is a Greek mobile (starts with 69 / +3069 / 003069)."""
+    tel    = (tel    or "").strip()
+    mobile = (mobile or "").strip()
+    digits = re.sub(r"[\s\-\(\)\+]", "", tel)
+    if digits.startswith("69") or digits.startswith("306") or digits.startswith("0069"):
+        mobile = mobile or tel
+        tel = ""
+    return tel or None, mobile or None
+
+
+
 
 @app.route("/api/public-orgs")
 def public_orgs():
@@ -1095,6 +1107,7 @@ def contacts_import():
                 tel         = str(int(tel_raw)) if isinstance(tel_raw, (int, float)) else str(tel_raw or "").strip()
                 mob_raw     = row[7] if len(row) > 7 else None
                 mobile      = str(int(mob_raw)) if isinstance(mob_raw, (int, float)) else str(mob_raw or "").strip()
+                tel, mobile = _fix_tel_mobile(tel, mobile)
 
                 if not org_label or (not first_name and not last_name):
                     skipped += 1
@@ -1353,6 +1366,21 @@ def contacts_fix_contact_types():
     return jsonify({"fixed": fixed, "total": len(contacts)})
 
 
+@app.route("/api/contacts/fix-tel-mobile", methods=["POST"])
+def contacts_fix_tel_mobile():
+    """Move any tel that starts with 69 (Greek mobile prefix) into the mobile field."""
+    contacts = OrgContact.query.filter(OrgContact.tel.isnot(None)).all()
+    fixed = 0
+    for c in contacts:
+        new_tel, new_mobile = _fix_tel_mobile(c.tel, c.mobile)
+        if new_tel != c.tel or new_mobile != c.mobile:
+            c.tel    = new_tel
+            c.mobile = new_mobile
+            fixed += 1
+    db.session.commit()
+    return jsonify({"fixed": fixed, "total": len(contacts)})
+
+
 # ── Org Contacts ─────────────────────────────────────────────────────────────
 
 @app.route("/api/contacts", methods=["GET"])
@@ -1503,12 +1531,14 @@ def contacts_save():
         for field in ("first_name", "last_name", "position", "contact_type", "email", "tel", "mobile", "org_label"):
             if field in body:
                 setattr(contact, field, (body[field] or "").strip() or None)
+        contact.tel, contact.mobile = _fix_tel_mobile(contact.tel, contact.mobile)
         db.session.commit()
         return jsonify(contact.to_dict())
     else:
         org_code = (body.get("org_code") or "").strip()
         if not org_code:
             return jsonify({"error": "org_code required"}), 400
+        tel, mobile = _fix_tel_mobile(body.get("tel"), body.get("mobile"))
         contact = OrgContact(
             org_code=org_code,
             org_label=(body.get("org_label") or "").strip() or None,
@@ -1517,8 +1547,8 @@ def contacts_save():
             position=(body.get("position") or "").strip() or None,
             contact_type=(body.get("contact_type") or "").strip() or None,
             email=(body.get("email") or "").strip() or None,
-            tel=(body.get("tel") or "").strip() or None,
-            mobile=(body.get("mobile") or "").strip() or None,
+            tel=tel,
+            mobile=mobile,
         )
         db.session.add(contact)
         db.session.commit()
