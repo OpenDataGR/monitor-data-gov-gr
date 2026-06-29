@@ -862,6 +862,23 @@ def organization_detail(org_name):
         except Exception:
             pass
 
+    # Communications summary for this org
+    try:
+        comms = Communication.query.filter(Communication.org_name == org_name).all()
+        status_counts = {}
+        latest_date = None
+        for c in comms:
+            status_counts[c.status] = status_counts.get(c.status, 0) + 1
+            if latest_date is None or c.contact_date > latest_date:
+                latest_date = c.contact_date
+        result["comms_summary"] = {
+            "total":       len(comms),
+            "by_status":   status_counts,
+            "latest_date": latest_date,
+        }
+    except Exception:
+        result["comms_summary"] = {"total": 0, "by_status": {}, "latest_date": None}
+
     return jsonify(result)
 
 

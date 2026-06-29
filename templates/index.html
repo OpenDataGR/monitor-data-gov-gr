@@ -2964,6 +2964,29 @@ function renderOrgPanel(data) {
     const order = { admin: 0, editor: 1, member: 2 };
     return (order[a.capacity] ?? 3) - (order[b.capacity] ?? 3);
   });
+  const COMM_STATUS_CLS = {
+    'Contacted':   'bg-primary',
+    'Responded':   'bg-info text-dark',
+    'Uploaded':    'bg-success',
+    'No Response': 'bg-secondary',
+  };
+  const PENDING_STATUSES = new Set(['Contacted', 'Responded']);
+  const cs = data.comms_summary || {};
+  const byStatus = cs.by_status || {};
+  const statusOrder = ['Contacted', 'Responded', 'Uploaded', 'No Response'];
+  const commsHtml = cs.total > 0
+    ? `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-envelope me-1 text-primary"></i>Communications</h6>
+       <div class="d-flex flex-wrap gap-2 mb-1">
+         ${statusOrder.filter(s => byStatus[s]).map(s => `
+           <span class="badge ${COMM_STATUS_CLS[s]} d-flex align-items-center gap-1${PENDING_STATUSES.has(s) ? '' : ''}">
+             ${PENDING_STATUSES.has(s) ? '<i class="bi bi-clock-history"></i>' : ''}
+             ${s} <span class="ms-1 fw-bold">${byStatus[s]}</span>
+           </span>`).join('')}
+       </div>
+       ${cs.latest_date ? `<div class="text-muted" style="font-size:.75rem">Last contact: ${cs.latest_date}</div>` : ''}`
+    : `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-envelope me-1 text-primary"></i>Communications</h6>
+       <p class="text-muted small">No communications recorded.</p>`;
+
   const membersHtml = `
     <h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-person-badge me-1 text-primary"></i>Portal Members</h6>
     ${members.length
@@ -2995,6 +3018,7 @@ function renderOrgPanel(data) {
       <i class="bi bi-box-arrow-up-right me-1"></i>${t('org_detail.view')}
     </a>
     ${datasetsHtml}
+    ${commsHtml}
     ${membersHtml}`;
 }
 
