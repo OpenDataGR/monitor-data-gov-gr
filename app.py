@@ -1546,29 +1546,38 @@ _pm_cache: dict = {"data": None, "ts": 0}
 def portal_members_all():
     """Return all portal users across every CKAN organisation, cached for 2 hours."""
     now = time.time()
-    if _pm_cache["data"] is not None and now - _pm_cache["ts"] < 7200:
+    # Serve from cache only when we have actual results (empty list = likely a prior failure)
+    if _pm_cache["data"] and now - _pm_cache["ts"] < 7200:
         return jsonify(_pm_cache["data"])
 
+    base_headers = {"User-Agent": "DataGovGR-Dashboard/1.0"}
+    auth_headers = {**base_headers, "Authorization": config.TOKEN} if config.TOKEN else base_headers
+
     try:
-        # Step 1 – get the list of all portal organisations
-        r = requests.get(
-            f"{config.API_BASE}/organization_list",
-            params={"all_fields": "true"},
+        # Step 1 – get the list of all portal organisations (POST+JSON matches existing pattern)
+        r = requests.post(
+            f"{config.PORTAL_BASE}/api/3/action/organization_list",
+            json={"all_fields": True},
+            headers=auth_headers,
             timeout=20,
         )
         r.raise_for_status()
         org_list = r.json().get("result") or []
 
-        auth_headers = {"Authorization": config.TOKEN} if config.TOKEN else {}
-
         # Step 2 – fetch members per org in parallel
         def _fetch_org_members(org):
-            slug  = org.get("name", "")
-            title = org.get("title") or org.get("display_name") or slug
             try:
+                # org may be a dict (all_fields=True) or a plain string (fallback)
+                if isinstance(org, str):
+                    slug, title = org, org
+                else:
+                    slug  = org.get("name", "")
+                    title = org.get("title") or org.get("display_name") or slug
+                if not slug:
+                    return []
                 r2 = requests.get(
-                    f"{config.API_BASE}/organization_show",
-                    params={"id": slug, "include_users": "true"},
+                    f"{config.PORTAL_BASE}/api/3/action/organization_show",
+                    params={"id": slug, "include_users": True},
                     headers=auth_headers,
                     timeout=12,
                 )
