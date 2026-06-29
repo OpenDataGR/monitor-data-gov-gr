@@ -1564,7 +1564,7 @@ def portal_members_all():
         r.raise_for_status()
         org_list = r.json().get("result") or []
 
-        # Step 2 – fetch members per org in parallel
+        # Step 2 – fetch members per org in parallel (email left blank for now)
         def _fetch_org_members(org):
             try:
                 # org may be a dict (all_fields=True) or a plain string (fallback)
@@ -1590,7 +1590,7 @@ def portal_members_all():
                             "username":     u.get("name", ""),
                             "display_name": (u.get("display_name") or u.get("fullname") or u.get("name", "")).strip(),
                             "capacity":     u.get("capacity", "member"),
-                            "email":        (u.get("email") or "").lower().strip(),
+                            "email":        "",   # filled in by user_show below
                             "state":        u.get("state", "active"),
                         }
                         for u in (d["result"].get("users") or [])
@@ -1607,6 +1607,40 @@ def portal_members_all():
                     all_members.extend(fut.result())
                 except Exception:
                     pass
+
+        # Step 3 – fetch emails via user_show for every unique username in parallel.
+        # organization_show never returns emails; user_show requires the sysadmin token.
+        if config.TOKEN and all_members:
+            unique_usernames = list({m["username"] for m in all_members if m["username"]})
+
+            def _user_show_email(username):
+                try:
+                    resp = requests.get(
+                        f"{config.PORTAL_BASE}/api/3/action/user_show",
+                        params={"id": username},
+                        headers=auth_headers,
+                        timeout=8,
+                    )
+                    if resp.status_code == 200:
+                        ud = resp.json()
+                        if ud.get("success"):
+                            return username, (ud["result"].get("email") or "").lower().strip()
+                except Exception:
+                    pass
+                return username, ""
+
+            email_map: dict = {}
+            with ThreadPoolExecutor(max_workers=20) as pool:
+                futs2 = {pool.submit(_user_show_email, u): u for u in unique_usernames}
+                for fut in as_completed(futs2):
+                    try:
+                        uname, email = fut.result()
+                        email_map[uname] = email
+                    except Exception:
+                        pass
+
+            for m in all_members:
+                m["email"] = email_map.get(m["username"], "")
 
         _pm_cache["data"] = all_members
         _pm_cache["ts"]   = now
