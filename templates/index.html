@@ -1212,7 +1212,7 @@ function setLang(lang) {
 // ── Chart instances ─────────────────────────────────────────────────────────
 let _uptimeChart = null, _rtChart = null, _statsChart = null;
 let _contactsPanel = null, _contactModal = null;
-let _panelOrgCode = '', _panelOrgLabel = '';
+let _panelOrgCode = '', _panelOrgLabel = '', _panelCkanName = null;
 let _contactsCache = {}, _displayedPublicOrgs = [], _contactSummary = {};
 let _qualityResults = null;
 
@@ -2164,7 +2164,7 @@ function _portalContactCell(orgName, orgTitle) {
   const hc   = _hrmsLookup ? _hrmsLookup.get(orgName) : null;
   const code = hc || orgName;  // share HRMS contacts if matched, else use CKAN slug
   const cnt  = _contactSummary[code] || 0;
-  return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + code + '\',\'' + esc(orgTitle) + '\')" title="View contacts">'
+  return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + code + '\',\'' + esc(orgTitle) + '\',\'' + orgName + '\')" title="View contacts">'
     + '<i class="bi bi-people"></i>'
     + (cnt ? '<span class="badge bg-primary rounded-pill ms-1">' + cnt + '</span>' : '')
     + '</button>';
@@ -2668,20 +2668,24 @@ function esc(s) {
 
 function openContactsByIdx(i) {
   const o = _displayedPublicOrgs[i];
-  if (o) openContactsPanel(o.label, o.label);
+  if (o) openContactsPanel(o.label, o.label, o.ckan ? o.ckan.name : null);
 }
 
-function openContactsPanel(orgCode, orgLabel) {
+function openContactsPanel(orgCode, orgLabel, ckanName = null) {
   _panelOrgCode  = orgCode;
   _panelOrgLabel = orgLabel;
+  _panelCkanName = ckanName;
   if (!_contactsPanel) _contactsPanel = new bootstrap.Offcanvas(document.getElementById('orgContactsPanel'));
-  show('orgContactsTitle').textContent   = t('contacts.panel_title');
+  show('orgContactsTitle').textContent    = t('contacts.panel_title');
   show('orgContactsSubtitle').textContent = orgLabel;
   show('orgContactsBody').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
   _contactsPanel.show();
-  fetch(API_BASE + 'api/contacts/' + encodeURIComponent(orgCode))
-    .then(r => r.json())
-    .then(contacts => renderContactsPanel(contacts))
+  const contactsFetch = fetch(API_BASE + 'api/contacts/' + encodeURIComponent(orgCode)).then(r => r.json());
+  const membersFetch  = ckanName
+    ? fetch(API_BASE + 'api/organizations/' + encodeURIComponent(ckanName)).then(r => r.ok ? r.json() : null).catch(() => null)
+    : Promise.resolve(null);
+  Promise.all([contactsFetch, membersFetch])
+    .then(([contacts, orgData]) => renderContactsPanel(contacts, (orgData?.org?.members) || []))
     .catch(err => { show('orgContactsBody').innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`; });
 }
 
@@ -2702,22 +2706,47 @@ function _contactTypeBadge(type) {
   }).join('');
 }
 
-function renderContactsPanel(contacts) {
+function renderContactsPanel(contacts, members = []) {
   _contactsCache = {};
   contacts.forEach(c => { _contactsCache[c.id] = c; });
+
+  // Build email → member map for quick lookup
+  const memberByEmail = new Map();
+  members.forEach(m => { if (m.email) memberByEmail.set(m.email.toLowerCase(), m); });
+
+  const ROLE_CLS = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary' };
+
   const addBtn = `<button class="btn btn-primary btn-sm mb-3 w-100" onclick="openContactModal()">
     <i class="bi bi-person-plus me-1"></i>${t('contacts.add')}
   </button>`;
-  const listHtml = contacts.length ? contacts.map(c => `
+
+  const listHtml = contacts.length ? contacts.map(c => {
+    const portalMatch = c.email ? memberByEmail.get(c.email.toLowerCase()) : null;
+    const portalBadgeHtml = portalMatch
+      ? `<span class="badge bg-info text-dark ms-1" title="Portal: ${esc(portalMatch.display_name)} (${portalMatch.capacity})">
+           <i class="bi bi-patch-check-fill me-1"></i>${esc(portalMatch.display_name)}
+         </span>`
+      : '';
+    const portalInfoHtml = portalMatch
+      ? `<div class="small mt-1 p-1 rounded" style="background:#e8f4fd;border-left:3px solid #0dcaf0">
+           <i class="bi bi-person-badge me-1 text-info"></i>
+           <span class="text-muted">Portal:</span>
+           <strong>${esc(portalMatch.display_name)}</strong>
+           <span class="badge ${ROLE_CLS[portalMatch.capacity] || 'bg-secondary'} ms-1" style="font-size:.7rem">${portalMatch.capacity}</span>
+           <span class="text-muted ms-1" style="font-size:.75rem">@${esc(portalMatch.name)}</span>
+         </div>`
+      : '';
+    return `
     <div class="card mb-2 border">
       <div class="card-body py-2 px-3">
         <div class="d-flex justify-content-between align-items-start gap-2">
           <div class="flex-grow-1" style="min-width:0">
-            <div class="fw-semibold">${esc(c.first_name)} ${esc(c.last_name)}${_contactTypeBadge(c.contact_type) ? ' ' + _contactTypeBadge(c.contact_type) : ''}</div>
+            <div class="fw-semibold">${esc(c.first_name)} ${esc(c.last_name)}${_contactTypeBadge(c.contact_type) ? ' ' + _contactTypeBadge(c.contact_type) : ''}${portalBadgeHtml}</div>
             ${c.position ? `<div class="text-muted small">${esc(c.position)}</div>` : ''}
             ${c.email    ? `<div class="small"><i class="bi bi-envelope me-1 text-muted"></i><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></div>` : ''}
             ${c.tel      ? `<div class="small"><i class="bi bi-telephone me-1 text-muted"></i><a href="tel:${esc(c.tel)}">${esc(c.tel)}</a></div>` : ''}
             ${c.mobile   ? `<div class="small"><i class="bi bi-phone me-1 text-muted"></i><a href="tel:${esc(c.mobile)}">${esc(c.mobile)}</a></div>` : ''}
+            ${portalInfoHtml}
           </div>
           <div class="d-flex gap-1 flex-shrink-0">
             <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openContactModal(_contactsCache[${c.id}])" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -2725,7 +2754,9 @@ function renderContactsPanel(contacts) {
           </div>
         </div>
       </div>
-    </div>`).join('') : `<p class="text-muted small mt-2">${t('contacts.none')}</p>`;
+    </div>`;
+  }).join('') : `<p class="text-muted small mt-2">${t('contacts.none')}</p>`;
+
   show('orgContactsBody').innerHTML = addBtn + listHtml;
 }
 
@@ -2793,7 +2824,7 @@ async function saveContact() {
       _allContacts = null;
       loadContactsTab();
     } else {
-      openContactsPanel(_panelOrgCode, _panelOrgLabel);
+      openContactsPanel(_panelOrgCode, _panelOrgLabel, _panelCkanName);
     }
     _allContacts = null;
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
@@ -2813,7 +2844,7 @@ async function deleteContact(id) {
       _allContacts = null;
       loadContactsTab();
     } else {
-      openContactsPanel(_panelOrgCode, _panelOrgLabel);
+      openContactsPanel(_panelOrgCode, _panelOrgLabel, _panelCkanName);
     }
     _allContacts = null;
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());

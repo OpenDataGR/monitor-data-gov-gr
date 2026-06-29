@@ -821,6 +821,7 @@ def organization_detail(org_name):
                             "name":         u.get("name", ""),
                             "display_name": u.get("display_name") or u.get("fullname") or u.get("name", ""),
                             "capacity":     u.get("capacity", "member"),
+                            "email":        (u.get("email") or "").lower().strip(),
                         }
                         for u in (data["result"].get("users") or [])
                     ]
