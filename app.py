@@ -1676,10 +1676,14 @@ def _do_fetch_portal_members():
             for m in all_members:
                 c = contact_by_email.get(m.get("email", ""))
                 if c:
+                    m["contact_id"]        = c.id
                     m["contact_position"]  = c.position or ""
                     m["contact_type"]      = c.contact_type or ""
-                    m["contact_tel"]       = c.tel or c.mobile or ""
+                    m["contact_tel"]       = c.tel or ""
+                    m["contact_mobile"]    = c.mobile or ""
                     m["contact_name"]      = f"{c.first_name or ''} {c.last_name or ''}".strip()
+                    m["contact_first_name"] = c.first_name or ""
+                    m["contact_last_name"]  = c.last_name or ""
         except Exception:
             pass
 

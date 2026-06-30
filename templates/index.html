@@ -638,6 +638,58 @@
   </div>
 </div>
 
+<!-- Portal member contact-file edit modal -->
+<div class="modal fade" id="pmEditModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-bottom">
+        <h6 class="modal-title"><i class="bi bi-pencil me-2"></i><span id="pmEditTitle"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="pmEditContactId">
+        <input type="hidden" id="pmEditEmail">
+        <input type="hidden" id="pmEditOrgCode">
+        <input type="hidden" id="pmEditOrgLabel">
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="form-label small mb-1">First name</label>
+            <input type="text" class="form-control form-control-sm" id="pmEditFirstName">
+          </div>
+          <div class="col-6">
+            <label class="form-label small mb-1">Last name</label>
+            <input type="text" class="form-control form-control-sm" id="pmEditLastName">
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small mb-1">Position / Title</label>
+          <input type="text" class="form-control form-control-sm" id="pmEditPosition">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small mb-1">Contact type</label>
+          <input type="text" class="form-control form-control-sm" id="pmEditContactType"
+            placeholder="e.g. Portal Administrator, Data Officer">
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label small mb-1">Tel</label>
+            <input type="text" class="form-control form-control-sm" id="pmEditTel">
+          </div>
+          <div class="col-6">
+            <label class="form-label small mb-1">Mobile</label>
+            <input type="text" class="form-control form-control-sm" id="pmEditMobile">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-top">
+        <span id="pmEditStatus" class="text-muted small me-auto"></span>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="savePmContact()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Contact add/edit modal -->
 <div class="modal fade" id="contactModal" tabindex="-1">
   <div class="modal-dialog">
@@ -3224,7 +3276,7 @@ async function loadContactsTab(force = false) {
 }
 
 async function _pollPortalMembers(attempt) {
-  const cols = 7;
+  const cols = 8;
   const MAX = 40;   // give up after ~200 s
   const INTERVAL = 5000;
 
@@ -3331,7 +3383,8 @@ function filterContactsTab() {
     `<th>${t('contacts.col_username')}</th>` +
     th('type',  t('contacts.col_role'))  +
     `<th>${t('contacts.col_state')}</th>` +
-    th('email', t('contacts.email'));
+    th('email', t('contacts.email')) +
+    `<th style="width:2.5rem"></th>`;
 
   const flatDiv    = show('contactsFlatView');
   const groupedDiv = show('contactsGroupedView');
@@ -3346,10 +3399,11 @@ function filterContactsTab() {
 
   if (!rows.length) {
     show('contactsTableBody').innerHTML =
-      `<tr><td colspan="7" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+      `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
     return;
   }
 
+  _pmRows = rows;
   show('contactsTableBody').innerHTML = rows.map((m, i) => {
     const state    = m.state || 'active';
     const roleCls  = ROLE_BADGE_CLS[m.capacity]  || 'bg-secondary';
@@ -3371,6 +3425,10 @@ function filterContactsTab() {
       <td><span class="badge ${roleCls}">${esc(m.capacity)}</span></td>
       <td><span class="badge ${stateCls}">${esc(state)}</span></td>
       <td class="small">${m.email ? `<a href="mailto:${esc(m.email)}" onclick="event.stopPropagation()">${esc(m.email)}</a>` : ''}</td>
+      <td onclick="event.stopPropagation()">
+        <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit contact info"
+          onclick="openPmEdit(${i})"><i class="bi bi-pencil"></i></button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -3438,6 +3496,71 @@ function renderContactsGrouped(rows) {
       </div>
     </div>`;
   }).join('');
+}
+
+let _pmRows = [];
+let _pmEditModal = null;
+
+function openPmEdit(idx) {
+  const m = _pmRows[idx];
+  if (!m) return;
+  show('pmEditTitle').textContent   = m.display_name + ' — ' + (m.org_title || m.org_name);
+  show('pmEditContactId').value     = m.contact_id   || '';
+  show('pmEditEmail').value         = m.email        || '';
+  show('pmEditOrgCode').value       = m.org_name     || '';
+  show('pmEditOrgLabel').value      = m.org_title    || m.org_name || '';
+  show('pmEditFirstName').value     = m.contact_first_name || '';
+  show('pmEditLastName').value      = m.contact_last_name  || '';
+  show('pmEditPosition').value      = m.contact_position   || '';
+  show('pmEditContactType').value   = m.contact_type       || '';
+  show('pmEditTel').value           = m.contact_tel        || '';
+  show('pmEditMobile').value        = m.contact_mobile     || '';
+  show('pmEditStatus').textContent  = '';
+  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
+  _pmEditModal.show();
+}
+
+async function savePmContact() {
+  const contactId = show('pmEditContactId').value;
+  const payload = {
+    id:           contactId || undefined,
+    org_code:     show('pmEditOrgCode').value,
+    org_label:    show('pmEditOrgLabel').value,
+    email:        show('pmEditEmail').value,
+    first_name:   show('pmEditFirstName').value.trim(),
+    last_name:    show('pmEditLastName').value.trim(),
+    position:     show('pmEditPosition').value.trim(),
+    contact_type: show('pmEditContactType').value.trim(),
+    tel:          show('pmEditTel').value.trim(),
+    mobile:       show('pmEditMobile').value.trim(),
+  };
+  show('pmEditStatus').textContent = 'Saving…';
+  const resp = await fetch(API_BASE + 'api/contacts/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json();
+  if (data.error) { show('pmEditStatus').textContent = data.error; return; }
+
+  // Update cache entry
+  const email = (data.email || '').toLowerCase();
+  if (_portalMembersCache) {
+    _portalMembersCache.forEach(m => {
+      if ((m.email || '').toLowerCase() === email) {
+        m.contact_id         = data.id;
+        m.contact_first_name = data.first_name || '';
+        m.contact_last_name  = data.last_name  || '';
+        m.contact_name       = `${data.first_name || ''} ${data.last_name || ''}`.trim();
+        m.contact_position   = data.position     || '';
+        m.contact_type       = data.contact_type || '';
+        m.contact_tel        = data.tel          || '';
+        m.contact_mobile     = data.mobile       || '';
+      }
+    });
+  }
+  _pmEditModal.hide();
+  filterContactsTab();
 }
 
 function exportContactsExcel() {
