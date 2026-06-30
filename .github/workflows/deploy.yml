@@ -23,6 +23,7 @@ jobs:
 
       - name: Reload service
         run: |
-          pkill -TERM -u localadmin -f "gunicorn.*app:app" || true
-          sleep 4
-          systemctl is-active --quiet communcation_dashboard && echo "Service restarted OK" || echo "WARNING: service not active"
+          sudo systemctl reset-failed communcation_dashboard || true
+          sudo systemctl restart communcation_dashboard
+          sleep 3
+          systemctl is-active --quiet communcation_dashboard && echo "Service restarted OK" || (journalctl -u communcation_dashboard -n 30 --no-pager; exit 1)
