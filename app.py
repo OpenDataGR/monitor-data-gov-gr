@@ -894,6 +894,115 @@ def organization_detail(org_name):
     return jsonify(result)
 
 
+@app.route("/api/portal-members")
+def portal_members_all():
+    if not config.TOKEN:
+        return jsonify({"error": "No API token configured — set DATAGOVGR_TOKEN"}), 503
+
+    auth_headers = {"User-Agent": "DataGovGR-Dashboard/1.0", "Authorization": config.TOKEN}
+
+    # Step 1: list all org slugs
+    try:
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/organization_list",
+            params={"all_fields": False},
+            timeout=30,
+            headers=auth_headers,
+        )
+        org_names = r.json().get("result", [])
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+    # Step 2: fetch members for every org in parallel
+    def _fetch_org(name):
+        try:
+            resp = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/organization_show",
+                params={"id": name, "include_users": True},
+                timeout=15,
+                headers=auth_headers,
+            )
+            if resp.status_code == 200:
+                d = resp.json()
+                if d.get("success"):
+                    org = d["result"]
+                    return {
+                        "org_name":  org.get("name"),
+                        "org_title": org.get("title") or org.get("name"),
+                        "users":     org.get("users") or [],
+                    }
+        except Exception:
+            pass
+        return None
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        org_results = [r for r in pool.map(_fetch_org, org_names) if r]
+
+    # Step 3: collect unique users; build flat membership list
+    seen_users  = {}   # username → {display_name, email, state}
+    memberships = []   # {username, org_name, org_title, capacity}
+
+    for org in org_results:
+        for u in org["users"]:
+            uname = u.get("name", "")
+            if not uname:
+                continue
+            if uname not in seen_users:
+                seen_users[uname] = {
+                    "display_name": u.get("display_name") or u.get("fullname") or uname,
+                    "email":        (u.get("email") or "").lower().strip(),
+                    "state":        u.get("state", "active"),
+                }
+            memberships.append({
+                "username":  uname,
+                "org_name":  org["org_name"],
+                "org_title": org["org_title"],
+                "capacity":  u.get("capacity", "member"),
+            })
+
+    # Step 4: enrich users missing email via user_show (parallel)
+    needs_enrichment = [u for u in seen_users if not seen_users[u]["email"]]
+
+    def _fetch_user(uname):
+        try:
+            resp = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/user_show",
+                params={"id": uname},
+                timeout=8,
+                headers=auth_headers,
+            )
+            if resp.status_code == 200:
+                d = resp.json()
+                if d.get("success"):
+                    u = d["result"]
+                    return uname, (u.get("email") or "").lower().strip(), u.get("state", "active")
+        except Exception:
+            pass
+        return uname, "", "active"
+
+    if needs_enrichment:
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            for uname, email, state in pool.map(_fetch_user, needs_enrichment):
+                seen_users[uname]["email"] = email
+                seen_users[uname]["state"] = state
+
+    # Step 5: build response
+    members = []
+    for m in memberships:
+        ud = seen_users.get(m["username"], {})
+        members.append({
+            "org_name":     m["org_name"],
+            "org_title":    m["org_title"],
+            "username":     m["username"],
+            "display_name": ud.get("display_name", m["username"]),
+            "capacity":     m["capacity"],
+            "email":        ud.get("email", ""),
+            "state":        ud.get("state", "active"),
+        })
+
+    return jsonify({"members": members, "total": len(members)})
+
+
 VALID_STATUSES = {"Contacted", "Responded", "Uploaded", "No Response"}
 
 
