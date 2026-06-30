@@ -1569,22 +1569,18 @@ def contacts_remove():
 
 # ── Portal Members (all orgs) ─────────────────────────────────────────────────
 
-_pm_cache: dict = {"data": None, "ts": 0}
+_pm_cache: dict = {"data": None, "ts": 0, "loading": False, "error": None}
 
 
-@app.route("/api/portal-members", methods=["GET"])
-def portal_members_all():
-    """Return all portal users across every CKAN organisation, cached for 2 hours."""
-    now = time.time()
-    # Serve from cache only when we have actual results (empty list = likely a prior failure)
-    if _pm_cache["data"] and now - _pm_cache["ts"] < 7200:
-        return jsonify(_pm_cache["data"])
-
+def _do_fetch_portal_members():
+    """Fetch all portal members in a background thread and populate _pm_cache."""
+    if _pm_cache["loading"]:
+        return
+    _pm_cache["loading"] = True
+    _pm_cache["error"] = None
     base_headers = {"User-Agent": "DataGovGR-Dashboard/1.0"}
     auth_headers = {**base_headers, "Authorization": config.TOKEN} if config.TOKEN else base_headers
-
     try:
-        # Step 1 – get the list of all portal organisations (POST+JSON matches existing pattern)
         r = requests.post(
             f"{config.PORTAL_BASE}/api/3/action/organization_list",
             json={"all_fields": True},
@@ -1594,10 +1590,8 @@ def portal_members_all():
         r.raise_for_status()
         org_list = r.json().get("result") or []
 
-        # Step 2 – fetch members per org in parallel (email left blank for now)
         def _fetch_org_members(org):
             try:
-                # org may be a dict (all_fields=True) or a plain string (fallback)
                 if isinstance(org, str):
                     slug, title = org, org
                 else:
@@ -1620,7 +1614,7 @@ def portal_members_all():
                             "username":     u.get("name", ""),
                             "display_name": (u.get("display_name") or u.get("fullname") or u.get("name", "")).strip(),
                             "capacity":     u.get("capacity", "member"),
-                            "email":        "",   # filled in by user_show below
+                            "email":        "",
                             "state":        u.get("state", "active"),
                         }
                         for u in (d["result"].get("users") or [])
@@ -1638,8 +1632,6 @@ def portal_members_all():
                 except Exception:
                     pass
 
-        # Step 3 – fetch emails via user_show for every unique username in parallel.
-        # organization_show never returns emails; user_show requires the sysadmin token.
         if config.TOKEN and all_members:
             unique_usernames = list({m["username"] for m in all_members if m["username"]})
 
@@ -1672,13 +1664,33 @@ def portal_members_all():
             for m in all_members:
                 m["email"] = email_map.get(m["username"], "")
 
-        payload = {"members": all_members, "total": len(all_members)}
-        _pm_cache["data"] = payload
-        _pm_cache["ts"]   = now
-        return jsonify(payload)
-
+        _pm_cache["data"] = {"members": all_members, "total": len(all_members)}
+        _pm_cache["ts"]   = time.time()
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        _pm_cache["error"] = str(exc)
+    finally:
+        _pm_cache["loading"] = False
+
+
+@app.route("/api/portal-members", methods=["GET"])
+def portal_members_all():
+    """Return all portal users across every CKAN organisation, cached for 2 hours.
+
+    Returns immediately — fetches in background on first call or after cache expiry.
+    Client receives {loading: true} (HTTP 202) while the fetch is in progress and
+    should poll until it gets a 200 response.
+    """
+    now = time.time()
+    if _pm_cache["data"] and now - _pm_cache["ts"] < 7200:
+        return jsonify(_pm_cache["data"])
+
+    if _pm_cache["error"] and not _pm_cache["loading"]:
+        return jsonify({"error": _pm_cache["error"]}), 500
+
+    if not _pm_cache["loading"]:
+        threading.Thread(target=_do_fetch_portal_members, daemon=True).start()
+
+    return jsonify({"loading": True, "members": [], "total": 0}), 202
 
 
 # ── Matomo Analytics ─────────────────────────────────────────────────────────

@@ -3214,26 +3214,52 @@ document.getElementById('contactsTabBtn').addEventListener('click', () => {
 });
 
 let _portalMembersCache = null;
+let _pmPollTimer = null;
 
 async function loadContactsTab(force = false) {
   if (_portalMembersCache && !force) { filterContactsTab(); return; }
   _portalMembersCache = null;
+  if (_pmPollTimer) { clearTimeout(_pmPollTimer); _pmPollTimer = null; }
+  _pollPortalMembers(0);
+}
+
+async function _pollPortalMembers(attempt) {
   const cols = 7;
-  show('contactsTableBody').innerHTML =
-    `<tr><td colspan="${cols}" class="text-center py-5">
-       <div class="spinner-border text-primary mb-2"></div>
-       <div class="text-muted small">${t('contacts.loading_portal')}</div>
-     </td></tr>`;
-  show('contactsReloadBtn').disabled = true;
+  const MAX = 40;   // give up after ~200 s
+  const INTERVAL = 5000;
+
+  if (attempt === 0) {
+    show('contactsReloadBtn').disabled = true;
+    show('contactsTableBody').innerHTML =
+      `<tr><td colspan="${cols}" class="text-center py-5">
+         <div class="spinner-border text-primary mb-2"></div>
+         <div class="text-muted small">${t('contacts.loading_portal')}</div>
+       </td></tr>`;
+  }
+
   try {
-    const data = await fetch(API_BASE + 'api/portal-members').then(r => r.json());
+    const resp = await fetch(API_BASE + 'api/portal-members');
+    const data = await resp.json();
+
+    if (resp.status === 202) {
+      // Server is still fetching in background — poll again
+      if (attempt < MAX) {
+        _pmPollTimer = setTimeout(() => _pollPortalMembers(attempt + 1), INTERVAL);
+      } else {
+        show('contactsTableBody').innerHTML =
+          `<tr><td colspan="${cols}" class="text-center text-danger py-4">Timed out waiting for portal data.</td></tr>`;
+        show('contactsReloadBtn').disabled = false;
+      }
+      return;
+    }
+
     if (data.error) throw new Error(data.error);
     _portalMembersCache = data.members || [];
+    show('contactsReloadBtn').disabled = false;
     filterContactsTab();
   } catch (e) {
     show('contactsTableBody').innerHTML =
       `<tr><td colspan="${cols}" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
-  } finally {
     show('contactsReloadBtn').disabled = false;
   }
 }
