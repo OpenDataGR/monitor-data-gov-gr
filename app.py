@@ -1664,30 +1664,37 @@ def _do_fetch_portal_members():
             for m in all_members:
                 m["email"] = email_map.get(m["username"], "")
 
-        # Enrich with OrgContact data matched by email
+        # Enrich with OrgContact data matched by email; collect unmatched contacts
+        unmatched = []
         try:
             with app.app_context():
-                contacts = OrgContact.query.filter(OrgContact.email.isnot(None)).all()
+                all_contacts = OrgContact.query.all()
+            member_emails = {m.get("email", "") for m in all_members if m.get("email")}
             contact_by_email = {}
-            for c in contacts:
+            for c in all_contacts:
                 e = (c.email or "").lower().strip()
                 if e:
                     contact_by_email[e] = c
             for m in all_members:
                 c = contact_by_email.get(m.get("email", ""))
                 if c:
-                    m["contact_id"]        = c.id
-                    m["contact_position"]  = c.position or ""
-                    m["contact_type"]      = c.contact_type or ""
-                    m["contact_tel"]       = c.tel or ""
-                    m["contact_mobile"]    = c.mobile or ""
-                    m["contact_name"]      = f"{c.first_name or ''} {c.last_name or ''}".strip()
+                    m["contact_id"]         = c.id
+                    m["contact_position"]   = c.position or ""
+                    m["contact_type"]       = c.contact_type or ""
+                    m["contact_tel"]        = c.tel or ""
+                    m["contact_mobile"]     = c.mobile or ""
+                    m["contact_name"]       = f"{c.first_name or ''} {c.last_name or ''}".strip()
                     m["contact_first_name"] = c.first_name or ""
                     m["contact_last_name"]  = c.last_name or ""
+            # Contacts with no matching portal member
+            for c in all_contacts:
+                e = (c.email or "").lower().strip()
+                if not e or e not in member_emails:
+                    unmatched.append(c.to_dict())
         except Exception:
             pass
 
-        _pm_cache["data"] = {"members": all_members, "total": len(all_members)}
+        _pm_cache["data"] = {"members": all_members, "total": len(all_members), "unmatched": unmatched}
         _pm_cache["ts"]   = time.time()
     except Exception as exc:
         _pm_cache["error"] = str(exc)
