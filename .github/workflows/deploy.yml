@@ -23,6 +23,8 @@ jobs:
 
       - name: Reload service
         run: |
+          # reset-failed clears systemd restart-limit; requires sudoers entry:
+          # localadmin ALL=(ALL) NOPASSWD: /bin/systemctl restart communcation_dashboard, /bin/systemctl reset-failed communcation_dashboard
           sudo systemctl reset-failed communcation_dashboard || true
           sudo systemctl restart communcation_dashboard
           sleep 3
