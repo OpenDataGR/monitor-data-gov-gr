@@ -648,9 +648,13 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="pmEditContactId">
-        <input type="hidden" id="pmEditEmail">
+        <input type="hidden" id="pmEditUsername">
         <input type="hidden" id="pmEditOrgCode">
         <input type="hidden" id="pmEditOrgLabel">
+        <div class="mb-2">
+          <label class="form-label small mb-1">Email</label>
+          <input type="email" class="form-control form-control-sm" id="pmEditEmail">
+        </div>
         <div class="row g-2 mb-2">
           <div class="col-6">
             <label class="form-label small mb-1">First name</label>
@@ -3506,6 +3510,7 @@ function openPmEdit(idx) {
   if (!m) return;
   show('pmEditTitle').textContent   = m.display_name + ' — ' + (m.org_title || m.org_name);
   show('pmEditContactId').value     = m.contact_id   || '';
+  show('pmEditUsername').value      = m.username     || '';
   show('pmEditEmail').value         = m.email        || '';
   show('pmEditOrgCode').value       = m.org_name     || '';
   show('pmEditOrgLabel').value      = m.org_title    || m.org_name || '';
@@ -3543,11 +3548,11 @@ async function savePmContact() {
   const data = await resp.json();
   if (data.error) { show('pmEditStatus').textContent = data.error; return; }
 
-  // Update cache entry
-  const email = (data.email || '').toLowerCase();
+  // Update cache entry by username (email may have changed)
+  const username = show('pmEditUsername').value;
   if (_portalMembersCache) {
     _portalMembersCache.forEach(m => {
-      if ((m.email || '').toLowerCase() === email) {
+      if (m.username === username) {
         m.contact_id         = data.id;
         m.contact_first_name = data.first_name || '';
         m.contact_last_name  = data.last_name  || '';
