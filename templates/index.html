@@ -512,11 +512,17 @@
         <div class="col-12">
           <div class="card p-4">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-              <h6 class="fw-semibold mb-0">
-                <i class="bi bi-people me-2 text-primary"></i>
-                <span data-i18n="contacts.title">Contacts</span>
-                <span class="text-muted fw-normal small ms-2" id="contactsCount"></span>
-              </h6>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <h6 class="fw-semibold mb-0">
+                  <i class="bi bi-people me-2 text-primary"></i>
+                  <span data-i18n="contacts.title">Contacts</span>
+                  <span class="text-muted fw-normal small ms-2" id="contactsCount"></span>
+                </h6>
+                <div class="btn-group btn-group-sm" role="group">
+                  <button id="contactsViewFlatBtn" type="button" class="btn btn-primary" onclick="setContactsView('flat')" data-i18n="contacts.view_all">All</button>
+                  <button id="contactsViewGroupedBtn" type="button" class="btn btn-outline-primary" onclick="setContactsView('grouped')" data-i18n="contacts.view_by_org">By Organization</button>
+                </div>
+              </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <select id="contactsOrgFilter" class="form-select form-select-sm" style="width:200px" onchange="filterContactsTab()">
                   <option value="" data-i18n="contacts.all_orgs">All organizations</option>
@@ -543,25 +549,28 @@
                 </button>
               </div>
             </div>
-            <div class="table-responsive">
-              <table class="table table-hover table-sm align-middle mb-0" id="contactsTable">
-                <thead class="table-dark">
-                  <tr>
-                    <th class="fw-normal" style="width:2.5rem">#</th>
-                    <th data-i18n="contacts.col_org">Organization</th>
-                    <th data-i18n="contacts.col_name">Name</th>
-                    <th data-i18n="contacts.type">Type</th>
-                    <th data-i18n="contacts.position">Position</th>
-                    <th data-i18n="contacts.email">Email</th>
-                    <th data-i18n="contacts.col_tel">Tel / Mobile</th>
-                    <th style="width:5rem"></th>
-                  </tr>
-                </thead>
-                <tbody id="contactsTableBody">
-                  <tr><td colspan="8" class="text-center py-5 text-muted"><span data-i18n="contacts.tab_hint">Open this tab to load contacts.</span></td></tr>
-                </tbody>
-              </table>
+            <div id="contactsFlatView">
+              <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle mb-0" id="contactsTable">
+                  <thead class="table-dark">
+                    <tr>
+                      <th class="fw-normal" style="width:2.5rem">#</th>
+                      <th data-i18n="contacts.col_org">Organization</th>
+                      <th data-i18n="contacts.col_name">Name</th>
+                      <th data-i18n="contacts.type">Type</th>
+                      <th data-i18n="contacts.position">Position</th>
+                      <th data-i18n="contacts.email">Email</th>
+                      <th data-i18n="contacts.col_tel">Tel / Mobile</th>
+                      <th style="width:5rem"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="contactsTableBody">
+                    <tr><td colspan="8" class="text-center py-5 text-muted"><span data-i18n="contacts.tab_hint">Open this tab to load contacts.</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
+            <div id="contactsGroupedView" class="d-none"></div>
           </div>
         </div>
       </div>
@@ -768,6 +777,8 @@ const TRANSLATIONS = {
     'tab.organizations': 'Organizations',
     'tab.communications': 'Communications',
     'tab.contacts': 'Contacts',
+    'contacts.view_all': 'All',
+    'contacts.view_by_org': 'By Organization',
     'contacts.all_types': 'All Types',
     'contacts.all_sources': 'All sources',
     'contacts.source_db': 'File',
@@ -1004,6 +1015,8 @@ const TRANSLATIONS = {
     'tab.organizations': 'Οργανισμοί',
     'tab.communications': 'Επικοινωνίες',
     'tab.contacts': 'Επαφές',
+    'contacts.view_all': 'Όλες',
+    'contacts.view_by_org': 'Ανά Οργανισμό',
     'contacts.all_types': 'Όλοι οι τύποι',
     'contacts.all_sources': 'Όλες οι πηγές',
     'contacts.source_db': 'Αρχείο',
@@ -3310,6 +3323,18 @@ function filterContactsTab() {
     th('tel',      t('contacts.col_tel')) +
     `<th style="width:7rem"></th>`;
 
+  // Show the right view
+  const flatDiv    = show('contactsFlatView');
+  const groupedDiv = show('contactsGroupedView');
+  if (_contactsViewMode === 'grouped') {
+    flatDiv.classList.add('d-none');
+    groupedDiv.classList.remove('d-none');
+    renderContactsGrouped(rows);
+    return;
+  }
+  flatDiv.classList.remove('d-none');
+  groupedDiv.classList.add('d-none');
+
   if (!rows.length) {
     show('contactsTableBody').innerHTML =
       `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
@@ -3359,6 +3384,64 @@ function filterContactsTab() {
       <td class="small text-nowrap">${esc(tel)}</td>
       ${actionsCell}
     </tr>`;
+  }).join('');
+}
+
+let _contactsViewMode = 'flat';
+
+function setContactsView(mode) {
+  _contactsViewMode = mode;
+  show('contactsViewFlatBtn').className    = 'btn btn-sm ' + (mode === 'flat'    ? 'btn-primary' : 'btn-outline-primary');
+  show('contactsViewGroupedBtn').className = 'btn btn-sm ' + (mode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
+  filterContactsTab();
+}
+
+function renderContactsGrouped(rows) {
+  // Group by org label
+  const groups = new Map();
+  rows.forEach(c => {
+    const key = c.org_label || c.org_code || '—';
+    if (!groups.has(key)) groups.set(key, { code: c.org_code || key, label: key, items: [] });
+    groups.get(key).items.push(c);
+  });
+  const sorted = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
+  const el = show('contactsGroupedView');
+  if (!sorted.length) {
+    el.innerHTML = `<p class="text-muted text-center py-4">${t('contacts.no_results')}</p>`;
+    return;
+  }
+  el.innerHTML = sorted.map(g => {
+    const gId = 'cg_' + g.code.replace(/\W/g, '_');
+    return `
+    <div class="border rounded mb-2">
+      <div class="d-flex align-items-center justify-content-between px-3 py-2"
+           style="cursor:pointer;background:#f8f9fa" onclick="document.getElementById('${gId}').classList.toggle('d-none')">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-building text-primary"></i>
+          <span class="fw-semibold small">${esc(g.label)}</span>
+          <span class="badge bg-primary rounded-pill">${g.items.length}</span>
+        </div>
+        <button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="event.stopPropagation();openContactsPanel('${esc(g.code)}','${esc(g.label)}')">
+          <i class="bi bi-people"></i>
+        </button>
+      </div>
+      <div id="${gId}" class="d-none">
+        <table class="table table-sm align-middle mb-0">
+          <tbody>
+            ${g.items.map(c => {
+              const tel = c.tel || c.mobile || '';
+              return `<tr>
+                <td class="text-nowrap ps-3">${esc(c.first_name)} ${esc(c.last_name)}</td>
+                <td>${_contactTypeBadge(c.contact_type)}</td>
+                <td class="text-muted small">${esc(c.position)}</td>
+                <td class="small">${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</td>
+                <td class="small text-nowrap">${esc(tel)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
   }).join('');
 }
 
