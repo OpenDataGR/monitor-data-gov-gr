@@ -3354,11 +3354,19 @@ function filterContactsTab() {
     const state    = m.state || 'active';
     const roleCls  = ROLE_BADGE_CLS[m.capacity]  || 'bg-secondary';
     const stateCls = STATE_BADGE_CLS[state]       || 'bg-secondary';
+    const hasContact = !!(m.contact_position || m.contact_tel || m.contact_name);
+    const nameLine = hasContact && m.contact_name && m.contact_name !== m.display_name
+      ? `${esc(m.display_name)} <span class="text-muted small">(${esc(m.contact_name)})</span>`
+      : esc(m.display_name);
+    const posLine = m.contact_position
+      ? `<div class="text-muted small">${esc(m.contact_position)}</div>` : '';
+    const telLine = m.contact_tel
+      ? `<div class="text-muted small"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</div>` : '';
     return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.7' : ''}"
       onclick="openOrgPanel('${esc(m.org_name)}')" title="${esc(m.org_title || m.org_name)}">
       <td class="text-muted small">${i + 1}</td>
       <td class="small fw-semibold">${esc(m.org_title || m.org_name)}</td>
-      <td class="text-nowrap">${esc(m.display_name)}</td>
+      <td class="text-nowrap">${nameLine}${posLine}${telLine}</td>
       <td class="text-muted small font-monospace">@${esc(m.username)}</td>
       <td><span class="badge ${roleCls}">${esc(m.capacity)}</span></td>
       <td><span class="badge ${stateCls}">${esc(state)}</span></td>
@@ -3413,8 +3421,12 @@ function renderContactsGrouped(rows) {
               const state    = m.state || 'active';
               const roleCls  = ROLE_BADGE_CLS[m.capacity]  || 'bg-secondary';
               const stateCls = STATE_BADGE_CLS[state]       || 'bg-secondary';
+              const posLine = m.contact_position
+                ? `<div class="text-muted small">${esc(m.contact_position)}</div>` : '';
+              const telLine = m.contact_tel
+                ? `<div class="text-muted small"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</div>` : '';
               return `<tr style="${state !== 'active' ? 'opacity:.7' : ''}">
-                <td class="text-nowrap ps-3">${esc(m.display_name)}</td>
+                <td class="ps-3">${esc(m.display_name)}${posLine}${telLine}</td>
                 <td class="text-muted small font-monospace">@${esc(m.username)}</td>
                 <td><span class="badge ${roleCls}">${esc(m.capacity)}</span></td>
                 <td><span class="badge ${stateCls}">${esc(state)}</span></td>
