@@ -903,7 +903,7 @@ def communications_list():
     return jsonify([r.to_dict() for r in rows])
 
 
-@app.route("/api/communications", methods=["GET", "POST"])
+@app.route("/api/communications", methods=["POST"])
 def communications_create():
     body = _decode_payload()
     org_name  = (body.get("org_name") or "").strip()
