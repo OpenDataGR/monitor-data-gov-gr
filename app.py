@@ -1567,6 +1567,54 @@ def contacts_remove():
     return jsonify({"ok": True})
 
 
+# ── Portal User detail ───────────────────────────────────────────────────────
+
+@app.route("/api/portal-user/<username>")
+def portal_user_detail(username):
+    if not config.TOKEN:
+        return jsonify({"error": "No API token configured"}), 503
+    auth_headers = {"User-Agent": "DataGovGR-Dashboard/1.0", "Authorization": config.TOKEN}
+    try:
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/user_show",
+            params={"id": username, "include_datasets": False},
+            headers=auth_headers,
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return jsonify({"error": f"CKAN returned {r.status_code}"}), 502
+        d = r.json()
+        if not d.get("success"):
+            return jsonify({"error": d.get("error", {}).get("message", "CKAN error")}), 502
+        u = d["result"]
+        contact = None
+        email = (u.get("email") or "").lower().strip()
+        if email:
+            try:
+                c = OrgContact.query.filter(
+                    db.func.lower(OrgContact.email) == email
+                ).first()
+                if c:
+                    contact = c.to_dict()
+            except Exception:
+                pass
+        return jsonify({
+            "username":     u.get("name", ""),
+            "display_name": (u.get("display_name") or u.get("fullname") or u.get("name", "")).strip(),
+            "email":        email,
+            "state":        u.get("state", "active"),
+            "sysadmin":     u.get("sysadmin", False),
+            "created":      u.get("created", ""),
+            "last_active":  u.get("last_active", ""),
+            "about":        u.get("about") or "",
+            "num_packages": u.get("number_created_packages", 0),
+            "num_edits":    u.get("number_of_edits", 0),
+            "contact":      contact,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 # ── Portal Members (all orgs) ─────────────────────────────────────────────────
 
 _pm_cache: dict = {"data": None, "ts": 0, "loading": False, "error": None}

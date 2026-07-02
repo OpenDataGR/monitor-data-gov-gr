@@ -655,6 +655,20 @@
   </div>
 </div>
 
+<!-- Portal user detail offcanvas -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="userPanel" style="width:440px;max-width:95vw">
+  <div class="offcanvas-header border-bottom">
+    <div>
+      <h5 class="offcanvas-title fw-bold mb-0" id="userPanelName"></h5>
+      <div class="text-muted small font-monospace" id="userPanelUsername"></div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body" id="userPanelBody">
+    <div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>
+  </div>
+</div>
+
 <!-- Portal member contact-file edit modal -->
 <div class="modal fade" id="pmEditModal" tabindex="-1">
   <div class="modal-dialog">
@@ -3055,6 +3069,83 @@ function openOrgPanel(name) {
     });
 }
 
+// ── User detail panel ─────────────────────────────────────────────────────────
+let _userPanel = null;
+
+function openUserPanel(username) {
+  if (!username) return;
+  if (!_userPanel) _userPanel = new bootstrap.Offcanvas(document.getElementById('userPanel'));
+  document.getElementById('userPanelName').textContent = username;
+  document.getElementById('userPanelUsername').textContent = '@' + username;
+  document.getElementById('userPanelBody').innerHTML =
+    '<div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>';
+  _userPanel.show();
+  fetch(API_BASE + 'api/portal-user/' + encodeURIComponent(username))
+    .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.error || r.status)))
+    .then(data => renderUserPanel(data))
+    .catch(err => {
+      document.getElementById('userPanelBody').innerHTML =
+        `<div class="alert alert-danger mb-0">Failed to load user: ${err}</div>`;
+    });
+}
+
+function renderUserPanel(u) {
+  const fmt = s => {
+    if (!s) return '—';
+    const d = new Date(s);
+    return isNaN(d) ? s : d.toLocaleDateString('el-GR', {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  };
+  const stateCls = u.state === 'active' ? 'success' : 'secondary';
+  document.getElementById('userPanelName').textContent = u.display_name || u.username;
+  document.getElementById('userPanelUsername').textContent = '@' + u.username;
+
+  const orgs = (_portalMembersCache || [])
+    .filter(m => m.username === u.username && m.org_name)
+    .map(m => `<a href="#" class="badge bg-light text-dark border text-decoration-none me-1 mb-1"
+        onclick="event.stopPropagation();openOrgPanel('${esc(m.org_name)}');return false;">${esc(m.org_title || m.org_name)}</a>`);
+
+  const orgHtml = orgs.length
+    ? `<div>${orgs.join('')}</div>`
+    : '<span class="text-muted small">No organization</span>';
+
+  const c = u.contact;
+  const contactHtml = c ? `
+    <div class="mt-3 pt-3 border-top">
+      <div class="fw-semibold small text-uppercase text-muted mb-2">Contact File</div>
+      <dl class="row g-1 small mb-0">
+        ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">Position</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
+        ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">Tel</dt><dd class="col-7 mb-1">${esc(c.tel)}</dd>` : ''}
+        ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">Mobile</dt><dd class="col-7 mb-1">${esc(c.mobile)}</dd>` : ''}
+        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Type</dt><dd class="col-7 mb-1">${esc(c.contact_type)}</dd>` : ''}
+      </dl>
+    </div>` : '';
+
+  document.getElementById('userPanelBody').innerHTML = `
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <span class="badge bg-${stateCls}">${esc(u.state)}</span>
+      ${u.sysadmin ? '<span class="badge bg-danger">sysadmin</span>' : ''}
+    </div>
+    <dl class="row g-1 small mb-0">
+      <dt class="col-5 text-muted fw-normal mb-1">Email</dt>
+      <dd class="col-7 mb-1">${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">Registered</dt>
+      <dd class="col-7 mb-1">${fmt(u.created)}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">Last active</dt>
+      <dd class="col-7 mb-1">${fmt(u.last_active)}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">Datasets</dt>
+      <dd class="col-7 mb-1">${u.num_packages}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">Edits</dt>
+      <dd class="col-7 mb-1">${u.num_edits}</dd>
+    </dl>
+    <div class="mt-3 pt-3 border-top">
+      <div class="fw-semibold small text-uppercase text-muted mb-2">Organizations</div>
+      ${orgHtml}
+    </div>
+    ${contactHtml}
+    ${u.about ? `<div class="mt-3 pt-3 border-top"><div class="fw-semibold small text-uppercase text-muted mb-2">About</div><p class="small text-muted mb-0">${esc(u.about)}</p></div>` : ''}
+  `;
+}
+
 function renderOrgPanel(data) {
   const org = data.org;
   document.getElementById('orgDetailTitle').textContent = org.title;
@@ -3435,11 +3526,11 @@ function filterContactsTab() {
       ? `<div class="text-muted small text-truncate" style="max-width:220px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
     const telLine = m.contact_tel
       ? `<div class="text-muted small"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</div>` : '';
-    return `<tr style="${state !== 'active' ? 'opacity:.6' : ''}">
+    return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
       <td class="text-muted small">${i + 1}</td>
       <td>
         ${m.org_name
-          ? `<a href="#" class="fw-semibold text-decoration-none" onclick="openOrgPanel('${esc(m.org_name)}');return false;">${esc(m.org_title || m.org_name)}</a>`
+          ? `<a href="#" class="fw-semibold text-decoration-none" onclick="event.stopPropagation();openOrgPanel('${esc(m.org_name)}');return false;">${esc(m.org_title || m.org_name)}</a>`
           : `<span class="text-muted small fst-italic">no org</span>`}
       </td>
       <td style="max-width:220px">
