@@ -3155,7 +3155,8 @@ function renderUserPanel(u) {
   };
   const stateCls = u.state === 'active' ? 'success' : 'secondary';
   document.getElementById('userPanelName').textContent = u.display_name || u.username;
-  document.getElementById('userPanelUsername').textContent = '@' + u.username;
+  document.getElementById('userPanelUsername').innerHTML =
+    `@${esc(u.username)}&ensp;<a href="https://data.gov.gr/user/${encodeURIComponent(u.username)}" target="_blank" rel="noopener" class="text-muted" title="View on data.gov.gr"><i class="bi bi-box-arrow-up-right"></i></a>`;
 
   const orgs = (_portalMembersCache || [])
     .filter(m => m.username === u.username && m.org_name)
