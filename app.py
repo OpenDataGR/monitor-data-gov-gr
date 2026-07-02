@@ -1599,6 +1599,7 @@ def portal_user_detail(username):
             except Exception:
                 pass
         return jsonify({
+            "id":           u.get("id", ""),
             "username":     u.get("name", ""),
             "display_name": (u.get("display_name") or u.get("fullname") or u.get("name", "")).strip(),
             "email":        email,
@@ -1611,6 +1612,52 @@ def portal_user_detail(username):
             "num_edits":    u.get("number_of_edits", 0),
             "contact":      contact,
         })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/portal-user/<username>/datasets")
+def portal_user_datasets(username):
+    if not config.TOKEN:
+        return jsonify({"error": "No API token configured"}), 503
+    auth_headers = {"User-Agent": "DataGovGR-Dashboard/1.0", "Authorization": config.TOKEN}
+    try:
+        # Resolve user_id
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/user_show",
+            params={"id": username, "include_datasets": False},
+            headers=auth_headers, timeout=10,
+        )
+        if not r.ok:
+            return jsonify({"error": f"user_show returned {r.status_code}"}), 502
+        ud = r.json()
+        if not ud.get("success"):
+            return jsonify({"error": "user not found"}), 404
+        user_id = ud["result"].get("id", "")
+
+        # Fetch datasets created by this user
+        r2 = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/package_search",
+            params={"fq": f"creator_user_id:{user_id}", "rows": 100, "sort": "metadata_modified desc"},
+            headers=auth_headers, timeout=15,
+        )
+        if not r2.ok:
+            return jsonify({"error": f"package_search returned {r2.status_code}"}), 502
+        pd = r2.json()
+        if not pd.get("success"):
+            return jsonify({"error": "package_search failed"}), 502
+
+        datasets = [
+            {
+                "name":          p.get("name", ""),
+                "title":         p.get("title") or p.get("name", ""),
+                "org":           (p.get("organization") or {}).get("title") or "",
+                "modified":      p.get("metadata_modified", ""),
+                "num_resources": p.get("num_resources", 0),
+            }
+            for p in (pd["result"].get("results") or [])
+        ]
+        return jsonify({"datasets": datasets, "total": pd["result"].get("count", len(datasets))})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
