@@ -1662,6 +1662,39 @@ def portal_user_datasets(username):
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/portal-user/<username>/activity")
+def portal_user_activity(username):
+    if not config.TOKEN:
+        return jsonify({"error": "No API token configured"}), 503
+    auth_headers = {"User-Agent": "DataGovGR-Dashboard/1.0", "Authorization": config.TOKEN}
+    try:
+        limit = min(int(freq.args.get("limit", 50)), 100)
+        r = requests.get(
+            f"{config.PORTAL_BASE}/api/3/action/user_activity_list",
+            params={"id": username, "limit": limit, "offset": 0},
+            headers=auth_headers,
+            timeout=15,
+        )
+        if not r.ok:
+            return jsonify({"error": f"CKAN returned {r.status_code}"}), 502
+        d = r.json()
+        if not d.get("success"):
+            return jsonify({"error": d.get("error", {}).get("message", "CKAN error")}), 502
+
+        activities = []
+        for a in (d.get("result") or []):
+            pkg = (a.get("data") or {}).get("package") or {}
+            activities.append({
+                "timestamp":     a.get("timestamp", ""),
+                "activity_type": a.get("activity_type", ""),
+                "package_name":  pkg.get("name", ""),
+                "package_title": pkg.get("title") or pkg.get("name", ""),
+            })
+        return jsonify({"activities": activities})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 # ── Portal Members (all orgs) ─────────────────────────────────────────────────
 
 _pm_cache: dict = {"data": None, "ts": 0, "loading": False, "error": None}

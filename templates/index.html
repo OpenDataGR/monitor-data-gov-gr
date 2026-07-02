@@ -3127,6 +3127,7 @@ function openUserPanel(username) {
   if (!username) return;
   if (!_userPanel) _userPanel = new bootstrap.Offcanvas(document.getElementById('userPanel'));
   _userDatasetsLoaded = null;
+  _userActivityLoaded = null;
   document.getElementById('userPanelName').textContent = username;
   document.getElementById('userPanelUsername').textContent = '@' + username;
   document.getElementById('userPanelBody').innerHTML =
@@ -3192,8 +3193,18 @@ function renderUserPanel(u) {
           : '0'}
       </dd>
       <dt class="col-5 text-muted fw-normal mb-1">Edits</dt>
-      <dd class="col-7 mb-1">${u.num_edits}</dd>
+      <dd class="col-7 mb-1">
+        ${u.num_edits > 0
+          ? `<a href="#" class="fw-semibold text-decoration-none" onclick="loadUserActivity('${esc(u.username)}');return false;">${u.num_edits} <i class="bi bi-chevron-down small"></i></a>`
+          : '0'}
+      </dd>
     </dl>
+    <div id="userPanelActivitySection" class="d-none mt-3 pt-3 border-top">
+      <div class="fw-semibold small text-uppercase text-muted mb-2">Recent Activity</div>
+      <div id="userPanelActivityList">
+        <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>
+      </div>
+    </div>
     <div id="userPanelDatasetsSection" class="d-none mt-3 pt-3 border-top">
       <div class="fw-semibold small text-uppercase text-muted mb-2">Datasets</div>
       <div id="userPanelDatasetsList">
@@ -3209,7 +3220,8 @@ function renderUserPanel(u) {
   `;
 }
 
-let _userDatasetsLoaded = null; // username of last loaded datasets
+let _userDatasetsLoaded = null;
+let _userActivityLoaded = null;
 
 async function loadUserDatasets(username) {
   const section = document.getElementById('userPanelDatasetsSection');
@@ -3245,6 +3257,54 @@ async function loadUserDatasets(username) {
       </div>`).join('');
   } catch (e) {
     list.innerHTML = `<p class="text-danger small mb-0">Failed to load datasets: ${esc(e.message)}</p>`;
+  }
+}
+
+async function loadUserActivity(username) {
+  const section = document.getElementById('userPanelActivitySection');
+  const list    = document.getElementById('userPanelActivityList');
+  if (!section || !list) return;
+
+  if (_userActivityLoaded === username && !section.classList.contains('d-none')) {
+    section.classList.add('d-none');
+    return;
+  }
+  _userActivityLoaded = username;
+  section.classList.remove('d-none');
+  list.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>';
+
+  try {
+    const data = await fetch(API_BASE + 'api/portal-user/' + encodeURIComponent(username) + '/activity').then(r => r.json());
+    if (data.error) throw new Error(data.error);
+    const acts = data.activities || [];
+    if (!acts.length) {
+      list.innerHTML = '<p class="text-muted small mb-0">No activity found.</p>';
+      return;
+    }
+    const typeLabel = t => {
+      const map = {
+        'new package':      'Created dataset',
+        'changed package':  'Updated dataset',
+        'deleted package':  'Deleted dataset',
+        'new resource':     'Added resource',
+        'changed resource': 'Updated resource',
+        'deleted resource': 'Deleted resource',
+        'new user':         'Joined portal',
+        'changed user':     'Updated profile',
+      };
+      return map[t] || t;
+    };
+    list.innerHTML = acts.map(a => `
+      <div class="py-2 border-bottom">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <span class="small fw-semibold">${esc(typeLabel(a.activity_type))}</span>
+          ${a.timestamp ? `<span class="text-muted text-nowrap" style="font-size:.72rem">${relativeDate(a.timestamp)}</span>` : ''}
+        </div>
+        ${a.package_name ? `<a href="https://data.gov.gr/dataset/${esc(a.package_name)}" target="_blank" rel="noopener"
+            class="text-muted text-decoration-none d-block" style="font-size:.8rem;word-break:break-word">${esc(a.package_title || a.package_name)}</a>` : ''}
+      </div>`).join('');
+  } catch (e) {
+    list.innerHTML = `<p class="text-danger small mb-0">Failed to load activity: ${esc(e.message)}</p>`;
   }
 }
 
