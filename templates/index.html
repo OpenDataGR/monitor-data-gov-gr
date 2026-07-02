@@ -3451,7 +3451,7 @@ function _rebuildOrgFilter() {
     orgs.map(o => `<option value="${esc(o)}"${o === current ? ' selected' : ''}>${esc(o)}</option>`).join('');
 }
 
-const ROLE_BADGE_CLS = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary' };
+const ROLE_BADGE_CLS = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary', sysadmin: 'bg-danger' };
 const STATE_BADGE_CLS = { active: 'bg-success', deleted: 'bg-danger', pending: 'bg-warning text-dark' };
 
 function filterContactsTab() {
@@ -3472,13 +3472,14 @@ function filterContactsTab() {
     (m.email      || '').toLowerCase().includes(search)
   );
 
-  // Deduplicate by username — keep highest role (admin > editor > member)
+  // Deduplicate by username — keep highest role (sysadmin > admin > editor > member)
   if (!orgF) {
     const _roleRank = { admin: 3, editor: 2, member: 1 };
+    const _rank = m => m.sysadmin ? 4 : (_roleRank[m.capacity] || 0);
     const seen = new Map();
     for (const m of rows) {
       const prev = seen.get(m.username);
-      if (!prev || (_roleRank[m.capacity] || 0) > (_roleRank[prev.capacity] || 0)) seen.set(m.username, m);
+      if (!prev || _rank(m) > _rank(prev)) seen.set(m.username, m);
     }
     rows = [...seen.values()];
   }
@@ -3531,7 +3532,8 @@ function filterContactsTab() {
   _pmRows = rows;
   show('contactsTableBody').innerHTML = rows.map((m, i) => {
     const state    = m.state || 'active';
-    const roleCls  = ROLE_BADGE_CLS[m.capacity]  || 'bg-secondary';
+    const roleCls  = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
+    const roleLabel = m.sysadmin ? 'sysadmin' : (m.capacity || '—');
     const stateCls = STATE_BADGE_CLS[state]       || 'bg-secondary';
     const posLine = m.contact_position
       ? `<div class="text-muted small text-truncate" style="max-width:220px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
@@ -3544,7 +3546,7 @@ function filterContactsTab() {
         ${posLine}${telLine}
       </td>
       <td class="text-muted small font-monospace">@${esc(m.username)}</td>
-      <td><span class="badge ${roleCls}">${esc(m.capacity)}</span></td>
+      <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
       <td><span class="badge ${stateCls}">${esc(state)}</span></td>
       <td class="small" onclick="event.stopPropagation()">
         ${m.email ? `<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>` : ''}
