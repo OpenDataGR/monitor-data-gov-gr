@@ -524,18 +524,9 @@
                 </div>
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
-                <select id="contactsOrgFilter" class="form-select form-select-sm" style="width:200px" onchange="filterContactsTab()">
-                  <option value="" data-i18n="contacts.all_orgs">All organizations</option>
-                </select>
-                <select id="contactsTypeFilter" class="form-select form-select-sm" style="width:160px" onchange="filterContactsTab()">
-                  <option value="" data-i18n="contacts.all_types">All Types</option>
-                  <option value="admin"  data-i18n="contacts.role_admin">Admin</option>
-                  <option value="editor" data-i18n="contacts.role_editor">Editor</option>
-                  <option value="member" data-i18n="contacts.role_member">Member</option>
-                </select>
+                <span id="contactsFetchedAt" class="text-muted small"></span>
                 <input type="search" id="contactsSearch" class="form-control form-control-sm" style="width:180px"
                   placeholder="Search…" data-i18n-ph="contacts.search_ph" oninput="filterContactsTab()">
-                <span id="contactsFetchedAt" class="text-muted small"></span>
                 <button class="btn btn-outline-secondary btn-sm" id="contactsReloadBtn" onclick="loadContactsTab(true)">
                   <i class="bi bi-arrow-repeat me-1"></i><span data-i18n="contacts.reload">Reload</span>
                 </button>
@@ -3705,14 +3696,6 @@ function _contactsSortArrow(col) {
   return _contactsSortDir === 'asc' ? ' ↑' : ' ↓';
 }
 
-function _rebuildOrgFilter() {
-  const el = show('contactsOrgFilter');
-  if (!el || !_portalMembersCache) return;
-  const current = el.value;
-  const orgs = [...new Set(_portalMembersCache.map(m => m.org_title || m.org_name || '').filter(Boolean))].sort((a, b) => a.localeCompare(b, 'el'));
-  el.innerHTML = `<option value="">${t('contacts.all_orgs')}</option>` +
-    orgs.map(o => `<option value="${esc(o)}"${o === current ? ' selected' : ''}>${esc(o)}</option>`).join('');
-}
 
 const ROLE_BADGE_CLS = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary', sysadmin: 'bg-danger' };
 const STATE_BADGE_CLS = { active: 'bg-success', deleted: 'bg-danger', pending: 'bg-warning text-dark' };
@@ -3726,15 +3709,10 @@ const CONTACT_TYPE_CLS = {
 
 function filterContactsTab() {
   if (!_portalMembersCache) return;
-  _rebuildOrgFilter();
 
   const search = _ns(show('contactsSearch').value || '').trim();
-  const roleF  = show('contactsTypeFilter').value;
-  const orgF   = (show('contactsOrgFilter') || {}).value || '';
 
   let rows = _portalMembersCache;
-  if (orgF)  rows = rows.filter(m => (m.org_title || m.org_name) === orgF);
-  if (roleF) rows = rows.filter(m => m.capacity === roleF);
   if (search) rows = rows.filter(m =>
     _ns(m.org_title  || '').includes(search) ||
     _ns(m.display_name || '').includes(search) ||
@@ -3745,7 +3723,7 @@ function filterContactsTab() {
   );
 
   // Deduplicate by username — keep highest role (sysadmin > admin > editor > member)
-  if (!orgF) {
+  {
     const _roleRank = { admin: 3, editor: 2, member: 1 };
     const _rank = m => m.sysadmin ? 4 : (_roleRank[m.capacity] || 0);
     const seen = new Map();
@@ -4334,10 +4312,8 @@ async function savePmContact() {
 
 function exportContactsExcel() {
   const search = (show('contactsSearch').value || '').trim();
-  const typeF  = show('contactsTypeFilter').value;
   const params = new URLSearchParams();
   if (search) params.set('search', search);
-  if (typeF)  params.set('type', typeF);
   window.location = API_BASE + 'api/contacts/export?' + params.toString();
 }
 
