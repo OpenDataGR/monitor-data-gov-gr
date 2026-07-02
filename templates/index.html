@@ -3113,6 +3113,7 @@ function renderUserPanel(u) {
     <div class="mt-3 pt-3 border-top">
       <div class="fw-semibold small text-uppercase text-muted mb-2">Contact File</div>
       <dl class="row g-1 small mb-0">
+        ${c.email ? `<dt class="col-5 text-muted fw-normal mb-1">Email (file)</dt><dd class="col-7 mb-1"><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></dd>` : ''}
         ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">Position</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
         ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">Tel</dt><dd class="col-7 mb-1">${esc(c.tel)}</dd>` : ''}
         ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">Mobile</dt><dd class="col-7 mb-1">${esc(c.mobile)}</dd>` : ''}
@@ -3540,7 +3541,12 @@ function filterContactsTab() {
       <td class="text-muted small font-monospace">@${esc(m.username)}</td>
       <td><span class="badge ${roleCls}">${esc(m.capacity)}</span></td>
       <td><span class="badge ${stateCls}">${esc(state)}</span></td>
-      <td class="small">${m.email ? `<a href="mailto:${esc(m.email)}" onclick="event.stopPropagation()">${esc(m.email)}</a>` : ''}</td>
+      <td class="small" onclick="event.stopPropagation()">
+        ${m.email ? `<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>` : ''}
+        ${m.contact_email && m.contact_email !== m.email
+          ? `<div class="text-muted" style="font-size:.75em" title="Email from contacts file"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>`
+          : ''}
+      </td>
       <td onclick="event.stopPropagation()">
         <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit contact info"
           onclick="openPmEdit(${i})"><i class="bi bi-pencil"></i></button>

@@ -1759,6 +1759,7 @@ def _do_fetch_portal_members():
                     m["contact_name"]       = f"{c.first_name or ''} {c.last_name or ''}".strip()
                     m["contact_first_name"] = c.first_name or ""
                     m["contact_last_name"]  = c.last_name or ""
+                    m["contact_email"]      = c.email or ""
             # Contacts with no matching portal member
             for c in all_contacts:
                 e = (c.email or "").lower().strip()
