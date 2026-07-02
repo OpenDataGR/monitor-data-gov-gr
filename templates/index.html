@@ -573,8 +573,12 @@
                   <thead class="sticky-top bg-white">
                     <tr>
                       <th class="text-muted fw-normal" style="width:2.5rem">#</th>
-                      <th>Org</th><th>Name</th><th>Position</th><th>Type</th><th>Email</th><th>Tel</th>
-                      <th style="width:2.5rem"></th>
+                      <th>Name</th>
+                      <th>Org</th>
+                      <th>Type</th>
+                      <th style="width:150px">Email</th>
+                      <th style="width:90px">Tel</th>
+                      <th style="width:4rem"></th>
                     </tr>
                   </thead>
                   <tbody id="pmUnmatchedBody"></tbody>
@@ -3912,19 +3916,35 @@ function renderUnmatchedContacts() {
   show('pmUnmatchedCount').textContent = _pmUnmatched.length;
   show('pmUnmatchedBody').innerHTML = _pmUnmatched.map((c, i) => {
     const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
+    const posLine = c.position
+      ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(c.position)}">${esc(c.position)}</div>` : '';
+    const typeBadges = (c.contact_type || '').split(',').map(s => s.trim()).filter(Boolean)
+      .map(s => `<span class="badge me-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(s)}</span>`).join('');
+    const orgBadge = (c.org_label || c.org_code)
+      ? `<span class="badge bg-light text-dark border" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
+           title="${esc(c.org_label || c.org_code)}">${esc(c.org_label || c.org_code)}</span>` : '—';
     return `<tr>
       <td class="text-muted small">${i + 1}</td>
-      <td class="small fw-semibold">${esc(c.org_label || c.org_code)}</td>
-      <td class="text-nowrap">${esc(name)}</td>
-      <td class="small text-muted text-truncate" style="max-width:200px" title="${esc(c.position)}">${esc(c.position)}</td>
-      <td class="small">${esc(c.contact_type)}</td>
-      <td class="small">${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</td>
-      <td class="small text-nowrap">${esc(c.tel || c.mobile)}</td>
-      <td class="text-nowrap">
-        <button class="btn btn-outline-secondary btn-sm py-0 px-1 me-1" title="Edit"
-          onclick="openPmEditUnmatched(${i})"><i class="bi bi-pencil"></i></button>
-        <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete"
-          onclick="deletePmContactRecord(${c.id}, null)"><i class="bi bi-trash"></i></button>
+      <td style="max-width:200px">
+        <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
+        ${posLine}
+      </td>
+      <td style="max-width:180px">${orgBadge}</td>
+      <td>${typeBadges || '<span class="text-muted small">—</span>'}</td>
+      <td class="small" style="max-width:150px;overflow:hidden">
+        ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
+      </td>
+      <td class="small text-nowrap" style="width:90px">
+        ${c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(c.tel)}</a>`
+                : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
+      </td>
+      <td>
+        <div class="d-flex gap-1">
+          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit"
+            onclick="openPmEditUnmatched(${i})"><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete"
+            onclick="deletePmContactRecord(${c.id}, null)"><i class="bi bi-trash"></i></button>
+        </div>
       </td>
     </tr>`;
   }).join('');
