@@ -3810,11 +3810,15 @@ function filterContactsTab() {
             title="${esc(o.org_title || o.org_name)}">${esc(o.org_title || o.org_name)}</span>`
         ).join('') +
         (userOrgs.length > MAX_ORGS ? `<span class="text-muted small">+${userOrgs.length - MAX_ORGS}</span>` : '');
+    const presenceBadges =
+      `<span class="badge rounded-pill me-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="Has portal account"><i class="bi bi-globe2 me-1"></i>Portal</span>` +
+      (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="Has contact file entry"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
     return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
       <td class="text-muted small">${i + 1}</td>
       <td style="max-width:200px">
         <span class="fw-semibold">${esc(m.display_name)}</span>
         ${posLine}
+        <div class="mt-1">${presenceBadges}</div>
       </td>
       <td style="max-width:180px">${orgsHtml}</td>
       <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
@@ -3928,6 +3932,7 @@ function renderUnmatchedContacts() {
       <td style="max-width:200px">
         <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
         ${posLine}
+        <div class="mt-1"><span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="Has contact file entry"><i class="bi bi-file-earmark-person me-1"></i>File</span></div>
       </td>
       <td style="max-width:180px">${orgBadge}</td>
       <td>${typeBadges || '<span class="text-muted small">—</span>'}</td>
