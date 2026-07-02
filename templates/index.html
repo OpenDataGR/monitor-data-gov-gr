@@ -3016,11 +3016,30 @@ async function importContactsExcel(input) {
 }
 
 async function loadContactSummary() {
-  try {
-    _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
-    if (_orgsViewMode === 'all') filterOrgs();
-    else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
-  } catch (_) {}
+  if (_portalMembersCache) {
+    // Rebuild locally so keys match what _portalContactCell looks up (HRMS label OR CKAN slug)
+    const s = {};
+    const seen = new Set();
+    for (const m of _portalMembersCache) {
+      if (!m.contact_id || seen.has(m.contact_id)) continue;
+      seen.add(m.contact_id);
+      const ckan = m.org_name || '';
+      if (ckan) s[ckan] = (s[ckan] || 0) + 1;
+      if (_hrmsLookup) { const hrms = _hrmsLookup.get(ckan); if (hrms) s[hrms] = (s[hrms] || 0) + 1; }
+    }
+    for (const c of (_pmUnmatched || [])) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      const key = c.org_code || '';
+      if (key) s[key] = (s[key] || 0) + 1;
+      if (_hrmsLookup) { const hrms = _hrmsLookup.get(key); if (hrms) s[hrms] = (s[hrms] || 0) + 1; }
+    }
+    _contactSummary = s;
+  } else {
+    try { _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json()); } catch (_) {}
+  }
+  if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
+  if (_orgsViewMode === 'all') filterOrgs();
 }
 // ── Org detail panel ─────────────────────────────────────────────────────────
 let _orgPanel = null;
@@ -3493,6 +3512,7 @@ async function loadContactsTab(force = false) {
       _pmSetFetchedAt(cached.ts);
       filterContactsTab();
       renderUnmatchedContacts();
+      if (_orgsLoaded) loadContactSummary();
       // Silently refresh in background if stale
       if (Date.now() - cached.ts > _PM_STALE_MS) {
         if (_pmPollTimer) { clearTimeout(_pmPollTimer); _pmPollTimer = null; }
@@ -3544,6 +3564,7 @@ async function _pollPortalMembers(attempt, silent = false) {
     show('contactsReloadBtn').disabled = false;
     filterContactsTab();
     renderUnmatchedContacts();
+    if (_orgsLoaded) loadContactSummary();
   } catch (e) {
     if (!silent) {
       show('contactsTableBody').innerHTML =
