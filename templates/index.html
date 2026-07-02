@@ -576,6 +576,7 @@
                       <th data-i18n="contacts.col_name">Name</th>
                       <th data-i18n="contacts.col_org">Organization</th>
                       <th data-i18n="contacts.col_role">Type</th>
+                      <th data-i18n="contacts.col_state">State</th>
                       <th style="width:150px" data-i18n="contacts.email">Email</th>
                       <th style="width:90px">Tel</th>
                       <th style="width:4rem"></th>
@@ -3936,6 +3937,7 @@ function renderUnmatchedContacts() {
       </td>
       <td style="max-width:180px">${orgBadge}</td>
       <td>${typeBadges || '<span class="text-muted small">—</span>'}</td>
+      <td></td>
       <td class="small" style="width:150px;max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
         ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
       </td>
