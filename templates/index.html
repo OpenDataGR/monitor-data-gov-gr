@@ -3797,8 +3797,9 @@ function filterContactsTab() {
   _pmRows = rows;
   show('contactsTableBody').innerHTML = rows.map((m, i) => {
     const state    = m.state || 'active';
-    const roleCls  = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
-    const roleLabel = m.sysadmin ? 'sysadmin' : (m.capacity || '—');
+    const _ROLE_LBL = { admin: 'Portal Administrator', editor: 'Portal Editor', member: 'Portal User' };
+    const roleCls   = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (CONTACT_TYPE_CLS[_ROLE_LBL[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
+    const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
     const stateCls = STATE_BADGE_CLS[state]       || 'bg-secondary';
     const posLine = m.contact_position
       ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
