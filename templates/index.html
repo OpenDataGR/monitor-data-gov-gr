@@ -559,33 +559,18 @@
                 <tbody id="contactsTableBody">
                   <tr><td colspan="8" class="text-center py-5 text-muted"><span data-i18n="contacts.tab_hint">Open this tab to load contacts.</span></td></tr>
                 </tbody>
+                <tbody id="pmUnmatchedSection" class="d-none">
+                  <tr class="table-light">
+                    <td colspan="8" class="py-1 px-2 small fw-semibold text-muted text-uppercase" style="letter-spacing:.04em;border-top:2px solid #dee2e6">
+                      Contacts without portal account &ensp;<span id="pmUnmatchedCount" class="badge bg-secondary rounded-pill fw-normal"></span>
+                    </td>
+                  </tr>
+                </tbody>
+                <tbody id="pmUnmatchedBody"></tbody>
               </table>
               </div>
             </div>
             <div id="contactsGroupedView" class="d-none"></div>
-            <div id="pmUnmatchedSection" class="d-none mt-4">
-              <div class="d-flex align-items-center gap-2 mb-2 px-1">
-                <h6 class="mb-0 text-muted fw-semibold small text-uppercase ls-1">Contacts without portal account</h6>
-                <span id="pmUnmatchedCount" class="badge bg-secondary rounded-pill"></span>
-              </div>
-              <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0">
-                  <thead class="sticky-top bg-white">
-                    <tr>
-                      <th style="width:3rem">#</th>
-                      <th data-i18n="contacts.col_name">Name</th>
-                      <th data-i18n="contacts.col_org">Organization</th>
-                      <th data-i18n="contacts.col_role">Type</th>
-                      <th data-i18n="contacts.col_state">State</th>
-                      <th style="width:150px" data-i18n="contacts.email">Email</th>
-                      <th style="width:90px">Tel</th>
-                      <th style="width:4rem"></th>
-                    </tr>
-                  </thead>
-                  <tbody id="pmUnmatchedBody"></tbody>
-                </table>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -3915,8 +3900,9 @@ let _pmUnmatched = [];
 let _pmEditModal = null;
 
 function renderUnmatchedContacts() {
-  const sec = show('pmUnmatchedSection');
-  if (!_pmUnmatched.length) { sec.classList.add('d-none'); return; }
+  const sec  = show('pmUnmatchedSection');
+  const body = show('pmUnmatchedBody');
+  if (!_pmUnmatched.length) { sec.classList.add('d-none'); body.innerHTML = ''; return; }
   sec.classList.remove('d-none');
   show('pmUnmatchedCount').textContent = _pmUnmatched.length;
   show('pmUnmatchedBody').innerHTML = _pmUnmatched.map((c, i) => {
