@@ -3926,7 +3926,8 @@ function _pmOrgSearch(q) {
   if (!matches.length) { dd.classList.add('d-none'); return; }
   dd.innerHTML = matches.map(o =>
     `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
-         onmousedown="_pmOrgSelect(${JSON.stringify(o.name)},${JSON.stringify(o.title)})"
+         data-code="${esc(o.name)}" data-label="${esc(o.title)}"
+         onmousedown="_pmOrgSelect(this.dataset.code,this.dataset.label)"
      ><span class="fw-semibold">${esc(o.title)}</span> <span class="text-muted">${esc(o.name)}</span></li>`
   ).join('');
   dd.classList.remove('d-none');
