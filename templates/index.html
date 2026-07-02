@@ -3472,6 +3472,17 @@ function filterContactsTab() {
     (m.email      || '').toLowerCase().includes(search)
   );
 
+  // Deduplicate by username — keep highest role (admin > editor > member)
+  if (!orgF) {
+    const _roleRank = { admin: 3, editor: 2, member: 1 };
+    const seen = new Map();
+    for (const m of rows) {
+      const prev = seen.get(m.username);
+      if (!prev || (_roleRank[m.capacity] || 0) > (_roleRank[prev.capacity] || 0)) seen.set(m.username, m);
+    }
+    rows = [...seen.values()];
+  }
+
   rows = [...rows].sort((a, b) => {
     let av, bv;
     switch (_contactsSortCol) {
@@ -3486,7 +3497,7 @@ function filterContactsTab() {
     return 0;
   });
 
-  const total = _portalMembersCache.length;
+  const total = new Set(_portalMembersCache.map(m => m.username)).size;
   show('contactsCount').innerHTML = rows.length < total ? `${rows.length} / ${total}` : `${total}`;
 
   const th = (col, label) =>
