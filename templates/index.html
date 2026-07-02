@@ -3670,7 +3670,7 @@ function filterContactsTab() {
   if (!_portalMembersCache) return;
   _rebuildOrgFilter();
 
-  const search = (show('contactsSearch').value || '').toLowerCase().trim();
+  const search = _ns(show('contactsSearch').value || '').trim();
   const roleF  = show('contactsTypeFilter').value;
   const orgF   = (show('contactsOrgFilter') || {}).value || '';
 
@@ -3678,10 +3678,11 @@ function filterContactsTab() {
   if (orgF)  rows = rows.filter(m => (m.org_title || m.org_name) === orgF);
   if (roleF) rows = rows.filter(m => m.capacity === roleF);
   if (search) rows = rows.filter(m =>
-    (m.org_title  || '').toLowerCase().includes(search) ||
-    (m.display_name || '').toLowerCase().includes(search) ||
-    (m.username   || '').toLowerCase().includes(search) ||
-    (m.email      || '').toLowerCase().includes(search)
+    _ns(m.org_title  || '').includes(search) ||
+    _ns(m.display_name || '').includes(search) ||
+    _ns(m.username   || '').includes(search) ||
+    _ns(m.email      || '').includes(search) ||
+    _ns(m.contact_position || '').includes(search)
   );
 
   // Deduplicate by username — keep highest role (sysadmin > admin > editor > member)
