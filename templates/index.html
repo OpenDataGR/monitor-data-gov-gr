@@ -538,6 +538,9 @@
                 <button class="btn btn-outline-secondary btn-sm" id="contactsReloadBtn" onclick="loadContactsTab(true)">
                   <i class="bi bi-arrow-repeat me-1"></i><span data-i18n="contacts.reload">Reload</span>
                 </button>
+                <button class="btn btn-outline-primary btn-sm" onclick="openPmEditNew()">
+                  <i class="bi bi-person-plus me-1"></i>Add contact
+                </button>
               </div>
             </div>
             <div id="contactsFlatView">
@@ -674,14 +677,17 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header border-bottom">
-        <h6 class="modal-title"><i class="bi bi-pencil me-2"></i><span id="pmEditTitle"></span></h6>
+        <h6 class="modal-title"><i class="bi bi-pencil me-2" id="pmEditIcon"></i><span id="pmEditTitle"></span></h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="pmEditContactId">
         <input type="hidden" id="pmEditUsername">
         <input type="hidden" id="pmEditOrgCode">
-        <input type="hidden" id="pmEditOrgLabel">
+        <div class="mb-2" id="pmEditOrgRow">
+          <label class="form-label small mb-1">Organization</label>
+          <input type="text" class="form-control form-control-sm" id="pmEditOrgLabel" placeholder="Organization name">
+        </div>
         <div class="mb-2">
           <label class="form-label small mb-1">Email</label>
           <input type="email" class="form-control form-control-sm" id="pmEditEmail">
@@ -3891,6 +3897,7 @@ function openPmEditUnmatched(idx) {
   if (!c) return;
   const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || '(no name)';
   show('pmEditTitle').textContent   = name + ' — ' + (c.org_label || c.org_code);
+  show('pmEditIcon').className      = 'bi bi-pencil me-2';
   show('pmEditContactId').value     = c.id        || '';
   show('pmEditUsername').value      = '';
   show('pmEditEmail').value         = c.email     || '';
@@ -3907,10 +3914,31 @@ function openPmEditUnmatched(idx) {
   _pmEditModal.show();
 }
 
+function openPmEditNew() {
+  show('pmEditTitle').textContent   = 'New Contact';
+  show('pmEditIcon').className      = 'bi bi-person-plus me-2';
+  show('pmEditContactId').value     = '';
+  show('pmEditUsername').value      = '';
+  show('pmEditEmail').value         = '';
+  show('pmEditOrgCode').value       = '';
+  show('pmEditOrgLabel').value      = '';
+  show('pmEditFirstName').value     = '';
+  show('pmEditLastName').value      = '';
+  show('pmEditPosition').value      = '';
+  _pmSetContactType('');
+  show('pmEditTel').value           = '';
+  show('pmEditMobile').value        = '';
+  show('pmEditStatus').textContent  = '';
+  show('pmEditOrgRow').classList.remove('d-none');
+  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
+  _pmEditModal.show();
+}
+
 function openPmEdit(idx) {
   const m = _pmRows[idx];
   if (!m) return;
   show('pmEditTitle').textContent   = m.display_name + ' — ' + (m.org_title || m.org_name);
+  show('pmEditIcon').className      = 'bi bi-pencil me-2';
   show('pmEditContactId').value     = m.contact_id   || '';
   show('pmEditUsername').value      = m.username     || '';
   show('pmEditEmail').value         = m.email        || '';
@@ -3950,9 +3978,12 @@ async function savePmContact() {
   const data = await resp.json();
   if (data.error) { show('pmEditStatus').textContent = data.error; return; }
 
-  // Update the right cache depending on whether this is a portal member or unmatched contact
-  const username = show('pmEditUsername').value;
+  // Update the right cache depending on context
+  const username   = show('pmEditUsername').value;
+  const savedEmail = (data.email || '').toLowerCase().trim();
+
   if (username && _portalMembersCache) {
+    // Editing a known portal member
     _portalMembersCache.forEach(m => {
       if (m.username === username) {
         m.contact_id         = data.id;
@@ -3963,13 +3994,35 @@ async function savePmContact() {
         m.contact_type       = data.contact_type || '';
         m.contact_tel        = data.tel          || '';
         m.contact_mobile     = data.mobile       || '';
+        m.contact_email      = data.email        || '';
       }
     });
     filterContactsTab();
+  } else if (!contactId && savedEmail && _portalMembersCache) {
+    // New contact — check if email matches a portal member
+    const matched = _portalMembersCache.filter(m => (m.email || '').toLowerCase() === savedEmail);
+    if (matched.length) {
+      matched.forEach(m => {
+        m.contact_id         = data.id;
+        m.contact_first_name = data.first_name || '';
+        m.contact_last_name  = data.last_name  || '';
+        m.contact_name       = `${data.first_name || ''} ${data.last_name || ''}`.trim();
+        m.contact_position   = data.position     || '';
+        m.contact_type       = data.contact_type || '';
+        m.contact_tel        = data.tel          || '';
+        m.contact_mobile     = data.mobile       || '';
+        m.contact_email      = data.email        || '';
+      });
+      filterContactsTab();
+    } else {
+      _pmUnmatched.unshift(data);
+      renderUnmatchedContacts();
+    }
   } else {
-    // Unmatched contact — update in _pmUnmatched by id
+    // Editing an existing unmatched contact
     const idx = _pmUnmatched.findIndex(c => c.id === data.id);
     if (idx >= 0) _pmUnmatched[idx] = data;
+    else _pmUnmatched.unshift(data);
     renderUnmatchedContacts();
   }
   _pmEditModal.hide();
