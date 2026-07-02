@@ -3438,8 +3438,9 @@ function filterContactsTab() {
     return `<tr style="${state !== 'active' ? 'opacity:.6' : ''}">
       <td class="text-muted small">${i + 1}</td>
       <td>
-        <a href="#" class="fw-semibold text-decoration-none"
-          onclick="openOrgPanel('${esc(m.org_name)}');return false;">${esc(m.org_title || m.org_name)}</a>
+        ${m.org_name
+          ? `<a href="#" class="fw-semibold text-decoration-none" onclick="openOrgPanel('${esc(m.org_name)}');return false;">${esc(m.org_title || m.org_name)}</a>`
+          : `<span class="text-muted small fst-italic">no org</span>`}
       </td>
       <td style="max-width:220px">
         <span class="fw-semibold">${esc(m.display_name)}</span>
@@ -3469,8 +3470,8 @@ function setContactsView(mode) {
 function renderContactsGrouped(rows) {
   const groups = new Map();
   rows.forEach(m => {
-    const orgName  = m.org_name  || '';
-    const orgTitle = m.org_title || orgName || '—';
+    const orgName  = m.org_name  || '__none__';
+    const orgTitle = m.org_title || m.org_name || '(no organization)';
     if (!groups.has(orgName)) groups.set(orgName, { slug: orgName, label: orgTitle, items: [] });
     groups.get(orgName).items.push(m);
   });
@@ -3491,10 +3492,10 @@ function renderContactsGrouped(rows) {
           <span class="fw-semibold small">${esc(g.label)}</span>
           <span class="badge bg-primary rounded-pill">${g.items.length}</span>
         </div>
-        <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${esc(g.label)}"
+        ${g.slug !== '__none__' ? `<button class="btn btn-outline-primary btn-sm py-0 px-2" title="${esc(g.label)}"
           onclick="event.stopPropagation();openOrgPanel('${esc(g.slug)}')">
           <i class="bi bi-box-arrow-up-right"></i>
-        </button>
+        </button>` : ''}
       </div>
       <div id="${gId}" class="d-none">
         <table class="table table-sm align-middle mb-0">

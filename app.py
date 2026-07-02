@@ -1664,6 +1664,56 @@ def _do_fetch_portal_members():
             for m in all_members:
                 m["email"] = email_map.get(m["username"], "")
 
+        # Step 4b – add portal users not belonging to any org
+        try:
+            r_ul = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/user_list",
+                params={"all_fields": True},
+                headers=auth_headers,
+                timeout=20,
+            )
+            if r_ul.status_code == 200:
+                ul = r_ul.json()
+                if ul.get("success"):
+                    org_usernames = {m["username"] for m in all_members}
+                    unorged = []
+                    for u in ul["result"]:
+                        uname = u.get("name", "")
+                        if uname and uname not in org_usernames:
+                            unorged.append({
+                                "org_name":     "",
+                                "org_title":    "",
+                                "username":     uname,
+                                "display_name": (u.get("display_name") or u.get("fullname") or uname).strip(),
+                                "capacity":     "",
+                                "email":        (u.get("email") or "").lower().strip(),
+                                "state":        u.get("state", "active"),
+                            })
+                    # Fetch missing emails via user_show
+                    needs_email = [u for u in unorged if not u["email"]]
+                    if needs_email and config.TOKEN:
+                        def _ue(uname):
+                            try:
+                                r2 = requests.get(
+                                    f"{config.PORTAL_BASE}/api/3/action/user_show",
+                                    params={"id": uname}, headers=auth_headers, timeout=8,
+                                )
+                                if r2.status_code == 200:
+                                    d = r2.json()
+                                    if d.get("success"):
+                                        return uname, (d["result"].get("email") or "").lower().strip()
+                            except Exception:
+                                pass
+                            return uname, ""
+                        with ThreadPoolExecutor(max_workers=20) as pool:
+                            for uname, email in pool.map(_ue, [u["username"] for u in needs_email]):
+                                for u in unorged:
+                                    if u["username"] == uname:
+                                        u["email"] = email
+                    all_members.extend(unorged)
+        except Exception:
+            pass
+
         # Enrich with OrgContact data matched by email; collect unmatched contacts
         unmatched = []
         try:
