@@ -756,63 +756,7 @@
   </div>
 </div>
 
-<!-- Contact add/edit modal -->
-<div class="modal fade" id="contactModal" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header border-bottom">
-        <h5 class="modal-title fw-bold" id="contactModalTitle" data-i18n="contacts.modal_add">Add Contact</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="contactId">
-        <div class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold" data-i18n="contacts.first_name">First Name</label>
-            <input type="text" id="contactFirstName" class="form-control form-control-sm">
-          </div>
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold" data-i18n="contacts.last_name">Last Name</label>
-            <input type="text" id="contactLastName" class="form-control form-control-sm">
-          </div>
-          <div class="col-12">
-            <label class="form-label small fw-semibold" data-i18n="contacts.position">Position</label>
-            <input type="text" id="contactPosition" class="form-control form-control-sm">
-          </div>
-          <div class="col-12">
-            <label class="form-label small fw-semibold" data-i18n="contacts.type">Contact Type</label>
-            <select id="contactType" class="form-select form-select-sm" multiple size="5">
-              <option value="Portal Administrator" data-i18n="contacts.type_portal_administrator">Portal Administrator</option>
-              <option value="Portal Editor" data-i18n="contacts.type_portal_editor">Portal Editor</option>
-              <option value="Portal User" data-i18n="contacts.type_portal_user">Portal User</option>
-              <option value="Data Officer" data-i18n="contacts.type_data_officer">Data Officer</option>
-              <option value="Data Steward" data-i18n="contacts.type_data_steward">Data Steward</option>
-            </select>
-          </div>
-          <div class="col-12">
-            <label class="form-label small fw-semibold" data-i18n="contacts.email">Email</label>
-            <input type="email" id="contactEmail" class="form-control form-control-sm">
-            <div class="invalid-feedback" data-i18n="contacts.err_email">Μη έγκυρη διεύθυνση email.</div>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold" data-i18n="contacts.tel">Tel</label>
-            <input type="tel" id="contactTel" class="form-control form-control-sm">
-            <div class="invalid-feedback" data-i18n="contacts.err_phone">Μη έγκυρος αριθμός.</div>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold" data-i18n="contacts.mobile">Mobile</label>
-            <input type="tel" id="contactMobile" class="form-control form-control-sm">
-            <div class="invalid-feedback" data-i18n="contacts.err_phone">Μη έγκυρος αριθμός.</div>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" data-i18n="contacts.cancel">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm" onclick="saveContact()" data-i18n="contacts.save">Save</button>
-      </div>
-    </div>
-  </div>
-</div>
+
 
 <!-- Org detail offcanvas -->
 <div class="offcanvas offcanvas-end" tabindex="-1" id="orgDetailPanel" style="width:440px;max-width:95vw">
@@ -1382,9 +1326,9 @@ function setLang(lang) {
 
 // ── Chart instances ─────────────────────────────────────────────────────────
 let _uptimeChart = null, _rtChart = null, _statsChart = null;
-let _contactsPanel = null, _contactModal = null;
+let _contactsPanel = null;
 let _panelOrgCode = '', _panelOrgLabel = '', _panelCkanName = null;
-let _contactsCache = {}, _displayedPublicOrgs = [], _contactSummary = {};
+let _displayedPublicOrgs = [], _contactSummary = {};
 let _qualityResults = null;
 
 // Absolute base URL so API calls work regardless of sub-path prefix
@@ -2900,186 +2844,131 @@ function openContactsPanel(orgCode, orgLabel, ckanName = null) {
   if (!_contactsPanel) _contactsPanel = new bootstrap.Offcanvas(document.getElementById('orgContactsPanel'));
   show('orgContactsTitle').textContent    = t('contacts.panel_title');
   show('orgContactsSubtitle').textContent = orgLabel;
-  show('orgContactsBody').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
   _contactsPanel.show();
-  const contactsFetch = fetch(API_BASE + 'api/contacts/' + encodeURIComponent(orgCode)).then(r => r.json());
-  const membersFetch  = ckanName
-    ? fetch(API_BASE + 'api/organizations/' + encodeURIComponent(ckanName)).then(r => r.ok ? r.json() : null).catch(() => null)
-    : Promise.resolve(null);
-  Promise.all([contactsFetch, membersFetch])
-    .then(([contacts, orgData]) => renderContactsPanel(contacts, (orgData?.org?.members) || []))
-    .catch(err => { show('orgContactsBody').innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`; });
+  _renderOrgContactsPanel();
 }
 
-const CONTACT_TYPE_BADGE = {
-  'Portal Administrator': 'bg-primary',
-  'Portal User':          'bg-info text-dark',
-  'Data Officer':         'bg-success',
-  'Data Steward':         'bg-warning text-dark',
-  'Portal Editor':        'bg-dark',
-};
+function _renderOrgContactsPanel() {
+  const orgCode  = _panelOrgCode;
+  const orgLabel = _panelOrgLabel;
+  const ckanName = _panelCkanName;
 
-function _contactTypeBadge(type) {
-  if (!type) return '';
-  return type.split(',').map(s => s.trim()).filter(Boolean).map(typ => {
-    const cls = CONTACT_TYPE_BADGE[typ] || 'bg-secondary';
-    const label = t('contacts.type_' + typ.toLowerCase().replace(/ /g, '_')) || typ;
-    return `<span class="badge ${cls} me-1">${label}</span>`;
-  }).join('');
-}
+  if (!_portalMembersCache) {
+    show('orgContactsBody').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+    const _wait = () => { if (_portalMembersCache) _renderOrgContactsPanel(); else setTimeout(_wait, 300); };
+    loadContactsTab();
+    _wait();
+    return;
+  }
 
-function renderContactsPanel(contacts, members = []) {
-  _contactsCache = {};
-  contacts.forEach(c => { _contactsCache[c.id] = c; });
+  // Portal members for this org that have a linked contact (dedup by username, highest role)
+  const roleRank = { admin: 3, editor: 2, member: 1 };
+  const rankM = m => m.sysadmin ? 4 : (roleRank[m.capacity] || 0);
+  const memberMap = new Map();
+  for (const m of _portalMembersCache) {
+    if (!ckanName || m.org_name !== ckanName) continue;
+    if (!m.contact_id) continue;
+    const prev = memberMap.get(m.username);
+    if (!prev || rankM(m) > rankM(prev)) memberMap.set(m.username, m);
+  }
+  const memberContacts = [...memberMap.values()];
 
-  // Build email → member map for quick lookup
-  const memberByEmail = new Map();
-  members.forEach(m => { if (m.email) memberByEmail.set(m.email.toLowerCase(), m); });
+  // Unmatched contacts for this org
+  const unmatched = (_pmUnmatched || []).filter(c =>
+    (orgCode && c.org_code === orgCode) || (ckanName && c.org_code === ckanName)
+  );
 
-  const ROLE_CLS = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary' };
-
-  const addBtn = `<button class="btn btn-primary btn-sm mb-3 w-100" onclick="openContactModal()">
+  const addBtn = `<button class="btn btn-primary btn-sm mb-3 w-100" onclick="openPmEditNewForOrg()">
     <i class="bi bi-person-plus me-1"></i>${t('contacts.add')}
   </button>`;
 
-  const listHtml = contacts.length ? contacts.map(c => {
-    const portalMatch = c.email ? memberByEmail.get(c.email.toLowerCase()) : null;
-    const portalBadgeHtml = portalMatch
-      ? `<span class="badge bg-info text-dark ms-1" title="Portal: ${esc(portalMatch.display_name)} (${portalMatch.capacity})">
-           <i class="bi bi-patch-check-fill me-1"></i>${esc(portalMatch.display_name)}
-         </span>`
-      : '';
-    const stateActive  = !portalMatch || portalMatch.state === 'active';
-    const stateBadge   = portalMatch && portalMatch.state && portalMatch.state !== 'active'
-      ? `<span class="badge bg-danger ms-1" style="font-size:.7rem">${esc(portalMatch.state)}</span>`
-      : '';
-    const portalInfoHtml = portalMatch
-      ? `<div class="small mt-1 p-1 rounded" style="background:#e8f4fd;border-left:3px solid #0dcaf0;opacity:${stateActive ? 1 : 0.65}">
-           <i class="bi bi-person-badge me-1 text-info"></i>
-           <span class="text-muted">Portal:</span>
-           <strong>${esc(portalMatch.display_name)}</strong>
-           <span class="badge ${ROLE_CLS[portalMatch.capacity] || 'bg-secondary'} ms-1" style="font-size:.7rem">${portalMatch.capacity}</span>
-           ${stateBadge}
-           <span class="text-muted ms-1" style="font-size:.75rem">@${esc(portalMatch.name)}</span>
-         </div>`
-      : '';
+  const _ROLE_LBL = { admin: 'Portal Administrator', editor: 'Portal Editor', member: 'Portal User' };
+
+  const memberCards = memberContacts.map(m => {
+    const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
+    const roleCls   = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (CONTACT_TYPE_CLS[_ROLE_LBL[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
     return `
     <div class="card mb-2 border">
       <div class="card-body py-2 px-3">
         <div class="d-flex justify-content-between align-items-start gap-2">
           <div class="flex-grow-1" style="min-width:0">
-            <div class="fw-semibold">${esc(c.first_name)} ${esc(c.last_name)}${_contactTypeBadge(c.contact_type) ? ' ' + _contactTypeBadge(c.contact_type) : ''}${portalBadgeHtml}</div>
-            ${c.position ? `<div class="text-muted small">${esc(c.position)}</div>` : ''}
-            ${c.email    ? `<div class="small"><i class="bi bi-envelope me-1 text-muted"></i><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></div>` : ''}
-            ${c.tel      ? `<div class="small"><i class="bi bi-telephone me-1 text-muted"></i><a href="tel:${esc(c.tel)}">${esc(c.tel)}</a></div>` : ''}
-            ${c.mobile   ? `<div class="small"><i class="bi bi-phone me-1 text-muted"></i><a href="tel:${esc(c.mobile)}">${esc(c.mobile)}</a></div>` : ''}
-            ${portalInfoHtml}
+            <div class="fw-semibold">
+              ${esc(m.contact_first_name || '')} ${esc(m.contact_last_name || '')}
+              <span class="badge ${roleCls} ms-1" style="font-size:.7rem">${esc(roleLabel)}</span>
+              <span class="badge rounded-pill ms-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db"><i class="bi bi-globe2 me-1"></i>Portal</span>
+              <span class="badge rounded-pill ms-1" style="font-size:.65rem;background:#e6f4ea;color:#188038"><i class="bi bi-file-earmark-person me-1"></i>File</span>
+            </div>
+            ${m.contact_position ? `<div class="text-muted small">${esc(m.contact_position)}</div>` : ''}
+            ${m.email ? `<div class="small"><i class="bi bi-envelope me-1 text-muted"></i><a href="mailto:${esc(m.email)}">${esc(m.email)}</a></div>` : ''}
+            ${m.contact_tel    ? `<div class="small"><i class="bi bi-telephone me-1 text-muted"></i><a href="tel:${esc(m.contact_tel)}">${esc(m.contact_tel)}</a></div>` : ''}
+            ${m.contact_mobile ? `<div class="small"><i class="bi bi-phone me-1 text-muted"></i><a href="tel:${esc(m.contact_mobile)}">${esc(m.contact_mobile)}</a></div>` : ''}
           </div>
           <div class="d-flex gap-1 flex-shrink-0">
-            <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openContactModal(_contactsCache[${c.id}])" title="Edit"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteContact(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
+            <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditByUsername('${esc(m.username)}')" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')" title="Delete"><i class="bi bi-trash"></i></button>
           </div>
         </div>
       </div>
     </div>`;
-  }).join('') : `<p class="text-muted small mt-2">${t('contacts.none')}</p>`;
+  });
 
-  show('orgContactsBody').innerHTML = addBtn + listHtml;
+  const unmatchedCards = unmatched.map(c => {
+    const typeBadges = (c.contact_type || '').split(',').map(s => s.trim()).filter(Boolean).map(typ =>
+      `<span class="badge ${CONTACT_TYPE_CLS[typ] || 'bg-secondary'} ms-1" style="font-size:.7rem">${esc(typ)}</span>`
+    ).join('');
+    return `
+    <div class="card mb-2 border">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div class="flex-grow-1" style="min-width:0">
+            <div class="fw-semibold">
+              ${esc(c.first_name || '')} ${esc(c.last_name || '')}${typeBadges}
+              <span class="badge rounded-pill ms-1" style="font-size:.65rem;background:#e6f4ea;color:#188038"><i class="bi bi-file-earmark-person me-1"></i>File</span>
+            </div>
+            ${c.position ? `<div class="text-muted small">${esc(c.position)}</div>` : ''}
+            ${c.email  ? `<div class="small"><i class="bi bi-envelope me-1 text-muted"></i><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></div>` : ''}
+            ${c.tel    ? `<div class="small"><i class="bi bi-telephone me-1 text-muted"></i><a href="tel:${esc(c.tel)}">${esc(c.tel)}</a></div>` : ''}
+            ${c.mobile ? `<div class="small"><i class="bi bi-phone me-1 text-muted"></i><a href="tel:${esc(c.mobile)}">${esc(c.mobile)}</a></div>` : ''}
+          </div>
+          <div class="d-flex gap-1 flex-shrink-0">
+            <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditForUnmatched(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${c.id}, null)" title="Delete"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  const allCards = [...memberCards, ...unmatchedCards];
+  show('orgContactsBody').innerHTML = addBtn +
+    (allCards.length ? allCards.join('') : `<p class="text-muted small mt-2">${t('contacts.none')}</p>`);
 }
 
-const _PHONE_RE = /^[+\d][\d\s\-().]{4,19}$/;
-function _validateContactField(fieldId) {
-  const val = show(fieldId).value.trim();
-  const bad = fieldId === 'contactEmail'
-    ? (val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val))
-    : (val && !_PHONE_RE.test(val));
-  show(fieldId).classList.toggle('is-invalid', !!bad);
-  return !bad;
+function openPmEditNewForOrg() {
+  openPmEditNewForUser('', '', _panelCkanName || _panelOrgCode, _panelOrgLabel);
 }
 
-function openContactModal(contact = null) {
-  if (!_contactModal) {
-    _contactModal = new bootstrap.Modal(document.getElementById('contactModal'));
-    ['contactEmail', 'contactTel', 'contactMobile'].forEach(id =>
-      show(id).addEventListener('blur', () => _validateContactField(id))
-    );
-  }
-  show('contactModalTitle').textContent = contact ? t('contacts.modal_edit') : t('contacts.modal_add');
-  show('contactId').value        = contact ? contact.id        : '';
-  show('contactFirstName').value = contact ? (contact.first_name   || '') : '';
-  show('contactLastName').value  = contact ? (contact.last_name    || '') : '';
-  show('contactPosition').value  = contact ? (contact.position     || '') : '';
-  const _selTypes = (contact && contact.contact_type ? contact.contact_type : '').split(',').map(s => s.trim());
-  Array.from(show('contactType').options).forEach(opt => { opt.selected = _selTypes.includes(opt.value); });
-  show('contactEmail').value     = contact ? (contact.email        || '') : '';
-  show('contactTel').value       = contact ? (contact.tel          || '') : '';
-  show('contactMobile').value    = contact ? (contact.mobile       || '') : '';
-  ['contactEmail', 'contactTel', 'contactMobile'].forEach(id => show(id).classList.remove('is-invalid'));
-  _contactModal.show();
-}
-
-async function saveContact() {
-  const id   = show('contactId').value;
-  const valid = ['contactEmail', 'contactTel', 'contactMobile'].map(_validateContactField).every(Boolean);
-  if (!valid) return;
-  const _emailVal  = show('contactEmail').value.trim();
-  const _telVal    = show('contactTel').value.trim();
-  const _mobileVal = show('contactMobile').value.trim();
-  const body = {
-    id:           id ? parseInt(id, 10) : null,
-    org_code:     _panelOrgCode,
-    first_name:   show('contactFirstName').value.trim(),
-    last_name:    show('contactLastName').value.trim(),
-    position:     show('contactPosition').value.trim(),
-    contact_type: Array.from(show('contactType').selectedOptions).map(o => o.value).join(','),
-    email:        _emailVal,
-    tel:          _telVal,
-    mobile:       _mobileVal,
-    org_label:    _panelOrgLabel,
-  };
-  try {
-    const resp = await fetch(`${API_BASE}api/contacts/save?d=${_b64enc(body)}`, { method: 'PATCH', cache: 'no-store' });
-    if (!resp.ok) {
-      const txt = await resp.text();
-      _allContacts = null; _allUnified = null;
-      if (_contactFromTab) { _contactFromTab = false; loadContactsTab(); }
-      throw new Error(`HTTP ${resp.status} – ${txt.slice(0, 200)}`);
-    }
-    if (_contactModal) _contactModal.hide();
-    if (_contactFromTab) {
-      _contactFromTab = false;
-      _allContacts = null; _allUnified = null;
-      loadContactsTab();
-    } else {
-      openContactsPanel(_panelOrgCode, _panelOrgLabel, _panelCkanName);
-    }
-    _allContacts = null; _allUnified = null;
-    _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
-    if (_orgsViewMode === 'all') filterOrgs();
-    else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
-  } catch (e) {
-    alert(t('error') + ' ' + e.message);
-  }
-}
-
-async function deleteContact(id) {
-  if (!confirm(t('contacts.delete_confirm'))) return;
-  try {
-    await fetch(`${API_BASE}api/contacts/remove?d=${_b64enc({id})}`, { method: 'DELETE', cache: 'no-store' });
-    if (_contactFromTab) {
-      _contactFromTab = false;
-      _allContacts = null; _allUnified = null;
-      loadContactsTab();
-    } else {
-      openContactsPanel(_panelOrgCode, _panelOrgLabel, _panelCkanName);
-    }
-    _allContacts = null; _allUnified = null;
-    _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
-    if (_orgsViewMode === 'all') filterOrgs();
-    else if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
-  } catch (e) {
-    alert(t('contacts.delete_failed') + ' ' + e.message);
-  }
+function openPmEditForUnmatched(id) {
+  const c = (_pmUnmatched || []).find(c => c.id === id);
+  if (!c) return;
+  show('pmEditTitle').textContent   = (`${c.first_name || ''} ${c.last_name || ''}`).trim() || 'Edit Contact';
+  show('pmEditIcon').className      = 'bi bi-pencil me-2';
+  show('pmEditContactId').value     = c.id;
+  show('pmEditUsername').value      = '';
+  show('pmEditEmail').value         = c.email || '';
+  _pmOrgSetFixed(_panelCkanName || c.org_code, _panelOrgLabel || c.org_label || c.org_code);
+  show('pmEditFirstName').value     = c.first_name || '';
+  show('pmEditLastName').value      = c.last_name  || '';
+  show('pmEditPosition').value      = c.position   || '';
+  _pmSetContactType(c.contact_type  || '');
+  show('pmEditTel').value           = c.tel        || '';
+  show('pmEditMobile').value        = c.mobile     || '';
+  show('pmEditStatus').textContent  = '';
+  document.getElementById('pmEditEmailHint').classList.add('d-none');
+  _pmExistingMatch = null;
+  show('pmEditOrgRow').classList.add('d-none');
+  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
+  _pmEditModal.show();
 }
 
 async function importContactsExcel(input) {
@@ -3564,27 +3453,6 @@ function _normalisePortalMember(m) {
     _state:       m.state || 'active',
   };
 }
-let _contactFromTab  = false;
-
-function addContactFromTab() {
-  _contactFromTab = true;
-  openContactModal();
-}
-
-function editContactInTab(c) {
-  _contactFromTab = true;
-  _panelOrgCode   = c.org_code  || '';
-  _panelOrgLabel  = c.org_label || _panelOrgCode;
-  if (!_contactModal) _contactModal = new bootstrap.Modal(document.getElementById('contactModal'));
-  openContactModal(c);
-}
-
-function deleteContactFromTab(id, orgCode, orgLabel) {
-  _contactFromTab = true;
-  _panelOrgCode   = orgCode;
-  _panelOrgLabel  = orgLabel;
-  deleteContact(id);
-}
 
 document.getElementById('contactsTabBtn').addEventListener('click', () => {
   loadContactsTab();
@@ -4056,6 +3924,8 @@ async function deletePmContactRecord(contactId, username) {
     }
     _allContacts = null; _allUnified = null;
     filterContactsTab();
+    if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel();
+    loadContactSummary();
   } catch (e) {
     alert(t('contacts.delete_failed') + ' ' + e.message);
   }
@@ -4207,6 +4077,7 @@ function openPmEditByUsername(username) {
   show('pmEditMobile').value        = m.contact_mobile     || '';
   show('pmEditStatus').textContent  = '';
   document.getElementById('pmEditEmailHint').classList.add('d-none');
+  show('pmEditOrgRow').classList.remove('d-none');
   if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
   _pmEditModal.show();
 }
@@ -4227,6 +4098,7 @@ function openPmEdit(idx) {
   show('pmEditTel').value           = m.contact_tel        || '';
   show('pmEditMobile').value        = m.contact_mobile     || '';
   show('pmEditStatus').textContent  = '';
+  show('pmEditOrgRow').classList.remove('d-none');
   if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
   _pmEditModal.show();
 }
@@ -4307,7 +4179,10 @@ async function savePmContact() {
     else _pmUnmatched.unshift(data);
     renderUnmatchedContacts();
   }
+  _pmSaveCache(_portalMembersCache, _pmUnmatched);
   _pmEditModal.hide();
+  if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel();
+  loadContactSummary();
 }
 
 function exportContactsExcel() {
