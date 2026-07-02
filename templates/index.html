@@ -3177,7 +3177,7 @@ function renderUserPanel(u) {
         ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">Mobile</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a></dd>` : ''}
         ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Type</dt><dd class="col-7 mb-1">${
           c.contact_type.split(',').map(s => s.trim()).filter(Boolean)
-            .map(s => `<span class="badge bg-light text-dark border me-1 mb-1" style="font-size:.7rem">${esc(s)}</span>`).join('')
+            .map(s => `<span class="badge me-1 mb-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(s)}</span>`).join('')
         }</dd>` : ''}
       </dl>
     </div>` : '';
@@ -3592,7 +3592,7 @@ async function loadContactsTab(force = false) {
 }
 
 async function _pollPortalMembers(attempt, silent = false) {
-  const cols = 7;
+  const cols = 8;
   const MAX = 40;   // give up after ~200 s
   const INTERVAL = 5000;
 
@@ -3658,6 +3658,13 @@ function _rebuildOrgFilter() {
 
 const ROLE_BADGE_CLS = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary', sysadmin: 'bg-danger' };
 const STATE_BADGE_CLS = { active: 'bg-success', deleted: 'bg-danger', pending: 'bg-warning text-dark' };
+const CONTACT_TYPE_CLS = {
+  'Portal Administrator': 'bg-danger',
+  'Portal Editor':        'bg-warning text-dark',
+  'Portal User':          'bg-primary',
+  'Data Officer':         'bg-info text-dark',
+  'Data Steward':         'bg-success',
+};
 
 function filterContactsTab() {
   if (!_portalMembersCache) return;
@@ -3711,10 +3718,11 @@ function filterContactsTab() {
   document.querySelector('#contactsTable thead tr').innerHTML =
     `<th style="width:3rem">#</th>` +
     th('name',  t('contacts.col_name'))  +
-    `<th>${t('contacts.col_username')}</th>` +
+    `<th>${t('contacts.col_org')}</th>`  +
     th('type',  t('contacts.col_role'))  +
     `<th>${t('contacts.col_state')}</th>` +
     th('email', t('contacts.email')) +
+    `<th>Tel</th>` +
     `<th style="width:2.5rem"></th>`;
 
   const flatDiv    = show('contactsFlatView');
@@ -3730,7 +3738,7 @@ function filterContactsTab() {
 
   if (!rows.length) {
     show('contactsTableBody').innerHTML =
-      `<tr><td colspan="7" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+      `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
     return;
   }
 
@@ -3741,16 +3749,23 @@ function filterContactsTab() {
     const roleLabel = m.sysadmin ? 'sysadmin' : (m.capacity || '—');
     const stateCls = STATE_BADGE_CLS[state]       || 'bg-secondary';
     const posLine = m.contact_position
-      ? `<div class="text-muted small text-truncate" style="max-width:220px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
-    const telLine = m.contact_tel
-      ? `<div class="text-muted small"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</div>` : '';
+      ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
+    const userOrgs = (_portalMembersCache || []).filter(x => x.username === m.username && x.org_name);
+    const MAX_ORGS = 2;
+    const orgsHtml = userOrgs.length === 0
+      ? `<span class="text-muted small fst-italic">—</span>`
+      : userOrgs.slice(0, MAX_ORGS).map(o =>
+          `<span class="badge bg-light text-dark border me-1" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
+            title="${esc(o.org_title || o.org_name)}">${esc(o.org_title || o.org_name)}</span>`
+        ).join('') +
+        (userOrgs.length > MAX_ORGS ? `<span class="text-muted small">+${userOrgs.length - MAX_ORGS}</span>` : '');
     return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
       <td class="text-muted small">${i + 1}</td>
-      <td style="max-width:220px">
+      <td style="max-width:200px">
         <span class="fw-semibold">${esc(m.display_name)}</span>
-        ${posLine}${telLine}
+        ${posLine}
       </td>
-      <td class="text-muted small font-monospace">@${esc(m.username)}</td>
+      <td style="max-width:180px">${orgsHtml}</td>
       <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
       <td><span class="badge ${stateCls}">${esc(state)}</span></td>
       <td class="small" onclick="event.stopPropagation()">
@@ -3758,6 +3773,9 @@ function filterContactsTab() {
         ${m.contact_email && m.contact_email !== m.email
           ? `<div class="text-muted" style="font-size:.75em" title="Email from contacts file"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>`
           : ''}
+      </td>
+      <td class="small text-nowrap" onclick="event.stopPropagation()">
+        ${m.contact_tel ? `<a href="tel:${esc(m.contact_tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</a>` : ''}
       </td>
       <td onclick="event.stopPropagation()">
         <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit contact info"
