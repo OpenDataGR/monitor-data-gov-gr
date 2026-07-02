@@ -2582,24 +2582,24 @@ function renderCommsTable(rows) {
     `<th class="${cls}" style="cursor:pointer;user-select:none;white-space:nowrap" onclick="sortComms('${col}')">${label}${commsArrow(col)}</th>`;
 
   el.innerHTML = `
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover table-sm align-middle mb-0">
+      <colgroup><col style="width:110px"><col><col><col style="width:140px"><col><col style="width:80px"></colgroup>
       <thead><tr>
         ${thS('contact_date', t('comms.col_date'), 'text-nowrap')}
         ${thS('org_title',    t('comms.col_org'))}
         ${thS('subject',      t('comms.col_subject'))}
         ${thS('status',       t('comms.col_status'))}
-        <th style="width:80px"></th>
+        <th>${t('comms.col_notes')}</th>
+        <th></th>
       </tr></thead>
       <tbody>
         ${sorted.map(c => `
           <tr>
             <td class="text-muted small mono text-nowrap">${c.contact_date}</td>
-            <td>
-              <div class="fw-semibold">${c.org_title}</div>
-              ${c.notes ? `<div class="text-muted small" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.notes.replace(/"/g,'&quot;')}">${c.notes}</div>` : ''}
-            </td>
+            <td class="fw-semibold small">${c.org_title}</td>
             <td class="small">${c.subject}</td>
             <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
+            <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
             <td class="text-end text-nowrap">
               <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
               <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
@@ -2658,11 +2658,11 @@ function renderCommsGrouped(data) {
       </tr>
       ${comms.map(c => `
         <tr style="${isExpanded ? '' : 'display:none'}" class="comm-hist-row">
-          <td class="text-muted small mono text-nowrap ps-4" style="width:110px">${c.contact_date}</td>
+          <td class="text-muted small mono text-nowrap ps-4">${c.contact_date}</td>
           <td class="small">${c.subject}</td>
-          <td style="width:140px"><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-          <td class="small text-muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
-          <td class="text-end text-nowrap" style="width:80px">
+          <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
+          <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
+          <td class="text-end text-nowrap">
             <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
             <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
           </td>
@@ -2670,13 +2670,14 @@ function renderCommsGrouped(data) {
   }).join('');
 
   el.innerHTML = `
-    <table class="table table-hover align-middle mb-0 table-sm">
+    <table class="table table-hover table-sm align-middle mb-0">
+      <colgroup><col style="width:110px"><col><col style="width:140px"><col><col style="width:80px"></colgroup>
       <thead><tr>
-        <th style="width:110px">${t('comms.col_date')}</th>
+        <th>${t('comms.col_date')}</th>
         <th>${t('comms.col_subject')}</th>
-        <th style="width:140px">${t('comms.col_status')}</th>
+        <th>${t('comms.col_status')}</th>
         <th>${t('comms.col_notes')}</th>
-        <th style="width:80px"></th>
+        <th></th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
