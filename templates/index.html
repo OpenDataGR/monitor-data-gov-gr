@@ -2861,17 +2861,16 @@ function _renderOrgContactsPanel() {
     return;
   }
 
-  // Portal members for this org that have a linked contact (dedup by username, highest role)
+  // All portal members for this org (dedup by username, highest role)
   const roleRank = { admin: 3, editor: 2, member: 1 };
   const rankM = m => m.sysadmin ? 4 : (roleRank[m.capacity] || 0);
   const memberMap = new Map();
   for (const m of _portalMembersCache) {
     if (!ckanName || m.org_name !== ckanName) continue;
-    if (!m.contact_id) continue;
     const prev = memberMap.get(m.username);
     if (!prev || rankM(m) > rankM(prev)) memberMap.set(m.username, m);
   }
-  const memberContacts = [...memberMap.values()];
+  const portalMembers = [...memberMap.values()];
 
   // Unmatched contacts for this org
   const unmatched = (_pmUnmatched || []).filter(c =>
@@ -2884,28 +2883,33 @@ function _renderOrgContactsPanel() {
 
   const _ROLE_LBL = { admin: 'Portal Administrator', editor: 'Portal Editor', member: 'Portal User' };
 
-  const memberCards = memberContacts.map(m => {
+  const memberCards = portalMembers.map(m => {
     const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
     const roleCls   = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (CONTACT_TYPE_CLS[_ROLE_LBL[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
+    const hasFile   = !!m.contact_id;
+    const name      = hasFile ? `${m.contact_first_name || ''} ${m.contact_last_name || ''}`.trim() : '';
+    const displayName = name || esc(m.display_name);
     return `
-    <div class="card mb-2 border">
+    <div class="card mb-2 border" style="${hasFile ? '' : 'border-style:dashed!important;opacity:.8'}">
       <div class="card-body py-2 px-3">
         <div class="d-flex justify-content-between align-items-start gap-2">
           <div class="flex-grow-1" style="min-width:0">
             <div class="fw-semibold">
-              ${esc(m.contact_first_name || '')} ${esc(m.contact_last_name || '')}
+              ${displayName}
               <span class="badge ${roleCls} ms-1" style="font-size:.7rem">${esc(roleLabel)}</span>
               <span class="badge rounded-pill ms-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db"><i class="bi bi-globe2 me-1"></i>Portal</span>
-              <span class="badge rounded-pill ms-1" style="font-size:.65rem;background:#e6f4ea;color:#188038"><i class="bi bi-file-earmark-person me-1"></i>File</span>
+              ${hasFile ? `<span class="badge rounded-pill ms-1" style="font-size:.65rem;background:#e6f4ea;color:#188038"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : ''}
             </div>
-            ${m.contact_position ? `<div class="text-muted small">${esc(m.contact_position)}</div>` : ''}
+            ${hasFile && m.contact_position ? `<div class="text-muted small">${esc(m.contact_position)}</div>` : ''}
             ${m.email ? `<div class="small"><i class="bi bi-envelope me-1 text-muted"></i><a href="mailto:${esc(m.email)}">${esc(m.email)}</a></div>` : ''}
-            ${m.contact_tel    ? `<div class="small"><i class="bi bi-telephone me-1 text-muted"></i><a href="tel:${esc(m.contact_tel)}">${esc(m.contact_tel)}</a></div>` : ''}
-            ${m.contact_mobile ? `<div class="small"><i class="bi bi-phone me-1 text-muted"></i><a href="tel:${esc(m.contact_mobile)}">${esc(m.contact_mobile)}</a></div>` : ''}
+            ${hasFile && m.contact_tel    ? `<div class="small"><i class="bi bi-telephone me-1 text-muted"></i><a href="tel:${esc(m.contact_tel)}">${esc(m.contact_tel)}</a></div>` : ''}
+            ${hasFile && m.contact_mobile ? `<div class="small"><i class="bi bi-phone me-1 text-muted"></i><a href="tel:${esc(m.contact_mobile)}">${esc(m.contact_mobile)}</a></div>` : ''}
           </div>
           <div class="d-flex gap-1 flex-shrink-0">
-            <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditByUsername('${esc(m.username)}')" title="Edit"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')" title="Delete"><i class="bi bi-trash"></i></button>
+            ${hasFile
+              ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditByUsername('${esc(m.username)}')" title="Edit"><i class="bi bi-pencil"></i></button>
+                 <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')" title="Delete"><i class="bi bi-trash"></i></button>`
+              : `<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openPmEditNewForUser('${esc(m.username)}','${esc(m.email)}','${esc(ckanName || orgCode)}','${esc(orgLabel)}')" title="Add contact file"><i class="bi bi-person-plus me-1"></i>Add</button>`}
           </div>
         </div>
       </div>
