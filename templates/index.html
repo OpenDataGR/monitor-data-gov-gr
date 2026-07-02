@@ -3809,10 +3809,12 @@ function filterContactsTab() {
         ${m.contact_tel ? `<a href="tel:${esc(m.contact_tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</a>` : ''}
       </td>
       <td onclick="event.stopPropagation()">
-        <button class="btn btn-outline-secondary btn-sm py-0 px-1 me-1" title="Edit contact info"
-          onclick="openPmEdit(${i})"><i class="bi bi-pencil"></i></button>
-        ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete contact record"
-          onclick="deletePmContactRecord(${m.contact_id}, '${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
+        <div class="d-flex gap-1">
+          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit contact info"
+            onclick="openPmEdit(${i})"><i class="bi bi-pencil"></i></button>
+          ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete contact record"
+            onclick="deletePmContactRecord(${m.contact_id}, '${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
+        </div>
       </td>
     </tr>`;
   }).join('');
