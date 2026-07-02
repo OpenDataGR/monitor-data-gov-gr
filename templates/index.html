@@ -2115,7 +2115,8 @@ let _orgsSortCol  = 'package_count';
 let _orgsSortDir  = 'desc';
 let _orgsViewMode = 'portal';
 let _ckanLookup   = null;
-let _hrmsLookup   = null;   // reverse: ckan org name → hrms org code
+let _hrmsLookup   = null;   // ckan slug → hrms code
+let _ckanByHrms   = null;   // hrms code → ckan slug  (+ hrms label → ckan slug for old data)
 
 function sortOrgs(col) {
   if (_orgsSortCol === col) {
@@ -2305,10 +2306,15 @@ function _buildCkanLookup() {
     _ckanLookup.set(_normOrg(org.title), org);
     _ckanLookup.set(_normOrg(org.name), org);
   }
-  _hrmsLookup = new Map();
+  _hrmsLookup = new Map();   // ckan slug → hrms code
+  _ckanByHrms = new Map();   // hrms code → ckan slug  +  hrms label → ckan slug
   for (const hrmsOrg of _publicOrgs) {
     const matched = _ckanLookup.get(_normOrg(hrmsOrg.label));
-    if (matched) _hrmsLookup.set(matched.name, hrmsOrg.label);
+    if (matched) {
+      _hrmsLookup.set(matched.name, hrmsOrg.code);
+      _ckanByHrms.set(hrmsOrg.code,  matched.name);
+      _ckanByHrms.set(hrmsOrg.label, matched.name);  // covers old contacts stored with label
+    }
   }
 }
 
@@ -2326,10 +2332,8 @@ async function _loadPublicOrgsForPortal() {
 }
 
 function _portalContactCell(orgName, orgTitle) {
-  const hc   = _hrmsLookup ? _hrmsLookup.get(orgName) : null;
-  const code = hc || orgName;  // share HRMS contacts if matched, else use CKAN slug
-  const cnt  = _contactSummary[code] || 0;
-  return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + code + '\',\'' + esc(orgTitle) + '\',\'' + orgName + '\')" title="View contacts">'
+  const cnt = _contactSummary[orgName] || 0;
+  return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + orgName + '\',\'' + esc(orgTitle) + '\',\'' + orgName + '\')" title="View contacts">'
     + '<i class="bi bi-people"></i>'
     + (cnt ? '<span class="badge bg-primary rounded-pill ms-1">' + cnt + '</span>' : '')
     + '</button>';
@@ -2834,7 +2838,9 @@ function esc(s) {
 
 function openContactsByIdx(i) {
   const o = _displayedPublicOrgs[i];
-  if (o) openContactsPanel(o.label, o.label, o.ckan ? o.ckan.name : null);
+  if (!o) return;
+  const ckan = o.ckan ? o.ckan.name : null;
+  openContactsPanel(ckan || o.code, o.label, ckan);
 }
 
 function openContactsPanel(orgCode, orgLabel, ckanName = null) {
@@ -2872,10 +2878,15 @@ function _renderOrgContactsPanel() {
   }
   const portalMembers = [...memberMap.values()];
 
-  // Unmatched contacts for this org
-  const unmatched = (_pmUnmatched || []).filter(c =>
-    (orgCode && c.org_code === orgCode) || (ckanName && c.org_code === ckanName)
-  );
+  // Unmatched contacts for this org — match by stored key, CKAN slug, or reverse HRMS lookup
+  const unmatched = (_pmUnmatched || []).filter(c => {
+    const key = c.org_code || '';
+    if (orgCode  && key === orgCode)  return true;
+    if (ckanName && key === ckanName) return true;
+    // Old contacts stored with HRMS code or label: resolve to CKAN slug and compare
+    if (ckanName && _ckanByHrms) { const resolved = _ckanByHrms.get(key); if (resolved === ckanName) return true; }
+    return false;
+  });
 
   const addBtn = `<button class="btn btn-primary btn-sm mb-3 w-100" onclick="openPmEditNewForOrg()">
     <i class="bi bi-person-plus me-1"></i>${t('contacts.add')}
@@ -3029,6 +3040,7 @@ async function loadContactSummary() {
       seen.add(m.contact_id);
       const ckan = m.org_name || '';
       if (ckan) s[ckan] = (s[ckan] || 0) + 1;
+      // Also index by HRMS code so "All orgs" view count badge works
       if (_hrmsLookup) { const hrms = _hrmsLookup.get(ckan); if (hrms) s[hrms] = (s[hrms] || 0) + 1; }
     }
     for (const c of (_pmUnmatched || [])) {
@@ -3036,6 +3048,9 @@ async function loadContactSummary() {
       seen.add(c.id);
       const key = c.org_code || '';
       if (key) s[key] = (s[key] || 0) + 1;
+      // If stored with HRMS code or label, also index under CKAN slug so portal view count works
+      if (_ckanByHrms) { const ckan = _ckanByHrms.get(key); if (ckan) s[ckan] = (s[ckan] || 0) + 1; }
+      // If stored with CKAN slug, also index under HRMS code for "All orgs" view
       if (_hrmsLookup) { const hrms = _hrmsLookup.get(key); if (hrms) s[hrms] = (s[hrms] || 0) + 1; }
     }
     _contactSummary = s;
