@@ -2162,8 +2162,41 @@ document.getElementById('orgsTabBtn').addEventListener('click', () => {
   loadOrgs();
 });
 
+const _ORGS_CACHE_KEY  = 'orgs_cache_v2';
+const _ORGS_STALE_MS   = 30 * 60 * 1000;
+const _ORGS_EXPIRE_MS  = 2  * 60 * 60 * 1000;
+
+function _orgsSaveCache(data, fetched_at) {
+  try { localStorage.setItem(_ORGS_CACHE_KEY, JSON.stringify({ data, fetched_at, ts: Date.now() })); } catch (_) {}
+}
+function _orgsReadCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(_ORGS_CACHE_KEY) || 'null');
+    if (!c || !Array.isArray(c.data) || Date.now() - c.ts > _ORGS_EXPIRE_MS) return null;
+    return c;
+  } catch (_) { return null; }
+}
+
 async function loadOrgs(force = false) {
   if (!force && _orgsLoaded) return;
+
+  if (!force) {
+    const cached = _orgsReadCache();
+    if (cached) {
+      _orgsData   = cached.data;
+      _orgsLoaded = true;
+      show('orgSearch').value = '';
+      show('orgsFetchedAt').textContent = cached.fetched_at
+        ? t('orgs.fetched') + ' ' + relativeDate(cached.fetched_at)
+        : '';
+      renderOrgsTable(_orgsData);
+      _loadPublicOrgsForPortal();
+      // Silently refresh in background if stale
+      if (Date.now() - cached.ts > _ORGS_STALE_MS) _loadOrgsBackground();
+      return;
+    }
+  }
+
   const el  = show('orgsTable');
   const btn = show('orgsRefreshBtn');
   el.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>${t('orgs.loading')}</div>`;
@@ -2181,6 +2214,7 @@ async function loadOrgs(force = false) {
     }
     _orgsData   = json.data;
     _orgsLoaded = true;
+    _orgsSaveCache(_orgsData, json.fetched_at);
     show('orgSearch').value = '';
     show('orgsFetchedAt').textContent = json.fetched_at
       ? t('orgs.fetched') + ' ' + relativeDate(json.fetched_at)
@@ -2193,6 +2227,22 @@ async function loadOrgs(force = false) {
   } finally {
     btn.disabled = false;
   }
+}
+
+async function _loadOrgsBackground() {
+  try {
+    const resp = await fetch(API_BASE + 'api/organizations');
+    if (!resp.ok) return;
+    const json = await resp.json();
+    if (json.error || !json.data) return;
+    _orgsData   = json.data;
+    _orgsSaveCache(_orgsData, json.fetched_at);
+    show('orgsFetchedAt').textContent = json.fetched_at
+      ? t('orgs.fetched') + ' ' + relativeDate(json.fetched_at)
+      : '';
+    renderOrgsTable(_orgsData);
+    if (json.enriching) _pollUntilEnriched();
+  } catch (_) {}
 }
 
 function _ns(s) {
@@ -2409,6 +2459,7 @@ async function _pollUntilEnriched(attempts = 0) {
     const json = await resp.json();
     if (json.error) return;
     _orgsData = json.data;
+    _orgsSaveCache(_orgsData, json.fetched_at);
     if (_publicOrgs.length) _buildCkanLookup();
     show('orgsFetchedAt').textContent = json.fetched_at ? t('orgs.fetched') + ' ' + relativeDate(json.fetched_at) : '';
     if (_orgsViewMode === 'portal') renderOrgsTable(_orgsData);
@@ -3381,19 +3432,53 @@ document.getElementById('contactsTabBtn').addEventListener('click', () => {
 let _portalMembersCache = null;
 let _pmPollTimer = null;
 
-async function loadContactsTab(force = false) {
-  if (_portalMembersCache && !force) { filterContactsTab(); return; }
-  _portalMembersCache = null;
-  if (_pmPollTimer) { clearTimeout(_pmPollTimer); _pmPollTimer = null; }
-  _pollPortalMembers(0);
+// ── localStorage cache helpers ────────────────────────────────────────────────
+const _PM_CACHE_KEY   = 'pm_cache_v2';
+const _PM_STALE_MS    = 30 * 60 * 1000;   // background-refresh after 30 min
+const _PM_EXPIRE_MS   = 2  * 60 * 60 * 1000; // discard after 2 h
+
+function _pmSaveCache(members, unmatched) {
+  try { localStorage.setItem(_PM_CACHE_KEY, JSON.stringify({ members, unmatched, ts: Date.now() })); } catch (_) {}
+}
+function _pmReadCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(_PM_CACHE_KEY) || 'null');
+    if (!c || !Array.isArray(c.members) || Date.now() - c.ts > _PM_EXPIRE_MS) return null;
+    return c;
+  } catch (_) { return null; }
 }
 
-async function _pollPortalMembers(attempt) {
-  const cols = 8;
+async function loadContactsTab(force = false) {
+  if (_portalMembersCache && !force) { filterContactsTab(); return; }
+
+  if (!force) {
+    const cached = _pmReadCache();
+    if (cached) {
+      _portalMembersCache = cached.members;
+      _pmUnmatched = cached.unmatched || [];
+      show('contactsReloadBtn').disabled = false;
+      filterContactsTab();
+      renderUnmatchedContacts();
+      // Silently refresh in background if stale
+      if (Date.now() - cached.ts > _PM_STALE_MS) {
+        if (_pmPollTimer) { clearTimeout(_pmPollTimer); _pmPollTimer = null; }
+        _pollPortalMembers(0, true);
+      }
+      return;
+    }
+  }
+
+  _portalMembersCache = null;
+  if (_pmPollTimer) { clearTimeout(_pmPollTimer); _pmPollTimer = null; }
+  _pollPortalMembers(0, false);
+}
+
+async function _pollPortalMembers(attempt, silent = false) {
+  const cols = 7;
   const MAX = 40;   // give up after ~200 s
   const INTERVAL = 5000;
 
-  if (attempt === 0) {
+  if (attempt === 0 && !silent) {
     show('contactsReloadBtn').disabled = true;
     show('contactsTableBody').innerHTML =
       `<tr><td colspan="${cols}" class="text-center py-5">
@@ -3407,10 +3492,9 @@ async function _pollPortalMembers(attempt) {
     const data = await resp.json();
 
     if (resp.status === 202) {
-      // Server is still fetching in background — poll again
       if (attempt < MAX) {
-        _pmPollTimer = setTimeout(() => _pollPortalMembers(attempt + 1), INTERVAL);
-      } else {
+        _pmPollTimer = setTimeout(() => _pollPortalMembers(attempt + 1, silent), INTERVAL);
+      } else if (!silent) {
         show('contactsTableBody').innerHTML =
           `<tr><td colspan="${cols}" class="text-center text-danger py-4">Timed out waiting for portal data.</td></tr>`;
         show('contactsReloadBtn').disabled = false;
@@ -3421,13 +3505,16 @@ async function _pollPortalMembers(attempt) {
     if (data.error) throw new Error(data.error);
     _portalMembersCache = data.members || [];
     _pmUnmatched = data.unmatched || [];
+    _pmSaveCache(_portalMembersCache, _pmUnmatched);
     show('contactsReloadBtn').disabled = false;
     filterContactsTab();
     renderUnmatchedContacts();
   } catch (e) {
-    show('contactsTableBody').innerHTML =
-      `<tr><td colspan="${cols}" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
-    show('contactsReloadBtn').disabled = false;
+    if (!silent) {
+      show('contactsTableBody').innerHTML =
+        `<tr><td colspan="${cols}" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
+      show('contactsReloadBtn').disabled = false;
+    }
   }
 }
 
