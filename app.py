@@ -1747,6 +1747,7 @@ def _do_fetch_portal_members():
                     "email":        (u.get("email") or "").lower().strip(),
                     "state":        u.get("state", "active"),
                     "sysadmin":     bool(u.get("sysadmin", False)),
+                    "about":        (u.get("about") or "").strip(),
                 }
 
         # Step 2 – fetch org memberships in parallel
@@ -1801,6 +1802,7 @@ def _do_fetch_portal_members():
                 "email":        ui.get("email", ""),
                 "state":        ui.get("state", "active"),
                 "sysadmin":     ui.get("sysadmin", False),
+                "about":        ui.get("about", ""),
             })
 
         # Step 4 – add users not in any org
@@ -1818,6 +1820,7 @@ def _do_fetch_portal_members():
                     "email":        ui.get("email", ""),
                     "state":        ui.get("state", "active"),
                     "sysadmin":     ui.get("sysadmin", False),
+                    "about":        ui.get("about", ""),
                 })
 
         # Enrich with OrgContact data matched by email; collect unmatched contacts

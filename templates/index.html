@@ -3683,7 +3683,8 @@ function filterContactsTab() {
     _ns(m.display_name || '').includes(search) ||
     _ns(m.username   || '').includes(search) ||
     _ns(m.email      || '').includes(search) ||
-    _ns(m.contact_position || '').includes(search)
+    _ns(m.contact_position || '').includes(search) ||
+    _ns(m.about      || '').includes(search)
   );
 
   // Deduplicate by username — keep highest role (sysadmin > admin > editor > member)
