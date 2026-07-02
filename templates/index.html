@@ -3809,8 +3809,10 @@ function filterContactsTab() {
         ${m.contact_tel ? `<a href="tel:${esc(m.contact_tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</a>` : ''}
       </td>
       <td onclick="event.stopPropagation()">
-        <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit contact info"
+        <button class="btn btn-outline-secondary btn-sm py-0 px-1 me-1" title="Edit contact info"
           onclick="openPmEdit(${i})"><i class="bi bi-pencil"></i></button>
+        ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete contact record"
+          onclick="deletePmContactRecord(${m.contact_id}, '${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -3900,8 +3902,12 @@ function renderUnmatchedContacts() {
       <td class="small">${esc(c.contact_type)}</td>
       <td class="small">${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</td>
       <td class="small text-nowrap">${esc(c.tel || c.mobile)}</td>
-      <td><button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit"
-        onclick="openPmEditUnmatched(${i})"><i class="bi bi-pencil"></i></button></td>
+      <td class="text-nowrap">
+        <button class="btn btn-outline-secondary btn-sm py-0 px-1 me-1" title="Edit"
+          onclick="openPmEditUnmatched(${i})"><i class="bi bi-pencil"></i></button>
+        <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete"
+          onclick="deletePmContactRecord(${c.id}, null)"><i class="bi bi-trash"></i></button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -3969,6 +3975,31 @@ function _pmOrgReset() {
   show('pmEditOrgSearch').classList.remove('d-none');
   const clearBtn = show('pmEditOrgSelected').querySelector('button');
   if (clearBtn) clearBtn.classList.remove('d-none');
+}
+
+async function deletePmContactRecord(contactId, username) {
+  if (!confirm(t('contacts.delete_confirm'))) return;
+  try {
+    await fetch(`${API_BASE}api/contacts/remove?d=${_b64enc({id: contactId})}`, { method: 'DELETE', cache: 'no-store' });
+    if (username && _portalMembersCache) {
+      _portalMembersCache.forEach(m => {
+        if (m.username === username) {
+          m.contact_id = null; m.contact_name = ''; m.contact_first_name = '';
+          m.contact_last_name = ''; m.contact_position = ''; m.contact_type = '';
+          m.contact_tel = ''; m.contact_mobile = ''; m.contact_email = '';
+        }
+      });
+      _pmSaveCache(_portalMembersCache, _pmUnmatched);
+    } else {
+      _pmUnmatched = _pmUnmatched.filter(c => c.id !== contactId);
+      _pmSaveCache(_portalMembersCache || [], _pmUnmatched);
+      renderUnmatchedContacts();
+    }
+    _allContacts = null; _allUnified = null;
+    filterContactsTab();
+  } catch (e) {
+    alert(t('contacts.delete_failed') + ' ' + e.message);
+  }
 }
 
 // Email duplicate check for new contacts
