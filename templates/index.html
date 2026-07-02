@@ -3818,9 +3818,8 @@ function filterContactsTab() {
     return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
       <td class="text-muted small">${i + 1}</td>
       <td style="max-width:200px">
-        <span class="fw-semibold">${esc(m.display_name)}</span>
+        <span class="fw-semibold">${esc(m.display_name)}</span> ${presenceBadges}
         ${posLine}
-        <div class="mt-1">${presenceBadges}</div>
       </td>
       <td style="max-width:180px">${orgsHtml}</td>
       <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
@@ -3932,9 +3931,8 @@ function renderUnmatchedContacts() {
     return `<tr>
       <td class="text-muted small">${i + 1}</td>
       <td style="max-width:200px">
-        <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
+        <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span> <span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="Has contact file entry"><i class="bi bi-file-earmark-person me-1"></i>File</span>
         ${posLine}
-        <div class="mt-1"><span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="Has contact file entry"><i class="bi bi-file-earmark-person me-1"></i>File</span></div>
       </td>
       <td style="max-width:180px">${orgBadge}</td>
       <td>${typeBadges || '<span class="text-muted small">—</span>'}</td>
