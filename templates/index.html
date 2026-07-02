@@ -3713,16 +3713,16 @@ function filterContactsTab() {
   const total = new Set(_portalMembersCache.map(m => m.username)).size;
   show('contactsCount').innerHTML = rows.length < total ? `${rows.length} / ${total}` : `${total}`;
 
-  const th = (col, label) =>
-    `<th style="cursor:pointer;user-select:none" onclick="sortContacts('${col}')">${label}${_contactsSortArrow(col)}</th>`;
+  const th = (col, label, extraStyle = '') =>
+    `<th style="cursor:pointer;user-select:none;${extraStyle}" onclick="sortContacts('${col}')">${label}${_contactsSortArrow(col)}</th>`;
   document.querySelector('#contactsTable thead tr').innerHTML =
     `<th style="width:3rem">#</th>` +
     th('name',  t('contacts.col_name'))  +
     `<th>${t('contacts.col_org')}</th>`  +
     th('type',  t('contacts.col_role'))  +
     `<th>${t('contacts.col_state')}</th>` +
-    th('email', t('contacts.email')) +
-    `<th>Tel</th>` +
+    th('email', t('contacts.email'), 'width:150px') +
+    `<th style="width:90px">Tel</th>` +
     `<th style="width:2.5rem"></th>`;
 
   const flatDiv    = show('contactsFlatView');
@@ -3768,13 +3768,13 @@ function filterContactsTab() {
       <td style="max-width:180px">${orgsHtml}</td>
       <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
       <td><span class="badge ${stateCls}">${esc(state)}</span></td>
-      <td class="small" onclick="event.stopPropagation()">
-        ${m.email ? `<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>` : ''}
+      <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
+        ${m.email ? `<a href="mailto:${esc(m.email)}" class="d-block text-truncate" title="${esc(m.email)}">${esc(m.email)}</a>` : ''}
         ${m.contact_email && m.contact_email !== m.email
-          ? `<div class="text-muted" style="font-size:.75em" title="Email from contacts file"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>`
+          ? `<div class="text-muted text-truncate" style="font-size:.75em" title="Email from contacts file: ${esc(m.contact_email)}"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>`
           : ''}
       </td>
-      <td class="small text-nowrap" onclick="event.stopPropagation()">
+      <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
         ${m.contact_tel ? `<a href="tel:${esc(m.contact_tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</a>` : ''}
       </td>
       <td onclick="event.stopPropagation()">
