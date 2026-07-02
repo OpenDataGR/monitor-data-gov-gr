@@ -3873,15 +3873,16 @@ function renderContactsGrouped(rows) {
     return;
   }
   el.innerHTML = sorted.map(g => {
-    const gId = 'cg_' + g.slug.replace(/\W/g, '_');
+    const gId    = 'cg_' + g.slug.replace(/\W/g, '_');
+    const isNone = g.slug === '__none__';
     return `
-    <div class="border rounded mb-2">
+    <div class="border rounded mb-2" ${isNone ? 'style="border-color:#fd7e14!important"' : ''}>
       <div class="d-flex align-items-center justify-content-between px-3 py-2"
-           style="cursor:pointer;background:#f8f9fa" onclick="document.getElementById('${gId}').classList.toggle('d-none')">
+           style="cursor:pointer;background:${isNone ? '#fff3e0' : '#f8f9fa'}" onclick="document.getElementById('${gId}').classList.toggle('d-none')">
         <div class="d-flex align-items-center gap-2">
-          <i class="bi bi-building text-primary"></i>
-          <span class="fw-semibold small">${esc(g.label)}</span>
-          <span class="badge bg-primary rounded-pill">${g.items.length}</span>
+          <i class="bi bi-${isNone ? 'person-slash text-warning' : 'building text-primary'}"></i>
+          <span class="fw-semibold small ${isNone ? 'text-warning-emphasis' : ''}">${esc(g.label)}</span>
+          <span class="badge ${isNone ? 'bg-warning text-dark' : 'bg-primary'} rounded-pill">${g.items.length}</span>
         </div>
         ${g.slug !== '__none__' ? `<button class="btn btn-outline-primary btn-sm py-0 px-2" title="${esc(g.label)}"
           onclick="event.stopPropagation();openOrgPanel('${esc(g.slug)}')">
