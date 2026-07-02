@@ -535,6 +535,7 @@
                 </select>
                 <input type="search" id="contactsSearch" class="form-control form-control-sm" style="width:180px"
                   placeholder="Search…" data-i18n-ph="contacts.search_ph" oninput="filterContactsTab()">
+                <span id="contactsFetchedAt" class="text-muted small"></span>
                 <button class="btn btn-outline-secondary btn-sm" id="contactsReloadBtn" onclick="loadContactsTab(true)">
                   <i class="bi bi-arrow-repeat me-1"></i><span data-i18n="contacts.reload">Reload</span>
                 </button>
@@ -3609,6 +3610,10 @@ const _PM_EXPIRE_MS   = 2  * 60 * 60 * 1000; // discard after 2 h
 function _pmSaveCache(members, unmatched) {
   try { localStorage.setItem(_PM_CACHE_KEY, JSON.stringify({ members, unmatched, ts: Date.now() })); } catch (_) {}
 }
+function _pmSetFetchedAt(ts) {
+  const el = document.getElementById('contactsFetchedAt');
+  if (el) el.textContent = ts ? t('orgs.fetched') + ' ' + relativeDate(new Date(ts).toISOString()) : '';
+}
 function _pmReadCache() {
   try {
     const c = JSON.parse(localStorage.getItem(_PM_CACHE_KEY) || 'null');
@@ -3626,6 +3631,7 @@ async function loadContactsTab(force = false) {
       _portalMembersCache = cached.members;
       _pmUnmatched = cached.unmatched || [];
       show('contactsReloadBtn').disabled = false;
+      _pmSetFetchedAt(cached.ts);
       filterContactsTab();
       renderUnmatchedContacts();
       // Silently refresh in background if stale
@@ -3675,6 +3681,7 @@ async function _pollPortalMembers(attempt, silent = false) {
     _portalMembersCache = data.members || [];
     _pmUnmatched = data.unmatched || [];
     _pmSaveCache(_portalMembersCache, _pmUnmatched);
+    _pmSetFetchedAt(Date.now());
     show('contactsReloadBtn').disabled = false;
     filterContactsTab();
     renderUnmatchedContacts();
