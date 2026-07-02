@@ -1581,15 +1581,46 @@ def _do_fetch_portal_members():
     base_headers = {"User-Agent": "DataGovGR-Dashboard/1.0"}
     auth_headers = {**base_headers, "Authorization": config.TOKEN} if config.TOKEN else base_headers
     try:
-        r = requests.post(
-            f"{config.PORTAL_BASE}/api/3/action/organization_list",
-            json={"all_fields": True},
-            headers=auth_headers,
-            timeout=20,
-        )
-        r.raise_for_status()
-        org_list = r.json().get("result") or []
+        # Step 1 – fire organization_list and user_list in parallel
+        def _get_org_list():
+            r = requests.post(
+                f"{config.PORTAL_BASE}/api/3/action/organization_list",
+                json={"all_fields": True},
+                headers=auth_headers, timeout=20,
+            )
+            r.raise_for_status()
+            return r.json().get("result") or []
 
+        def _get_user_list():
+            r = requests.get(
+                f"{config.PORTAL_BASE}/api/3/action/user_list",
+                params={"all_fields": True},
+                headers=auth_headers, timeout=30,
+            )
+            if r.status_code == 200:
+                d = r.json()
+                if d.get("success"):
+                    return d["result"]
+            return []
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f_orgs  = pool.submit(_get_org_list)
+            f_users = pool.submit(_get_user_list)
+            org_list   = f_orgs.result()
+            all_users  = f_users.result()
+
+        # Build email + display_name map from user_list (single bulk fetch replaces user_show per user)
+        user_info: dict = {}
+        for u in all_users:
+            uname = u.get("name", "")
+            if uname:
+                user_info[uname] = {
+                    "display_name": (u.get("display_name") or u.get("fullname") or uname).strip(),
+                    "email":        (u.get("email") or "").lower().strip(),
+                    "state":        u.get("state", "active"),
+                }
+
+        # Step 2 – fetch org memberships in parallel
         def _fetch_org_members(org):
             try:
                 if isinstance(org, str):
@@ -1602,20 +1633,16 @@ def _do_fetch_portal_members():
                 r2 = requests.get(
                     f"{config.PORTAL_BASE}/api/3/action/organization_show",
                     params={"id": slug, "include_users": True},
-                    headers=auth_headers,
-                    timeout=12,
+                    headers=auth_headers, timeout=12,
                 )
                 d = r2.json()
                 if d.get("success"):
                     return [
                         {
-                            "org_name":     slug,
-                            "org_title":    title,
-                            "username":     u.get("name", ""),
-                            "display_name": (u.get("display_name") or u.get("fullname") or u.get("name", "")).strip(),
-                            "capacity":     u.get("capacity", "member"),
-                            "email":        "",
-                            "state":        u.get("state", "active"),
+                            "org_name":  slug,
+                            "org_title": title,
+                            "username":  u.get("name", ""),
+                            "capacity":  u.get("capacity", "member"),
                         }
                         for u in (d["result"].get("users") or [])
                     ]
@@ -1623,96 +1650,44 @@ def _do_fetch_portal_members():
                 pass
             return []
 
-        all_members: list = []
+        raw_members: list = []
         with ThreadPoolExecutor(max_workers=20) as pool:
             futs = {pool.submit(_fetch_org_members, org): org for org in org_list}
             for fut in as_completed(futs):
                 try:
-                    all_members.extend(fut.result())
+                    raw_members.extend(fut.result())
                 except Exception:
                     pass
 
-        if config.TOKEN and all_members:
-            unique_usernames = list({m["username"] for m in all_members if m["username"]})
+        # Step 3 – enrich org members with user_info (no extra API calls)
+        all_members = []
+        for m in raw_members:
+            ui = user_info.get(m["username"], {})
+            all_members.append({
+                "org_name":     m["org_name"],
+                "org_title":    m["org_title"],
+                "username":     m["username"],
+                "display_name": ui.get("display_name", m["username"]),
+                "capacity":     m["capacity"],
+                "email":        ui.get("email", ""),
+                "state":        ui.get("state", "active"),
+            })
 
-            def _user_show_email(username):
-                try:
-                    resp = requests.get(
-                        f"{config.PORTAL_BASE}/api/3/action/user_show",
-                        params={"id": username},
-                        headers=auth_headers,
-                        timeout=8,
-                    )
-                    if resp.status_code == 200:
-                        ud = resp.json()
-                        if ud.get("success"):
-                            return username, (ud["result"].get("email") or "").lower().strip()
-                except Exception:
-                    pass
-                return username, ""
-
-            email_map: dict = {}
-            with ThreadPoolExecutor(max_workers=20) as pool:
-                futs2 = {pool.submit(_user_show_email, u): u for u in unique_usernames}
-                for fut in as_completed(futs2):
-                    try:
-                        uname, email = fut.result()
-                        email_map[uname] = email
-                    except Exception:
-                        pass
-
-            for m in all_members:
-                m["email"] = email_map.get(m["username"], "")
-
-        # Step 4b – add portal users not belonging to any org
-        try:
-            r_ul = requests.get(
-                f"{config.PORTAL_BASE}/api/3/action/user_list",
-                params={"all_fields": True},
-                headers=auth_headers,
-                timeout=20,
-            )
-            if r_ul.status_code == 200:
-                ul = r_ul.json()
-                if ul.get("success"):
-                    org_usernames = {m["username"] for m in all_members}
-                    unorged = []
-                    for u in ul["result"]:
-                        uname = u.get("name", "")
-                        if uname and uname not in org_usernames:
-                            unorged.append({
-                                "org_name":     "",
-                                "org_title":    "",
-                                "username":     uname,
-                                "display_name": (u.get("display_name") or u.get("fullname") or uname).strip(),
-                                "capacity":     "",
-                                "email":        (u.get("email") or "").lower().strip(),
-                                "state":        u.get("state", "active"),
-                            })
-                    # Fetch missing emails via user_show
-                    needs_email = [u for u in unorged if not u["email"]]
-                    if needs_email and config.TOKEN:
-                        def _ue(uname):
-                            try:
-                                r2 = requests.get(
-                                    f"{config.PORTAL_BASE}/api/3/action/user_show",
-                                    params={"id": uname}, headers=auth_headers, timeout=8,
-                                )
-                                if r2.status_code == 200:
-                                    d = r2.json()
-                                    if d.get("success"):
-                                        return uname, (d["result"].get("email") or "").lower().strip()
-                            except Exception:
-                                pass
-                            return uname, ""
-                        with ThreadPoolExecutor(max_workers=20) as pool:
-                            for uname, email in pool.map(_ue, [u["username"] for u in needs_email]):
-                                for u in unorged:
-                                    if u["username"] == uname:
-                                        u["email"] = email
-                    all_members.extend(unorged)
-        except Exception:
-            pass
+        # Step 4 – add users not in any org
+        org_usernames = {m["username"] for m in all_members}
+        for u in all_users:
+            uname = u.get("name", "")
+            if uname and uname not in org_usernames:
+                ui = user_info.get(uname, {})
+                all_members.append({
+                    "org_name":     "",
+                    "org_title":    "",
+                    "username":     uname,
+                    "display_name": ui.get("display_name", uname),
+                    "capacity":     "",
+                    "email":        ui.get("email", ""),
+                    "state":        ui.get("state", "active"),
+                })
 
         # Enrich with OrgContact data matched by email; collect unmatched contacts
         unmatched = []
