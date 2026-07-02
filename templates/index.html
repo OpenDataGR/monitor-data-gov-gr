@@ -3329,7 +3329,7 @@ let _allContacts     = null;   // raw local DB contacts
 let _portalRows      = null;   // normalised portal-member rows (persists across reloads)
 let _allUnified      = null;   // merged display list; null = needs rebuild
 let _tabContactRows  = [];
-let _contactsSortCol = 'org';
+let _contactsSortCol = 'name';
 let _contactsSortDir = 'asc';
 
 function _capacityToType(cap) {
@@ -3493,7 +3493,6 @@ function filterContactsTab() {
     `<th style="cursor:pointer;user-select:none" onclick="sortContacts('${col}')">${label}${_contactsSortArrow(col)}</th>`;
   document.querySelector('#contactsTable thead tr').innerHTML =
     `<th style="width:3rem">#</th>` +
-    th('org',   t('contacts.col_org'))   +
     th('name',  t('contacts.col_name'))  +
     `<th>${t('contacts.col_username')}</th>` +
     th('type',  t('contacts.col_role'))  +
@@ -3514,7 +3513,7 @@ function filterContactsTab() {
 
   if (!rows.length) {
     show('contactsTableBody').innerHTML =
-      `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+      `<tr><td colspan="7" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
     return;
   }
 
@@ -3529,11 +3528,6 @@ function filterContactsTab() {
       ? `<div class="text-muted small"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</div>` : '';
     return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
       <td class="text-muted small">${i + 1}</td>
-      <td>
-        ${m.org_name
-          ? `<a href="#" class="fw-semibold text-decoration-none" onclick="event.stopPropagation();openOrgPanel('${esc(m.org_name)}');return false;">${esc(m.org_title || m.org_name)}</a>`
-          : `<span class="text-muted small fst-italic">no org</span>`}
-      </td>
       <td style="max-width:220px">
         <span class="fw-semibold">${esc(m.display_name)}</span>
         ${posLine}${telLine}
