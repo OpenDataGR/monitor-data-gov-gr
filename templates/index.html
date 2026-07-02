@@ -2732,7 +2732,7 @@ function _getContactsForOrg(orgCode) {
     const hrms = _hrmsLookup ? _hrmsLookup.get(m.org_name || '') : null;
     if (m.org_name === orgCode || hrms === orgCode) {
       seen.add(m.contact_id);
-      contacts.push({ first_name: m.first_name, last_name: m.last_name, position: m.position, email: m.email, tel: m.tel });
+      contacts.push({ first_name: m.contact_first_name, last_name: m.contact_last_name, position: m.contact_position, email: m.contact_email, tel: m.contact_tel });
     }
   }
   for (const c of (_pmUnmatched || [])) {
