@@ -2600,7 +2600,7 @@ function renderCommsTable(rows) {
             </td>
             <td class="small">${c.subject}</td>
             <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-            <td class="text-end">
+            <td class="text-end text-nowrap">
               <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
               <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
             </td>
@@ -2662,7 +2662,7 @@ function renderCommsGrouped(data) {
           <td class="small">${c.subject}</td>
           <td style="width:140px"><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
           <td class="small text-muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
-          <td class="text-end" style="width:80px">
+          <td class="text-end text-nowrap" style="width:80px">
             <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
             <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
           </td>
