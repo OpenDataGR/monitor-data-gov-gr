@@ -702,7 +702,15 @@
         </div>
         <div class="mb-2">
           <label class="form-label small mb-1">Email</label>
-          <input type="email" class="form-control form-control-sm" id="pmEditEmail">
+          <input type="email" class="form-control form-control-sm" id="pmEditEmail"
+                 onblur="_pmCheckEmailDuplicate()">
+          <div id="pmEditEmailHint" class="d-none mt-1 p-2 rounded border border-warning-subtle bg-warning-subtle small">
+            <span id="pmEditEmailHintMsg"></span>
+            <div class="mt-1">
+              <button type="button" class="btn btn-warning btn-sm py-0 px-2 me-1" onclick="_pmFillFromExisting()">Fill from existing</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="document.getElementById('pmEditEmailHint').classList.add('d-none')">Ignore</button>
+            </div>
+          </div>
         </div>
         <div class="row g-2 mb-2">
           <div class="col-6">
@@ -3962,6 +3970,65 @@ function _pmOrgReset() {
   if (clearBtn) clearBtn.classList.remove('d-none');
 }
 
+// Email duplicate check for new contacts
+let _pmExistingMatch = null;
+function _pmCheckEmailDuplicate() {
+  // Only run for new contacts (no existing contact id)
+  if (show('pmEditContactId').value) return;
+  const email = show('pmEditEmail').value.trim().toLowerCase();
+  const hint  = document.getElementById('pmEditEmailHint');
+  if (!email) { hint.classList.add('d-none'); _pmExistingMatch = null; return; }
+
+  // Search unmatched contacts and portal member contacts
+  let found = null;
+  for (const c of (_pmUnmatched || [])) {
+    if ((c.email || '').toLowerCase() === email) { found = {
+      first_name: c.first_name, last_name: c.last_name,
+      position: c.position, contact_type: c.contact_type,
+      tel: c.tel, mobile: c.mobile,
+      org_code: c.org_code, org_label: c.org_label,
+      _label: [c.first_name, c.last_name].filter(Boolean).join(' ') || email,
+      _org: c.org_label || c.org_code || '',
+    }; break; }
+  }
+  if (!found) {
+    for (const m of (_portalMembersCache || [])) {
+      if (m.contact_id && (m.email || '').toLowerCase() === email) { found = {
+        first_name: m.contact_first_name, last_name: m.contact_last_name,
+        position: m.contact_position, contact_type: m.contact_type,
+        tel: m.contact_tel, mobile: m.contact_mobile,
+        org_code: m.org_name, org_label: m.org_title || m.org_name,
+        _label: m.contact_name || [m.contact_first_name, m.contact_last_name].filter(Boolean).join(' ') || email,
+        _org: m.org_title || m.org_name || '',
+      }; break; }
+    }
+  }
+
+  if (found) {
+    _pmExistingMatch = found;
+    const parts = [found._label, found._org].filter(Boolean);
+    show('pmEditEmailHintMsg').textContent =
+      `A contact with this email already exists: ${parts.join(' — ')}`;
+    hint.classList.remove('d-none');
+  } else {
+    _pmExistingMatch = null;
+    hint.classList.add('d-none');
+  }
+}
+function _pmFillFromExisting() {
+  if (!_pmExistingMatch) return;
+  const f = _pmExistingMatch;
+  show('pmEditFirstName').value = f.first_name || '';
+  show('pmEditLastName').value  = f.last_name  || '';
+  show('pmEditPosition').value  = f.position   || '';
+  _pmSetContactType(f.contact_type || '');
+  show('pmEditTel').value    = f.tel    || '';
+  show('pmEditMobile').value = f.mobile || '';
+  if (f.org_code) _pmOrgSelect(f.org_code, f.org_label || f.org_code);
+  document.getElementById('pmEditEmailHint').classList.add('d-none');
+  _pmExistingMatch = null;
+}
+
 function openPmEditUnmatched(idx) {
   const c = _pmUnmatched[idx];
   if (!c) return;
@@ -3996,6 +4063,8 @@ function openPmEditNew() {
   _pmSetContactType('');
   show('pmEditTel').value           = '';
   show('pmEditMobile').value        = '';
+  document.getElementById('pmEditEmailHint').classList.add('d-none');
+  _pmExistingMatch = null;
   show('pmEditStatus').textContent  = '';
   show('pmEditOrgRow').classList.remove('d-none');
   if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
