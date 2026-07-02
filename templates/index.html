@@ -569,7 +569,10 @@
                 <span id="pmUnmatchedCount" class="badge bg-secondary rounded-pill"></span>
               </div>
               <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0">
+                <table class="table table-hover table-sm align-middle mb-0" id="pmUnmatchedTable">
+                  <colgroup id="pmUnmatchedColgroup">
+                    <col><col><col><col><col><col><col><col>
+                  </colgroup>
                   <thead class="sticky-top bg-white">
                     <tr>
                       <th style="width:3rem">#</th>
@@ -3843,6 +3846,7 @@ function filterContactsTab() {
       </td>
     </tr>`;
   }).join('');
+  requestAnimationFrame(_syncUnmatchedCols);
 }
 
 let _contactsViewMode = 'flat';
@@ -3931,6 +3935,13 @@ let _pmRows = [];
 let _pmUnmatched = [];
 let _pmEditModal = null;
 
+function _syncUnmatchedCols() {
+  const srcThs = document.querySelectorAll('#contactsTable thead th');
+  const cols   = document.querySelectorAll('#pmUnmatchedColgroup col');
+  if (!srcThs.length || !cols.length) return;
+  srcThs.forEach((th, i) => { if (cols[i]) cols[i].style.width = th.offsetWidth + 'px'; });
+}
+
 function renderUnmatchedContacts() {
   const sec = show('pmUnmatchedSection');
   if (!_pmUnmatched.length) { sec.classList.add('d-none'); return; }
@@ -3971,6 +3982,7 @@ function renderUnmatchedContacts() {
       </td>
     </tr>`;
   }).join('');
+  requestAnimationFrame(_syncUnmatchedCols);
 }
 
 function _pmSetContactType(val) {
