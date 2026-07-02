@@ -702,8 +702,13 @@
         </div>
         <div class="mb-2">
           <label class="form-label small mb-1">Contact type</label>
-          <input type="text" class="form-control form-control-sm" id="pmEditContactType"
-            placeholder="e.g. Portal Administrator, Data Officer">
+          <select class="form-select form-select-sm" id="pmEditContactType" multiple size="5">
+            <option value="Portal Administrator">Portal Administrator</option>
+            <option value="Portal Editor">Portal Editor</option>
+            <option value="Portal User">Portal User</option>
+            <option value="Data Officer">Data Officer</option>
+            <option value="Data Steward">Data Steward</option>
+          </select>
         </div>
         <div class="row g-2">
           <div class="col-6">
@@ -3168,9 +3173,12 @@ function renderUserPanel(u) {
       <dl class="row g-1 small mb-0">
         ${c.email ? `<dt class="col-5 text-muted fw-normal mb-1">Email (file)</dt><dd class="col-7 mb-1"><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></dd>` : ''}
         ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">Position</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
-        ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">Tel</dt><dd class="col-7 mb-1">${esc(c.tel)}</dd>` : ''}
-        ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">Mobile</dt><dd class="col-7 mb-1">${esc(c.mobile)}</dd>` : ''}
-        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Type</dt><dd class="col-7 mb-1">${esc(c.contact_type)}</dd>` : ''}
+        ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">Tel</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a></dd>` : ''}
+        ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">Mobile</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a></dd>` : ''}
+        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Type</dt><dd class="col-7 mb-1">${
+          c.contact_type.split(',').map(s => s.trim()).filter(Boolean)
+            .map(s => `<span class="badge bg-light text-dark border me-1 mb-1" style="font-size:.7rem">${esc(s)}</span>`).join('')
+        }</dd>` : ''}
       </dl>
     </div>` : '';
 
@@ -3849,6 +3857,12 @@ function renderUnmatchedContacts() {
   }).join('');
 }
 
+function _pmSetContactType(val) {
+  const sel = show('pmEditContactType');
+  const active = new Set((val || '').split(',').map(s => s.trim()).filter(Boolean));
+  for (const opt of sel.options) opt.selected = active.has(opt.value);
+}
+
 function openPmEditUnmatched(idx) {
   const c = _pmUnmatched[idx];
   if (!c) return;
@@ -3862,7 +3876,7 @@ function openPmEditUnmatched(idx) {
   show('pmEditFirstName').value     = c.first_name || '';
   show('pmEditLastName').value      = c.last_name  || '';
   show('pmEditPosition').value      = c.position   || '';
-  show('pmEditContactType').value   = c.contact_type || '';
+  _pmSetContactType(c.contact_type || '');
   show('pmEditTel').value           = c.tel    || '';
   show('pmEditMobile').value        = c.mobile || '';
   show('pmEditStatus').textContent  = '';
@@ -3882,7 +3896,7 @@ function openPmEdit(idx) {
   show('pmEditFirstName').value     = m.contact_first_name || '';
   show('pmEditLastName').value      = m.contact_last_name  || '';
   show('pmEditPosition').value      = m.contact_position   || '';
-  show('pmEditContactType').value   = m.contact_type       || '';
+  _pmSetContactType(m.contact_type || '');
   show('pmEditTel').value           = m.contact_tel        || '';
   show('pmEditMobile').value        = m.contact_mobile     || '';
   show('pmEditStatus').textContent  = '';
@@ -3900,7 +3914,7 @@ async function savePmContact() {
     first_name:   show('pmEditFirstName').value.trim(),
     last_name:    show('pmEditLastName').value.trim(),
     position:     show('pmEditPosition').value.trim(),
-    contact_type: show('pmEditContactType').value.trim(),
+    contact_type: Array.from(show('pmEditContactType').selectedOptions).map(o => o.value).join(','),
     tel:          show('pmEditTel').value.trim(),
     mobile:       show('pmEditMobile').value.trim(),
   };
