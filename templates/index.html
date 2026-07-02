@@ -606,8 +606,20 @@
           </div>
           <div class="col-md-8">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.org">Organization</label> <span class="text-danger">*</span>
-            <input type="text" id="commOrg" class="form-control form-control-sm" placeholder="Organization name" data-i18n-ph="comm_modal.org_ph" list="commsOrgList" autocomplete="off" oninput="onCommOrgInput()">
-            <datalist id="commsOrgList"></datalist>
+            <input type="hidden" id="commOrgCode">
+            <input type="hidden" id="commOrgLabel">
+            <div class="position-relative">
+              <input type="text" class="form-control form-control-sm" id="commOrgSearch"
+                     placeholder="Search organizations…" data-i18n-ph="comm_modal.org_ph" autocomplete="off"
+                     oninput="_commOrgSearch(this.value)" onfocus="_commOrgSearch(this.value)"
+                     onblur="setTimeout(()=>document.getElementById('commOrgDropdown').classList.add('d-none'),150)">
+              <ul class="list-group shadow-sm position-absolute w-100 d-none"
+                  id="commOrgDropdown" style="z-index:1060;max-height:180px;overflow-y:auto;top:100%"></ul>
+            </div>
+            <div id="commOrgSelected" class="mt-1 d-none">
+              <span class="badge bg-secondary" id="commOrgBadge"></span>
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted" onclick="_commOrgClear()" title="Clear">&times;</button>
+            </div>
           </div>
           <div class="col-12 d-none" id="commContactSection">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.contact">Contact Person</label>
@@ -2477,7 +2489,6 @@ async function loadComms() {
     if (results[1]) _publicOrgs = Array.isArray(results[1]) ? results[1] : [];
     _commsLoaded = true;
     if (!_portalMembersCache) loadContactsTab();
-    _populateOrgDatalist();
     renderCommsSummary();
     filterComms();
   } catch (e) {
@@ -2510,18 +2521,6 @@ function renderCommsSummary() {
     </div>`).join('');
 }
 
-function _populateOrgDatalist() {
-  const dl = document.getElementById('commsOrgList');
-  const items = [];
-  const seen = new Set();
-  for (const o of (_orgsData || [])) {
-    if (o.title && !seen.has(o.title)) { seen.add(o.title); items.push(`<option value="${o.title.replace(/"/g,'&quot;')}" data-code="${o.name}">`); }
-  }
-  for (const o of _publicOrgs) {
-    if (o.label && !seen.has(o.label)) { seen.add(o.label); items.push(`<option value="${o.label.replace(/"/g,'&quot;')}" data-code="${o.code}">`); }
-  }
-  dl.innerHTML = items.join('');
-}
 
 function sortComms(col) {
   if (_commsSortCol === col) {
@@ -2649,8 +2648,8 @@ function renderCommsGrouped(data) {
             <span class="badge bg-primary rounded-pill" style="font-size:.7rem">${comms.length} ${comms.length === 1 ? t('comms.entry') : t('comms.entries')}</span>
             <span class="badge ${STATUS_BADGE[latest.status] || 'bg-secondary'}" style="font-size:.7rem">${statusLabel[latest.status] || latest.status}</span>
             <span class="text-muted small ms-auto">${latest.contact_date}</span>
-            <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-2" data-org="${safeAttr}"
-                    onclick="event.stopPropagation();openCommModal(null,this.dataset.org)"
+            <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-2" data-org="${safeAttr}" data-orgcode="${esc(comms[0].org_name || '')}"
+                    onclick="event.stopPropagation();openCommModal(null,this.dataset.org,this.dataset.orgcode)"
                     title="Add new communication for this organization">
               <i class="bi bi-plus"></i>
             </button>
@@ -2689,11 +2688,11 @@ function toggleOrgComms(orgTitle) {
   filterComms();
 }
 
-function openCommModal(id, prefillOrg = null) {
+function openCommModal(id, prefillOrg = null, prefillOrgCode = null) {
   if (!_commModal) _commModal = new bootstrap.Modal(document.getElementById('commModal'));
-  const err = show('commError');
-  err.classList.add('d-none');
-
+  show('commError').classList.add('d-none');
+  _commOrgReset();
+  _resetCommContact();
 
   if (id) {
     const c = _commsData.find(x => x.id === id);
@@ -2701,25 +2700,19 @@ function openCommModal(id, prefillOrg = null) {
     show('commModalTitle').textContent = t('comm_modal.edit_title');
     show('commId').value      = c.id;
     show('commDate').value    = c.contact_date;
-    show('commOrg').value     = c.org_title;
     show('commSubject').value = c.subject;
     show('commStatus').value  = c.status;
     show('commNotes').value   = c.notes;
+    _commOrgSet(c.org_name, c.org_title);
+    onCommOrgInput(c.contact_person || '');
   } else {
     show('commModalTitle').textContent = prefillOrg ? `${t('comm_modal.add_title')} — ${prefillOrg}` : t('comm_modal.add_title');
     show('commId').value      = '';
     show('commDate').value    = new Date().toISOString().slice(0, 10);
-    show('commOrg').value     = prefillOrg || '';
     show('commSubject').value = '';
     show('commStatus').value  = 'Contacted';
     show('commNotes').value   = '';
-  }
-  _resetCommContact();
-  if (id) {
-    const c = _commsData.find(x => x.id === id);
-    if (c) onCommOrgInput(c.contact_person || '');
-  } else if (prefillOrg) {
-    onCommOrgInput();
+    if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(); }
   }
   _commModal.show();
 }
@@ -2775,9 +2768,7 @@ function _fillCommContacts(contacts, preselectName) {
 
 function onCommOrgInput(preselectName) {
   _resetCommContact();
-  const orgTitle = show('commOrg').value.trim();
-  const opt = [...document.querySelectorAll('#commsOrgList option')].find(o => o.value === orgTitle);
-  const orgCode = opt ? opt.dataset.code : null;
+  const orgCode = show('commOrgCode').value;
   if (!orgCode) return;
   if (_portalMembersCache !== null) {
     _fillCommContacts(_getContactsForOrg(orgCode), preselectName);
@@ -2802,11 +2793,10 @@ function onCommContactChange() {
 }
 
 async function saveComm() {
-  const err     = show('commError');
-  const id      = show('commId').value;
-  const orgTitle = show('commOrg').value.trim();
-  const opt      = [...document.querySelectorAll('#commsOrgList option')].find(o => o.value === orgTitle);
-  const orgName  = opt ? (opt.dataset.code || orgTitle) : orgTitle;
+  const err      = show('commError');
+  const id       = show('commId').value;
+  const orgName  = show('commOrgCode').value.trim();
+  const orgTitle = show('commOrgLabel').value.trim() || orgName;
 
   const body = {
     contact_date: show('commDate').value,
@@ -3922,45 +3912,40 @@ function _pmSetContactType(val) {
 }
 
 // Org search picker helpers
-function _pmOrgSearch(q) {
-  const dd = document.getElementById('pmEditOrgDropdown');
-  const trimmed = (q || '').trim();
-  const nq = _ns(trimmed);
-
-  // CKAN portal orgs
+function _orgSearchDropdown(q, dropdownId, selectFn) {
+  const dd = document.getElementById(dropdownId);
+  const nq = _ns((q || '').trim());
   const ckanPool = _orgsData.length ? _orgsData : (() => {
     try { const c = JSON.parse(localStorage.getItem(_ORGS_CACHE_KEY) || 'null'); return (c && c.data) || []; } catch(_) { return []; }
   })();
   const ckanMatches = nq
     ? ckanPool.filter(o => _ns(o.title).includes(nq) || _ns(o.name).includes(nq)).slice(0, 20)
     : ckanPool.slice(0, 20);
-
-  // HRMS-only orgs (no CKAN match) — only when actively searching
   const hrmsMatches = nq && _publicOrgs.length
     ? _publicOrgs.filter(o =>
         !(_ckanByHrms && _ckanByHrms.get(o.code)) &&
         _ns(o.label).includes(nq)
       ).slice(0, Math.max(0, 20 - ckanMatches.length))
     : [];
-
   if (!ckanMatches.length && !hrmsMatches.length) { dd.classList.add('d-none'); return; }
-
   dd.innerHTML = [
     ...ckanMatches.map(o =>
       `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
            data-code="${esc(o.name)}" data-label="${esc(o.title)}"
-           onmousedown="_pmOrgSelect(this.dataset.code,this.dataset.label)"
+           onmousedown="${selectFn}(this.dataset.code,this.dataset.label)"
        ><span class="fw-semibold">${esc(o.title)}</span> <span class="text-muted ms-1">${esc(o.name)}</span></li>`
     ),
     ...hrmsMatches.map(o =>
       `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
            data-code="${esc(o.code)}" data-label="${esc(o.label)}"
-           onmousedown="_pmOrgSelect(this.dataset.code,this.dataset.label)"
+           onmousedown="${selectFn}(this.dataset.code,this.dataset.label)"
        ><span class="fw-semibold">${esc(o.label)}</span> <span class="badge bg-secondary ms-1" style="font-size:.6rem">HRMS only</span></li>`
     ),
   ].join('');
   dd.classList.remove('d-none');
 }
+function _pmOrgSearch(q) { _orgSearchDropdown(q, 'pmEditOrgDropdown', '_pmOrgSelect'); }
+function _commOrgSearch(q) { _orgSearchDropdown(q, 'commOrgDropdown', '_commOrgSelect'); }
 function _pmOrgSelect(code, label) {
   show('pmEditOrgCode').value  = code;
   show('pmEditOrgLabel').value = label;
@@ -3998,6 +3983,36 @@ function _pmOrgReset() {
   show('pmEditOrgSearch').classList.remove('d-none');
   const clearBtn = show('pmEditOrgSelected').querySelector('button');
   if (clearBtn) clearBtn.classList.remove('d-none');
+}
+function _commOrgSet(code, label) {
+  show('commOrgCode').value  = code;
+  show('commOrgLabel').value = label;
+  show('commOrgSearch').value = '';
+  document.getElementById('commOrgDropdown').classList.add('d-none');
+  show('commOrgBadge').textContent = label || code;
+  show('commOrgSelected').classList.remove('d-none');
+  show('commOrgSearch').classList.add('d-none');
+}
+function _commOrgSelect(code, label) {
+  _commOrgSet(code, label);
+  onCommOrgInput();
+}
+function _commOrgClear() {
+  show('commOrgCode').value  = '';
+  show('commOrgLabel').value = '';
+  show('commOrgSearch').value = '';
+  show('commOrgSelected').classList.add('d-none');
+  show('commOrgSearch').classList.remove('d-none');
+  show('commOrgSearch').focus();
+  _resetCommContact();
+}
+function _commOrgReset() {
+  show('commOrgCode').value  = '';
+  show('commOrgLabel').value = '';
+  show('commOrgSearch').value = '';
+  document.getElementById('commOrgDropdown').classList.add('d-none');
+  show('commOrgSelected').classList.add('d-none');
+  show('commOrgSearch').classList.remove('d-none');
 }
 
 async function deletePmContactRecord(contactId, username) {
