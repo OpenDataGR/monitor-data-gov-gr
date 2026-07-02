@@ -3700,11 +3700,13 @@ function filterContactsTab() {
   rows = [...rows].sort((a, b) => {
     let av, bv;
     switch (_contactsSortCol) {
-      case 'name':  av = (a.display_name || '').toLowerCase(); bv = (b.display_name || '').toLowerCase(); break;
-      case 'type':  av = (a.capacity || '').toLowerCase();     bv = (b.capacity || '').toLowerCase();     break;
-      case 'email': av = (a.email || '').toLowerCase();        bv = (b.email || '').toLowerCase();        break;
-      default:      av = (a.org_title || a.org_name || '').toLowerCase();
-                    bv = (b.org_title || b.org_name || '').toLowerCase();
+      case 'name':  av = _ns(a.display_name || ''); bv = _ns(b.display_name || ''); break;
+      case 'org':   av = _ns(a.org_title || a.org_name || ''); bv = _ns(b.org_title || b.org_name || ''); break;
+      case 'type': { const r = { sysadmin: 0, admin: 1, editor: 2, member: 3 };
+                     av = a.sysadmin ? 0 : (r[a.capacity] ?? 4); bv = b.sysadmin ? 0 : (r[b.capacity] ?? 4); break; }
+      case 'state': av = (a.state || 'active'); bv = (b.state || 'active'); break;
+      case 'email': av = (a.email || '').toLowerCase(); bv = (b.email || '').toLowerCase(); break;
+      default:      av = _ns(a.display_name || ''); bv = _ns(b.display_name || '');
     }
     if (av < bv) return _contactsSortDir === 'asc' ? -1 : 1;
     if (av > bv) return _contactsSortDir === 'asc' ?  1 : -1;
@@ -3718,10 +3720,10 @@ function filterContactsTab() {
     `<th style="cursor:pointer;user-select:none;${extraStyle}" onclick="sortContacts('${col}')">${label}${_contactsSortArrow(col)}</th>`;
   document.querySelector('#contactsTable thead tr').innerHTML =
     `<th style="width:3rem">#</th>` +
-    th('name',  t('contacts.col_name'))  +
-    `<th>${t('contacts.col_org')}</th>`  +
+    th('name',  t('contacts.col_name'))   +
+    th('org',   t('contacts.col_org'))   +
     th('type',  t('contacts.col_role'))  +
-    `<th>${t('contacts.col_state')}</th>` +
+    th('state', t('contacts.col_state')) +
     th('email', t('contacts.email'), 'width:150px') +
     `<th style="width:90px">Tel</th>` +
     `<th style="width:2.5rem"></th>`;
