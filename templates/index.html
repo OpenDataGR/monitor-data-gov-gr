@@ -545,7 +545,7 @@
             </div>
             <div id="contactsFlatView">
               <div style="max-height:65vh;overflow-y:auto">
-              <table class="table table-hover align-middle mb-0" id="contactsTable">
+              <table class="table table-hover align-middle mb-0" id="contactsTable" style="table-layout:fixed;width:100%">
                 <thead class="sticky-top bg-white"><tr>
                   <th style="width:3rem">#</th>
                   <th data-i18n="contacts.col_org">Organization</th>
@@ -569,13 +569,13 @@
                 <span id="pmUnmatchedCount" class="badge bg-secondary rounded-pill"></span>
               </div>
               <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0">
+                <table class="table table-hover table-sm align-middle mb-0" style="table-layout:fixed;width:100%">
                   <thead class="sticky-top bg-white">
                     <tr>
                       <th style="width:3rem">#</th>
                       <th data-i18n="contacts.col_name">Name</th>
-                      <th data-i18n="contacts.col_org">Organization</th>
-                      <th data-i18n="contacts.col_role">Type</th>
+                      <th style="width:160px" data-i18n="contacts.col_org">Organization</th>
+                      <th style="width:170px" data-i18n="contacts.col_role">Type</th>
                       <th style="width:150px" data-i18n="contacts.email">Email</th>
                       <th style="width:90px">Tel</th>
                       <th style="width:4rem"></th>
@@ -3769,12 +3769,12 @@ function filterContactsTab() {
   document.querySelector('#contactsTable thead tr').innerHTML =
     `<th style="width:3rem">#</th>` +
     th('name',  t('contacts.col_name'))   +
-    th('org',   t('contacts.col_org'))   +
-    th('type',  t('contacts.col_role'))  +
-    th('state', t('contacts.col_state')) +
-    th('email', t('contacts.email'), 'width:150px') +
+    th('org',   t('contacts.col_org'),   'width:160px')  +
+    th('type',  t('contacts.col_role'),  'width:90px')   +
+    th('state', t('contacts.col_state'), 'width:80px')   +
+    th('email', t('contacts.email'),     'width:150px')  +
     `<th style="width:90px">Tel</th>` +
-    `<th style="width:2.5rem"></th>`;
+    `<th style="width:4rem"></th>`;
 
   const flatDiv    = show('contactsFlatView');
   const groupedDiv = show('contactsGroupedView');
