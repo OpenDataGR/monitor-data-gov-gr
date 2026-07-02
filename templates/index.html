@@ -3885,22 +3885,39 @@ function renderContactsGrouped(rows) {
         </button>` : ''}
       </div>
       <div id="${gId}" class="d-none">
-        <table class="table table-sm align-middle mb-0">
+        <table class="table table-hover table-sm align-middle mb-0">
           <tbody>
-            ${g.items.map(m => {
-              const state    = m.state || 'active';
-              const roleCls  = ROLE_BADGE_CLS[m.capacity]  || 'bg-secondary';
-              const stateCls = STATE_BADGE_CLS[state]       || 'bg-secondary';
-              const posLine = m.contact_position
-                ? `<div class="text-muted small text-truncate" style="max-width:220px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
-              const telLine = m.contact_tel
-                ? `<div class="text-muted small"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</div>` : '';
-              return `<tr style="${state !== 'active' ? 'opacity:.7' : ''}">
-                <td class="ps-3" style="max-width:220px">${esc(m.display_name)}${posLine}${telLine}</td>
-                <td class="text-muted small font-monospace">@${esc(m.username)}</td>
-                <td><span class="badge ${roleCls}">${esc(m.capacity)}</span></td>
+            ${g.items.map((m, mi) => {
+              const state     = m.state || 'active';
+              const _ROLE_LBL = { admin: 'Portal Administrator', editor: 'Portal Editor', member: 'Portal User' };
+              const roleCls   = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (CONTACT_TYPE_CLS[_ROLE_LBL[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
+              const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
+              const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
+              const posLine   = m.contact_position
+                ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
+              const presenceBadges =
+                `<span class="badge rounded-pill me-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="Has portal account"><i class="bi bi-globe2 me-1"></i>Portal</span>` +
+                (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="Has contact file entry"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
+              return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
+                <td style="max-width:200px">
+                  <span class="fw-semibold">${esc(m.display_name)}</span> ${presenceBadges}
+                  ${posLine}
+                </td>
+                <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
                 <td><span class="badge ${stateCls}">${esc(state)}</span></td>
-                <td class="small">${m.email ? `<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>` : ''}</td>
+                <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
+                  ${m.email ? `<a class="d-block text-truncate" href="mailto:${esc(m.email)}" title="${esc(m.email)}">${esc(m.email)}</a>` : ''}
+                  ${m.contact_email && m.contact_email !== m.email ? `<div class="text-muted text-truncate" style="font-size:.75em" title="${esc(m.contact_email)}"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>` : ''}
+                </td>
+                <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
+                  ${m.contact_tel ? `<a href="tel:${esc(m.contact_tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</a>` : ''}
+                </td>
+                <td onclick="event.stopPropagation()">
+                  <div class="d-flex gap-1">
+                    <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit" onclick="openPmEditByUsername('${esc(m.username)}')"><i class="bi bi-pencil"></i></button>
+                    ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
+                  </div>
+                </td>
               </tr>`;
             }).join('')}
           </tbody>
