@@ -2948,7 +2948,7 @@ function _renderOrgContactsPanel() {
             ${hasFile
               ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditByUsername('${esc(m.username)}')" title="Edit"><i class="bi bi-pencil"></i></button>
                  <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')" title="Delete"><i class="bi bi-trash"></i></button>`
-              : `<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openPmEditNewForUser('${esc(m.username)}','${esc(m.email)}','${esc(ckanName || orgCode)}','${esc(orgLabel)}','${esc(m.capacity||'')}','${esc(m.display_name||'')}')" title="Add contact file"><i class="bi bi-person-plus me-1"></i>Add</button>`}
+              : `<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openPmEditNewForUser('${esc(m.username)}','${esc(m.email)}','${esc(ckanName || orgCode)}','${esc(orgLabel)}','${esc(m.capacity||'')}')" title="Add contact file"><i class="bi bi-person-plus me-1"></i>Add</button>`}
           </div>
         </div>
       </div>
@@ -3163,7 +3163,7 @@ function renderUserPanel(u) {
             onclick="deletePmContactRecord(${c.id},'${esc(u.username)}')"><i class="bi bi-trash"></i></button>
           ` : `
           <button class="btn btn-outline-primary btn-sm py-0 px-2" title="Add contact record"
-            onclick="openPmEditNewForUser('${esc(u.username)}','${esc(u.email)}','${esc(_uOrg ? _uOrg.org_name : '')}','${esc(_uOrg ? (_uOrg.org_title||_uOrg.org_name) : '')}','${esc(u.capacity||'')}','${esc(u.display_name||'')}')">
+            onclick="openPmEditNewForUser('${esc(u.username)}','${esc(u.email)}','${esc(_uOrg ? _uOrg.org_name : '')}','${esc(_uOrg ? (_uOrg.org_title||_uOrg.org_name) : '')}','${esc(u.capacity||'')}')">
             <i class="bi bi-person-plus me-1"></i>Add</button>
           `}
         </div>
@@ -4153,7 +4153,7 @@ function openPmEditNew() {
   _pmEditModal.show();
 }
 
-function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '', displayName = '') {
+function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '') {
   show('pmEditTitle').textContent   = 'New Contact';
   show('pmEditIcon').className      = 'bi bi-person-plus me-2';
   show('pmEditContactId').value     = '';
@@ -4161,9 +4161,9 @@ function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '',
   show('pmEditEmail').value         = email    || '';
   if (orgCode) _pmOrgSelect(orgCode, orgLabel || orgCode);
   else _pmOrgReset();
-  show('pmEditFirstName').value     = displayName || '';
+  show('pmEditFirstName').value     = '';
   show('pmEditLastName').value      = '';
-  show('pmEditPosition').value      = username ? `@${username}` : '';
+  show('pmEditPosition').value      = '';
   _pmSetContactType(capacity ? _capacityToType(capacity) : '');
   show('pmEditTel').value           = '';
   show('pmEditMobile').value        = '';
