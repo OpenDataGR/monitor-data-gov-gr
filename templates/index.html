@@ -4065,15 +4065,19 @@ function _pmCheckEmailDuplicate() {
     }; break; }
   }
   if (!found) {
+    const _seenPortalEmail = new Set();
     for (const m of (_portalMembersCache || [])) {
-      if (m.contact_id && (m.email || '').toLowerCase() === email) { found = {
-        first_name: m.contact_first_name, last_name: m.contact_last_name,
-        position: m.contact_position, contact_type: m.contact_type,
-        tel: m.contact_tel, mobile: m.contact_mobile,
+      if ((m.email || '').toLowerCase() !== email) continue;
+      if (_seenPortalEmail.has(m.username)) continue;
+      _seenPortalEmail.add(m.username);
+      found = {
+        first_name: m.contact_first_name || '', last_name: m.contact_last_name || '',
+        position: m.contact_position || '', contact_type: m.contact_type || '',
+        tel: m.contact_tel || '', mobile: m.contact_mobile || '',
         org_code: m.org_name, org_label: m.org_title || m.org_name,
-        _label: m.contact_name || [m.contact_first_name, m.contact_last_name].filter(Boolean).join(' ') || email,
+        _label: m.contact_name || m.display_name || email,
         _org: m.org_title || m.org_name || '',
-      }; break; }
+      }; break;
     }
   }
 
