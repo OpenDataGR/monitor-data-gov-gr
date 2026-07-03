@@ -628,6 +628,10 @@
               <option value="" data-i18n="comm_modal.contact_ph">— select contact —</option>
             </select>
             <div id="commContactInfo" class="mt-1 small d-none"></div>
+            <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-decoration-none"
+                    onclick="_openAddContactForComm()">
+              <i class="bi bi-person-plus me-1"></i>Add contact for this organization
+            </button>
           </div>
           <div class="col-12">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.subject">Subject</label> <span class="text-danger">*</span>
@@ -686,7 +690,7 @@
 </div>
 
 <!-- Portal member contact-file edit modal -->
-<div class="modal fade" id="pmEditModal" tabindex="-1">
+<div class="modal fade" id="pmEditModal" tabindex="-1" style="z-index:1075">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header border-bottom">
@@ -2756,7 +2760,6 @@ function _getContactsForOrg(orgCode) {
 }
 
 function _fillCommContacts(contacts, preselectName) {
-  if (!contacts.length) return;
   const sel = show('commContact');
   contacts.forEach(c => {
     const label = [c.first_name, c.last_name].filter(Boolean).join(' ') +
@@ -2773,10 +2776,18 @@ function _fillCommContacts(contacts, preselectName) {
   if (preselectName) onCommContactChange();
 }
 
+function _openAddContactForComm() {
+  const orgCode  = show('commOrgCode').value;
+  const orgLabel = show('commOrgLabel').value;
+  if (!orgCode) return;
+  openPmEditNewForUser('', '', orgCode, orgLabel);
+}
+
 function onCommOrgInput(preselectName) {
   _resetCommContact();
   const orgCode = show('commOrgCode').value;
   if (!orgCode) return;
+  show('commContactSection').classList.remove('d-none');
   if (_portalMembersCache !== null) {
     _fillCommContacts(_getContactsForOrg(orgCode), preselectName);
   } else {
@@ -4379,6 +4390,11 @@ async function savePmContact() {
   _pmEditModal.hide();
   if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel();
   loadContactSummary();
+  // If opened from the comm modal, refresh its contact list and auto-select the new person
+  if (document.getElementById('commModal')?.classList.contains('show')) {
+    const newName = [data.first_name, data.last_name].filter(Boolean).join(' ');
+    onCommOrgInput(newName || undefined);
+  }
 }
 
 function exportContactsExcel() {
