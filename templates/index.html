@@ -4202,7 +4202,7 @@ function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '')
   show('pmEditStatus').textContent  = '';
   show('pmEditOrgRow').classList.remove('d-none');
   if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
-  if (email) _pmCheckEmailDuplicate();
+  if (email && !username) _pmCheckEmailDuplicate();
   _pmEditModal.show();
 }
 
