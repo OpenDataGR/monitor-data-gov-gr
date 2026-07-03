@@ -3961,14 +3961,18 @@ function _pmOrgRenderTags() {
   const container = document.getElementById('pmEditOrgTags');
   if (!container) return;
   container.innerHTML = _pmEditOrgs.map(o =>
-    `<span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em">` +
+    `<span class="badge ${o.locked ? 'bg-primary' : 'bg-secondary'} d-inline-flex align-items-center gap-1" style="font-size:.8em">` +
+    (o.locked ? `<i class="bi bi-lock-fill" style="font-size:.7em"></i>` : '') +
     `${esc(o.label || o.code)}` +
-    `<button type="button" class="btn-close btn-close-white" style="font-size:.55em;margin-left:.25em"` +
-    ` onclick="_pmOrgRemove('${esc(o.code)}')" title="Remove"></button></span>`
+    (!o.locked
+      ? `<button type="button" class="btn-close btn-close-white" style="font-size:.55em;margin-left:.25em"` +
+        ` onclick="_pmOrgRemove('${esc(o.code)}')" title="Remove"></button>`
+      : '') +
+    `</span>`
   ).join('');
 }
 function _pmOrgRemove(code) {
-  _pmEditOrgs = _pmEditOrgs.filter(o => o.code !== code);
+  _pmEditOrgs = _pmEditOrgs.filter(o => o.code !== code || o.locked);
   _pmOrgRenderTags();
 }
 function _pmOrgSelect(code, label) {
@@ -4196,6 +4200,19 @@ function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '')
   _pmEditModal.show();
 }
 
+function _pmLockPortalOrg(portalOrgCode, portalOrgLabel) {
+  if (!portalOrgCode) return;
+  let found = false;
+  _pmEditOrgs = _pmEditOrgs.map(o => {
+    if (_orgCodeMatches(o.code, portalOrgCode) || o.code === portalOrgCode) {
+      found = true;
+      return {code: o.code, label: o.label, locked: true};
+    }
+    return o;
+  });
+  if (!found) _pmEditOrgs.unshift({code: portalOrgCode, label: portalOrgLabel || portalOrgCode, locked: true});
+}
+
 function _pmPortalNameParts(m) {
   const dn = (m.display_name || '').trim();
   const parts = (dn && !dn.includes('@') && dn.toLowerCase() !== (m.username || '').toLowerCase())
@@ -4221,8 +4238,9 @@ function openPmEditByUsername(username) {
   show('pmEditUsername').value      = m.username     || '';
   show('pmEditEmail').value         = m.email        || '';
   _pmEditOrgs = (m.contact_org_codes && m.contact_org_codes.length)
-    ? m.contact_org_codes
+    ? m.contact_org_codes.map(o => ({...o}))
     : (m.org_name ? [{code: m.org_name, label: m.org_title || m.org_name}] : []);
+  _pmLockPortalOrg(m.org_name, m.org_title || m.org_name);
   _pmOrgRenderTags();
   { const np = _pmPortalNameParts(m);
     show('pmEditFirstName').value = m.contact_first_name || np.first;
@@ -4247,8 +4265,9 @@ function openPmEdit(idx) {
   show('pmEditUsername').value      = m.username     || '';
   show('pmEditEmail').value         = m.email        || '';
   _pmEditOrgs = (m.contact_org_codes && m.contact_org_codes.length)
-    ? m.contact_org_codes
+    ? m.contact_org_codes.map(o => ({...o}))
     : (m.org_name ? [{code: m.org_name, label: m.org_title || m.org_name}] : []);
+  _pmLockPortalOrg(m.org_name, m.org_title || m.org_name);
   _pmOrgRenderTags();
   { const np = _pmPortalNameParts(m);
     show('pmEditFirstName').value = m.contact_first_name || np.first;
@@ -4272,7 +4291,7 @@ async function savePmContact() {
   }
   const payload = {
     id:           contactId || undefined,
-    org_codes:    _pmEditOrgs,
+    org_codes:    _pmEditOrgs.map(({code, label}) => ({code, label})),
     org_code:     _pmEditOrgs[0].code,
     org_label:    _pmEditOrgs[0].label,
     email:        show('pmEditEmail').value,
