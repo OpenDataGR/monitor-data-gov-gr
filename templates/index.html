@@ -4153,6 +4153,10 @@ function openPmEditNew() {
 }
 
 function openPmEditNewForUser(username, email, orgCode, orgLabel) {
+  // Look up portal data to pre-fill role and display name
+  const pm = username && _portalMembersCache
+    ? (_portalMembersCache.find(m => m.username === username) || null)
+    : null;
   show('pmEditTitle').textContent   = 'New Contact';
   show('pmEditIcon').className      = 'bi bi-person-plus me-2';
   show('pmEditContactId').value     = '';
@@ -4160,10 +4164,10 @@ function openPmEditNewForUser(username, email, orgCode, orgLabel) {
   show('pmEditEmail').value         = email    || '';
   if (orgCode) _pmOrgSelect(orgCode, orgLabel || orgCode);
   else _pmOrgReset();
-  show('pmEditFirstName').value     = '';
+  show('pmEditFirstName').value     = pm ? (pm.display_name || '') : '';
   show('pmEditLastName').value      = '';
-  show('pmEditPosition').value      = '';
-  _pmSetContactType('');
+  show('pmEditPosition').value      = pm ? (pm.username ? `@${pm.username}` : '') : '';
+  _pmSetContactType(pm ? _capacityToType(pm.capacity) : '');
   show('pmEditTel').value           = '';
   show('pmEditMobile').value        = '';
   document.getElementById('pmEditEmailHint').classList.add('d-none');
