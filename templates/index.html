@@ -4179,6 +4179,16 @@ function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '')
   _pmEditModal.show();
 }
 
+function _pmPortalNameParts(m) {
+  const dn = (m.display_name || '').trim();
+  const parts = (dn && !dn.includes('@') && dn.toLowerCase() !== (m.username || '').toLowerCase())
+    ? dn.split(/\s+/) : [];
+  return {
+    first: parts.length ? (parts.slice(0, -1).join(' ') || parts[0]) : '',
+    last:  parts.length > 1 ? parts[parts.length - 1] : '',
+  };
+}
+
 function openPmEditByUsername(username) {
   // Find in _pmRows first (flat view), fall back to full cache
   const pool = (_pmRows && _pmRows.length ? _pmRows : null)
@@ -4194,10 +4204,11 @@ function openPmEditByUsername(username) {
   show('pmEditUsername').value      = m.username     || '';
   show('pmEditEmail').value         = m.email        || '';
   _pmOrgSetFixed(m.org_name || '', m.org_title || m.org_name || '');
-  show('pmEditFirstName').value     = m.contact_first_name || '';
-  show('pmEditLastName').value      = m.contact_last_name  || '';
+  { const np = _pmPortalNameParts(m);
+    show('pmEditFirstName').value = m.contact_first_name || np.first;
+    show('pmEditLastName').value  = m.contact_last_name  || np.last; }
   show('pmEditPosition').value      = m.contact_position   || '';
-  _pmSetContactType(m.contact_type || '');
+  _pmSetContactType(m.contact_type || _capacityToType(m.capacity));
   show('pmEditTel').value           = m.contact_tel        || '';
   show('pmEditMobile').value        = m.contact_mobile     || '';
   show('pmEditStatus').textContent  = '';
@@ -4216,10 +4227,11 @@ function openPmEdit(idx) {
   show('pmEditUsername').value      = m.username     || '';
   show('pmEditEmail').value         = m.email        || '';
   _pmOrgSetFixed(m.org_name || '', m.org_title || m.org_name || '');
-  show('pmEditFirstName').value     = m.contact_first_name || '';
-  show('pmEditLastName').value      = m.contact_last_name  || '';
+  { const np = _pmPortalNameParts(m);
+    show('pmEditFirstName').value = m.contact_first_name || np.first;
+    show('pmEditLastName').value  = m.contact_last_name  || np.last; }
   show('pmEditPosition').value      = m.contact_position   || '';
-  _pmSetContactType(m.contact_type || '');
+  _pmSetContactType(m.contact_type || _capacityToType(m.capacity));
   show('pmEditTel').value           = m.contact_tel        || '';
   show('pmEditMobile').value        = m.contact_mobile     || '';
   show('pmEditStatus').textContent  = '';
