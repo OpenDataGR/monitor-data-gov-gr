@@ -4089,7 +4089,7 @@ function _pmCheckEmailDuplicate() {
       first_name: c.first_name, last_name: c.last_name,
       position: c.position, contact_type: c.contact_type,
       tel: c.tel, mobile: c.mobile,
-      org_code: c.org_code, org_label: c.org_label,
+      org_code: c.org_code, org_label: c.org_label, org_codes: c.org_codes || [],
       _label: [c.first_name, c.last_name].filter(Boolean).join(' ') || email,
       _org: c.org_label || c.org_code || '',
     }; break; }
@@ -4110,6 +4110,8 @@ function _pmCheckEmailDuplicate() {
         contact_type: m.contact_type || _capacityToType(m.capacity),
         tel: m.contact_tel || '', mobile: m.contact_mobile || '',
         org_code: m.org_name, org_label: m.org_title || m.org_name,
+        username: m.username || '',
+        contact_org_codes: m.contact_org_codes || [],
         _label: m.contact_name || m.display_name || email,
         _org: m.org_title || m.org_name || '',
       }; break;
@@ -4136,7 +4138,19 @@ function _pmFillFromExisting() {
   _pmSetContactType(f.contact_type || '');
   show('pmEditTel').value    = f.tel    || '';
   show('pmEditMobile').value = f.mobile || '';
-  if (f.org_code) _pmOrgSelect(f.org_code, f.org_label || f.org_code);
+  if (f.username) show('pmEditUsername').value = f.username;
+  if (f.contact_org_codes && f.contact_org_codes.length) {
+    _pmEditOrgs = f.contact_org_codes.map(o => ({...o}));
+  } else if (f.org_codes && f.org_codes.length) {
+    _pmEditOrgs = f.org_codes.map(o => ({...o}));
+  } else if (f.org_code && !_pmEditOrgs.some(o => o.code === f.org_code)) {
+    _pmEditOrgs.push({code: f.org_code, label: f.org_label || f.org_code});
+  }
+  if (f.username) _pmApplyPortalOrgLocks(f.username);
+  _pmOrgRenderTags();
+  const _s = document.getElementById('pmEditOrgSearch');
+  if (_s) _s.value = '';
+  document.getElementById('pmEditOrgDropdown').classList.add('d-none');
   document.getElementById('pmEditEmailHint').classList.add('d-none');
   _pmExistingMatch = null;
 }
