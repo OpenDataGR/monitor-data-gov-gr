@@ -3171,7 +3171,7 @@ function renderUserPanel(u) {
             onclick="deletePmContactRecord(${c.id},'${esc(u.username)}')"><i class="bi bi-trash"></i></button>
           ` : `
           <button class="btn btn-outline-primary btn-sm py-0 px-2" title="Add contact record"
-            onclick="openPmEditNewForUser('${esc(u.username)}','${esc(u.email)}','${esc(_uOrg ? _uOrg.org_name : '')}','${esc(_uOrg ? (_uOrg.org_title||_uOrg.org_name) : '')}','${esc(u.capacity||'')}')">
+            onclick="openPmEditNewForUser('${esc(u.username)}','${esc(u.email)}','${esc(_uOrg ? _uOrg.org_name : '')}','${esc(_uOrg ? (_uOrg.org_title||_uOrg.org_name) : '')}','${esc(_uOrg ? (_uOrg.capacity||'') : '')}')">
             <i class="bi bi-person-plus me-1"></i>Add</button>
           `}
         </div>
@@ -4184,11 +4184,17 @@ function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '')
   show('pmEditUsername').value      = username || '';
   show('pmEditEmail').value         = email    || '';
   _pmEditOrgs = orgCode ? [{code: orgCode, label: orgLabel || orgCode}] : [];
+  // Lock the portal org — can't be removed since it's assigned by CKAN
+  if (username && orgCode) _pmLockPortalOrg(orgCode, orgLabel || orgCode);
   _pmOrgRenderTags();
-  show('pmEditFirstName').value     = '';
-  show('pmEditLastName').value      = '';
+  // Pre-fill name from portal display_name when a portal member is known
+  const m = username ? (_portalMembersCache || []).find(x => x.username === username) : null;
+  const np = m ? _pmPortalNameParts(m) : {first: '', last: ''};
+  show('pmEditFirstName').value     = np.first;
+  show('pmEditLastName').value      = np.last;
   show('pmEditPosition').value      = '';
-  _pmSetContactType(capacity ? _capacityToType(capacity) : '');
+  const cap = capacity || (m && m.capacity) || '';
+  _pmSetContactType(cap ? _capacityToType(cap) : '');
   show('pmEditTel').value           = '';
   show('pmEditMobile').value        = '';
   document.getElementById('pmEditEmailHint').classList.add('d-none');
