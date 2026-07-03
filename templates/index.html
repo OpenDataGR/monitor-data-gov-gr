@@ -2947,7 +2947,7 @@ function _renderOrgContactsPanel() {
             ${hasFile
               ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditByUsername('${esc(m.username)}')" title="Edit"><i class="bi bi-pencil"></i></button>
                  <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')" title="Delete"><i class="bi bi-trash"></i></button>`
-              : `<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openPmEditNewForUser('${esc(m.username)}','${esc(m.email)}','${esc(ckanName || orgCode)}','${esc(orgLabel)}')" title="Add contact file"><i class="bi bi-person-plus me-1"></i>Add</button>`}
+              : `<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openPmEditNewForUser('${esc(m.username)}','${esc(m.email)}','${esc(ckanName || orgCode)}','${esc(orgLabel)}','${esc(m.capacity||'')}','${esc(m.display_name||'')}')" title="Add contact file"><i class="bi bi-person-plus me-1"></i>Add</button>`}
           </div>
         </div>
       </div>
@@ -3162,7 +3162,7 @@ function renderUserPanel(u) {
             onclick="deletePmContactRecord(${c.id},'${esc(u.username)}')"><i class="bi bi-trash"></i></button>
           ` : `
           <button class="btn btn-outline-primary btn-sm py-0 px-2" title="Add contact record"
-            onclick="openPmEditNewForUser('${esc(u.username)}','${esc(u.email)}','${esc(_uOrg ? _uOrg.org_name : '')}','${esc(_uOrg ? (_uOrg.org_title||_uOrg.org_name) : '')}')">
+            onclick="openPmEditNewForUser('${esc(u.username)}','${esc(u.email)}','${esc(_uOrg ? _uOrg.org_name : '')}','${esc(_uOrg ? (_uOrg.org_title||_uOrg.org_name) : '')}','${esc(u.capacity||'')}','${esc(u.display_name||'')}')">
             <i class="bi bi-person-plus me-1"></i>Add</button>
           `}
         </div>
@@ -4152,11 +4152,7 @@ function openPmEditNew() {
   _pmEditModal.show();
 }
 
-function openPmEditNewForUser(username, email, orgCode, orgLabel) {
-  // Look up portal data to pre-fill role and display name
-  const pm = username && _portalMembersCache
-    ? (_portalMembersCache.find(m => m.username === username) || null)
-    : null;
+function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '', displayName = '') {
   show('pmEditTitle').textContent   = 'New Contact';
   show('pmEditIcon').className      = 'bi bi-person-plus me-2';
   show('pmEditContactId').value     = '';
@@ -4164,10 +4160,10 @@ function openPmEditNewForUser(username, email, orgCode, orgLabel) {
   show('pmEditEmail').value         = email    || '';
   if (orgCode) _pmOrgSelect(orgCode, orgLabel || orgCode);
   else _pmOrgReset();
-  show('pmEditFirstName').value     = pm ? (pm.display_name || '') : '';
+  show('pmEditFirstName').value     = displayName || '';
   show('pmEditLastName').value      = '';
-  show('pmEditPosition').value      = pm ? (pm.username ? `@${pm.username}` : '') : '';
-  _pmSetContactType(pm ? _capacityToType(pm.capacity) : '');
+  show('pmEditPosition').value      = username ? `@${username}` : '';
+  _pmSetContactType(capacity ? _capacityToType(capacity) : '');
   show('pmEditTel').value           = '';
   show('pmEditMobile').value        = '';
   document.getElementById('pmEditEmailHint').classList.add('d-none');
