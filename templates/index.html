@@ -4071,9 +4071,12 @@ function _pmCheckEmailDuplicate() {
       if ((m.email || '').toLowerCase() !== email) continue;
       if (_seenPortalEmail.has(m.username)) continue;
       _seenPortalEmail.add(m.username);
+      const _dn = (m.display_name || '').trim();
+      const _dnParts = (_dn && !_dn.includes('@') && _dn.toLowerCase() !== (m.username || '').toLowerCase())
+        ? _dn.split(/\s+/) : [];
       found = {
-        first_name: m.contact_first_name || '',
-        last_name:  m.contact_last_name  || '',
+        first_name: m.contact_first_name || (_dnParts.length ? (_dnParts.slice(0, -1).join(' ') || _dnParts[0]) : ''),
+        last_name:  m.contact_last_name  || (_dnParts.length > 1 ? _dnParts[_dnParts.length - 1] : ''),
         position:   m.contact_position   || '',
         contact_type: m.contact_type || _capacityToType(m.capacity),
         tel: m.contact_tel || '', mobile: m.contact_mobile || '',
