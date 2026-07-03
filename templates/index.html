@@ -4183,9 +4183,11 @@ function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '')
   show('pmEditContactId').value     = '';
   show('pmEditUsername').value      = username || '';
   show('pmEditEmail').value         = email    || '';
-  _pmEditOrgs = orgCode ? [{code: orgCode, label: orgLabel || orgCode}] : [];
-  // Lock the portal org — can't be removed since it's assigned by CKAN
-  if (username && orgCode) _pmLockPortalOrg(orgCode, orgLabel || orgCode);
+  _pmEditOrgs = [];
+  _pmApplyPortalOrgLocks(username);
+  // Fallback when cache not yet loaded — use the org passed in
+  if (!_pmEditOrgs.length && orgCode)
+    _pmEditOrgs = [{code: orgCode, label: orgLabel || orgCode, locked: !!username}];
   _pmOrgRenderTags();
   // Pre-fill name from portal display_name when a portal member is known
   const m = username ? (_portalMembersCache || []).find(x => x.username === username) : null;
@@ -4204,6 +4206,13 @@ function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '')
   if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
   if (email && !username) _pmCheckEmailDuplicate();
   _pmEditModal.show();
+}
+
+function _pmApplyPortalOrgLocks(username) {
+  if (!username) return;
+  (_portalMembersCache || [])
+    .filter(x => x.username === username && x.org_name)
+    .forEach(x => _pmLockPortalOrg(x.org_name, x.org_title || x.org_name));
 }
 
 function _pmLockPortalOrg(portalOrgCode, portalOrgLabel) {
@@ -4245,8 +4254,8 @@ function openPmEditByUsername(username) {
   show('pmEditEmail').value         = m.email        || '';
   _pmEditOrgs = (m.contact_org_codes && m.contact_org_codes.length)
     ? m.contact_org_codes.map(o => ({...o}))
-    : (m.org_name ? [{code: m.org_name, label: m.org_title || m.org_name}] : []);
-  _pmLockPortalOrg(m.org_name, m.org_title || m.org_name);
+    : [];
+  _pmApplyPortalOrgLocks(m.username);
   _pmOrgRenderTags();
   { const np = _pmPortalNameParts(m);
     show('pmEditFirstName').value = m.contact_first_name || np.first;
@@ -4272,8 +4281,8 @@ function openPmEdit(idx) {
   show('pmEditEmail').value         = m.email        || '';
   _pmEditOrgs = (m.contact_org_codes && m.contact_org_codes.length)
     ? m.contact_org_codes.map(o => ({...o}))
-    : (m.org_name ? [{code: m.org_name, label: m.org_title || m.org_name}] : []);
-  _pmLockPortalOrg(m.org_name, m.org_title || m.org_name);
+    : [];
+  _pmApplyPortalOrgLocks(m.username);
   _pmOrgRenderTags();
   { const np = _pmPortalNameParts(m);
     show('pmEditFirstName').value = m.contact_first_name || np.first;
