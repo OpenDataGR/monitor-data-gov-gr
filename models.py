@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from flask_sqlalchemy import SQLAlchemy
 
@@ -88,12 +89,22 @@ class OrgContact(db.Model):
     email        = db.Column(db.String(200))
     tel          = db.Column(db.String(50))
     mobile       = db.Column(db.String(50))
+    org_codes    = db.Column(db.Text)  # JSON: [{code, label}, ...]
 
     def to_dict(self):
+        orgs = []
+        if self.org_codes:
+            try:
+                orgs = json.loads(self.org_codes)
+            except Exception:
+                pass
+        if not orgs and self.org_code:
+            orgs = [{"code": self.org_code, "label": self.org_label or self.org_code}]
         return {
             "id":           self.id,
             "org_code":     self.org_code,
             "org_label":    self.org_label or "",
+            "org_codes":    orgs,
             "first_name":   self.first_name or "",
             "last_name":    self.last_name or "",
             "position":     self.position or "",

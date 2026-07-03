@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
@@ -44,6 +45,9 @@ with app.app_context():
         db.session.commit()
     if 'mobile' not in _contact_cols:
         db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN mobile VARCHAR(50)'))
+        db.session.commit()
+    if 'org_codes' not in _contact_cols:
+        db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN org_codes TEXT'))
         db.session.commit()
     if db.engine.dialect.name == 'postgresql':
         try:
@@ -1467,8 +1471,18 @@ def contacts_summary():
 
 @app.route("/api/contacts/<path:org_code>", methods=["GET"])
 def contacts_list(org_code):
-    contacts = OrgContact.query.filter_by(org_code=org_code).all()
-    return jsonify([c.to_dict() for c in contacts])
+    result = []
+    for c in OrgContact.query.all():
+        if c.org_code == org_code:
+            result.append(c.to_dict())
+            continue
+        if c.org_codes:
+            try:
+                if any(o.get("code") == org_code for o in json.loads(c.org_codes)):
+                    result.append(c.to_dict())
+            except Exception:
+                pass
+    return jsonify(result)
 
 
 @app.route("/api/contacts/<path:org_code>", methods=["POST"])
@@ -1497,6 +1511,12 @@ def contacts_update(contact_id):
     for field in ("first_name", "last_name", "position", "contact_type", "email", "tel", "mobile", "org_label"):
         if field in body:
             setattr(contact, field, (body[field] or "").strip() or None)
+    if "org_codes" in body and isinstance(body.get("org_codes"), list):
+        orgs = [o for o in body["org_codes"] if isinstance(o, dict) and o.get("code")]
+        if orgs:
+            contact.org_codes = json.dumps(orgs)
+            contact.org_code  = orgs[0]["code"].strip()
+            contact.org_label = (orgs[0].get("label") or orgs[0]["code"]).strip() or None
     db.session.commit()
     return jsonify(contact.to_dict())
 
@@ -1531,17 +1551,34 @@ def contacts_save():
         for field in ("first_name", "last_name", "position", "contact_type", "email", "tel", "mobile", "org_label"):
             if field in body:
                 setattr(contact, field, (body[field] or "").strip() or None)
+        if "org_codes" in body and isinstance(body.get("org_codes"), list):
+            orgs = [o for o in body["org_codes"] if isinstance(o, dict) and o.get("code")]
+            if orgs:
+                contact.org_codes = json.dumps(orgs)
+                contact.org_code  = orgs[0]["code"].strip()
+                contact.org_label = (orgs[0].get("label") or orgs[0]["code"]).strip() or None
         contact.tel, contact.mobile = _fix_tel_mobile(contact.tel, contact.mobile)
         db.session.commit()
         return jsonify(contact.to_dict())
     else:
-        org_code = (body.get("org_code") or "").strip()
+        org_codes_raw = body.get("org_codes")
+        orgs = [o for o in org_codes_raw if isinstance(o, dict) and o.get("code")] \
+               if isinstance(org_codes_raw, list) else []
+        if orgs:
+            org_code  = orgs[0]["code"].strip()
+            org_label = (orgs[0].get("label") or org_code).strip()
+        else:
+            org_code  = (body.get("org_code") or "").strip()
+            org_label = (body.get("org_label") or "").strip()
+            if org_code:
+                orgs = [{"code": org_code, "label": org_label or org_code}]
         if not org_code:
             return jsonify({"error": "org_code required"}), 400
         tel, mobile = _fix_tel_mobile(body.get("tel"), body.get("mobile"))
         contact = OrgContact(
             org_code=org_code,
-            org_label=(body.get("org_label") or "").strip() or None,
+            org_label=org_label or None,
+            org_codes=json.dumps(orgs) if orgs else None,
             first_name=(body.get("first_name") or "").strip() or None,
             last_name=(body.get("last_name") or "").strip() or None,
             position=(body.get("position") or "").strip() or None,
@@ -1846,6 +1883,13 @@ def _do_fetch_portal_members():
                     m["contact_first_name"] = c.first_name or ""
                     m["contact_last_name"]  = c.last_name or ""
                     m["contact_email"]      = c.email or ""
+                    _orgs = []
+                    if c.org_codes:
+                        try: _orgs = json.loads(c.org_codes)
+                        except Exception: pass
+                    if not _orgs and c.org_code:
+                        _orgs = [{"code": c.org_code, "label": c.org_label or c.org_code}]
+                    m["contact_org_codes"]  = _orgs
             # Contacts with no matching portal member
             for c in all_contacts:
                 e = (c.email or "").lower().strip()

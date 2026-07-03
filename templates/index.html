@@ -696,21 +696,16 @@
       <div class="modal-body">
         <input type="hidden" id="pmEditContactId">
         <input type="hidden" id="pmEditUsername">
-        <input type="hidden" id="pmEditOrgCode">
-        <input type="hidden" id="pmEditOrgLabel">
         <div class="mb-2" id="pmEditOrgRow">
-          <label class="form-label small mb-1">Organization <span class="text-danger">*</span></label>
+          <label class="form-label small mb-1">Organizations <span class="text-danger">*</span></label>
+          <div id="pmEditOrgTags" class="d-flex flex-wrap gap-1 mb-1"></div>
           <div class="position-relative">
             <input type="text" class="form-control form-control-sm" id="pmEditOrgSearch"
-                   placeholder="Search organizations…" autocomplete="off"
+                   placeholder="Add organization…" autocomplete="off"
                    oninput="_pmOrgSearch(this.value)" onfocus="_pmOrgSearch(this.value)"
                    onblur="setTimeout(()=>document.getElementById('pmEditOrgDropdown').classList.add('d-none'),150)">
             <ul class="list-group shadow-sm position-absolute w-100 d-none"
                 id="pmEditOrgDropdown" style="z-index:1060;max-height:180px;overflow-y:auto;top:100%"></ul>
-          </div>
-          <div id="pmEditOrgSelected" class="mt-1 d-none">
-            <span class="badge bg-secondary" id="pmEditOrgBadge"></span>
-            <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted" onclick="_pmOrgClear()" title="Clear">&times;</button>
           </div>
         </div>
         <div class="mb-2">
@@ -2726,25 +2721,35 @@ function _resetCommContact() {
   show('commContactInfo').innerHTML = '';
 }
 
+function _orgCodeMatches(stored, query) {
+  if (!stored || !query) return false;
+  if (stored === query) return true;
+  const toHrms = _hrmsLookup ? _hrmsLookup.get(stored) : null;
+  if (toHrms === query) return true;
+  const toCkan = _ckanByHrms ? _ckanByHrms.get(stored) : null;
+  return toCkan === query;
+}
 function _getContactsForOrg(orgCode) {
   const contacts = [];
   const seen = new Set();
   for (const m of (_portalMembersCache || [])) {
     if (!m.contact_id || seen.has(m.contact_id)) continue;
-    const hrms = _hrmsLookup ? _hrmsLookup.get(m.org_name || '') : null;
-    if (m.org_name === orgCode || hrms === orgCode) {
+    const primaryMatch = _orgCodeMatches(m.org_name || '', orgCode);
+    const extraMatch   = (m.contact_org_codes || []).some(o => _orgCodeMatches(o.code || '', orgCode));
+    if (primaryMatch || extraMatch) {
       seen.add(m.contact_id);
-      contacts.push({ first_name: m.contact_first_name, last_name: m.contact_last_name, position: m.contact_position, email: m.contact_email, tel: m.contact_tel });
+      contacts.push({ first_name: m.contact_first_name, last_name: m.contact_last_name,
+                      position: m.contact_position, email: m.contact_email, tel: m.contact_tel });
     }
   }
   for (const c of (_pmUnmatched || [])) {
     if (seen.has(c.id)) continue;
-    const key = c.org_code || '';
-    const ckan = _ckanByHrms ? _ckanByHrms.get(key) : null;
-    const hrms = _hrmsLookup ? _hrmsLookup.get(key) : null;
-    if (key === orgCode || ckan === orgCode || hrms === orgCode) {
+    const primaryMatch = _orgCodeMatches(c.org_code || '', orgCode);
+    const extraMatch   = (c.org_codes || []).some(o => _orgCodeMatches(o.code || '', orgCode));
+    if (primaryMatch || extraMatch) {
       seen.add(c.id);
-      contacts.push({ first_name: c.first_name, last_name: c.last_name, position: c.position, email: c.email, tel: c.tel });
+      contacts.push({ first_name: c.first_name, last_name: c.last_name,
+                      position: c.position, email: c.email, tel: c.tel });
     }
   }
   return contacts;
@@ -2999,7 +3004,10 @@ function openPmEditForUnmatched(id) {
   show('pmEditContactId').value     = c.id;
   show('pmEditUsername').value      = '';
   show('pmEditEmail').value         = c.email || '';
-  _pmOrgSetFixed(_panelCkanName || c.org_code, _panelOrgLabel || c.org_label || c.org_code);
+  _pmEditOrgs = (c.org_codes && c.org_codes.length)
+    ? c.org_codes
+    : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
+  _pmOrgRenderTags();
   show('pmEditFirstName').value     = c.first_name || '';
   show('pmEditLastName').value      = c.last_name  || '';
   show('pmEditPosition').value      = c.position   || '';
@@ -3009,7 +3017,7 @@ function openPmEditForUnmatched(id) {
   show('pmEditStatus').textContent  = '';
   document.getElementById('pmEditEmailHint').classList.add('d-none');
   _pmExistingMatch = null;
-  show('pmEditOrgRow').classList.add('d-none');
+  show('pmEditOrgRow').classList.remove('d-none');
   if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
   _pmEditModal.show();
 }
@@ -3856,6 +3864,7 @@ function renderContactsGrouped(rows) {
 let _pmRows = [];
 let _pmUnmatched = [];
 let _pmEditModal = null;
+let _pmEditOrgs  = [];  // [{code, label}, ...] — orgs selected in the edit modal
 
 function _syncUnmatchedCols() {
   const srcThs = document.querySelectorAll('#contactsTable thead th');
@@ -3948,43 +3957,48 @@ function _orgSearchDropdown(q, dropdownId, selectFn) {
 }
 function _pmOrgSearch(q) { _orgSearchDropdown(q, 'pmEditOrgDropdown', '_pmOrgSelect'); }
 function _commOrgSearch(q) { _orgSearchDropdown(q, 'commOrgDropdown', '_commOrgSelect'); }
+function _pmOrgRenderTags() {
+  const container = document.getElementById('pmEditOrgTags');
+  if (!container) return;
+  container.innerHTML = _pmEditOrgs.map(o =>
+    `<span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em">` +
+    `${esc(o.label || o.code)}` +
+    `<button type="button" class="btn-close btn-close-white" style="font-size:.55em;margin-left:.25em"` +
+    ` onclick="_pmOrgRemove('${esc(o.code)}')" title="Remove"></button></span>`
+  ).join('');
+}
+function _pmOrgRemove(code) {
+  _pmEditOrgs = _pmEditOrgs.filter(o => o.code !== code);
+  _pmOrgRenderTags();
+}
 function _pmOrgSelect(code, label) {
-  show('pmEditOrgCode').value  = code;
-  show('pmEditOrgLabel').value = label;
-  show('pmEditOrgSearch').value = '';
+  if (!code || _pmEditOrgs.some(o => o.code === code)) return;
+  _pmEditOrgs.push({code, label: label || code});
+  _pmOrgRenderTags();
+  const s = document.getElementById('pmEditOrgSearch');
+  if (s) s.value = '';
   document.getElementById('pmEditOrgDropdown').classList.add('d-none');
-  show('pmEditOrgBadge').textContent = label || code;
-  show('pmEditOrgSelected').classList.remove('d-none');
-  show('pmEditOrgSearch').classList.add('d-none');
 }
 function _pmOrgClear() {
-  show('pmEditOrgCode').value  = '';
-  show('pmEditOrgLabel').value = '';
-  show('pmEditOrgSearch').value = '';
-  show('pmEditOrgSelected').classList.add('d-none');
-  show('pmEditOrgSearch').classList.remove('d-none');
-  show('pmEditOrgSearch').focus();
+  _pmEditOrgs = [];
+  _pmOrgRenderTags();
+  const s = document.getElementById('pmEditOrgSearch');
+  if (s) { s.value = ''; s.focus(); }
+  document.getElementById('pmEditOrgDropdown').classList.add('d-none');
 }
 function _pmOrgSetFixed(code, label) {
-  show('pmEditOrgCode').value  = code;
-  show('pmEditOrgLabel').value = label;
-  show('pmEditOrgSearch').value = '';
-  show('pmEditOrgSearch').classList.add('d-none');
-  show('pmEditOrgBadge').textContent = label || code;
-  show('pmEditOrgSelected').classList.remove('d-none');
-  // hide the clear button — org is locked when editing
-  const clearBtn = show('pmEditOrgSelected').querySelector('button');
-  if (clearBtn) clearBtn.classList.add('d-none');
+  _pmEditOrgs = code ? [{code, label: label || code}] : [];
+  _pmOrgRenderTags();
+  const s = document.getElementById('pmEditOrgSearch');
+  if (s) s.value = '';
+  document.getElementById('pmEditOrgDropdown').classList.add('d-none');
 }
 function _pmOrgReset() {
-  show('pmEditOrgCode').value  = '';
-  show('pmEditOrgLabel').value = '';
-  show('pmEditOrgSearch').value = '';
+  _pmEditOrgs = [];
+  _pmOrgRenderTags();
+  const s = document.getElementById('pmEditOrgSearch');
+  if (s) s.value = '';
   document.getElementById('pmEditOrgDropdown').classList.add('d-none');
-  show('pmEditOrgSelected').classList.add('d-none');
-  show('pmEditOrgSearch').classList.remove('d-none');
-  const clearBtn = show('pmEditOrgSelected').querySelector('button');
-  if (clearBtn) clearBtn.classList.remove('d-none');
 }
 function _commOrgSet(code, label) {
   show('commOrgCode').value  = code;
@@ -4121,7 +4135,10 @@ function openPmEditUnmatched(idx) {
   show('pmEditContactId').value     = c.id        || '';
   show('pmEditUsername').value      = '';
   show('pmEditEmail').value         = c.email     || '';
-  _pmOrgSetFixed(c.org_code || '', c.org_label || c.org_code || '');
+  _pmEditOrgs = (c.org_codes && c.org_codes.length)
+    ? c.org_codes
+    : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
+  _pmOrgRenderTags();
   show('pmEditFirstName').value     = c.first_name || '';
   show('pmEditLastName').value      = c.last_name  || '';
   show('pmEditPosition').value      = c.position   || '';
@@ -4162,8 +4179,8 @@ function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '')
   show('pmEditContactId').value     = '';
   show('pmEditUsername').value      = username || '';
   show('pmEditEmail').value         = email    || '';
-  if (orgCode) _pmOrgSelect(orgCode, orgLabel || orgCode);
-  else _pmOrgReset();
+  _pmEditOrgs = orgCode ? [{code: orgCode, label: orgLabel || orgCode}] : [];
+  _pmOrgRenderTags();
   show('pmEditFirstName').value     = '';
   show('pmEditLastName').value      = '';
   show('pmEditPosition').value      = '';
@@ -4203,7 +4220,10 @@ function openPmEditByUsername(username) {
   show('pmEditContactId').value     = m.contact_id   || '';
   show('pmEditUsername').value      = m.username     || '';
   show('pmEditEmail').value         = m.email        || '';
-  _pmOrgSetFixed(m.org_name || '', m.org_title || m.org_name || '');
+  _pmEditOrgs = (m.contact_org_codes && m.contact_org_codes.length)
+    ? m.contact_org_codes
+    : (m.org_name ? [{code: m.org_name, label: m.org_title || m.org_name}] : []);
+  _pmOrgRenderTags();
   { const np = _pmPortalNameParts(m);
     show('pmEditFirstName').value = m.contact_first_name || np.first;
     show('pmEditLastName').value  = m.contact_last_name  || np.last; }
@@ -4226,7 +4246,10 @@ function openPmEdit(idx) {
   show('pmEditContactId').value     = m.contact_id   || '';
   show('pmEditUsername').value      = m.username     || '';
   show('pmEditEmail').value         = m.email        || '';
-  _pmOrgSetFixed(m.org_name || '', m.org_title || m.org_name || '');
+  _pmEditOrgs = (m.contact_org_codes && m.contact_org_codes.length)
+    ? m.contact_org_codes
+    : (m.org_name ? [{code: m.org_name, label: m.org_title || m.org_name}] : []);
+  _pmOrgRenderTags();
   { const np = _pmPortalNameParts(m);
     show('pmEditFirstName').value = m.contact_first_name || np.first;
     show('pmEditLastName').value  = m.contact_last_name  || np.last; }
@@ -4242,16 +4265,16 @@ function openPmEdit(idx) {
 
 async function savePmContact() {
   const contactId = show('pmEditContactId').value;
-  const orgCode = show('pmEditOrgCode').value.trim();
-  if (!orgCode) {
-    show('pmEditStatus').textContent = 'Please select an organization.';
-    show('pmEditOrgSearch').focus();
+  if (!_pmEditOrgs.length) {
+    show('pmEditStatus').textContent = 'Please select at least one organization.';
+    document.getElementById('pmEditOrgSearch').focus();
     return;
   }
   const payload = {
     id:           contactId || undefined,
-    org_code:     orgCode,
-    org_label:    show('pmEditOrgLabel').value,
+    org_codes:    _pmEditOrgs,
+    org_code:     _pmEditOrgs[0].code,
+    org_label:    _pmEditOrgs[0].label,
     email:        show('pmEditEmail').value,
     first_name:   show('pmEditFirstName').value.trim(),
     last_name:    show('pmEditLastName').value.trim(),
@@ -4286,6 +4309,7 @@ async function savePmContact() {
         m.contact_tel        = data.tel          || '';
         m.contact_mobile     = data.mobile       || '';
         m.contact_email      = data.email        || '';
+        m.contact_org_codes  = data.org_codes    || [];
       }
     });
     filterContactsTab();
@@ -4303,6 +4327,7 @@ async function savePmContact() {
         m.contact_tel        = data.tel          || '';
         m.contact_mobile     = data.mobile       || '';
         m.contact_email      = data.email        || '';
+        m.contact_org_codes  = data.org_codes    || [];
       });
       filterContactsTab();
     } else {
