@@ -4072,9 +4072,9 @@ function _pmCheckEmailDuplicate() {
       if (_seenPortalEmail.has(m.username)) continue;
       _seenPortalEmail.add(m.username);
       found = {
-        first_name: m.contact_first_name || m.display_name || '',
+        first_name: m.contact_first_name || '',
         last_name:  m.contact_last_name  || '',
-        position:   m.contact_position   || (m.username ? `@${m.username}` : ''),
+        position:   m.contact_position   || '',
         contact_type: m.contact_type || _capacityToType(m.capacity),
         tel: m.contact_tel || '', mobile: m.contact_mobile || '',
         org_code: m.org_name, org_label: m.org_title || m.org_name,
