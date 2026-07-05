@@ -30,6 +30,13 @@
     .spinner-overlay { display: none; position: fixed; inset: 0; background: rgba(255,255,255,.65); z-index: 9999; align-items: center; justify-content: center; }
     .spinner-overlay.active { display: flex; }
     .icon-box { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .comm-timeline { position: relative; }
+    .comm-timeline::before { content: ''; position: absolute; left: 15px; top: 4px; bottom: 4px; width: 2px; background: #e9ecef; }
+    .comm-timeline-day { position: relative; padding: 1rem 0 .35rem 40px; font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #6c757d; }
+    .comm-timeline-day:first-child { padding-top: 0; }
+    .comm-timeline-item { position: relative; padding: .6rem .75rem .6rem 40px; border-radius: 8px; }
+    .comm-timeline-item:hover { background: rgba(0,0,0,.025); }
+    .comm-timeline-item .comm-dot { position: absolute; left: 10px; top: 1.1rem; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 4px #f0f2f5; }
   </style>
 </head>
 <body>
@@ -485,6 +492,7 @@
                 <div class="btn-group btn-group-sm" role="group">
                   <button id="commsViewFlatBtn" type="button" class="btn btn-primary" onclick="setCommsView('flat')" data-i18n="comms.view_all">All</button>
                   <button id="commsViewGroupedBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('grouped')" data-i18n="comms.view_by_org">By Organization</button>
+                  <button id="commsViewTimelineBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('timeline')" data-i18n="comms.view_timeline">Timeline</button>
                 </div>
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -934,6 +942,7 @@ const TRANSLATIONS = {
     'comms.title': 'Communications Log',
     'comms.view_all': 'All',
     'comms.view_by_org': 'By Organization',
+    'comms.view_timeline': 'Timeline',
     'comms.all_statuses': 'All statuses',
     'comms.contacted': 'Contacted',
     'comms.responded': 'Responded',
@@ -951,6 +960,8 @@ const TRANSLATIONS = {
     'comms.total': 'Total',
     'comms.entry': 'entry',
     'comms.entries': 'entries',
+    'comms.today': 'Today',
+    'comms.yesterday': 'Yesterday',
     'comm_modal.add_title': 'Add Communication',
     'comm_modal.edit_title': 'Edit Communication',
     'comm_modal.date': 'Date',
@@ -1182,6 +1193,7 @@ const TRANSLATIONS = {
     'comms.title': 'Αρχείο Επικοινωνιών',
     'comms.view_all': 'Όλες',
     'comms.view_by_org': 'Ανά Οργανισμό',
+    'comms.view_timeline': 'Χρονολόγιο',
     'comms.all_statuses': 'Όλες οι καταστάσεις',
     'comms.contacted': 'Επικοινώνησε',
     'comms.responded': 'Απάντησε',
@@ -1199,6 +1211,8 @@ const TRANSLATIONS = {
     'comms.total': 'Σύνολο',
     'comms.entry': 'εγγραφή',
     'comms.entries': 'εγγραφές',
+    'comms.today': 'Σήμερα',
+    'comms.yesterday': 'Χθες',
     'comm_modal.add_title': 'Προσθήκη Επικοινωνίας',
     'comm_modal.edit_title': 'Επεξεργασία Επικοινωνίας',
     'comm_modal.date': 'Ημερομηνία',
@@ -2546,13 +2560,15 @@ function filterComms() {
     return matchQ && matchS;
   });
   if (_commsViewMode === 'grouped') renderCommsGrouped(filtered);
+  else if (_commsViewMode === 'timeline') renderCommsTimeline(filtered);
   else renderCommsTable(filtered);
 }
 
 function setCommsView(mode) {
   _commsViewMode = mode;
-  show('commsViewFlatBtn').className    = 'btn btn-sm ' + (mode === 'flat'    ? 'btn-primary' : 'btn-outline-primary');
-  show('commsViewGroupedBtn').className = 'btn btn-sm ' + (mode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
+  show('commsViewFlatBtn').className     = 'btn btn-sm ' + (mode === 'flat'     ? 'btn-primary' : 'btn-outline-primary');
+  show('commsViewGroupedBtn').className  = 'btn btn-sm ' + (mode === 'grouped'  ? 'btn-primary' : 'btn-outline-primary');
+  show('commsViewTimelineBtn').className = 'btn btn-sm ' + (mode === 'timeline' ? 'btn-primary' : 'btn-outline-primary');
   filterComms();
 }
 
@@ -2681,6 +2697,72 @@ function renderCommsGrouped(data) {
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+const COMM_STATUS_ICON = {
+  "Contacted":   "bi-envelope",
+  "Responded":   "bi-reply",
+  "Uploaded":    "bi-cloud-upload",
+  "No Response": "bi-clock",
+};
+const COMM_STATUS_DOT = {
+  "Contacted":   "#0d6efd",
+  "Responded":   "#0dcaf0",
+  "Uploaded":    "#198754",
+  "No Response": "#6c757d",
+};
+
+function renderCommsTimeline(rows) {
+  const el = show('commsTable');
+  if (!rows.length) {
+    el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
+    return;
+  }
+  const statusLabel = { "Contacted": t('comms.contacted'), "Responded": t('comms.responded'), "Uploaded": t('comms.uploaded'), "No Response": t('comms.no_response') };
+
+  const sorted = [...rows].sort((a, b) => {
+    if (a.contact_date !== b.contact_date) return b.contact_date.localeCompare(a.contact_date);
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const yesterdayIso = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const dayLabel = (iso) => {
+    if (iso === todayIso) return t('comms.today');
+    if (iso === yesterdayIso) return t('comms.yesterday');
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString(_lang === 'el' ? 'el-GR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
+  let html = '<div class="comm-timeline">';
+  let lastDate = null;
+  for (const c of sorted) {
+    if (c.contact_date !== lastDate) {
+      html += `<div class="comm-timeline-day">${dayLabel(c.contact_date)}</div>`;
+      lastDate = c.contact_date;
+    }
+    html += `
+      <div class="comm-timeline-item">
+        <span class="comm-dot" style="background:${COMM_STATUS_DOT[c.status] || '#6c757d'}"></span>
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+          <div>
+            <span class="fw-semibold small">${esc(c.org_title)}</span>
+            <span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'} ms-2" style="font-size:.68rem">
+              <i class="bi ${COMM_STATUS_ICON[c.status] || 'bi-circle'} me-1"></i>${statusLabel[c.status] || c.status}
+            </span>
+          </div>
+          <div class="text-end text-nowrap">
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+        <div class="small mt-1">${esc(c.subject)}</div>
+        ${c.contact_person ? `<div class="text-muted" style="font-size:.72rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>` : ''}
+        ${c.notes ? `<div class="text-muted small mt-1">${esc(c.notes)}</div>` : ''}
+      </div>`;
+  }
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 function toggleOrgComms(orgTitle) {
