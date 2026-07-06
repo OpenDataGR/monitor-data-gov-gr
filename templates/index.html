@@ -3108,16 +3108,22 @@ function addFollowupForComm(commId) {
 function openFollowupForCase(caseId) {
   const cs = _casesData.find(x => x.id === caseId);
   if (!cs) return;
-  // most recent entry in the case (same ordering as Case.to_dict on the backend)
+  // entries oldest-first (same ordering as Case.to_dict on the backend)
   const entries = _commsData.filter(c => c.case_id === caseId).sort((a, b) =>
     a.contact_date !== b.contact_date
       ? a.contact_date.localeCompare(b.contact_date)
       : new Date(a.created_at) - new Date(b.created_at));
   const last = entries[entries.length - 1];
+  // walk backwards for the most recent entry that actually set each field —
+  // a later entry (e.g. a phone call with no contact logged) shouldn't blank out
+  // a value a previous step already established
+  const findRecent = (field) => [...entries].reverse().find(c => c[field]);
+  const lastMedium  = findRecent('medium');
+  const lastContact = findRecent('contact_person');
   openCommModal(null, cs.org_title, cs.org_name, caseId,
     (last && last.subject) || cs.subject,
-    last ? last.medium : '',
-    last ? last.contact_person : '');
+    lastMedium ? lastMedium.medium : '',
+    lastContact ? lastContact.contact_person : '');
 }
 
 function _onCommStatusChange() {
