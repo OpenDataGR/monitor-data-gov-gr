@@ -641,34 +641,32 @@
             <label class="form-label small fw-semibold" data-i18n="comm_modal.date">Date</label> <span class="text-danger">*</span>
             <input type="date" id="commDate" class="form-control form-control-sm">
           </div>
-          <div class="col-md-8">
-            <label class="form-label small fw-semibold" data-i18n="comm_modal.org">Organization</label> <span class="text-danger">*</span>
+          <div class="col-12">
+            <label class="form-label small fw-semibold" data-i18n="comm_modal.contact">Contact</label> <span class="text-danger">*</span>
             <input type="hidden" id="commOrgCode">
             <input type="hidden" id="commOrgLabel">
-            <div class="position-relative">
-              <input type="text" class="form-control form-control-sm" id="commOrgSearch"
-                     placeholder="Search organizations…" data-i18n-ph="comm_modal.org_ph" autocomplete="off"
-                     oninput="_commOrgSearch(this.value)" onfocus="_commOrgSearch(this.value)"
-                     onblur="setTimeout(()=>document.getElementById('commOrgDropdown').classList.add('d-none'),150)">
+            <input type="hidden" id="commContactName">
+            <div id="commContactRestrictHint" class="small text-muted mb-1 d-none">
+              <i class="bi bi-building me-1"></i><span data-i18n="comm_modal.org_restrict_prefix">Organization:</span>
+              <span class="fw-semibold" id="commContactRestrictOrg"></span>
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1" id="commContactRestrictClearBtn"
+                      onclick="_commContactClearRestriction()" data-i18n="comm_modal.change_org">(change)</button>
+              <span class="d-none" id="commOrgLockedHint" data-i18n="comm_modal.org_locked">(fixed to this case's organization)</span>
+            </div>
+            <div class="position-relative" id="commContactSearchWrap">
+              <input type="text" class="form-control form-control-sm" id="commContactSearch"
+                     placeholder="Search contacts by name or organization…" data-i18n-ph="comm_modal.contact_search_ph" autocomplete="off"
+                     oninput="_commContactSearch(this.value)" onfocus="_commContactSearch(this.value)"
+                     onblur="setTimeout(()=>document.getElementById('commContactDropdown').classList.add('d-none'),150)">
               <ul class="list-group shadow-sm position-absolute w-100 d-none"
-                  id="commOrgDropdown" style="z-index:1060;max-height:180px;overflow-y:auto;top:100%"></ul>
+                  id="commContactDropdown" style="z-index:1060;max-height:220px;overflow-y:auto;top:100%"></ul>
             </div>
-            <div id="commOrgSelected" class="mt-1 d-none">
-              <span class="badge bg-secondary" id="commOrgBadge"></span>
-              <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted" id="commOrgClearBtn" onclick="_commOrgClear()" title="Clear">&times;</button>
-              <span class="text-muted small d-none" id="commOrgLockedHint" data-i18n="comm_modal.org_locked">(fixed to this case's organization)</span>
+            <div id="commContactSelected" class="mt-1 d-none">
+              <span class="badge bg-secondary" id="commContactBadge"></span>
+              <span class="text-muted small ms-1" id="commContactOrgBadge"></span>
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted" onclick="_commContactClear()" title="Clear">&times;</button>
             </div>
-          </div>
-          <div class="col-12 d-none" id="commContactSection">
-            <label class="form-label small fw-semibold" data-i18n="comm_modal.contact">Contact Person</label>
-            <select id="commContact" class="form-select form-select-sm" onchange="onCommContactChange()">
-              <option value="" data-i18n="comm_modal.contact_ph">— select contact —</option>
-            </select>
             <div id="commContactInfo" class="mt-1 small d-none"></div>
-            <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-decoration-none"
-                    onclick="_openAddContactForComm()">
-              <i class="bi bi-person-plus me-1"></i>Add contact for this organization
-            </button>
           </div>
           <div class="col-12">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.subject">Subject</label> <span class="text-danger">*</span>
@@ -1030,11 +1028,12 @@ const TRANSLATIONS = {
     'comm_modal.add_title': 'Add Communication',
     'comm_modal.edit_title': 'Edit Communication',
     'comm_modal.date': 'Date',
-    'comm_modal.org': 'Organization',
-    'comm_modal.org_ph': 'Organization name',
     'comm_modal.org_locked': '(fixed to this case\'s organization)',
-    'comm_modal.contact': 'Contact Person',
-    'comm_modal.contact_ph': '— select contact —',
+    'comm_modal.contact': 'Contact',
+    'comm_modal.contact_search_ph': 'Search contacts by name or organization…',
+    'comm_modal.org_restrict_prefix': 'Organization:',
+    'comm_modal.change_org': '(change)',
+    'comm_modal.add_new_contact': 'Add new contact',
     'comm_modal.subject': 'Subject',
     'comm_modal.subject_ph': 'Dataset requested or topic',
     'comm_modal.status': 'Status',
@@ -1308,11 +1307,12 @@ const TRANSLATIONS = {
     'comm_modal.add_title': 'Προσθήκη Επικοινωνίας',
     'comm_modal.edit_title': 'Επεξεργασία Επικοινωνίας',
     'comm_modal.date': 'Ημερομηνία',
-    'comm_modal.org': 'Οργανισμός',
-    'comm_modal.org_ph': 'Όνομα οργανισμού',
     'comm_modal.org_locked': '(σταθερός οργανισμός για αυτή την υπόθεση)',
-    'comm_modal.contact': 'Άτομο Επαφής',
-    'comm_modal.contact_ph': '— επιλογή επαφής —',
+    'comm_modal.contact': 'Επαφή',
+    'comm_modal.contact_search_ph': 'Αναζήτηση επαφών με όνομα ή οργανισμό…',
+    'comm_modal.org_restrict_prefix': 'Οργανισμός:',
+    'comm_modal.change_org': '(αλλαγή)',
+    'comm_modal.add_new_contact': 'Προσθήκη νέας επαφής',
     'comm_modal.subject': 'Θέμα',
     'comm_modal.subject_ph': 'Ζητούμενο σύνολο δεδομένων ή θέμα',
     'comm_modal.status': 'Κατάσταση',
@@ -3113,7 +3113,6 @@ function toggleOrgComms(orgTitle) {
 function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCaseId = null, prefillSubject = null, prefillMedium = null, prefillContactPerson = null) {
   if (!_commModal) _commModal = new bootstrap.Modal(document.getElementById('commModal'));
   show('commError').classList.add('d-none');
-  _commOrgReset();
   _resetCommContact();
 
   if (id) {
@@ -3129,9 +3128,12 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commStatusInitialOption').hidden = false;
     show('commMedium').value  = c.medium || '';
     show('commNotes').value   = c.notes;
-    _commOrgSet(c.org_name, c.org_title);
     _setOrgLocked(false);
-    onCommOrgInput(c.contact_person || '');
+    if (c.contact_person) {
+      _commContactSetSelected(c.org_name, c.org_title, c.contact_person, '', '');
+    } else {
+      _commContactSetRestriction(c.org_name, c.org_title);
+    }
     _renderCommCaseInfo(c.case_id, true);
   } else {
     show('commModalTitle').textContent = prefillOrg ? `${t('comm_modal.add_title')} — ${prefillOrg}` : t('comm_modal.add_title');
@@ -3144,8 +3146,11 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commStatus').value  = prefillCaseId ? 'Intermediate Contact' : 'Initial Contact';
     show('commMedium').value  = prefillMedium || '';
     show('commNotes').value   = '';
-    if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(prefillContactPerson || ''); }
     _setOrgLocked(!!prefillCaseId);  // a follow-up stays tied to its case's organization
+    if (prefillOrg) {
+      if (prefillContactPerson) _commContactSetSelected(prefillOrgCode || prefillOrg, prefillOrg, prefillContactPerson, '', '');
+      else _commContactSetRestriction(prefillOrgCode || prefillOrg, prefillOrg);
+    }
     _renderCommCaseInfo(prefillCaseId);
   }
   _onCommStatusChange();
@@ -3221,11 +3226,28 @@ function _onCommStatusChange() {
   show('commStatusCloseHint').classList.toggle('d-none', !closes);
 }
 
+let _commRestrictOrgCode = null, _commRestrictOrgLabel = null, _commOrgLocked = false, _commContactSearchResults = [];
+
 function _resetCommContact() {
-  show('commContactSection').classList.add('d-none');
-  show('commContact').innerHTML = `<option value="">${t('comm_modal.contact_ph')}</option>`;
+  show('commOrgCode').value = '';
+  show('commOrgLabel').value = '';
+  show('commContactName').value = '';
+  _commRestrictOrgCode = null;
+  _commRestrictOrgLabel = null;
+  _commOrgLocked = false;
+  show('commContactRestrictHint').classList.add('d-none');
+  show('commContactSelected').classList.add('d-none');
+  show('commContactSearchWrap').classList.remove('d-none');
+  show('commContactSearch').value = '';
+  document.getElementById('commContactDropdown').classList.add('d-none');
   show('commContactInfo').classList.add('d-none');
   show('commContactInfo').innerHTML = '';
+}
+
+function _setOrgLocked(locked) {
+  _commOrgLocked = locked;
+  show('commContactRestrictClearBtn').classList.toggle('d-none', locked);
+  show('commOrgLockedHint').classList.toggle('d-none', !locked);
 }
 
 function _orgCodeMatches(stored, query) {
@@ -3262,55 +3284,126 @@ function _getContactsForOrg(orgCode) {
   return contacts;
 }
 
-function _fillCommContacts(contacts, preselectName) {
-  const sel = show('commContact');
-  contacts.forEach(c => {
-    const label = [c.first_name, c.last_name].filter(Boolean).join(' ') +
-                  (c.position ? ' (' + c.position + ')' : '');
-    const o = document.createElement('option');
-    o.value = label;
-    o.textContent = label;
-    o.dataset.email = c.email || '';
-    o.dataset.tel   = c.tel   || '';
-    if (preselectName && label === preselectName) o.selected = true;
-    sel.appendChild(o);
-  });
-  show('commContactSection').classList.remove('d-none');
-  if (preselectName) onCommContactChange();
-}
-
-function _openAddContactForComm() {
-  const orgCode  = show('commOrgCode').value;
-  const orgLabel = show('commOrgLabel').value;
-  if (!orgCode) return;
-  openPmEditNewForUser('', '', orgCode, orgLabel);
-}
-
-function onCommOrgInput(preselectName) {
-  _resetCommContact();
-  const orgCode = show('commOrgCode').value;
-  if (!orgCode) return;
-  show('commContactSection').classList.remove('d-none');
-  if (_portalMembersCache !== null) {
-    _fillCommContacts(_getContactsForOrg(orgCode), preselectName);
-  } else {
-    fetch(API_BASE + 'api/contacts/' + encodeURIComponent(orgCode))
-      .then(r => r.json())
-      .then(contacts => _fillCommContacts(contacts, preselectName))
-      .catch(() => {});
+function _getAllContacts() {
+  const contacts = [];
+  const seen = new Set();
+  for (const m of (_portalMembersCache || [])) {
+    if (!m.contact_id || seen.has(m.contact_id)) continue;
+    seen.add(m.contact_id);
+    contacts.push({ first_name: m.contact_first_name, last_name: m.contact_last_name,
+                    position: m.contact_position, email: m.contact_email, tel: m.contact_tel,
+                    org_code: m.org_name || '', org_label: m.org_title || m.org_name || '' });
   }
+  for (const c of (_pmUnmatched || [])) {
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    contacts.push({ first_name: c.first_name, last_name: c.last_name,
+                    position: c.position, email: c.email, tel: c.tel,
+                    org_code: c.org_code || '', org_label: c.org_label || c.org_code || '' });
+  }
+  return contacts.filter(c => c.first_name || c.last_name);
 }
 
-function onCommContactChange() {
-  const sel  = show('commContact');
+function _commContactLabel(c) {
+  return [c.first_name, c.last_name].filter(Boolean).join(' ') + (c.position ? ' (' + c.position + ')' : '');
+}
+
+function _commContactSearch(q) {
+  const dd  = document.getElementById('commContactDropdown');
+  const nq  = _ns(q || '').trim();
+  const pool = _commRestrictOrgCode ? _getContactsForOrg(_commRestrictOrgCode) : _getAllContacts();
+  const matches = (nq
+    ? pool.filter(c => _ns(_commContactLabel(c)).includes(nq) || _ns(c.org_label || '').includes(nq))
+    : pool
+  ).slice(0, 20);
+  _commContactSearchResults = matches;
+  const exists = pool.some(c => _ns(_commContactLabel(c)) === nq);
+  let html = matches.map((c, i) =>
+    `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
+         onmousedown="_commContactSelectFromResults(${i})">
+       <span class="fw-semibold">${esc(_commContactLabel(c))}</span>
+       ${c.org_label ? `<span class="badge bg-light text-dark border ms-1">${esc(c.org_label)}</span>` : ''}
+     </li>`
+  ).join('');
+  if (nq && !exists) {
+    html += `<li class="list-group-item list-group-item-action py-1 px-2 small text-primary" style="cursor:pointer"
+         onmousedown="_commContactAddNew('${esc(q).replace(/'/g, "\\'")}')">
+       <i class="bi bi-person-plus me-1"></i>${t('comm_modal.add_new_contact')} "${esc(q)}"</li>`;
+  }
+  if (!html) { dd.classList.add('d-none'); return; }
+  dd.innerHTML = html;
+  dd.classList.remove('d-none');
+}
+
+function _commContactSelectFromResults(i) {
+  const c = _commContactSearchResults[i];
+  if (!c) return;
+  const orgCode  = c.org_code  || _commRestrictOrgCode  || '';
+  const orgLabel = c.org_label || _commRestrictOrgLabel || orgCode;
+  _commContactSetSelected(orgCode, orgLabel, _commContactLabel(c), c.email, c.tel);
+}
+
+function _commContactAddNew(typed) {
+  document.getElementById('commContactDropdown').classList.add('d-none');
+  openPmEditNewForUser('', '', _commRestrictOrgCode || '', _commRestrictOrgLabel || '');
+  const parts = typed.trim().split(/\s+/).filter(Boolean);
+  show('pmEditFirstName').value = parts.slice(0, -1).join(' ') || parts[0] || '';
+  show('pmEditLastName').value  = parts.length > 1 ? parts[parts.length - 1] : '';
+}
+
+function _commContactSetSelected(orgCode, orgLabel, name, email, tel) {
+  show('commOrgCode').value  = orgCode || '';
+  show('commOrgLabel').value = orgLabel || orgCode || '';
+  show('commContactName').value = name || '';
+  show('commContactSearch').value = '';
+  document.getElementById('commContactDropdown').classList.add('d-none');
+  show('commContactSearchWrap').classList.add('d-none');
+  show('commContactRestrictHint').classList.add('d-none');
+  show('commContactBadge').textContent = name || '—';
+  show('commContactOrgBadge').textContent = orgLabel || orgCode || '';
+  show('commContactSelected').classList.remove('d-none');
   const info = show('commContactInfo');
-  if (!sel.value) { info.classList.add('d-none'); info.innerHTML = ''; return; }
-  const o = sel.options[sel.selectedIndex];
   const parts = [];
-  if (o.dataset.email) parts.push('<i class="bi bi-envelope me-1"></i><a href="mailto:' + esc(o.dataset.email) + '">' + esc(o.dataset.email) + '</a>');
-  if (o.dataset.tel)   parts.push('<i class="bi bi-telephone me-1"></i><a href="tel:'   + esc(o.dataset.tel)   + '">' + esc(o.dataset.tel)   + '</a>');
+  if (email) parts.push('<i class="bi bi-envelope me-1"></i><a href="mailto:' + esc(email) + '">' + esc(email) + '</a>');
+  if (tel)   parts.push('<i class="bi bi-telephone me-1"></i><a href="tel:'   + esc(tel)   + '">' + esc(tel)   + '</a>');
   if (parts.length) { info.innerHTML = parts.join(' &nbsp;'); info.classList.remove('d-none'); }
-  else { info.classList.add('d-none'); }
+  else { info.classList.add('d-none'); info.innerHTML = ''; }
+}
+
+function _commContactSetRestriction(orgCode, orgLabel) {
+  show('commOrgCode').value  = orgCode || '';
+  show('commOrgLabel').value = orgLabel || orgCode || '';
+  _commRestrictOrgCode  = orgCode || null;
+  _commRestrictOrgLabel = orgLabel || orgCode || null;
+  show('commContactSelected').classList.add('d-none');
+  show('commContactSearchWrap').classList.remove('d-none');
+  show('commContactSearch').value = '';
+  show('commContactRestrictOrg').textContent = orgLabel || orgCode || '';
+  show('commContactRestrictHint').classList.remove('d-none');
+  show('commContactRestrictClearBtn').classList.toggle('d-none', _commOrgLocked);
+  show('commOrgLockedHint').classList.toggle('d-none', !_commOrgLocked);
+}
+
+function _commContactClear() {
+  show('commContactName').value = '';
+  show('commContactSelected').classList.add('d-none');
+  show('commContactInfo').classList.add('d-none');
+  show('commContactInfo').innerHTML = '';
+  if (_commRestrictOrgCode) {
+    _commContactSetRestriction(show('commOrgCode').value, show('commOrgLabel').value);
+  } else {
+    show('commOrgCode').value  = '';
+    show('commOrgLabel').value = '';
+    show('commContactSearchWrap').classList.remove('d-none');
+    show('commContactSearch').value = '';
+  }
+  show('commContactSearch').focus();
+}
+
+function _commContactClearRestriction() {
+  if (_commOrgLocked) return;
+  _resetCommContact();
+  show('commContactSearch').focus();
 }
 
 async function saveComm() {
@@ -3328,7 +3421,7 @@ async function saveComm() {
     medium:       show('commMedium').value,
     notes:        show('commNotes').value.trim(),
     case_id:      show('commCaseId').value || null,
-    contact_person: (() => { const s = show('commContact'); return s.value ? s.options[s.selectedIndex].textContent : ''; })(),
+    contact_person: show('commContactName').value.trim(),
   };
 
   if (!body.contact_date || !body.org_name || !body.subject) {
@@ -4485,7 +4578,6 @@ function _orgSearchDropdown(q, dropdownId, selectFn) {
   dd.classList.remove('d-none');
 }
 function _pmOrgSearch(q) { _orgSearchDropdown(q, 'pmEditOrgDropdown', '_pmOrgSelect'); }
-function _commOrgSearch(q) { _orgSearchDropdown(q, 'commOrgDropdown', '_commOrgSelect'); }
 function _pmOrgRenderTags() {
   const container = document.getElementById('pmEditOrgTags');
   if (!container) return;
@@ -4533,43 +4625,6 @@ function _pmOrgReset() {
   if (s) s.value = '';
   document.getElementById('pmEditOrgDropdown').classList.add('d-none');
 }
-function _commOrgSet(code, label) {
-  show('commOrgCode').value  = code;
-  show('commOrgLabel').value = label;
-  show('commOrgSearch').value = '';
-  document.getElementById('commOrgDropdown').classList.add('d-none');
-  show('commOrgBadge').textContent = label || code;
-  show('commOrgSelected').classList.remove('d-none');
-  show('commOrgSearch').classList.add('d-none');
-}
-function _commOrgSelect(code, label) {
-  _commOrgSet(code, label);
-  onCommOrgInput();
-}
-function _commOrgClear() {
-  show('commOrgCode').value  = '';
-  show('commOrgLabel').value = '';
-  show('commOrgSearch').value = '';
-  show('commOrgSelected').classList.add('d-none');
-  show('commOrgSearch').classList.remove('d-none');
-  show('commOrgSearch').focus();
-  _resetCommContact();
-}
-function _commOrgReset() {
-  show('commOrgCode').value  = '';
-  show('commOrgLabel').value = '';
-  show('commOrgSearch').value = '';
-  document.getElementById('commOrgDropdown').classList.add('d-none');
-  show('commOrgSelected').classList.add('d-none');
-  show('commOrgSearch').classList.remove('d-none');
-  _setOrgLocked(false);
-}
-
-function _setOrgLocked(locked) {
-  show('commOrgClearBtn').classList.toggle('d-none', locked);
-  show('commOrgLockedHint').classList.toggle('d-none', !locked);
-}
-
 async function deletePmContactRecord(contactId, username) {
   if (!confirm(t('contacts.delete_confirm'))) return;
   try {
@@ -4928,10 +4983,12 @@ async function savePmContact() {
   _pmEditModal.hide();
   if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel();
   loadContactSummary();
-  // If opened from the comm modal, refresh its contact list and auto-select the new person
+  // If opened from the comm modal, auto-select the newly created contact
   if (document.getElementById('commModal')?.classList.contains('show')) {
     const newName = [data.first_name, data.last_name].filter(Boolean).join(' ');
-    onCommOrgInput(newName || undefined);
+    const orgCode  = (data.org_codes && data.org_codes[0] && data.org_codes[0].code)  || '';
+    const orgLabel = (data.org_codes && data.org_codes[0] && data.org_codes[0].label) || orgCode;
+    _commContactSetSelected(orgCode, orgLabel, newName, data.email || '', data.tel || '');
   }
 }
 
