@@ -2751,7 +2751,7 @@ function renderCommsTable(rows) {
           <tr>
             <td class="text-muted small mono text-nowrap">${c.contact_date}</td>
             <td class="fw-semibold small">${c.org_title}</td>
-            <td class="small">${c.subject} ${c.case_status ? `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'}" style="font-size:.62rem" title="${t('comms.case_col')}">${caseStatusLabel(c.case_status)}</span>` : ''}</td>
+            <td class="small">${c.subject} ${c.case_status ? `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'}" style="font-size:.62rem" title="${t('comms.case_col')} #${c.case_id}">${caseStatusLabel(c.case_status)}</span>` : ''}</td>
             <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
             <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
             <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
@@ -2873,6 +2873,7 @@ function renderCommsCases(data) {
         <td colspan="6">
           <div class="d-flex align-items-center gap-2 flex-wrap">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+            <span class="text-muted small mono">#${caseId}</span>
             <span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">
               <i class="bi ${isClosed ? 'bi-folder-check' : 'bi-folder2-open'} me-1"></i>${caseStatusLabel(cs.status)}
             </span>
@@ -2989,7 +2990,7 @@ function renderCommsTimeline(rows) {
             <span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'} ms-2" style="font-size:.68rem">
               <i class="bi ${COMM_STATUS_ICON[c.status] || 'bi-circle'} me-1"></i>${statusLabel[c.status] || c.status}
             </span>
-            ${c.case_status ? `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'} ms-1" style="font-size:.68rem">${caseStatusLabel(c.case_status)}</span>` : ''}
+            ${c.case_status ? `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'} ms-1" style="font-size:.68rem" title="${t('comms.case_col')} #${c.case_id}">${caseStatusLabel(c.case_status)}</span>` : ''}
           </div>
           <div class="text-end text-nowrap">
             <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -3027,6 +3028,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commDate').value    = c.contact_date;
     show('commSubject').value = c.subject;
     show('commStatus').value  = c.status;
+    show('commStatus').disabled = false;
     show('commMedium').value  = c.medium || '';
     show('commNotes').value   = c.notes;
     _commOrgSet(c.org_name, c.org_title);
@@ -3039,6 +3041,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commDate').value    = new Date().toISOString().slice(0, 10);
     show('commSubject').value = prefillSubject || '';
     show('commStatus').value  = 'Initial Contact';
+    show('commStatus').disabled = !prefillCaseId;  // a brand-new case always opens as Initial Contact
     show('commMedium').value  = '';
     show('commNotes').value   = '';
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(); }
@@ -3057,7 +3060,7 @@ function _renderCommCaseInfo(caseId) {
   const isClosed = cs.status === 'Closed';
   show('commCaseStatusBadge').className = 'badge ' + (CASE_STATUS_BADGE[cs.status] || 'bg-secondary');
   show('commCaseStatusBadge').textContent = caseStatusLabel(cs.status);
-  show('commCaseInfoText').textContent = `${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
+  show('commCaseInfoText').textContent = `${t('comms.case_col')} #${cs.id} · ${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
     (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : '');
   const btn = show('commCaseToggleBtn');
   btn.textContent = isClosed ? t('comms.case_reopen') : t('comms.case_close');

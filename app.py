@@ -952,6 +952,7 @@ def communications_create():
             case.status = "Open"
             case.closed_at = None
     else:
+        status = "Initial Contact"  # the entry that opens a case is always its initial contact
         case = Case(org_name=org_name, org_title=org_title, subject=subject, status="Open")
         db.session.add(case)
         db.session.flush()
@@ -1094,10 +1095,10 @@ def communications_export():
     ws = wb.active
     ws.title = "Communications"
 
-    headers = ["Date", "Organization", "Subject", "Status", "Medium", "Case Status", "Notes", "Created At"]
+    headers = ["Case ID", "Date", "Organization", "Subject", "Status", "Medium", "Case Status", "Notes", "Created At"]
     header_fill = PatternFill("solid", fgColor="1E3A5F")
     header_font = Font(bold=True, color="FFFFFF")
-    col_widths  = [14, 36, 42, 16, 14, 14, 48, 22]
+    col_widths  = [10, 14, 36, 42, 16, 14, 14, 48, 22]
 
     for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
         cell = ws.cell(row=1, column=col_idx, value=header)
@@ -1109,17 +1110,18 @@ def communications_export():
     ws.row_dimensions[1].height = 20
 
     for row_idx, r in enumerate(rows, start=2):
-        ws.cell(row=row_idx, column=1, value=r.contact_date)
-        ws.cell(row=row_idx, column=2, value=r.org_title or r.org_name)
-        ws.cell(row=row_idx, column=3, value=r.subject)
-        ws.cell(row=row_idx, column=4, value=r.status)
-        ws.cell(row=row_idx, column=5, value=r.medium or "")
-        ws.cell(row=row_idx, column=6, value=r.case.status if r.case else "")
-        ws.cell(row=row_idx, column=7, value=r.notes or "")
-        ws.cell(row=row_idx, column=8, value=(
+        ws.cell(row=row_idx, column=1, value=r.case_id)
+        ws.cell(row=row_idx, column=2, value=r.contact_date)
+        ws.cell(row=row_idx, column=3, value=r.org_title or r.org_name)
+        ws.cell(row=row_idx, column=4, value=r.subject)
+        ws.cell(row=row_idx, column=5, value=r.status)
+        ws.cell(row=row_idx, column=6, value=r.medium or "")
+        ws.cell(row=row_idx, column=7, value=r.case.status if r.case else "")
+        ws.cell(row=row_idx, column=8, value=r.notes or "")
+        ws.cell(row=row_idx, column=9, value=(
             r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else ""
         ))
-        for col_idx in range(1, 9):
+        for col_idx in range(1, 10):
             ws.cell(row=row_idx, column=col_idx).alignment = Alignment(wrap_text=True, vertical="top")
 
     buf = io.BytesIO()
