@@ -1686,10 +1686,11 @@ def portal_user_datasets(username):
             return jsonify({"error": "user not found"}), 404
         user_id = ud["result"].get("id", "")
 
-        # Fetch datasets created by this user
+        # Fetch datasets created by this user, including private ones (token is sysadmin-scoped)
         r2 = requests.get(
             f"{config.PORTAL_BASE}/api/3/action/package_search",
-            params={"fq": f"creator_user_id:{user_id}", "rows": 100, "sort": "metadata_modified desc"},
+            params={"fq": f"creator_user_id:{user_id}", "rows": 100, "sort": "metadata_modified desc",
+                    "include_private": True},
             headers=auth_headers, timeout=15,
         )
         if not r2.ok:
@@ -1705,6 +1706,7 @@ def portal_user_datasets(username):
                 "org":           (p.get("organization") or {}).get("title") or "",
                 "modified":      p.get("metadata_modified", ""),
                 "num_resources": p.get("num_resources", 0),
+                "private":       bool(p.get("private", False)),
             }
             for p in (pd["result"].get("results") or [])
         ]
@@ -1740,6 +1742,7 @@ def portal_user_activity(username):
                 "activity_type": a.get("activity_type", ""),
                 "package_name":  pkg.get("name", ""),
                 "package_title": pkg.get("title") or pkg.get("name", ""),
+                "private":       bool(pkg.get("private", False)),
             })
         return jsonify({"activities": activities})
     except Exception as exc:

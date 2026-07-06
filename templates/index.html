@@ -3408,8 +3408,11 @@ async function loadUserDatasets(username) {
     }
     list.innerHTML = ds.map(d => `
       <div class="py-2 border-bottom">
-        <a href="https://data.gov.gr/dataset/${esc(d.name)}" target="_blank" rel="noopener"
-           class="small fw-semibold text-decoration-none d-block" style="word-break:break-word">${esc(d.title)}</a>
+        <div class="d-flex align-items-center gap-2">
+          <a href="https://data.gov.gr/dataset/${esc(d.name)}" target="_blank" rel="noopener"
+             class="small fw-semibold text-decoration-none flex-grow-1" style="word-break:break-word">${esc(d.title)}</a>
+          ${d.private ? '<span class="badge bg-warning text-dark text-nowrap" style="font-size:.65rem"><i class="bi bi-lock-fill me-1"></i>Private</span>' : ''}
+        </div>
         <div class="d-flex gap-2 mt-1 text-muted" style="font-size:.72rem">
           ${d.org ? `<span><i class="bi bi-building me-1"></i>${esc(d.org)}</span>` : ''}
           <span><i class="bi bi-files me-1"></i>${d.num_resources} resources</span>
@@ -3461,8 +3464,12 @@ async function loadUserActivity(username) {
           <span class="small fw-semibold">${esc(typeLabel(a.activity_type))}</span>
           ${a.timestamp ? `<span class="text-muted text-nowrap" style="font-size:.72rem">${relativeDate(a.timestamp)}</span>` : ''}
         </div>
-        ${a.package_name ? `<a href="https://data.gov.gr/dataset/${esc(a.package_name)}" target="_blank" rel="noopener"
-            class="text-muted text-decoration-none d-block" style="font-size:.8rem;word-break:break-word">${esc(a.package_title || a.package_name)}</a>` : ''}
+        ${a.package_name ? `
+        <div class="d-flex align-items-center gap-2">
+          <a href="https://data.gov.gr/dataset/${esc(a.package_name)}" target="_blank" rel="noopener"
+              class="text-muted text-decoration-none flex-grow-1" style="font-size:.8rem;word-break:break-word">${esc(a.package_title || a.package_name)}</a>
+          ${a.private ? '<span class="badge bg-warning text-dark text-nowrap" style="font-size:.62rem"><i class="bi bi-lock-fill me-1"></i>Private</span>' : ''}
+        </div>` : ''}
       </div>`).join('');
   } catch (e) {
     list.innerHTML = `<p class="text-danger small mb-0">Failed to load activity: ${esc(e.message)}</p>`;
