@@ -2892,8 +2892,7 @@ function renderCommsCases(data) {
             <span class="badge bg-primary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
             <span class="text-muted small ms-auto">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}${isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : ''}</span>
             <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('comms.case_add_entry')}"
-                    data-org="${esc(cs.org_title)}" data-orgcode="${esc(cs.org_name)}" data-subject="${esc(cs.subject)}"
-                    onclick="event.stopPropagation();openCommModal(null,this.dataset.org,this.dataset.orgcode,${caseId},this.dataset.subject)">
+                    onclick="event.stopPropagation();openFollowupForCase(${caseId})">
               <i class="bi bi-plus"></i>
             </button>
             ${isClosed
