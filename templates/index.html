@@ -503,6 +503,13 @@
                   <option value="Uploaded" data-i18n="comms.uploaded">Uploaded</option>
                   <option value="No Response" data-i18n="comms.no_response">No Response</option>
                 </select>
+                <select id="commsMediumFilter" class="form-select form-select-sm" style="width:150px" onchange="filterComms()">
+                  <option value="" data-i18n="comms.all_mediums">All mediums</option>
+                  <option value="Telephone" data-i18n="comms.medium_telephone">Telephone</option>
+                  <option value="Email" data-i18n="comms.medium_email">Email</option>
+                  <option value="In Person" data-i18n="comms.medium_in_person">In Person</option>
+                  <option value="Other" data-i18n="comms.medium_other">Other</option>
+                </select>
                 <input type="search" id="commsSearch" class="form-control form-control-sm" placeholder="Search…" data-i18n-ph="comms.search" style="width:180px" oninput="filterComms()">
                 <button class="btn btn-success btn-sm" onclick="downloadCommsExcel()" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="comms.excel">Excel</span></button>
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
@@ -652,6 +659,16 @@
               <option value="Responded" data-i18n="comms.responded">Responded</option>
               <option value="Uploaded" data-i18n="comms.uploaded">Uploaded</option>
               <option value="No Response" data-i18n="comms.no_response">No Response</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold" data-i18n="comm_modal.medium">Medium</label>
+            <select id="commMedium" class="form-select form-select-sm">
+              <option value="" data-i18n="comm_modal.medium_ph">— select medium —</option>
+              <option value="Telephone" data-i18n="comms.medium_telephone">Telephone</option>
+              <option value="Email" data-i18n="comms.medium_email">Email</option>
+              <option value="In Person" data-i18n="comms.medium_in_person">In Person</option>
+              <option value="Other" data-i18n="comms.medium_other">Other</option>
             </select>
           </div>
           <div class="col-12">
@@ -948,6 +965,11 @@ const TRANSLATIONS = {
     'comms.responded': 'Responded',
     'comms.uploaded': 'Uploaded',
     'comms.no_response': 'No Response',
+    'comms.all_mediums': 'All mediums',
+    'comms.medium_telephone': 'Telephone',
+    'comms.medium_email': 'Email',
+    'comms.medium_in_person': 'In Person',
+    'comms.medium_other': 'Other',
     'comms.search': 'Search…',
     'comms.excel': 'Excel',
     'comms.add': 'Add',
@@ -956,6 +978,7 @@ const TRANSLATIONS = {
     'comms.col_org': 'Organization',
     'comms.col_subject': 'Subject',
     'comms.col_status': 'Status',
+    'comms.col_medium': 'Medium',
     'comms.col_notes': 'Notes',
     'comms.total': 'Total',
     'comms.entry': 'entry',
@@ -972,6 +995,8 @@ const TRANSLATIONS = {
     'comm_modal.subject': 'Subject',
     'comm_modal.subject_ph': 'Dataset requested or topic',
     'comm_modal.status': 'Status',
+    'comm_modal.medium': 'Medium',
+    'comm_modal.medium_ph': '— select medium —',
     'comm_modal.notes': 'Notes',
     'comm_modal.notes_ph': 'Any additional context…',
     'comm_modal.cancel': 'Cancel',
@@ -1199,6 +1224,11 @@ const TRANSLATIONS = {
     'comms.responded': 'Απάντηση',
     'comms.uploaded': 'Ανέβασμα',
     'comms.no_response': 'Χωρίς Απάντηση',
+    'comms.all_mediums': 'Όλα τα μέσα',
+    'comms.medium_telephone': 'Τηλέφωνο',
+    'comms.medium_email': 'Email',
+    'comms.medium_in_person': 'Δια Ζώσης',
+    'comms.medium_other': 'Άλλο',
     'comms.search': 'Αναζήτηση…',
     'comms.excel': 'Excel',
     'comms.add': 'Προσθήκη',
@@ -1207,6 +1237,7 @@ const TRANSLATIONS = {
     'comms.col_org': 'Οργανισμός',
     'comms.col_subject': 'Θέμα',
     'comms.col_status': 'Κατάσταση',
+    'comms.col_medium': 'Μέσο',
     'comms.col_notes': 'Σημειώσεις',
     'comms.total': 'Σύνολο',
     'comms.entry': 'εγγραφή',
@@ -1223,6 +1254,8 @@ const TRANSLATIONS = {
     'comm_modal.subject': 'Θέμα',
     'comm_modal.subject_ph': 'Ζητούμενο σύνολο δεδομένων ή θέμα',
     'comm_modal.status': 'Κατάσταση',
+    'comm_modal.medium': 'Μέσο',
+    'comm_modal.medium_ph': '— επιλογή μέσου —',
     'comm_modal.notes': 'Σημειώσεις',
     'comm_modal.notes_ph': 'Επιπλέον πλαίσιο…',
     'comm_modal.cancel': 'Ακύρωση',
@@ -2489,6 +2522,17 @@ const STATUS_BADGE = {
   "No Response": "bg-secondary",
 };
 
+const MEDIUM_ICON = {
+  "Telephone": "bi-telephone",
+  "Email":     "bi-envelope",
+  "In Person": "bi-person-video3",
+  "Other":     "bi-three-dots",
+};
+function mediumLabel(medium) {
+  const KEY = { "Telephone": "comms.medium_telephone", "Email": "comms.medium_email", "In Person": "comms.medium_in_person", "Other": "comms.medium_other" };
+  return KEY[medium] ? t(KEY[medium]) : '';
+}
+
 document.getElementById('commsTabBtn').addEventListener('click', () => {
   if (_commsLoaded) return;
   loadComms();
@@ -2554,10 +2598,12 @@ function commsArrow(col) {
 function filterComms() {
   const q      = _ns(show('commsSearch').value);
   const status = show('commsStatusFilter').value;
+  const medium = show('commsMediumFilter').value;
   const filtered = _commsData.filter(c => {
     const matchQ = !q || _ns(c.org_title).includes(q) || _ns(c.subject).includes(q) || _ns(c.notes || '').includes(q);
     const matchS = !status || c.status === status;
-    return matchQ && matchS;
+    const matchM = !medium || c.medium === medium;
+    return matchQ && matchS && matchM;
   });
   if (_commsViewMode === 'grouped') renderCommsGrouped(filtered);
   else if (_commsViewMode === 'timeline') renderCommsTimeline(filtered);
@@ -2599,12 +2645,13 @@ function renderCommsTable(rows) {
 
   el.innerHTML = `
     <table class="table table-hover table-sm align-middle mb-0">
-      <colgroup><col style="width:110px"><col><col><col style="width:140px"><col><col style="width:80px"></colgroup>
+      <colgroup><col style="width:110px"><col><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
       <thead><tr>
         ${thS('contact_date', t('comms.col_date'), 'text-nowrap')}
         ${thS('org_title',    t('comms.col_org'))}
         ${thS('subject',      t('comms.col_subject'))}
         ${thS('status',       t('comms.col_status'))}
+        <th>${t('comms.col_medium')}</th>
         <th>${t('comms.col_notes')}</th>
         <th></th>
       </tr></thead>
@@ -2615,6 +2662,7 @@ function renderCommsTable(rows) {
             <td class="fw-semibold small">${c.org_title}</td>
             <td class="small">${c.subject}</td>
             <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
+            <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
             <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
             <td class="text-end text-nowrap">
               <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -2657,7 +2705,7 @@ function renderCommsGrouped(data) {
     const safeAttr   = orgTitle.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
     return `
       <tr class="table-secondary" style="cursor:pointer" data-org="${safeAttr}" onclick="toggleOrgComms(this.dataset.org)">
-        <td colspan="5">
+        <td colspan="6">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
             <span class="fw-semibold">${orgTitle}</span>
@@ -2677,6 +2725,7 @@ function renderCommsGrouped(data) {
           <td class="text-muted small mono text-nowrap ps-4">${c.contact_date}</td>
           <td class="small">${c.subject}</td>
           <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
+          <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
           <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
           <td class="text-end text-nowrap">
             <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -2687,11 +2736,12 @@ function renderCommsGrouped(data) {
 
   el.innerHTML = `
     <table class="table table-hover table-sm align-middle mb-0">
-      <colgroup><col style="width:110px"><col><col style="width:140px"><col><col style="width:80px"></colgroup>
+      <colgroup><col style="width:110px"><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
       <thead><tr>
         <th>${t('comms.col_date')}</th>
         <th>${t('comms.col_subject')}</th>
         <th>${t('comms.col_status')}</th>
+        <th>${t('comms.col_medium')}</th>
         <th>${t('comms.col_notes')}</th>
         <th></th>
       </tr></thead>
@@ -2758,6 +2808,7 @@ function renderCommsTimeline(rows) {
         </div>
         <div class="small mt-1">${esc(c.subject)}</div>
         ${c.contact_person ? `<div class="text-muted" style="font-size:.72rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>` : ''}
+        ${c.medium ? `<div class="text-muted" style="font-size:.72rem"><i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}</div>` : ''}
         ${c.notes ? `<div class="text-muted small mt-1">${esc(c.notes)}</div>` : ''}
       </div>`;
   }
@@ -2785,6 +2836,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null) {
     show('commDate').value    = c.contact_date;
     show('commSubject').value = c.subject;
     show('commStatus').value  = c.status;
+    show('commMedium').value  = c.medium || '';
     show('commNotes').value   = c.notes;
     _commOrgSet(c.org_name, c.org_title);
     onCommOrgInput(c.contact_person || '');
@@ -2794,6 +2846,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null) {
     show('commDate').value    = new Date().toISOString().slice(0, 10);
     show('commSubject').value = '';
     show('commStatus').value  = 'Contacted';
+    show('commMedium').value  = '';
     show('commNotes').value   = '';
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(); }
   }
@@ -2904,6 +2957,7 @@ async function saveComm() {
     org_title:    orgTitle,
     subject:      show('commSubject').value.trim(),
     status:       show('commStatus').value,
+    medium:       show('commMedium').value,
     notes:        show('commNotes').value.trim(),
     contact_person: (() => { const s = show('commContact'); return s.value ? s.options[s.selectedIndex].textContent : ''; })(),
   };

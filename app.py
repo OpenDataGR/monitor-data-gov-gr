@@ -39,6 +39,9 @@ with app.app_context():
     if 'contact_person' not in _comm_cols:
         db.session.execute(text('ALTER TABLE communications ADD COLUMN contact_person VARCHAR(200)'))
         db.session.commit()
+    if 'medium' not in _comm_cols:
+        db.session.execute(text('ALTER TABLE communications ADD COLUMN medium VARCHAR(50)'))
+        db.session.commit()
     _contact_cols = [c['name'] for c in _insp.get_columns('org_contacts')]
     if 'contact_type' not in _contact_cols:
         db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN contact_type VARCHAR(200)'))
@@ -899,6 +902,7 @@ def organization_detail(org_name):
 
 
 VALID_STATUSES = {"Contacted", "Responded", "Uploaded", "No Response"}
+VALID_MEDIUMS  = {"Telephone", "Email", "In Person", "Other"}
 
 
 @app.route("/api/communications", methods=["GET"])
@@ -918,6 +922,9 @@ def communications_create():
     status = body.get("status", "Contacted")
     if status not in VALID_STATUSES:
         return jsonify({"error": f"status must be one of {sorted(VALID_STATUSES)}"}), 400
+    medium = (body.get("medium") or "").strip()
+    if medium and medium not in VALID_MEDIUMS:
+        return jsonify({"error": f"medium must be one of {sorted(VALID_MEDIUMS)}"}), 400
     comm = Communication(
         contact_date=contact_date,
         org_name=org_name,
@@ -926,6 +933,7 @@ def communications_create():
         status=status,
         notes=(body.get("notes") or "").strip() or None,
         contact_person=(body.get("contact_person") or "").strip() or None,
+        medium=medium or None,
     )
     db.session.add(comm)
     db.session.commit()
@@ -952,6 +960,11 @@ def communications_update(comm_id):
         comm.notes = (body["notes"] or "").strip() or None
     if "contact_person" in body:
         comm.contact_person = (body["contact_person"] or "").strip() or None
+    if "medium" in body:
+        medium = (body["medium"] or "").strip()
+        if medium and medium not in VALID_MEDIUMS:
+            return jsonify({"error": f"medium must be one of {sorted(VALID_MEDIUMS)}"}), 400
+        comm.medium = medium or None
     db.session.commit()
     return jsonify(comm.to_dict())
 
@@ -981,17 +994,17 @@ def communications_export():
     if q:
         rows = [r for r in rows if any(
             q in (v or "").lower()
-            for v in [r.org_title, r.org_name, r.subject, r.notes, r.status]
+            for v in [r.org_title, r.org_name, r.subject, r.notes, r.status, r.medium]
         )]
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Communications"
 
-    headers = ["Date", "Organization", "Subject", "Status", "Notes", "Created At"]
+    headers = ["Date", "Organization", "Subject", "Status", "Medium", "Notes", "Created At"]
     header_fill = PatternFill("solid", fgColor="1E3A5F")
     header_font = Font(bold=True, color="FFFFFF")
-    col_widths  = [14, 36, 42, 16, 48, 22]
+    col_widths  = [14, 36, 42, 16, 14, 48, 22]
 
     for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
         cell = ws.cell(row=1, column=col_idx, value=header)
@@ -1007,11 +1020,12 @@ def communications_export():
         ws.cell(row=row_idx, column=2, value=r.org_title or r.org_name)
         ws.cell(row=row_idx, column=3, value=r.subject)
         ws.cell(row=row_idx, column=4, value=r.status)
-        ws.cell(row=row_idx, column=5, value=r.notes or "")
-        ws.cell(row=row_idx, column=6, value=(
+        ws.cell(row=row_idx, column=5, value=r.medium or "")
+        ws.cell(row=row_idx, column=6, value=r.notes or "")
+        ws.cell(row=row_idx, column=7, value=(
             r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else ""
         ))
-        for col_idx in range(1, 7):
+        for col_idx in range(1, 8):
             ws.cell(row=row_idx, column=col_idx).alignment = Alignment(wrap_text=True, vertical="top")
 
     buf = io.BytesIO()

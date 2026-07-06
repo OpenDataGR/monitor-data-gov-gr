@@ -62,6 +62,7 @@ class Communication(db.Model):
     status       = db.Column(db.String(50), nullable=False, default="Contacted")
     notes          = db.Column(db.Text)
     contact_person = db.Column(db.String(200))
+    medium         = db.Column(db.String(50))
 
     def to_dict(self):
         return {
@@ -74,6 +75,7 @@ class Communication(db.Model):
             "status":       self.status,
             "notes":           self.notes or "",
             "contact_person":  self.contact_person or "",
+            "medium":          self.medium or "",
         }
 
 class OrgContact(db.Model):
