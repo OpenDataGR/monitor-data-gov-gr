@@ -492,10 +492,16 @@
                 <div class="btn-group btn-group-sm" role="group">
                   <button id="commsViewFlatBtn" type="button" class="btn btn-primary" onclick="setCommsView('flat')" data-i18n="comms.view_all">All</button>
                   <button id="commsViewGroupedBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('grouped')" data-i18n="comms.view_by_org">By Organization</button>
+                  <button id="commsViewCasesBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('cases')" data-i18n="comms.view_cases">Cases</button>
                   <button id="commsViewTimelineBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('timeline')" data-i18n="comms.view_timeline">Timeline</button>
                 </div>
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
+                <select id="commsCaseStatusFilter" class="form-select form-select-sm" style="width:140px" onchange="filterComms()">
+                  <option value="" data-i18n="comms.all_cases">All cases</option>
+                  <option value="Open" data-i18n="comms.case_open">Open</option>
+                  <option value="Closed" data-i18n="comms.case_closed">Closed</option>
+                </select>
                 <select id="commsStatusFilter" class="form-select form-select-sm" style="width:160px" onchange="filterComms()">
                   <option value="" data-i18n="comms.all_statuses">All statuses</option>
                   <option value="Contacted" data-i18n="comms.contacted">Contacted</option>
@@ -615,7 +621,15 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="commId">
+        <input type="hidden" id="commCaseId">
         <div class="row g-3">
+          <div class="col-12 d-none" id="commCaseInfo">
+            <div class="d-flex align-items-center gap-2 p-2 rounded-3 bg-light border">
+              <span class="badge" id="commCaseStatusBadge"></span>
+              <span class="small text-muted" id="commCaseInfoText"></span>
+              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 ms-auto" id="commCaseToggleBtn" onclick="_toggleCaseFromModal()"></button>
+            </div>
+          </div>
           <div class="col-md-4">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.date">Date</label> <span class="text-danger">*</span>
             <input type="date" id="commDate" class="form-control form-control-sm">
@@ -960,6 +974,7 @@ const TRANSLATIONS = {
     'comms.title': 'Communications Log',
     'comms.view_all': 'All',
     'comms.view_by_org': 'By Organization',
+    'comms.view_cases': 'Cases',
     'comms.view_timeline': 'Timeline',
     'comms.all_statuses': 'All statuses',
     'comms.contacted': 'Contacted',
@@ -971,6 +986,17 @@ const TRANSLATIONS = {
     'comms.medium_email': 'Email',
     'comms.medium_in_person': 'In Person',
     'comms.medium_other': 'Other',
+    'comms.all_cases': 'All cases',
+    'comms.case_open': 'Open',
+    'comms.case_closed': 'Closed',
+    'comms.open_cases': 'Open Cases',
+    'comms.closed_cases': 'Closed Cases',
+    'comms.case_opened': 'Opened',
+    'comms.case_closed_on': 'Closed',
+    'comms.case_add_entry': 'Add entry to this case',
+    'comms.case_close': 'Close Case',
+    'comms.case_reopen': 'Reopen Case',
+    'comms.case_col': 'Case',
     'comms.search': 'Search…',
     'comms.excel': 'Excel',
     'comms.add': 'Add',
@@ -1219,6 +1245,7 @@ const TRANSLATIONS = {
     'comms.title': 'Αρχείο Επικοινωνιών',
     'comms.view_all': 'Όλες',
     'comms.view_by_org': 'Ανά Οργανισμό',
+    'comms.view_cases': 'Υποθέσεις',
     'comms.view_timeline': 'Χρονολόγιο',
     'comms.all_statuses': 'Όλες οι καταστάσεις',
     'comms.contacted': 'Επικοινωνία',
@@ -1230,6 +1257,17 @@ const TRANSLATIONS = {
     'comms.medium_email': 'Email',
     'comms.medium_in_person': 'Δια Ζώσης',
     'comms.medium_other': 'Άλλο',
+    'comms.all_cases': 'Όλες οι υποθέσεις',
+    'comms.case_open': 'Ανοιχτή',
+    'comms.case_closed': 'Κλειστή',
+    'comms.open_cases': 'Ανοιχτές Υποθέσεις',
+    'comms.closed_cases': 'Κλειστές Υποθέσεις',
+    'comms.case_opened': 'Άνοιξε',
+    'comms.case_closed_on': 'Έκλεισε',
+    'comms.case_add_entry': 'Προσθήκη καταχώρησης σε αυτή την υπόθεση',
+    'comms.case_close': 'Κλείσιμο Υπόθεσης',
+    'comms.case_reopen': 'Επανάνοιγμα Υπόθεσης',
+    'comms.case_col': 'Υπόθεση',
     'comms.search': 'Αναζήτηση…',
     'comms.excel': 'Excel',
     'comms.add': 'Προσθήκη',
@@ -2509,12 +2547,14 @@ async function _pollUntilEnriched(attempts = 0) {
 // ── Communications tab ───────────────────────────────────────────────────────
 let _commsLoaded   = false;
 let _commsData     = [];
+let _casesData     = [];   // [{id, org_name, org_title, subject, status, opened_at, closed_at, entry_count, last_update}]
 let _publicOrgs    = [];   // [{code, label}] from hrms.gov.gr
 let _commModal     = null;
 let _commsSortCol   = 'contact_date';
 let _commsSortDir   = 'desc';
 let _commsViewMode  = 'flat';
 let _expandedOrgs   = new Set();
+let _expandedCases  = new Set();
 
 const STATUS_BADGE = {
   "Contacted":   "bg-primary",
@@ -2522,6 +2562,11 @@ const STATUS_BADGE = {
   "Uploaded":    "bg-success",
   "No Response": "bg-secondary",
 };
+
+const CASE_STATUS_BADGE = { "Open": "bg-warning text-dark", "Closed": "bg-success" };
+function caseStatusLabel(status) {
+  return status === 'Closed' ? t('comms.case_closed') : t('comms.case_open');
+}
 
 const MEDIUM_ICON = {
   "Telephone": "bi-telephone",
@@ -2541,11 +2586,15 @@ document.getElementById('commsTabBtn').addEventListener('click', () => {
 
 async function loadComms() {
   try {
-    const fetches = [fetch(API_BASE + 'api/communications').then(r => r.json())];
+    const fetches = [
+      fetch(API_BASE + 'api/communications').then(r => r.json()),
+      fetch(API_BASE + 'api/cases').then(r => r.json()),
+    ];
     if (!_publicOrgs.length) fetches.push(fetch(API_BASE + 'api/public-orgs').then(r => r.ok ? r.json() : []));
     const results = await Promise.all(fetches);
     _commsData = results[0];
-    if (results[1]) _publicOrgs = Array.isArray(results[1]) ? results[1] : [];
+    _casesData = Array.isArray(results[1]) ? results[1] : [];
+    if (results[2]) _publicOrgs = Array.isArray(results[2]) ? results[2] : [];
     _commsLoaded = true;
     if (!_portalMembersCache) loadContactsTab();
     renderCommsSummary();
@@ -2554,6 +2603,17 @@ async function loadComms() {
   } catch (e) {
     show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${t('error')}: ${e.message}</div>`;
   }
+}
+
+async function _reloadCasesAndComms() {
+  const [comms, cases] = await Promise.all([
+    fetch(API_BASE + 'api/communications').then(r => r.json()),
+    fetch(API_BASE + 'api/cases').then(r => r.json()),
+  ]);
+  _commsData = comms;
+  _casesData = Array.isArray(cases) ? cases : [];
+  renderCommsSummary();
+  filterComms();
 }
 
 function _refreshCommSubjectDatalist() {
@@ -2575,9 +2635,13 @@ function renderCommsSummary() {
   const counts = { "Contacted": 0, "Responded": 0, "Uploaded": 0, "No Response": 0 };
   for (const c of _commsData) if (c.status in counts) counts[c.status]++;
   const total = _commsData.length;
+  const openCases   = _casesData.filter(c => c.status === 'Open').length;
+  const closedCases = _casesData.filter(c => c.status === 'Closed').length;
 
   const CARDS = [
     { label: t('comms.total'),       value: total,                  bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
+    { label: t('comms.open_cases'),   value: openCases,             bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-folder2-open" },
+    { label: t('comms.closed_cases'), value: closedCases,           bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-folder-check" },
     { label: t('comms.contacted'),   value: counts["Contacted"],    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-envelope" },
     { label: t('comms.responded'),   value: counts["Responded"],    bg: "bg-info bg-opacity-10",      text: "text-info",      icon: "bi-reply" },
     { label: t('comms.uploaded'),    value: counts["Uploaded"],     bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-cloud-upload" },
@@ -2613,16 +2677,19 @@ function commsArrow(col) {
 }
 
 function filterComms() {
-  const q      = _ns(show('commsSearch').value);
-  const status = show('commsStatusFilter').value;
-  const medium = show('commsMediumFilter').value;
+  const q           = _ns(show('commsSearch').value);
+  const status      = show('commsStatusFilter').value;
+  const medium      = show('commsMediumFilter').value;
+  const caseStatus  = show('commsCaseStatusFilter').value;
   const filtered = _commsData.filter(c => {
-    const matchQ = !q || _ns(c.org_title).includes(q) || _ns(c.subject).includes(q) || _ns(c.notes || '').includes(q);
-    const matchS = !status || c.status === status;
-    const matchM = !medium || c.medium === medium;
-    return matchQ && matchS && matchM;
+    const matchQ  = !q || _ns(c.org_title).includes(q) || _ns(c.subject).includes(q) || _ns(c.notes || '').includes(q);
+    const matchS  = !status || c.status === status;
+    const matchM  = !medium || c.medium === medium;
+    const matchC  = !caseStatus || c.case_status === caseStatus;
+    return matchQ && matchS && matchM && matchC;
   });
   if (_commsViewMode === 'grouped') renderCommsGrouped(filtered);
+  else if (_commsViewMode === 'cases') renderCommsCases(filtered);
   else if (_commsViewMode === 'timeline') renderCommsTimeline(filtered);
   else renderCommsTable(filtered);
 }
@@ -2631,6 +2698,7 @@ function setCommsView(mode) {
   _commsViewMode = mode;
   show('commsViewFlatBtn').className     = 'btn btn-sm ' + (mode === 'flat'     ? 'btn-primary' : 'btn-outline-primary');
   show('commsViewGroupedBtn').className  = 'btn btn-sm ' + (mode === 'grouped'  ? 'btn-primary' : 'btn-outline-primary');
+  show('commsViewCasesBtn').className    = 'btn btn-sm ' + (mode === 'cases'    ? 'btn-primary' : 'btn-outline-primary');
   show('commsViewTimelineBtn').className = 'btn btn-sm ' + (mode === 'timeline' ? 'btn-primary' : 'btn-outline-primary');
   filterComms();
 }
@@ -2677,7 +2745,7 @@ function renderCommsTable(rows) {
           <tr>
             <td class="text-muted small mono text-nowrap">${c.contact_date}</td>
             <td class="fw-semibold small">${c.org_title}</td>
-            <td class="small">${c.subject}</td>
+            <td class="small">${c.subject} ${c.case_status ? `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'}" style="font-size:.62rem" title="${t('comms.case_col')}">${caseStatusLabel(c.case_status)}</span>` : ''}</td>
             <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
             <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
             <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
@@ -2766,6 +2834,102 @@ function renderCommsGrouped(data) {
     </table>`;
 }
 
+function renderCommsCases(data) {
+  const el = show('commsTable');
+  if (!data.length) {
+    el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
+    return;
+  }
+  const statusLabel = { "Contacted": t('comms.contacted'), "Responded": t('comms.responded'), "Uploaded": t('comms.uploaded'), "No Response": t('comms.no_response') };
+  const casesById = new Map(_casesData.map(cs => [cs.id, cs]));
+
+  // Group visible entries by case_id
+  const groups = new Map();
+  for (const c of data) {
+    if (!c.case_id) continue;
+    if (!groups.has(c.case_id)) groups.set(c.case_id, []);
+    groups.get(c.case_id).push(c);
+  }
+
+  const sorted = [...groups.entries()].sort(([idA], [idB]) => {
+    const a = casesById.get(idA), b = casesById.get(idB);
+    return (b?.opened_at || '').localeCompare(a?.opened_at || '');
+  });
+
+  const rows = sorted.map(([caseId, comms]) => {
+    const cs = casesById.get(caseId);
+    if (!cs) return '';
+    comms.sort((a, b) => b.contact_date.localeCompare(a.contact_date));
+    const isExpanded = _expandedCases.has(caseId);
+    const isClosed    = cs.status === 'Closed';
+    return `
+      <tr class="table-secondary" style="cursor:pointer" onclick="toggleCaseExpand(${caseId})">
+        <td colspan="6">
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+            <span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">
+              <i class="bi ${isClosed ? 'bi-folder-check' : 'bi-folder2-open'} me-1"></i>${caseStatusLabel(cs.status)}
+            </span>
+            <span class="fw-semibold">${esc(cs.org_title)}</span>
+            <span class="text-muted small">— ${esc(cs.subject)}</span>
+            <span class="badge bg-primary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
+            <span class="text-muted small ms-auto">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}${isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : ''}</span>
+            <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('comms.case_add_entry')}"
+                    data-org="${esc(cs.org_title)}" data-orgcode="${esc(cs.org_name)}" data-subject="${esc(cs.subject)}"
+                    onclick="event.stopPropagation();openCommModal(null,this.dataset.org,this.dataset.orgcode,${caseId},this.dataset.subject)">
+              <i class="bi bi-plus"></i>
+            </button>
+            ${isClosed
+              ? `<button class="btn btn-outline-success btn-sm py-0 px-2" title="${t('comms.case_reopen')}" onclick="event.stopPropagation();reopenCase(${caseId})"><i class="bi bi-arrow-counterclockwise"></i></button>`
+              : `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="${t('comms.case_close')}" onclick="event.stopPropagation();closeCase(${caseId})"><i class="bi bi-check2-circle"></i></button>`}
+          </div>
+        </td>
+      </tr>
+      ${comms.map(c => `
+        <tr style="${isExpanded ? '' : 'display:none'}" class="comm-hist-row">
+          <td class="text-muted small mono text-nowrap ps-4">${c.contact_date}</td>
+          <td class="small">${c.subject}</td>
+          <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
+          <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
+          <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
+          <td class="text-end text-nowrap">
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>`).join('')}`;
+  }).join('');
+
+  el.innerHTML = `
+    <table class="table table-hover table-sm align-middle mb-0">
+      <colgroup><col style="width:110px"><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
+      <thead><tr>
+        <th>${t('comms.col_date')}</th>
+        <th>${t('comms.col_subject')}</th>
+        <th>${t('comms.col_status')}</th>
+        <th>${t('comms.col_medium')}</th>
+        <th>${t('comms.col_notes')}</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function toggleCaseExpand(caseId) {
+  if (_expandedCases.has(caseId)) _expandedCases.delete(caseId);
+  else _expandedCases.add(caseId);
+  filterComms();
+}
+
+async function closeCase(caseId) {
+  await fetch(`${API_BASE}api/cases/${caseId}/close`, { method: 'POST', cache: 'no-store' });
+  await _reloadCasesAndComms();
+}
+
+async function reopenCase(caseId) {
+  await fetch(`${API_BASE}api/cases/${caseId}/reopen`, { method: 'POST', cache: 'no-store' });
+  await _reloadCasesAndComms();
+}
+
 const COMM_STATUS_ICON = {
   "Contacted":   "bi-envelope",
   "Responded":   "bi-reply",
@@ -2817,6 +2981,7 @@ function renderCommsTimeline(rows) {
             <span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'} ms-2" style="font-size:.68rem">
               <i class="bi ${COMM_STATUS_ICON[c.status] || 'bi-circle'} me-1"></i>${statusLabel[c.status] || c.status}
             </span>
+            ${c.case_status ? `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'} ms-1" style="font-size:.68rem">${caseStatusLabel(c.case_status)}</span>` : ''}
           </div>
           <div class="text-end text-nowrap">
             <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -2839,7 +3004,7 @@ function toggleOrgComms(orgTitle) {
   filterComms();
 }
 
-function openCommModal(id, prefillOrg = null, prefillOrgCode = null) {
+function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCaseId = null, prefillSubject = null) {
   if (!_commModal) _commModal = new bootstrap.Modal(document.getElementById('commModal'));
   show('commError').classList.add('d-none');
   _commOrgReset();
@@ -2850,6 +3015,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null) {
     if (!c) return;
     show('commModalTitle').textContent = t('comm_modal.edit_title');
     show('commId').value      = c.id;
+    show('commCaseId').value  = c.case_id || '';
     show('commDate').value    = c.contact_date;
     show('commSubject').value = c.subject;
     show('commStatus').value  = c.status;
@@ -2857,17 +3023,47 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null) {
     show('commNotes').value   = c.notes;
     _commOrgSet(c.org_name, c.org_title);
     onCommOrgInput(c.contact_person || '');
+    _renderCommCaseInfo(c.case_id);
   } else {
     show('commModalTitle').textContent = prefillOrg ? `${t('comm_modal.add_title')} — ${prefillOrg}` : t('comm_modal.add_title');
     show('commId').value      = '';
+    show('commCaseId').value  = prefillCaseId || '';
     show('commDate').value    = new Date().toISOString().slice(0, 10);
-    show('commSubject').value = '';
+    show('commSubject').value = prefillSubject || '';
     show('commStatus').value  = 'Contacted';
     show('commMedium').value  = '';
     show('commNotes').value   = '';
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(); }
+    _renderCommCaseInfo(prefillCaseId);
   }
   _commModal.show();
+}
+
+function _renderCommCaseInfo(caseId) {
+  const box = show('commCaseInfo');
+  if (!caseId) { box.classList.add('d-none'); return; }
+  const cs = _casesData.find(x => x.id === caseId);
+  if (!cs) { box.classList.add('d-none'); return; }
+  box.classList.remove('d-none');
+  box.dataset.caseId = caseId;
+  const isClosed = cs.status === 'Closed';
+  show('commCaseStatusBadge').className = 'badge ' + (CASE_STATUS_BADGE[cs.status] || 'bg-secondary');
+  show('commCaseStatusBadge').textContent = caseStatusLabel(cs.status);
+  show('commCaseInfoText').textContent = `${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
+    (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : '');
+  const btn = show('commCaseToggleBtn');
+  btn.textContent = isClosed ? t('comms.case_reopen') : t('comms.case_close');
+  btn.className = 'btn btn-sm py-0 px-2 ms-auto ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
+}
+
+async function _toggleCaseFromModal() {
+  const caseId = parseInt(show('commCaseInfo').dataset.caseId, 10);
+  if (!caseId) return;
+  const cs = _casesData.find(x => x.id === caseId);
+  const action = cs && cs.status === 'Closed' ? 'reopen' : 'close';
+  await fetch(`${API_BASE}api/cases/${caseId}/${action}`, { method: 'POST', cache: 'no-store' });
+  await _reloadCasesAndComms();
+  _renderCommCaseInfo(caseId);
 }
 
 function _resetCommContact() {
@@ -2976,6 +3172,7 @@ async function saveComm() {
     status:       show('commStatus').value,
     medium:       show('commMedium').value,
     notes:        show('commNotes').value.trim(),
+    case_id:      show('commCaseId').value || null,
     contact_person: (() => { const s = show('commContact'); return s.value ? s.options[s.selectedIndex].textContent : ''; })(),
   };
 
@@ -2996,6 +3193,8 @@ async function saveComm() {
     } else {
       _commsData.unshift(json);
     }
+    const casesResp = await fetch(API_BASE + 'api/cases').then(r => r.json());
+    _casesData = Array.isArray(casesResp) ? casesResp : _casesData;
     _commModal.hide();
     renderCommsSummary();
     filterComms();
@@ -3011,6 +3210,8 @@ async function deleteComm(id) {
   try {
     await fetch(`${API_BASE}api/communications/${id}/delete`, { method: 'DELETE', cache: 'no-store' });
     _commsData = _commsData.filter(c => c.id !== id);
+    const casesResp = await fetch(API_BASE + 'api/cases').then(r => r.json());
+    _casesData = Array.isArray(casesResp) ? casesResp : _casesData;
     renderCommsSummary();
     filterComms();
   } catch (e) {

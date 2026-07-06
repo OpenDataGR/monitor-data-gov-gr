@@ -13,7 +13,7 @@ import hashlib
 import io
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file
 from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, HealthCheck, PortalSnapshot, Communication, OrgContact
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact
 import config
 
 app = Flask(__name__)
@@ -41,6 +41,24 @@ with app.app_context():
         db.session.commit()
     if 'medium' not in _comm_cols:
         db.session.execute(text('ALTER TABLE communications ADD COLUMN medium VARCHAR(50)'))
+        db.session.commit()
+    if 'case_id' not in _comm_cols:
+        db.session.execute(text('ALTER TABLE communications ADD COLUMN case_id INTEGER'))
+        db.session.commit()
+        # Backfill: every pre-existing communication becomes its own case
+        for _c in Communication.query.filter(Communication.case_id.is_(None)).all():
+            _case = Case(
+                org_name=_c.org_name,
+                org_title=_c.org_title,
+                subject=_c.subject,
+                status="Closed" if _c.status == "Uploaded" else "Open",
+                opened_at=_c.created_at,
+                closed_at=_c.created_at if _c.status == "Uploaded" else None,
+                created_at=_c.created_at,
+            )
+            db.session.add(_case)
+            db.session.flush()
+            _c.case_id = _case.id
         db.session.commit()
     _contact_cols = [c['name'] for c in _insp.get_columns('org_contacts')]
     if 'contact_type' not in _contact_cols:
@@ -925,10 +943,24 @@ def communications_create():
     medium = (body.get("medium") or "").strip()
     if medium and medium not in VALID_MEDIUMS:
         return jsonify({"error": f"medium must be one of {sorted(VALID_MEDIUMS)}"}), 400
+    org_title = (body.get("org_title") or "").strip() or None
+
+    case_id = body.get("case_id")
+    if case_id:
+        case = Case.query.get_or_404(int(case_id))
+        if case.status == "Closed":  # a new entry implies the case is active again
+            case.status = "Open"
+            case.closed_at = None
+    else:
+        case = Case(org_name=org_name, org_title=org_title, subject=subject, status="Open")
+        db.session.add(case)
+        db.session.flush()
+
     comm = Communication(
+        case_id=case.id,
         contact_date=contact_date,
         org_name=org_name,
-        org_title=(body.get("org_title") or "").strip() or None,
+        org_title=org_title,
         subject=subject,
         status=status,
         notes=(body.get("notes") or "").strip() or None,
@@ -977,6 +1009,67 @@ def communications_delete(comm_id):
     return jsonify({"ok": True})
 
 
+# ── Cases ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/cases", methods=["GET"])
+def cases_list():
+    status_filter = (freq.args.get("status") or "").strip()
+    q = Case.query
+    if status_filter:
+        q = q.filter(Case.status == status_filter)
+    cases = q.order_by(Case.opened_at.desc()).all()
+    return jsonify([c.to_dict() for c in cases])
+
+
+@app.route("/api/cases/<int:case_id>", methods=["GET"])
+def case_detail(case_id):
+    case = Case.query.get_or_404(case_id)
+    return jsonify(case.to_dict(include_communications=True))
+
+
+@app.route("/api/cases/<int:case_id>", methods=["PATCH", "POST"])
+def case_update(case_id):
+    case = Case.query.get_or_404(case_id)
+    body = _decode_payload()
+    if "subject" in body:
+        subject = (body["subject"] or "").strip()
+        if not subject:
+            return jsonify({"error": "subject cannot be empty"}), 400
+        case.subject = subject
+    if "org_name" in body:
+        case.org_name = (body["org_name"] or "").strip()
+    if "org_title" in body:
+        case.org_title = (body["org_title"] or "").strip() or None
+    db.session.commit()
+    return jsonify(case.to_dict())
+
+
+@app.route("/api/cases/<int:case_id>/close", methods=["POST"])
+def case_close(case_id):
+    case = Case.query.get_or_404(case_id)
+    case.status = "Closed"
+    case.closed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.session.commit()
+    return jsonify(case.to_dict())
+
+
+@app.route("/api/cases/<int:case_id>/reopen", methods=["POST"])
+def case_reopen(case_id):
+    case = Case.query.get_or_404(case_id)
+    case.status = "Open"
+    case.closed_at = None
+    db.session.commit()
+    return jsonify(case.to_dict())
+
+
+@app.route("/api/cases/<int:case_id>/delete", methods=["GET", "DELETE", "POST"])
+def case_delete(case_id):
+    case = Case.query.get_or_404(case_id)
+    db.session.delete(case)  # cascades to its communications
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/communications/export", methods=["GET"])
 def communications_export():
     from openpyxl import Workbook
@@ -1001,10 +1094,10 @@ def communications_export():
     ws = wb.active
     ws.title = "Communications"
 
-    headers = ["Date", "Organization", "Subject", "Status", "Medium", "Notes", "Created At"]
+    headers = ["Date", "Organization", "Subject", "Status", "Medium", "Case Status", "Notes", "Created At"]
     header_fill = PatternFill("solid", fgColor="1E3A5F")
     header_font = Font(bold=True, color="FFFFFF")
-    col_widths  = [14, 36, 42, 16, 14, 48, 22]
+    col_widths  = [14, 36, 42, 16, 14, 14, 48, 22]
 
     for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
         cell = ws.cell(row=1, column=col_idx, value=header)
@@ -1021,11 +1114,12 @@ def communications_export():
         ws.cell(row=row_idx, column=3, value=r.subject)
         ws.cell(row=row_idx, column=4, value=r.status)
         ws.cell(row=row_idx, column=5, value=r.medium or "")
-        ws.cell(row=row_idx, column=6, value=r.notes or "")
-        ws.cell(row=row_idx, column=7, value=(
+        ws.cell(row=row_idx, column=6, value=r.case.status if r.case else "")
+        ws.cell(row=row_idx, column=7, value=r.notes or "")
+        ws.cell(row=row_idx, column=8, value=(
             r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else ""
         ))
-        for col_idx in range(1, 8):
+        for col_idx in range(1, 9):
             ws.cell(row=row_idx, column=col_idx).alignment = Alignment(wrap_text=True, vertical="top")
 
     buf = io.BytesIO()

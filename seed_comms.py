@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 from app import app
-from models import db, Communication
+from models import db, Communication, Case
 
 SAMPLES = [
     dict(contact_date="2026-01-14", org_name="ministry-of-finance",        org_title="Υπουργείο Οικονομικών",                   subject="Δεδομένα εκτέλεσης προϋπολογισμού 2025",          status="Uploaded",     medium="Email",      notes="Ζητήθηκαν μηνιαία αρχεία CSV. Ανέβηκαν εγκαίρως."),
@@ -29,6 +29,13 @@ with app.app_context():
         print(f"Already have {existing} records — skipping seed to avoid duplicates.")
     else:
         for s in SAMPLES:
-            db.session.add(Communication(**s))
+            is_closed = s["status"] == "Uploaded"
+            case = Case(
+                org_name=s["org_name"], org_title=s["org_title"], subject=s["subject"],
+                status="Closed" if is_closed else "Open",
+            )
+            db.session.add(case)
+            db.session.flush()
+            db.session.add(Communication(case_id=case.id, **s))
         db.session.commit()
-        print(f"Inserted {len(SAMPLES)} sample communication records.")
+        print(f"Inserted {len(SAMPLES)} sample communication records (each opening its own case).")

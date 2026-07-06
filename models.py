@@ -50,10 +50,46 @@ class PortalSnapshot(db.Model):
         }
 
 
+class Case(db.Model):
+    __tablename__ = "cases"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    org_name   = db.Column(db.String(200), nullable=False)
+    org_title  = db.Column(db.String(200))
+    subject    = db.Column(db.String(500), nullable=False)
+    status     = db.Column(db.String(20), nullable=False, default="Open")  # Open | Closed
+    opened_at  = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    closed_at  = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+
+    communications = db.relationship(
+        "Communication", backref="case", order_by="Communication.contact_date",
+        cascade="all, delete-orphan",
+    )
+
+    def to_dict(self, include_communications=False):
+        entries = sorted(self.communications, key=lambda c: (c.contact_date, c.created_at))
+        d = {
+            "id":          self.id,
+            "org_name":    self.org_name,
+            "org_title":   self.org_title or self.org_name,
+            "subject":     self.subject,
+            "status":      self.status,
+            "opened_at":   self.opened_at.isoformat() if self.opened_at else None,
+            "closed_at":   self.closed_at.isoformat() if self.closed_at else None,
+            "entry_count": len(entries),
+            "last_update": entries[-1].contact_date if entries else None,
+        }
+        if include_communications:
+            d["communications"] = [c.to_dict() for c in entries]
+        return d
+
+
 class Communication(db.Model):
     __tablename__ = "communications"
 
     id           = db.Column(db.Integer, primary_key=True)
+    case_id      = db.Column(db.Integer, db.ForeignKey("cases.id"), index=True)
     created_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
     contact_date = db.Column(db.String(10), nullable=False)   # ISO date YYYY-MM-DD
     org_name     = db.Column(db.String(200), nullable=False)  # slug or free text
@@ -67,6 +103,8 @@ class Communication(db.Model):
     def to_dict(self):
         return {
             "id":           self.id,
+            "case_id":      self.case_id,
+            "case_status":  self.case.status if self.case else None,
             "created_at":   self.created_at.isoformat(),
             "contact_date": self.contact_date,
             "org_name":     self.org_name,
