@@ -32,8 +32,9 @@
     .icon-box { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .comm-timeline { position: relative; }
     .comm-timeline::before { content: ''; position: absolute; left: 15px; top: 4px; bottom: 4px; width: 2px; background: #e9ecef; }
-    .comm-timeline-day { position: relative; padding: 1rem 0 .35rem 40px; font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #6c757d; }
+    .comm-timeline-day { position: relative; padding: 1rem 0 .35rem 40px; font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #6c757d; border-radius: 6px; }
     .comm-timeline-day:first-child { padding-top: 0; }
+    .comm-timeline-day:hover { background: rgba(0,0,0,.025); }
     .comm-timeline-item { position: relative; padding: .6rem .75rem .6rem 40px; border-radius: 8px; }
     .comm-timeline-item:hover { background: rgba(0,0,0,.025); }
     .comm-timeline-item .comm-dot { position: absolute; left: 10px; top: 1.1rem; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 4px #f0f2f5; }
@@ -2576,6 +2577,8 @@ let _commsSortDir   = 'desc';
 let _commsViewMode  = 'cases';
 let _expandedOrgs   = new Set();
 let _expandedCases  = new Set();
+let _expandedTimelineDays = new Set();
+let _timelineDaysInitialized = false;
 
 const STATUS_BADGE = {
   "Initial Contact":      "bg-primary",
@@ -3001,38 +3004,60 @@ function renderCommsTimeline(rows) {
     return d.toLocaleDateString(_lang === 'el' ? 'el-GR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   };
 
-  let html = '<div class="comm-timeline">';
-  let lastDate = null;
+  if (!_timelineDaysInitialized) {
+    _expandedTimelineDays.add(todayIso);
+    _timelineDaysInitialized = true;
+  }
+
+  // Group entries by day, preserving the newest-first order already established above
+  const dayGroups = new Map();
   for (const c of sorted) {
-    if (c.contact_date !== lastDate) {
-      html += `<div class="comm-timeline-day">${dayLabel(c.contact_date)}</div>`;
-      lastDate = c.contact_date;
-    }
+    if (!dayGroups.has(c.contact_date)) dayGroups.set(c.contact_date, []);
+    dayGroups.get(c.contact_date).push(c);
+  }
+
+  let html = '<div class="comm-timeline">';
+  for (const [day, items] of dayGroups) {
+    const isExpanded = _expandedTimelineDays.has(day);
     html += `
-      <div class="comm-timeline-item">
-        <span class="comm-dot" style="background:${COMM_STATUS_DOT[c.status] || '#6c757d'}"></span>
-        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
-          <div>
-            <span class="fw-semibold small">${esc(c.org_title)}</span>
-            <span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'} ms-2" style="font-size:.68rem">
-              <i class="bi ${COMM_STATUS_ICON[c.status] || 'bi-circle'} me-1"></i>${statusLabel[c.status] || c.status}
-            </span>
-            ${caseBadgeHtml(c, 'ms-1')}
-          </div>
-          <div class="text-end text-nowrap">
-            ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-            <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
-          </div>
-        </div>
-        <div class="small mt-1">${esc(c.subject)}</div>
-        ${c.contact_person ? `<div class="text-muted" style="font-size:.72rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>` : ''}
-        ${c.medium ? `<div class="text-muted" style="font-size:.72rem"><i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}</div>` : ''}
-        ${c.notes ? `<div class="text-muted small mt-1">${esc(c.notes)}</div>` : ''}
+      <div class="comm-timeline-day" style="cursor:pointer" data-day="${day}" onclick="toggleTimelineDay(this.dataset.day)">
+        <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} me-1" style="font-size:.75rem"></i>${dayLabel(day)}
+        <span class="badge bg-secondary rounded-pill ms-1" style="font-size:.65rem">${items.length}</span>
       </div>`;
+    if (!isExpanded) continue;
+    for (const c of items) {
+      html += `
+        <div class="comm-timeline-item">
+          <span class="comm-dot" style="background:${COMM_STATUS_DOT[c.status] || '#6c757d'}"></span>
+          <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+            <div>
+              <span class="fw-semibold small">${esc(c.org_title)}</span>
+              <span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'} ms-2" style="font-size:.68rem">
+                <i class="bi ${COMM_STATUS_ICON[c.status] || 'bi-circle'} me-1"></i>${statusLabel[c.status] || c.status}
+              </span>
+              ${caseBadgeHtml(c, 'ms-1')}
+            </div>
+            <div class="text-end text-nowrap">
+              ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
+              <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
+            </div>
+          </div>
+          <div class="small mt-1">${esc(c.subject)}</div>
+          ${c.contact_person ? `<div class="text-muted" style="font-size:.72rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>` : ''}
+          ${c.medium ? `<div class="text-muted" style="font-size:.72rem"><i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}</div>` : ''}
+          ${c.notes ? `<div class="text-muted small mt-1">${esc(c.notes)}</div>` : ''}
+        </div>`;
+    }
   }
   html += '</div>';
   el.innerHTML = html;
+}
+
+function toggleTimelineDay(day) {
+  if (_expandedTimelineDays.has(day)) _expandedTimelineDays.delete(day);
+  else _expandedTimelineDays.add(day);
+  filterComms();
 }
 
 function toggleOrgComms(orgTitle) {
