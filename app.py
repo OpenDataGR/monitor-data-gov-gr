@@ -947,6 +947,8 @@ def communications_create():
 
     case_id = body.get("case_id")
     if case_id:
+        if status == "Initial Contact":
+            return jsonify({"error": "Initial Contact is reserved for the entry that opens a case"}), 400
         case = Case.query.get_or_404(int(case_id))
         if case.status == "Closed":  # a new entry implies the case is active again
             case.status = "Open"

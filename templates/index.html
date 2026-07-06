@@ -674,7 +674,7 @@
           <div class="col-md-4">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.status">Status</label>
             <select id="commStatus" class="form-select form-select-sm">
-              <option value="Initial Contact" data-i18n="comms.initial_contact">Initial Contact</option>
+              <option id="commStatusInitialOption" value="Initial Contact" data-i18n="comms.initial_contact">Initial Contact</option>
               <option value="Intermediate Contact" data-i18n="comms.intermediate_contact">Intermediate Contact</option>
               <option value="Positive Response" data-i18n="comms.positive_response">Positive Response</option>
               <option value="Negative Response" data-i18n="comms.negative_response">Negative Response</option>
@@ -3038,6 +3038,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commSubject').value = c.subject;
     show('commStatus').value  = c.status;
     show('commStatus').disabled = false;
+    show('commStatusInitialOption').hidden = false;
     show('commMedium').value  = c.medium || '';
     show('commNotes').value   = c.notes;
     _commOrgSet(c.org_name, c.org_title);
@@ -3049,8 +3050,9 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commCaseId').value  = prefillCaseId || '';
     show('commDate').value    = new Date().toISOString().slice(0, 10);
     show('commSubject').value = prefillSubject || '';
-    show('commStatus').value  = 'Initial Contact';
     show('commStatus').disabled = !prefillCaseId;  // a brand-new case always opens as Initial Contact
+    show('commStatusInitialOption').hidden = !!prefillCaseId;  // reserved for the entry that opens a case
+    show('commStatus').value  = prefillCaseId ? 'Intermediate Contact' : 'Initial Contact';
     show('commMedium').value  = '';
     show('commNotes').value   = '';
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(); }
