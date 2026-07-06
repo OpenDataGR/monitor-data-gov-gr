@@ -463,8 +463,35 @@ def _background_loop():
             last_dataset_growth_refresh = time.time()
 
 
-# Only start the background thread once (guard against Flask dev-reloader fork)
-if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+_singleton_lock_file = None  # kept open for the process lifetime; closing it releases the lock
+
+
+def _try_acquire_singleton_lock() -> bool:
+    """Best-effort cross-process lock so only one worker process runs the background
+    loop. Under gunicorn every worker independently imports this module, so the
+    debug/WERKZEUG_RUN_MAIN check alone isn't enough - it only guards against
+    Flask's dev-server reloader fork, not multiple production worker processes."""
+    global _singleton_lock_file
+    lock_path = Path(__file__).parent / "instance" / "background_loop.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        lock_file = open(lock_path, "w")
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _singleton_lock_file = lock_file  # keep the fd open; garbage collection would release the lock
+        return True
+    except OSError:
+        return False
+
+
+# Only start the background thread in the single process that wins the lock. This
+# also naturally excludes the Flask dev-reloader's watcher process, since the
+# debug/WERKZEUG_RUN_MAIN check still runs first.
+if (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true") and _try_acquire_singleton_lock():
     threading.Thread(target=_background_loop, daemon=True).start()
 
 
