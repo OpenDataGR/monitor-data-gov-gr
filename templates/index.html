@@ -1689,7 +1689,7 @@ async function loadStatsTab() {
 
   // History chart
   try {
-    const history = await fetch(API_BASE + 'api/stats/history?days=30').then(r => r.json());
+    const history = await fetch(API_BASE + 'api/stats/history?days=365&step=week').then(r => r.json());
     const ctx     = show('statsChart').getContext('2d');
     if (_statsChart) _statsChart.destroy();
 

@@ -643,11 +643,18 @@ def org_datasets_since():
 @app.route("/api/stats/history")
 def stats_history():
     days  = int(freq.args.get("days", 30))
+    step  = (freq.args.get("step") or "").strip().lower()  # "" | "week"
     since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     rows  = (PortalSnapshot.query
              .filter(PortalSnapshot.timestamp >= since)
              .order_by(PortalSnapshot.timestamp)
              .all())
+    if step == "week":
+        # keep the most recent snapshot seen in each ISO week (rows are ascending)
+        weekly = {}
+        for r in rows:
+            weekly[r.timestamp.isocalendar()[:2]] = r
+        rows = [weekly[k] for k in sorted(weekly)]
     return jsonify([r.to_dict() for r in rows])
 
 
