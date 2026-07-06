@@ -652,7 +652,8 @@
             </div>
             <div id="commOrgSelected" class="mt-1 d-none">
               <span class="badge bg-secondary" id="commOrgBadge"></span>
-              <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted" onclick="_commOrgClear()" title="Clear">&times;</button>
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted" id="commOrgClearBtn" onclick="_commOrgClear()" title="Clear">&times;</button>
+              <span class="text-muted small d-none" id="commOrgLockedHint" data-i18n="comm_modal.org_locked">(fixed to this case's organization)</span>
             </div>
           </div>
           <div class="col-12 d-none" id="commContactSection">
@@ -1028,6 +1029,7 @@ const TRANSLATIONS = {
     'comm_modal.date': 'Date',
     'comm_modal.org': 'Organization',
     'comm_modal.org_ph': 'Organization name',
+    'comm_modal.org_locked': '(fixed to this case\'s organization)',
     'comm_modal.contact': 'Contact Person',
     'comm_modal.contact_ph': '— select contact —',
     'comm_modal.subject': 'Subject',
@@ -1305,6 +1307,7 @@ const TRANSLATIONS = {
     'comm_modal.date': 'Ημερομηνία',
     'comm_modal.org': 'Οργανισμός',
     'comm_modal.org_ph': 'Όνομα οργανισμού',
+    'comm_modal.org_locked': '(σταθερός οργανισμός για αυτή την υπόθεση)',
     'comm_modal.contact': 'Άτομο Επαφής',
     'comm_modal.contact_ph': '— επιλογή επαφής —',
     'comm_modal.subject': 'Θέμα',
@@ -3053,6 +3056,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commMedium').value  = c.medium || '';
     show('commNotes').value   = c.notes;
     _commOrgSet(c.org_name, c.org_title);
+    _setOrgLocked(false);
     onCommOrgInput(c.contact_person || '');
     _renderCommCaseInfo(c.case_id, true);
   } else {
@@ -3067,6 +3071,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commMedium').value  = prefillMedium || '';
     show('commNotes').value   = '';
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(prefillContactPerson || ''); }
+    _setOrgLocked(!!prefillCaseId);  // a follow-up stays tied to its case's organization
     _renderCommCaseInfo(prefillCaseId);
   }
   _onCommStatusChange();
@@ -4483,6 +4488,12 @@ function _commOrgReset() {
   document.getElementById('commOrgDropdown').classList.add('d-none');
   show('commOrgSelected').classList.add('d-none');
   show('commOrgSearch').classList.remove('d-none');
+  _setOrgLocked(false);
+}
+
+function _setOrgLocked(locked) {
+  show('commOrgClearBtn').classList.toggle('d-none', locked);
+  show('commOrgLockedHint').classList.toggle('d-none', !locked);
 }
 
 async function deletePmContactRecord(contactId, username) {
