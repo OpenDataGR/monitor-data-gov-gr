@@ -998,6 +998,9 @@ const TRANSLATIONS = {
     'comms.case_closed': 'Closed',
     'comms.open_cases': 'Open Cases',
     'comms.closed_cases': 'Closed Cases',
+    'comms.stale_cases': 'Stale (14+ days)',
+    'comms.case_stale': 'No Response (14+d)',
+    'comms.case_stale_hint': 'No activity for 14+ days — treated as no response until a new communication is logged.',
     'comms.case_opened': 'Opened',
     'comms.case_closed_on': 'Closed',
     'comms.case_add_entry': 'Add entry to this case',
@@ -1272,6 +1275,9 @@ const TRANSLATIONS = {
     'comms.case_closed': 'Κλειστή',
     'comms.open_cases': 'Ανοιχτές Υποθέσεις',
     'comms.closed_cases': 'Κλειστές Υποθέσεις',
+    'comms.stale_cases': 'Χωρίς Ενημέρωση (14+ ημέρες)',
+    'comms.case_stale': 'Χωρίς Απάντηση (14+η)',
+    'comms.case_stale_hint': 'Καμία δραστηριότητα για 14+ ημέρες — θεωρείται χωρίς απάντηση μέχρι νέα καταχώρηση.',
     'comms.case_opened': 'Άνοιξε',
     'comms.case_closed_on': 'Έκλεισε',
     'comms.case_add_entry': 'Προσθήκη καταχώρησης σε αυτή την υπόθεση',
@@ -2650,10 +2656,12 @@ function renderCommsSummary() {
   const total = _commsData.length;
   const openCases   = _casesData.filter(c => c.status === 'Open').length;
   const closedCases = _casesData.filter(c => c.status === 'Closed').length;
+  const staleCases  = _casesData.filter(c => c.is_stale).length;
 
   const CARDS = [
     { label: t('comms.total'),       value: total,                  bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
     { label: t('comms.open_cases'),   value: openCases,             bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-folder2-open" },
+    { label: t('comms.stale_cases'),  value: staleCases,            bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-hourglass-split" },
     { label: t('comms.closed_cases'), value: closedCases,           bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-folder-check" },
     { label: t('comms.initial_contact'),      value: counts["Initial Contact"],      bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-envelope" },
     { label: t('comms.intermediate_contact'), value: counts["Intermediate Contact"], bg: "bg-info bg-opacity-10",      text: "text-info",      icon: "bi-reply" },
@@ -2887,6 +2895,7 @@ function renderCommsCases(data) {
             <span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">
               <i class="bi ${isClosed ? 'bi-folder-check' : 'bi-folder2-open'} me-1"></i>${caseStatusLabel(cs.status)}
             </span>
+            ${cs.is_stale ? `<span class="badge bg-secondary" style="font-size:.7rem" title="${t('comms.case_stale_hint')}"><i class="bi bi-hourglass-split me-1"></i>${t('comms.case_stale')}</span>` : ''}
             <span class="fw-semibold">${esc(cs.org_title)}</span>
             <span class="text-muted small">— ${esc(cs.subject)}</span>
             <span class="badge bg-primary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
