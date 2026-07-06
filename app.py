@@ -13,7 +13,7 @@ import hashlib
 import io
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file
 from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache
 import config
 
 app = Flask(__name__)
@@ -669,11 +669,31 @@ def stats_history():
 _dataset_growth_cache: dict = {"weeks": None, "fetched_at": None, "enriching": False}
 _DATASET_GROWTH_REFRESH_INTERVAL = 24 * 3600  # rebuild once a day
 
+with app.app_context():
+    # Warm the in-memory cache from the DB so a fresh process serves the last known
+    # series immediately instead of blocking on a full CKAN re-pagination.
+    _row = DatasetGrowthCache.query.get(1)
+    if _row:
+        _dataset_growth_cache["weeks"]      = _row.weeks()
+        _dataset_growth_cache["fetched_at"] = _row.fetched_at.isoformat()
+
+
+def _save_dataset_growth(weeks: list) -> None:
+    with app.app_context():
+        row = DatasetGrowthCache.query.get(1)
+        if not row:
+            row = DatasetGrowthCache(id=1, weeks_json="[]")
+            db.session.add(row)
+        row.weeks_json = json.dumps(weeks)
+        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
 
 def _do_refresh_dataset_growth() -> None:
     """Reconstruct weekly dataset-count history straight from CKAN's metadata_created
     dates, since our own PortalSnapshot history only covers the time this app has
-    actually been running (often far less than the 12 months we want to chart)."""
+    actually been running (often far less than the 12 months we want to chart).
+    Persists the result so the next process start can serve it without delay."""
     try:
         created_dates = []
         start = 0
@@ -719,6 +739,7 @@ def _do_refresh_dataset_growth() -> None:
 
         _dataset_growth_cache["weeks"]      = weeks
         _dataset_growth_cache["fetched_at"] = datetime.now(timezone.utc).isoformat()
+        _save_dataset_growth(weeks)
     except Exception as exc:
         print(f"[dataset-growth] error: {exc}")
     finally:

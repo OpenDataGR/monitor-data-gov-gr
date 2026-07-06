@@ -50,6 +50,19 @@ class PortalSnapshot(db.Model):
         }
 
 
+class DatasetGrowthCache(db.Model):
+    """Persists the last computed weekly dataset-growth series (see app._do_refresh_dataset_growth)
+    so a fresh process/restart can serve it immediately instead of re-paginating CKAN from scratch."""
+    __tablename__ = "dataset_growth_cache"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    weeks_json = db.Column(db.Text, nullable=False)
+    fetched_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def weeks(self):
+        return json.loads(self.weeks_json)
+
+
 STALE_CASE_DAYS = 14  # an open case idle this many days is flagged as stale (treated as "No Response")
 
 
