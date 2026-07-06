@@ -625,10 +625,13 @@
         <input type="hidden" id="commCaseId">
         <div class="row g-3">
           <div class="col-12 d-none" id="commCaseInfo">
-            <div class="d-flex align-items-center gap-2 p-2 rounded-3 bg-light border">
+            <div class="d-flex align-items-center gap-2 p-2 rounded-3 bg-light border flex-wrap">
               <span class="badge" id="commCaseStatusBadge"></span>
               <span class="small text-muted" id="commCaseInfoText"></span>
-              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 ms-auto" id="commCaseToggleBtn" onclick="_toggleCaseFromModal()"></button>
+              <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 ms-auto d-none" id="commCaseFollowupBtn" onclick="_addFollowupFromModal()">
+                <i class="bi bi-plus-lg me-1"></i><span data-i18n="comms.case_add_followup">Add Follow-up</span>
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="commCaseToggleBtn" onclick="_toggleCaseFromModal()"></button>
             </div>
           </div>
           <div class="col-md-4">
@@ -997,6 +1000,7 @@ const TRANSLATIONS = {
     'comms.case_opened': 'Opened',
     'comms.case_closed_on': 'Closed',
     'comms.case_add_entry': 'Add entry to this case',
+    'comms.case_add_followup': 'Add Follow-up',
     'comms.case_close': 'Close Case',
     'comms.case_reopen': 'Reopen Case',
     'comms.case_col': 'Case',
@@ -1269,6 +1273,7 @@ const TRANSLATIONS = {
     'comms.case_opened': 'Άνοιξε',
     'comms.case_closed_on': 'Έκλεισε',
     'comms.case_add_entry': 'Προσθήκη καταχώρησης σε αυτή την υπόθεση',
+    'comms.case_add_followup': 'Προσθήκη Επόμενου Βήματος',
     'comms.case_close': 'Κλείσιμο Υπόθεσης',
     'comms.case_reopen': 'Επανάνοιγμα Υπόθεσης',
     'comms.case_col': 'Υπόθεση',
@@ -3033,7 +3038,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commNotes').value   = c.notes;
     _commOrgSet(c.org_name, c.org_title);
     onCommOrgInput(c.contact_person || '');
-    _renderCommCaseInfo(c.case_id);
+    _renderCommCaseInfo(c.case_id, true);
   } else {
     show('commModalTitle').textContent = prefillOrg ? `${t('comm_modal.add_title')} — ${prefillOrg}` : t('comm_modal.add_title');
     show('commId').value      = '';
@@ -3050,18 +3055,20 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
   _commModal.show();
 }
 
-function _renderCommCaseInfo(caseId) {
+function _renderCommCaseInfo(caseId, isEdit = false) {
   const box = show('commCaseInfo');
   if (!caseId) { box.classList.add('d-none'); return; }
   const cs = _casesData.find(x => x.id === caseId);
   if (!cs) { box.classList.add('d-none'); return; }
   box.classList.remove('d-none');
   box.dataset.caseId = caseId;
+  box.dataset.isEdit = isEdit ? '1' : '';
   const isClosed = cs.status === 'Closed';
   show('commCaseStatusBadge').className = 'badge ' + (CASE_STATUS_BADGE[cs.status] || 'bg-secondary');
   show('commCaseStatusBadge').textContent = caseStatusLabel(cs.status);
   show('commCaseInfoText').textContent = `${t('comms.case_col')} #${cs.id} · ${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
     (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : '');
+  show('commCaseFollowupBtn').classList.toggle('d-none', !isEdit);
   const btn = show('commCaseToggleBtn');
   btn.textContent = isClosed ? t('comms.case_reopen') : t('comms.case_close');
   btn.className = 'btn btn-sm py-0 px-2 ms-auto ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
@@ -3074,7 +3081,15 @@ async function _toggleCaseFromModal() {
   const action = cs && cs.status === 'Closed' ? 'reopen' : 'close';
   await fetch(`${API_BASE}api/cases/${caseId}/${action}`, { method: 'POST', cache: 'no-store' });
   await _reloadCasesAndComms();
-  _renderCommCaseInfo(caseId);
+  _renderCommCaseInfo(caseId, show('commCaseInfo').dataset.isEdit === '1');
+}
+
+function _addFollowupFromModal() {
+  const caseId = parseInt(show('commCaseInfo').dataset.caseId, 10);
+  if (!caseId) return;
+  const cs = _casesData.find(x => x.id === caseId);
+  if (!cs) return;
+  openCommModal(null, cs.org_title, cs.org_name, caseId, cs.subject);
 }
 
 function _resetCommContact() {
