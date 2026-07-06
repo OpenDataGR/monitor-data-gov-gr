@@ -3025,7 +3025,7 @@ function toggleOrgComms(orgTitle) {
   filterComms();
 }
 
-function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCaseId = null, prefillSubject = null) {
+function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCaseId = null, prefillSubject = null, prefillMedium = null, prefillContactPerson = null) {
   if (!_commModal) _commModal = new bootstrap.Modal(document.getElementById('commModal'));
   show('commError').classList.add('d-none');
   _commOrgReset();
@@ -3056,9 +3056,9 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commStatus').disabled = !prefillCaseId;  // a brand-new case always opens as Initial Contact
     show('commStatusInitialOption').hidden = !!prefillCaseId;  // reserved for the entry that opens a case
     show('commStatus').value  = prefillCaseId ? 'Intermediate Contact' : 'Initial Contact';
-    show('commMedium').value  = '';
+    show('commMedium').value  = prefillMedium || '';
     show('commNotes').value   = '';
-    if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(); }
+    if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(prefillContactPerson || ''); }
     _renderCommCaseInfo(prefillCaseId);
   }
   _onCommStatusChange();
@@ -3109,7 +3109,16 @@ function addFollowupForComm(commId) {
 function openFollowupForCase(caseId) {
   const cs = _casesData.find(x => x.id === caseId);
   if (!cs) return;
-  openCommModal(null, cs.org_title, cs.org_name, caseId, cs.subject);
+  // most recent entry in the case (same ordering as Case.to_dict on the backend)
+  const entries = _commsData.filter(c => c.case_id === caseId).sort((a, b) =>
+    a.contact_date !== b.contact_date
+      ? a.contact_date.localeCompare(b.contact_date)
+      : new Date(a.created_at) - new Date(b.created_at));
+  const last = entries[entries.length - 1];
+  openCommModal(null, cs.org_title, cs.org_name, caseId,
+    (last && last.subject) || cs.subject,
+    last ? last.medium : '',
+    last ? last.contact_person : '');
 }
 
 function _onCommStatusChange() {
