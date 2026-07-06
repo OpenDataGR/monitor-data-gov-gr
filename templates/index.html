@@ -1981,6 +1981,14 @@ async function loadTrafficTab() {
   }
 }
 
+function _trafficDayLabel(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const locale  = _lang === 'el' ? 'el-GR' : 'en-GB';
+  const weekday = d.toLocaleDateString(locale, { weekday: 'short' });
+  const dm      = d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
+  return `${weekday} ${dm}`;
+}
+
 function renderTrafficChart(history) {
   const ctx = show('trafficChart').getContext('2d');
   if (_trafficChart) _trafficChart.destroy();
@@ -2021,7 +2029,7 @@ function renderTrafficChart(history) {
 
   _trafficChart = new Chart(ctx, {
     type: 'line',
-    data: { labels: history.map(d => d.date), datasets },
+    data: { labels: history.map(d => _trafficDayLabel(d.date)), datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
