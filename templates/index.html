@@ -650,7 +650,8 @@
           </div>
           <div class="col-12">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.subject">Subject</label> <span class="text-danger">*</span>
-            <input type="text" id="commSubject" class="form-control form-control-sm" placeholder="Dataset requested or topic" data-i18n-ph="comm_modal.subject_ph">
+            <input type="text" id="commSubject" class="form-control form-control-sm" placeholder="Dataset requested or topic" data-i18n-ph="comm_modal.subject_ph" list="commSubjectDatalist" autocomplete="off">
+            <datalist id="commSubjectDatalist"></datalist>
           </div>
           <div class="col-md-4">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.status">Status</label>
@@ -2549,9 +2550,25 @@ async function loadComms() {
     if (!_portalMembersCache) loadContactsTab();
     renderCommsSummary();
     filterComms();
+    _refreshCommSubjectDatalist();
   } catch (e) {
     show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${t('error')}: ${e.message}</div>`;
   }
+}
+
+function _refreshCommSubjectDatalist() {
+  const list = document.getElementById('commSubjectDatalist');
+  if (!list) return;
+  const seen = new Set();
+  const subjects = [];
+  for (const c of [..._commsData].sort((a, b) => b.contact_date.localeCompare(a.contact_date))) {
+    const subj = (c.subject || '').trim();
+    const key = subj.toLowerCase();
+    if (!subj || seen.has(key)) continue;
+    seen.add(key);
+    subjects.push(subj);
+  }
+  list.innerHTML = subjects.map(s => `<option value="${esc(s)}">`).join('');
 }
 
 function renderCommsSummary() {
@@ -2982,6 +2999,7 @@ async function saveComm() {
     _commModal.hide();
     renderCommsSummary();
     filterComms();
+    _refreshCommSubjectDatalist();
   } catch (e) {
     err.textContent = 'Network error: ' + e.message;
     err.classList.remove('d-none');
