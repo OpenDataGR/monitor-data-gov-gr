@@ -1699,6 +1699,9 @@ async function loadStatsTab() {
       return;
     }
 
+    const rangeEnd   = new Date();
+    const rangeStart = new Date(rangeEnd.getTime() - 365 * 24 * 3600 * 1000);
+
     _statsChart = new Chart(ctx, {
       type: 'line',
       data: {
@@ -1706,12 +1709,12 @@ async function loadStatsTab() {
           {
             label: t('stats.col_datasets'),
             data:  history.filter(d => d.total_datasets).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.total_datasets })),
-            borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.3, pointRadius: 0,
+            borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.3, pointRadius: 2, pointHoverRadius: 4,
           },
           {
             label: t('stats.col_resources'),
             data:  history.filter(d => d.total_resources).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.total_resources })),
-            borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.08)', fill: true, tension: 0.3, pointRadius: 0,
+            borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.08)', fill: true, tension: 0.3, pointRadius: 2, pointHoverRadius: 4,
           }
         ]
       },
@@ -1719,7 +1722,12 @@ async function loadStatsTab() {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { position: 'bottom' } },
         scales: {
-          x: { type: 'time', time: { tooltipFormat: 'dd/MM' }, grid: { color: '#f0f0f0' } },
+          x: {
+            type: 'time',
+            time: { unit: 'week', tooltipFormat: 'dd/MM/yyyy', displayFormats: { week: 'dd/MM' } },
+            min: rangeStart, max: rangeEnd,
+            grid: { color: '#f0f0f0' },
+          },
           y: { min: 0, grid: { color: '#f0f0f0' } }
         }
       }
