@@ -72,14 +72,18 @@ class Case(db.Model):
 
     def to_dict(self, include_communications=False):
         entries = sorted(self.communications, key=lambda c: (c.contact_date, c.created_at))
-        last_update = entries[-1].contact_date if entries else None
+        last_entry = entries[-1] if entries else None
+        last_update = last_entry.contact_date if last_entry else None
         is_stale = False
-        if self.status == "Open" and last_update:
-            try:
-                idle_days = (datetime.now(timezone.utc).date() - datetime.strptime(last_update, "%Y-%m-%d").date()).days
-                is_stale = idle_days >= STALE_CASE_DAYS
-            except ValueError:
-                pass
+        if self.status == "Open" and last_entry:
+            if last_entry.status == "No Response":
+                is_stale = True  # the latest logged attempt itself went unanswered
+            else:
+                try:
+                    idle_days = (datetime.now(timezone.utc).date() - datetime.strptime(last_update, "%Y-%m-%d").date()).days
+                    is_stale = idle_days >= STALE_CASE_DAYS
+                except ValueError:
+                    pass
         d = {
             "id":          self.id,
             "org_name":    self.org_name,
