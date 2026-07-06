@@ -2761,6 +2761,7 @@ function renderCommsTable(rows) {
             <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
             <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
             <td class="text-end text-nowrap">
+              ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
               <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
               <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
             </td>
@@ -2824,6 +2825,7 @@ function renderCommsGrouped(data) {
           <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
           <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
           <td class="text-end text-nowrap">
+            ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
             <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
             <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
           </td>
@@ -2905,6 +2907,7 @@ function renderCommsCases(data) {
           <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
           <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
           <td class="text-end text-nowrap">
+            ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
             <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
             <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
           </td>
@@ -2998,6 +3001,7 @@ function renderCommsTimeline(rows) {
             ${c.case_status ? `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'} ms-1" style="font-size:.68rem" title="${t('comms.case_col')} #${c.case_id}">${caseStatusLabel(c.case_status)}</span>` : ''}
           </div>
           <div class="text-end text-nowrap">
+            ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
             <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
             <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
           </div>
@@ -3087,6 +3091,16 @@ async function _toggleCaseFromModal() {
 function _addFollowupFromModal() {
   const caseId = parseInt(show('commCaseInfo').dataset.caseId, 10);
   if (!caseId) return;
+  openFollowupForCase(caseId);
+}
+
+function addFollowupForComm(commId) {
+  const c = _commsData.find(x => x.id === commId);
+  if (!c || !c.case_id) return;
+  openFollowupForCase(c.case_id);
+}
+
+function openFollowupForCase(caseId) {
   const cs = _casesData.find(x => x.id === caseId);
   if (!cs) return;
   openCommModal(null, cs.org_title, cs.org_name, caseId, cs.subject);
