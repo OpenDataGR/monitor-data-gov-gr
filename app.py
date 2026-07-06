@@ -950,7 +950,10 @@ def communications_create():
         if status == "Initial Contact":
             return jsonify({"error": "Initial Contact is reserved for the entry that opens a case"}), 400
         case = Case.query.get_or_404(int(case_id))
-        if case.status == "Closed":  # a new entry implies the case is active again
+        if status in ("Positive Response", "Negative Response"):  # a resolution closes the case
+            case.status = "Closed"
+            case.closed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        elif case.status == "Closed":  # any other new entry implies the case is active again
             case.status = "Open"
             case.closed_at = None
     else:

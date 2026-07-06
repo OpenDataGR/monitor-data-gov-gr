@@ -673,13 +673,14 @@
           </div>
           <div class="col-md-4">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.status">Status</label>
-            <select id="commStatus" class="form-select form-select-sm">
+            <select id="commStatus" class="form-select form-select-sm" onchange="_onCommStatusChange()">
               <option id="commStatusInitialOption" value="Initial Contact" data-i18n="comms.initial_contact">Initial Contact</option>
               <option value="Intermediate Contact" data-i18n="comms.intermediate_contact">Intermediate Contact</option>
               <option value="Positive Response" data-i18n="comms.positive_response">Positive Response</option>
               <option value="Negative Response" data-i18n="comms.negative_response">Negative Response</option>
               <option value="No Response" data-i18n="comms.no_response">No Response</option>
             </select>
+            <div class="small text-muted mt-1 d-none" id="commStatusCloseHint"><i class="bi bi-info-circle me-1"></i><span data-i18n="comm_modal.status_closes_case">This will close the case.</span></div>
           </div>
           <div class="col-md-4">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.medium">Medium</label>
@@ -1031,6 +1032,7 @@ const TRANSLATIONS = {
     'comm_modal.status': 'Status',
     'comm_modal.medium': 'Medium',
     'comm_modal.medium_ph': '— select medium —',
+    'comm_modal.status_closes_case': 'This will close the case.',
     'comm_modal.notes': 'Notes',
     'comm_modal.notes_ph': 'Any additional context…',
     'comm_modal.cancel': 'Cancel',
@@ -1304,6 +1306,7 @@ const TRANSLATIONS = {
     'comm_modal.status': 'Κατάσταση',
     'comm_modal.medium': 'Μέσο',
     'comm_modal.medium_ph': '— επιλογή μέσου —',
+    'comm_modal.status_closes_case': 'Αυτό θα κλείσει την υπόθεση.',
     'comm_modal.notes': 'Σημειώσεις',
     'comm_modal.notes_ph': 'Επιπλέον πλαίσιο…',
     'comm_modal.cancel': 'Ακύρωση',
@@ -3058,6 +3061,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(); }
     _renderCommCaseInfo(prefillCaseId);
   }
+  _onCommStatusChange();
   _commModal.show();
 }
 
@@ -3106,6 +3110,13 @@ function openFollowupForCase(caseId) {
   const cs = _casesData.find(x => x.id === caseId);
   if (!cs) return;
   openCommModal(null, cs.org_title, cs.org_name, caseId, cs.subject);
+}
+
+function _onCommStatusChange() {
+  const isAdding = !show('commId').value;
+  const status = show('commStatus').value;
+  const closes = isAdding && (status === 'Positive Response' || status === 'Negative Response');
+  show('commStatusCloseHint').classList.toggle('d-none', !closes);
 }
 
 function _resetCommContact() {
