@@ -2589,6 +2589,11 @@ const CASE_STATUS_BADGE = { "Open": "bg-warning text-dark", "Closed": "bg-succes
 function caseStatusLabel(status) {
   return status === 'Closed' ? t('comms.case_closed') : t('comms.case_open');
 }
+function caseBadgeHtml(c, extraClass = '') {
+  if (!c.case_id) return '';
+  const label = c.case_status ? caseStatusLabel(c.case_status) : '';
+  return `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'} ${extraClass}" style="font-size:.62rem" title="${t('comms.case_col')} #${c.case_id}">#${c.case_id}${label ? ' · ' + label : ''}</span>`;
+}
 
 const MEDIUM_ICON = {
   "Telephone": "bi-telephone",
@@ -2770,7 +2775,7 @@ function renderCommsTable(rows) {
           <tr>
             <td class="text-muted small mono text-nowrap">${c.contact_date}</td>
             <td class="fw-semibold small">${c.org_title}</td>
-            <td class="small">${c.subject} ${c.case_status ? `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'}" style="font-size:.62rem" title="${t('comms.case_col')} #${c.case_id}">${caseStatusLabel(c.case_status)}</span>` : ''}</td>
+            <td class="small">${c.subject} ${caseBadgeHtml(c)}</td>
             <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
             <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
             <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
@@ -2834,7 +2839,7 @@ function renderCommsGrouped(data) {
       ${comms.map(c => `
         <tr style="${isExpanded ? '' : 'display:none'}" class="comm-hist-row">
           <td class="text-muted small mono text-nowrap ps-4">${c.contact_date}</td>
-          <td class="small">${c.subject}</td>
+          <td class="small">${c.subject} ${caseBadgeHtml(c)}</td>
           <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
           <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
           <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
@@ -3012,7 +3017,7 @@ function renderCommsTimeline(rows) {
             <span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'} ms-2" style="font-size:.68rem">
               <i class="bi ${COMM_STATUS_ICON[c.status] || 'bi-circle'} me-1"></i>${statusLabel[c.status] || c.status}
             </span>
-            ${c.case_status ? `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'} ms-1" style="font-size:.68rem" title="${t('comms.case_col')} #${c.case_id}">${caseStatusLabel(c.case_status)}</span>` : ''}
+            ${caseBadgeHtml(c, 'ms-1')}
           </div>
           <div class="text-end text-nowrap">
             ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
