@@ -502,11 +502,12 @@
                   <option value="Open" data-i18n="comms.case_open">Open</option>
                   <option value="Closed" data-i18n="comms.case_closed">Closed</option>
                 </select>
-                <select id="commsStatusFilter" class="form-select form-select-sm" style="width:160px" onchange="filterComms()">
+                <select id="commsStatusFilter" class="form-select form-select-sm" style="width:190px" onchange="filterComms()">
                   <option value="" data-i18n="comms.all_statuses">All statuses</option>
-                  <option value="Contacted" data-i18n="comms.contacted">Contacted</option>
-                  <option value="Responded" data-i18n="comms.responded">Responded</option>
-                  <option value="Uploaded" data-i18n="comms.uploaded">Uploaded</option>
+                  <option value="Initial Contact" data-i18n="comms.initial_contact">Initial Contact</option>
+                  <option value="Intermediate Contact" data-i18n="comms.intermediate_contact">Intermediate Contact</option>
+                  <option value="Positive Response" data-i18n="comms.positive_response">Positive Response</option>
+                  <option value="Negative Response" data-i18n="comms.negative_response">Negative Response</option>
                   <option value="No Response" data-i18n="comms.no_response">No Response</option>
                 </select>
                 <select id="commsMediumFilter" class="form-select form-select-sm" style="width:150px" onchange="filterComms()">
@@ -670,9 +671,10 @@
           <div class="col-md-4">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.status">Status</label>
             <select id="commStatus" class="form-select form-select-sm">
-              <option value="Contacted" data-i18n="comms.contacted">Contacted</option>
-              <option value="Responded" data-i18n="comms.responded">Responded</option>
-              <option value="Uploaded" data-i18n="comms.uploaded">Uploaded</option>
+              <option value="Initial Contact" data-i18n="comms.initial_contact">Initial Contact</option>
+              <option value="Intermediate Contact" data-i18n="comms.intermediate_contact">Intermediate Contact</option>
+              <option value="Positive Response" data-i18n="comms.positive_response">Positive Response</option>
+              <option value="Negative Response" data-i18n="comms.negative_response">Negative Response</option>
               <option value="No Response" data-i18n="comms.no_response">No Response</option>
             </select>
           </div>
@@ -977,9 +979,10 @@ const TRANSLATIONS = {
     'comms.view_cases': 'Cases',
     'comms.view_timeline': 'Timeline',
     'comms.all_statuses': 'All statuses',
-    'comms.contacted': 'Contacted',
-    'comms.responded': 'Responded',
-    'comms.uploaded': 'Uploaded',
+    'comms.initial_contact': 'Initial Contact',
+    'comms.intermediate_contact': 'Intermediate Contact',
+    'comms.positive_response': 'Positive Response',
+    'comms.negative_response': 'Negative Response',
     'comms.no_response': 'No Response',
     'comms.all_mediums': 'All mediums',
     'comms.medium_telephone': 'Telephone',
@@ -1248,9 +1251,10 @@ const TRANSLATIONS = {
     'comms.view_cases': 'Υποθέσεις',
     'comms.view_timeline': 'Χρονολόγιο',
     'comms.all_statuses': 'Όλες οι καταστάσεις',
-    'comms.contacted': 'Επικοινωνία',
-    'comms.responded': 'Απάντηση',
-    'comms.uploaded': 'Ανέβασμα',
+    'comms.initial_contact': 'Αρχική Επικοινωνία',
+    'comms.intermediate_contact': 'Ενδιάμεση Επικοινωνία',
+    'comms.positive_response': 'Θετική Απάντηση',
+    'comms.negative_response': 'Αρνητική Απάντηση',
     'comms.no_response': 'Χωρίς Απάντηση',
     'comms.all_mediums': 'Όλα τα μέσα',
     'comms.medium_telephone': 'Τηλέφωνο',
@@ -2557,10 +2561,11 @@ let _expandedOrgs   = new Set();
 let _expandedCases  = new Set();
 
 const STATUS_BADGE = {
-  "Contacted":   "bg-primary",
-  "Responded":   "bg-info text-dark",
-  "Uploaded":    "bg-success",
-  "No Response": "bg-secondary",
+  "Initial Contact":      "bg-primary",
+  "Intermediate Contact": "bg-info text-dark",
+  "Positive Response":    "bg-success",
+  "Negative Response":    "bg-danger",
+  "No Response":          "bg-secondary",
 };
 
 const CASE_STATUS_BADGE = { "Open": "bg-warning text-dark", "Closed": "bg-success" };
@@ -2632,7 +2637,7 @@ function _refreshCommSubjectDatalist() {
 }
 
 function renderCommsSummary() {
-  const counts = { "Contacted": 0, "Responded": 0, "Uploaded": 0, "No Response": 0 };
+  const counts = { "Initial Contact": 0, "Intermediate Contact": 0, "Positive Response": 0, "Negative Response": 0, "No Response": 0 };
   for (const c of _commsData) if (c.status in counts) counts[c.status]++;
   const total = _commsData.length;
   const openCases   = _casesData.filter(c => c.status === 'Open').length;
@@ -2642,10 +2647,11 @@ function renderCommsSummary() {
     { label: t('comms.total'),       value: total,                  bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
     { label: t('comms.open_cases'),   value: openCases,             bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-folder2-open" },
     { label: t('comms.closed_cases'), value: closedCases,           bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-folder-check" },
-    { label: t('comms.contacted'),   value: counts["Contacted"],    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-envelope" },
-    { label: t('comms.responded'),   value: counts["Responded"],    bg: "bg-info bg-opacity-10",      text: "text-info",      icon: "bi-reply" },
-    { label: t('comms.uploaded'),    value: counts["Uploaded"],     bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-cloud-upload" },
-    { label: t('comms.no_response'), value: counts["No Response"],  bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-clock" },
+    { label: t('comms.initial_contact'),      value: counts["Initial Contact"],      bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-envelope" },
+    { label: t('comms.intermediate_contact'), value: counts["Intermediate Contact"], bg: "bg-info bg-opacity-10",      text: "text-info",      icon: "bi-reply" },
+    { label: t('comms.positive_response'),    value: counts["Positive Response"],    bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-hand-thumbs-up" },
+    { label: t('comms.negative_response'),    value: counts["Negative Response"],    bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-hand-thumbs-down" },
+    { label: t('comms.no_response'),          value: counts["No Response"],          bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-clock" },
   ];
 
   show('commsSummary').innerHTML = CARDS.map(c => `
@@ -2710,8 +2716,8 @@ function renderCommsTable(rows) {
     return;
   }
 
-  const STATUS_ORDER = { "Contacted": 0, "Responded": 1, "Uploaded": 2, "No Response": 3 };
-  const statusLabel = { "Contacted": t('comms.contacted'), "Responded": t('comms.responded'), "Uploaded": t('comms.uploaded'), "No Response": t('comms.no_response') };
+  const STATUS_ORDER = { "Initial Contact": 0, "Intermediate Contact": 1, "Positive Response": 2, "Negative Response": 3, "No Response": 4 };
+  const statusLabel = { "Initial Contact": t('comms.initial_contact'), "Intermediate Contact": t('comms.intermediate_contact'), "Positive Response": t('comms.positive_response'), "Negative Response": t('comms.negative_response'), "No Response": t('comms.no_response') };
   const sorted = [...rows].sort((a, b) => {
     let av, bv;
     switch (_commsSortCol) {
@@ -2764,7 +2770,7 @@ function renderCommsGrouped(data) {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
-  const statusLabel = { "Contacted": t('comms.contacted'), "Responded": t('comms.responded'), "Uploaded": t('comms.uploaded'), "No Response": t('comms.no_response') };
+  const statusLabel = { "Initial Contact": t('comms.initial_contact'), "Intermediate Contact": t('comms.intermediate_contact'), "Positive Response": t('comms.positive_response'), "Negative Response": t('comms.negative_response'), "No Response": t('comms.no_response') };
 
   // Group by org_title, preserve insertion order within groups
   const groups = new Map();
@@ -2840,7 +2846,7 @@ function renderCommsCases(data) {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
-  const statusLabel = { "Contacted": t('comms.contacted'), "Responded": t('comms.responded'), "Uploaded": t('comms.uploaded'), "No Response": t('comms.no_response') };
+  const statusLabel = { "Initial Contact": t('comms.initial_contact'), "Intermediate Contact": t('comms.intermediate_contact'), "Positive Response": t('comms.positive_response'), "Negative Response": t('comms.negative_response'), "No Response": t('comms.no_response') };
   const casesById = new Map(_casesData.map(cs => [cs.id, cs]));
 
   // Group visible entries by case_id
@@ -2931,16 +2937,18 @@ async function reopenCase(caseId) {
 }
 
 const COMM_STATUS_ICON = {
-  "Contacted":   "bi-envelope",
-  "Responded":   "bi-reply",
-  "Uploaded":    "bi-cloud-upload",
-  "No Response": "bi-clock",
+  "Initial Contact":      "bi-envelope",
+  "Intermediate Contact": "bi-reply",
+  "Positive Response":    "bi-hand-thumbs-up",
+  "Negative Response":    "bi-hand-thumbs-down",
+  "No Response":          "bi-clock",
 };
 const COMM_STATUS_DOT = {
-  "Contacted":   "#0d6efd",
-  "Responded":   "#0dcaf0",
-  "Uploaded":    "#198754",
-  "No Response": "#6c757d",
+  "Initial Contact":      "#0d6efd",
+  "Intermediate Contact": "#0dcaf0",
+  "Positive Response":    "#198754",
+  "Negative Response":    "#dc3545",
+  "No Response":          "#6c757d",
 };
 
 function renderCommsTimeline(rows) {
@@ -2949,7 +2957,7 @@ function renderCommsTimeline(rows) {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
-  const statusLabel = { "Contacted": t('comms.contacted'), "Responded": t('comms.responded'), "Uploaded": t('comms.uploaded'), "No Response": t('comms.no_response') };
+  const statusLabel = { "Initial Contact": t('comms.initial_contact'), "Intermediate Contact": t('comms.intermediate_contact'), "Positive Response": t('comms.positive_response'), "Negative Response": t('comms.negative_response'), "No Response": t('comms.no_response') };
 
   const sorted = [...rows].sort((a, b) => {
     if (a.contact_date !== b.contact_date) return b.contact_date.localeCompare(a.contact_date);
@@ -3030,7 +3038,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commCaseId').value  = prefillCaseId || '';
     show('commDate').value    = new Date().toISOString().slice(0, 10);
     show('commSubject').value = prefillSubject || '';
-    show('commStatus').value  = 'Contacted';
+    show('commStatus').value  = 'Initial Contact';
     show('commMedium').value  = '';
     show('commNotes').value   = '';
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(); }
@@ -3739,15 +3747,16 @@ function renderOrgPanel(data) {
     return (order[a.capacity] ?? 3) - (order[b.capacity] ?? 3);
   });
   const COMM_STATUS_CLS = {
-    'Contacted':   'bg-primary',
-    'Responded':   'bg-info text-dark',
-    'Uploaded':    'bg-success',
-    'No Response': 'bg-secondary',
+    'Initial Contact':      'bg-primary',
+    'Intermediate Contact': 'bg-info text-dark',
+    'Positive Response':    'bg-success',
+    'Negative Response':    'bg-danger',
+    'No Response':          'bg-secondary',
   };
-  const PENDING_STATUSES = new Set(['Contacted', 'Responded']);
+  const PENDING_STATUSES = new Set(['Initial Contact', 'Intermediate Contact']);
   const cs = data.comms_summary || {};
   const byStatus = cs.by_status || {};
-  const statusOrder = ['Contacted', 'Responded', 'Uploaded', 'No Response'];
+  const statusOrder = ['Initial Contact', 'Intermediate Contact', 'Positive Response', 'Negative Response', 'No Response'];
   const commsHtml = cs.total > 0
     ? `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-envelope me-1 text-primary"></i>Communications</h6>
        <div class="d-flex flex-wrap gap-2 mb-1">

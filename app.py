@@ -919,7 +919,7 @@ def organization_detail(org_name):
     return jsonify(result)
 
 
-VALID_STATUSES = {"Contacted", "Responded", "Uploaded", "No Response"}
+VALID_STATUSES = {"Initial Contact", "Intermediate Contact", "Positive Response", "Negative Response", "No Response"}
 VALID_MEDIUMS  = {"Telephone", "Email", "In Person", "Other"}
 
 
@@ -937,7 +937,7 @@ def communications_create():
     contact_date = (body.get("contact_date") or "").strip()
     if not org_name or not subject or not contact_date:
         return jsonify({"error": "org_name, subject and contact_date are required"}), 400
-    status = body.get("status", "Contacted")
+    status = body.get("status", "Initial Contact")
     if status not in VALID_STATUSES:
         return jsonify({"error": f"status must be one of {sorted(VALID_STATUSES)}"}), 400
     medium = (body.get("medium") or "").strip()

@@ -278,6 +278,7 @@
     .badge-responded  { background: #cffafe; color: #0e7490; }
     .badge-uploaded   { background: #d1fae5; color: #065f46; }
     .badge-noresponse { background: #f1f5f9; color: #475569; }
+    .badge-negative   { background: #fee2e2; color: #b91c1c; }
 
     /* ── Contact type badge ───────────────────────────── */
     .type-badge {
@@ -787,19 +788,23 @@
       <h3>Καταστάσεις εγγραφών</h3>
       <p>Κάθε επικοινωνία φέρει μια κατάσταση που απεικονίζει το στάδιο της διαδικασίας:</p>
       <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center">
-        <span class="status-badge badge-contacted">Contacted</span>
-        <span style="font-size:.82rem;color:var(--muted)">Η επικοινωνία έγινε, αναμένουμε απάντηση</span>
+        <span class="status-badge badge-contacted">Αρχική Επικοινωνία</span>
+        <span style="font-size:.82rem;color:var(--muted)">Η πρώτη επικοινωνία έγινε, αναμένουμε απάντηση</span>
       </div>
       <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center">
-        <span class="status-badge badge-responded">Responded</span>
-        <span style="font-size:.82rem;color:var(--muted)">Ο φορέας απάντησε και υπάρχει αλληλογραφία</span>
+        <span class="status-badge badge-responded">Ενδιάμεση Επικοινωνία</span>
+        <span style="font-size:.82rem;color:var(--muted)">Υπάρχει συνεχιζόμενη αλληλογραφία, δεν έχει κλείσει ακόμα</span>
       </div>
       <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center">
-        <span class="status-badge badge-uploaded">Uploaded</span>
-        <span style="font-size:.82rem;color:var(--muted)">Τα δεδομένα ανέβηκαν στην πύλη</span>
+        <span class="status-badge badge-uploaded">Θετική Απάντηση</span>
+        <span style="font-size:.82rem;color:var(--muted)">Ο φορέας απάντησε θετικά (π.χ. τα δεδομένα ανέβηκαν)</span>
+      </div>
+      <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center">
+        <span class="status-badge badge-negative">Αρνητική Απάντηση</span>
+        <span style="font-size:.82rem;color:var(--muted)">Ο φορέας απάντησε αρνητικά</span>
       </div>
       <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1.5rem; align-items:center">
-        <span class="status-badge badge-noresponse">No Response</span>
+        <span class="status-badge badge-noresponse">Χωρίς Απάντηση</span>
         <span style="font-size:.82rem;color:var(--muted)">Δεν ελήφθη απάντηση</span>
       </div>
 
@@ -826,7 +831,7 @@
         <li><span class="field-name">Οργανισμός <span class="field-req">Υποχρεωτικό</span></span><span>Ελεύθερο κείμενο με autocomplete από τη λίστα φορέων.</span></li>
         <li><span class="field-name">Επαφή</span><span>Dropdown που φορτώνει αυτόματα τις καταχωρημένες επαφές του επιλεγμένου οργανισμού. Κατά την επιλογή εμφανίζονται email και τηλέφωνο της επαφής.</span></li>
         <li><span class="field-name">Θέμα <span class="field-req">Υποχρεωτικό</span></span><span>Σύντομη περιγραφή του αιτήματος ή του dataset που αφορά.</span></li>
-        <li><span class="field-name">Κατάσταση</span><span>Dropdown με τις 4 καταστάσεις· προεπιλογή: <em>Contacted</em>.</span></li>
+        <li><span class="field-name">Κατάσταση</span><span>Dropdown με τις 5 καταστάσεις· προεπιλογή: <em>Αρχική Επικοινωνία</em>.</span></li>
         <li><span class="field-name">Σημειώσεις</span><span>Ελεύθερο κείμενο για πρόσθετο πλαίσιο ή ιστορικό.</span></li>
       </ul>
 

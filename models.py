@@ -95,7 +95,7 @@ class Communication(db.Model):
     org_name     = db.Column(db.String(200), nullable=False)  # slug or free text
     org_title    = db.Column(db.String(200))
     subject      = db.Column(db.String(500), nullable=False)
-    status       = db.Column(db.String(50), nullable=False, default="Contacted")
+    status       = db.Column(db.String(50), nullable=False, default="Initial Contact")
     notes          = db.Column(db.Text)
     contact_person = db.Column(db.String(200))
     medium         = db.Column(db.String(50))
