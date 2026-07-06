@@ -642,6 +642,7 @@ def org_datasets_since():
 
 @app.route("/api/stats/history")
 def stats_history():
+    # deploy-restart marker: bump to force a redeploy for verification
     days  = int(freq.args.get("days", 30))
     step  = (freq.args.get("step") or "").strip().lower()  # "" | "week"
     since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
