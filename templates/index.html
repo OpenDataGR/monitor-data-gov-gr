@@ -1689,51 +1689,80 @@ async function loadStatsTab() {
 
   // History chart
   try {
-    const history = await fetch(API_BASE + 'api/stats/history?days=365&step=week').then(r => r.json());
-    const ctx     = show('statsChart').getContext('2d');
-    if (_statsChart) _statsChart.destroy();
-
-    if (!history.length) {
-      show('statsChart').closest('div').innerHTML =
-        `<p class="text-muted text-center py-5">${t('stats.accumulating')}</p>`;
-      return;
-    }
-
-    const rangeEnd   = new Date();
-    const rangeStart = new Date(rangeEnd.getTime() - 365 * 24 * 3600 * 1000);
-
-    _statsChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        datasets: [
-          {
-            label: t('stats.col_datasets'),
-            data:  history.filter(d => d.total_datasets).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.total_datasets })),
-            borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.3, pointRadius: 2, pointHoverRadius: 4,
-          },
-          {
-            label: t('stats.col_resources'),
-            data:  history.filter(d => d.total_resources).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.total_resources })),
-            borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.08)', fill: true, tension: 0.3, pointRadius: 2, pointHoverRadius: 4,
-          }
-        ]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom' } },
-        scales: {
-          x: {
-            type: 'time',
-            time: { unit: 'week', tooltipFormat: 'dd/MM/yyyy', displayFormats: { week: 'dd/MM' } },
-            min: rangeStart, max: rangeEnd,
-            grid: { color: '#f0f0f0' },
-          },
-          y: { min: 0, grid: { color: '#f0f0f0' } }
-        }
-      }
-    });
+    const [history, growth] = await Promise.all([
+      fetch(API_BASE + 'api/stats/history?days=365&step=week').then(r => r.json()),
+      fetch(API_BASE + 'api/stats/dataset-growth').then(r => r.json()),
+    ]);
+    _renderStatsChart(history, growth);
+    if (growth.enriching) _pollDatasetGrowth();
   } catch (_) {}
 
+}
+
+function _renderStatsChart(history, growth) {
+  const wrap       = show('statsChart').closest('div');
+  const hasHistory = history && history.length;
+  const hasGrowth  = growth && growth.weeks && growth.weeks.length;
+
+  if (!hasHistory && !hasGrowth) {
+    if (!growth || !growth.enriching) {
+      wrap.innerHTML = `<p class="text-muted text-center py-5">${t('stats.accumulating')}</p>`;
+    }
+    return;
+  }
+
+  const ctx = show('statsChart').getContext('2d');
+  if (_statsChart) _statsChart.destroy();
+
+  const rangeEnd   = new Date();
+  const rangeStart = new Date(rangeEnd.getTime() - 365 * 24 * 3600 * 1000);
+
+  const datasets = [];
+  if (hasGrowth) {
+    datasets.push({
+      label: t('stats.col_datasets'),
+      data:  growth.weeks.map(w => ({ x: new Date(w.week_start + 'T00:00:00Z'), y: w.count })),
+      borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.3, pointRadius: 2, pointHoverRadius: 4,
+    });
+  }
+  if (hasHistory) {
+    datasets.push({
+      label: t('stats.col_resources'),
+      data:  history.filter(d => d.total_resources).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.total_resources })),
+      borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.08)', fill: true, tension: 0.3, pointRadius: 2, pointHoverRadius: 4,
+    });
+  }
+
+  _statsChart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'week', tooltipFormat: 'dd/MM/yyyy', displayFormats: { week: 'dd/MM' } },
+          min: rangeStart, max: rangeEnd,
+          grid: { color: '#f0f0f0' },
+        },
+        y: { min: 0, grid: { color: '#f0f0f0' } }
+      }
+    }
+  });
+}
+
+async function _pollDatasetGrowth(attempts = 0) {
+  if (attempts > 12) return;  // give up after ~2 min
+  await new Promise(r => setTimeout(r, 10000));
+  try {
+    const [history, growth] = await Promise.all([
+      fetch(API_BASE + 'api/stats/history?days=365&step=week').then(r => r.json()),
+      fetch(API_BASE + 'api/stats/dataset-growth').then(r => r.json()),
+    ]);
+    _renderStatsChart(history, growth);
+    if (growth.enriching) _pollDatasetGrowth(attempts + 1);
+  } catch (_) {}
 }
 
 // ── Datasets tab ──────────────────────────────────────────────────────────────

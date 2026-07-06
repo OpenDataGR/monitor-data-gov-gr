@@ -440,7 +440,8 @@ def _background_loop():
     except Exception as exc:
         print(f"[orgs] initial error: {exc}")
 
-    last_orgs_refresh = time.time()
+    last_orgs_refresh           = time.time()
+    last_dataset_growth_refresh = time.time()
     while True:
         time.sleep(config.CHECK_INTERVAL_SECONDS)
         try:
@@ -453,6 +454,13 @@ def _background_loop():
             except Exception as exc:
                 print(f"[orgs] refresh error: {exc}")
             last_orgs_refresh = time.time()
+        if time.time() - last_dataset_growth_refresh >= _DATASET_GROWTH_REFRESH_INTERVAL:
+            try:
+                _dataset_growth_cache["enriching"] = True
+                _do_refresh_dataset_growth()
+            except Exception as exc:
+                print(f"[dataset-growth] refresh error: {exc}")
+            last_dataset_growth_refresh = time.time()
 
 
 # Only start the background thread once (guard against Flask dev-reloader fork)
@@ -642,7 +650,6 @@ def org_datasets_since():
 
 @app.route("/api/stats/history")
 def stats_history():
-    # deploy-restart marker: bump to force a redeploy for verification
     days  = int(freq.args.get("days", 30))
     step  = (freq.args.get("step") or "").strip().lower()  # "" | "week"
     since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
@@ -657,6 +664,77 @@ def stats_history():
             weekly[r.timestamp.isocalendar()[:2]] = r
         rows = [weekly[k] for k in sorted(weekly)]
     return jsonify([r.to_dict() for r in rows])
+
+
+_dataset_growth_cache: dict = {"weeks": None, "fetched_at": None, "enriching": False}
+_DATASET_GROWTH_REFRESH_INTERVAL = 24 * 3600  # rebuild once a day
+
+
+def _do_refresh_dataset_growth() -> None:
+    """Reconstruct weekly dataset-count history straight from CKAN's metadata_created
+    dates, since our own PortalSnapshot history only covers the time this app has
+    actually been running (often far less than the 12 months we want to chart)."""
+    try:
+        created_dates = []
+        start = 0
+        batch = 1000
+        total = None
+        while True:
+            r = requests.get(
+                f"{config.API_BASE}/package_search",
+                params={"rows": batch, "start": start, "sort": "metadata_created asc", "fl": "metadata_created"},
+                headers=_api_headers(),
+                timeout=30,
+            )
+            if r.status_code != 200:
+                break
+            d = r.json()
+            if not d.get("success"):
+                break
+            results = d["result"]["results"]
+            if total is None:
+                total = d["result"]["count"]
+            if not results:
+                break
+            for pkg in results:
+                mc = pkg.get("metadata_created")
+                if mc:
+                    created_dates.append(mc)
+            start += batch
+            if start >= (total or 0):
+                break
+        created_dates.sort()
+
+        today  = datetime.now(timezone.utc).date()
+        cursor = today - timedelta(days=365)
+        cursor -= timedelta(days=cursor.weekday())  # align to Monday
+        idx, n = 0, len(created_dates)
+        weeks = []
+        while cursor <= today:
+            cutoff = (cursor + timedelta(days=7)).isoformat()
+            while idx < n and created_dates[idx] < cutoff:
+                idx += 1
+            weeks.append({"week_start": cursor.isoformat(), "count": idx})
+            cursor += timedelta(days=7)
+
+        _dataset_growth_cache["weeks"]      = weeks
+        _dataset_growth_cache["fetched_at"] = datetime.now(timezone.utc).isoformat()
+    except Exception as exc:
+        print(f"[dataset-growth] error: {exc}")
+    finally:
+        _dataset_growth_cache["enriching"] = False
+
+
+@app.route("/api/stats/dataset-growth")
+def stats_dataset_growth():
+    if _dataset_growth_cache["weeks"] is None and not _dataset_growth_cache["enriching"]:
+        _dataset_growth_cache["enriching"] = True
+        threading.Thread(target=_do_refresh_dataset_growth, daemon=True).start()
+    return jsonify({
+        "weeks":      _dataset_growth_cache["weeks"] or [],
+        "fetched_at": _dataset_growth_cache["fetched_at"],
+        "enriching":  _dataset_growth_cache["enriching"],
+    })
 
 
 @app.route("/api/datasets/check")
