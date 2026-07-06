@@ -312,25 +312,27 @@
             <div id="latestSnapshot"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
           </div>
         </div>
+        <div class="col-12">
+          <div class="card p-4">
+            <h6 class="fw-semibold mb-3"><i class="bi bi-calendar-range me-2 text-primary"></i><span data-i18n="stats.uploaded_since">Datasets Uploaded Since…</span></h6>
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <input type="date" id="datasetsSinceDate" class="form-control form-control-sm" style="width:180px">
+              <button class="btn btn-primary btn-sm" onclick="checkDatasetsSince()">
+                <i class="bi bi-search me-1"></i><span data-i18n="stats.check">Check</span>
+              </button>
+              <div id="datasetsSinceResult" class="d-none">
+                <span class="stat-value text-primary me-1" id="datasetsSinceCount"></span>
+                <span class="text-muted small" id="datasetsSinceLabel"></span>
+              </div>
+            </div>
+            <div id="datasetsSinceOrgs" class="mt-3"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Datasets -->
+    <!-- Datasets: reserved for future functionality -->
     <div class="tab-pane fade" id="tab-datasets">
-      <div class="card p-4">
-        <h6 class="fw-semibold mb-3"><i class="bi bi-calendar-range me-2 text-primary"></i><span data-i18n="stats.uploaded_since">Datasets Uploaded Since…</span></h6>
-        <div class="d-flex align-items-center gap-3 flex-wrap">
-          <input type="date" id="datasetsSinceDate" class="form-control form-control-sm" style="width:180px">
-          <button class="btn btn-primary btn-sm" onclick="checkDatasetsSince()">
-            <i class="bi bi-search me-1"></i><span data-i18n="stats.check">Check</span>
-          </button>
-          <div id="datasetsSinceResult" class="d-none">
-            <span class="stat-value text-primary me-1" id="datasetsSinceCount"></span>
-            <span class="text-muted small" id="datasetsSinceLabel"></span>
-          </div>
-        </div>
-        <div id="datasetsSinceOrgs" class="mt-3"></div>
-      </div>
     </div>
 
     <!-- Traffic -->
@@ -1668,6 +1670,10 @@ document.getElementById('statsTabBtn').addEventListener('click', () => {
 });
 
 async function loadStatsTab() {
+  // Datasets Uploaded Since… default date
+  const sinceInput = show('datasetsSinceDate');
+  if (sinceInput && !sinceInput.value) sinceInput.value = '2026-05-15';
+
   // Latest snapshot
   try {
     const snap = await fetch(API_BASE + 'api/stats/latest').then(r => r.ok ? r.json() : null);
@@ -1766,16 +1772,8 @@ async function _pollDatasetGrowth(attempts = 0) {
   } catch (_) {}
 }
 
-// ── Datasets tab ──────────────────────────────────────────────────────────────
-let _datasetsTabLoaded = false;
+// ── Datasets Uploaded Since… (now rendered inside the Statistics tab) ──────────
 let _orgDsCache = {};
-
-document.getElementById('datasetsTabBtn').addEventListener('click', () => {
-  if (_datasetsTabLoaded) return;
-  _datasetsTabLoaded = true;
-  const input = show('datasetsSinceDate');
-  if (input && !input.value) input.value = '2026-05-15';
-});
 
 async function checkDatasetsSince() {
   const date = show('datasetsSinceDate').value;
