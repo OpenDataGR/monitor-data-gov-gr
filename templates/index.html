@@ -1730,6 +1730,7 @@ function _renderStatsChart(history, growth) {
       label: t('stats.col_resources'),
       data:  history.filter(d => d.total_resources).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.total_resources })),
       borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,.08)', fill: true, tension: 0.3, pointRadius: 2, pointHoverRadius: 4,
+      hidden: true,
     });
   }
 
