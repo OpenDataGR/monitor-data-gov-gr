@@ -8,7 +8,6 @@ MATOMO_URL     = "https://matomo.open1.eu/index.php"
 MATOMO_SITE_ID = 3
 MATOMO_TOKEN   = os.environ.get("MATOMO_TOKEN", "")
 
-DASHBOARD_PASSWORD  = os.environ.get("DASHBOARD_PASSWORD", "").strip()
 FLASK_SECRET_KEY    = os.environ.get("FLASK_SECRET_KEY", "").strip()
 DATABASE_URL        = os.environ.get("DATABASE_URL", "").strip()
 

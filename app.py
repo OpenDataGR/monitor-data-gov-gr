@@ -12,11 +12,12 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
-import hashlib
 import io
+import secrets
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file
 from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache
+from werkzeug.security import generate_password_hash, check_password_hash
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, User, PasswordResetToken
 import config
 
 app = Flask(__name__)
@@ -25,10 +26,7 @@ if _db_url.startswith("postgres://"):  # normalize legacy Heroku-style prefix
     _db_url = _db_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-_fallback_key = hashlib.sha256(
-    (config.DASHBOARD_PASSWORD or "insecure-no-password").encode()
-).hexdigest()
-app.secret_key = config.FLASK_SECRET_KEY or _fallback_key
+app.secret_key = config.FLASK_SECRET_KEY or "insecure-dev-secret-key-change-me"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 db.init_app(app)
@@ -87,8 +85,44 @@ with app.app_context():
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
-def _pw_hash(pw: str) -> str:
-    return hashlib.sha256(pw.encode()).hexdigest()
+PASSWORD_LINK_VALID_HOURS = 24
+_PUBLIC_PATHS = ("/login", "/logout", "/forgot-password", "/set-password")
+
+
+def _send_password_link(user: "User", kind: str = "invite") -> str:
+    """Create a fresh single-use token and email the user a set-password link.
+    Returns the link too, so callers (e.g. the invite UI) can show/copy it as a
+    fallback if the email doesn't arrive."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    token = secrets.token_urlsafe(32)
+    db.session.add(PasswordResetToken(
+        user_id=user.id, token=token,
+        expires_at=now + timedelta(hours=PASSWORD_LINK_VALID_HOURS),
+    ))
+    db.session.commit()
+    link = url_for("set_password", token=token, _external=True)
+    if kind == "invite":
+        subject = "You've been invited to data.gov.gr Monitor"
+        html = (f"<p>You've been invited to the data.gov.gr Monitor dashboard.</p>"
+                f"<p><a href=\"{link}\">Click here to set your password</a> "
+                f"(link valid for {PASSWORD_LINK_VALID_HOURS} hours).</p>")
+    else:
+        subject = "Reset your data.gov.gr Monitor password"
+        html = (f"<p>Click the link below to reset your password "
+                f"(valid for {PASSWORD_LINK_VALID_HOURS} hours):</p>"
+                f"<p><a href=\"{link}\">{link}</a></p>"
+                f"<p>If you didn't request this, you can ignore this email.</p>")
+    try:
+        send_email(user.email, subject, html)
+    except Exception as exc:
+        print(f"[auth] failed to send {kind} email to {user.email}: {exc}")
+    return link
+
+
+def _require_admin():
+    if not session.get("is_admin"):
+        return jsonify({"error": "Admin access required"}), 403
+    return None
 
 
 @app.after_request
@@ -103,11 +137,9 @@ def no_cache(response):
 
 @app.before_request
 def require_login():
-    if not config.DASHBOARD_PASSWORD:
-        return  # auth disabled — no password configured
-    if freq.path in ("/login", "/logout") or freq.path.startswith("/static/"):
+    if freq.path in _PUBLIC_PATHS or freq.path.startswith("/static/"):
         return
-    if session.get("authenticated"):
+    if session.get("user_id"):
         return
     if freq.path.startswith("/api/"):
         return jsonify({"error": "Unauthorized"}), 401
@@ -116,21 +148,138 @@ def require_login():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if session.get("user_id"):
+        return redirect(url_for("index"))
     error = None
     if freq.method == "POST":
-        pw = freq.form.get("password", "")
-        if config.DASHBOARD_PASSWORD and _pw_hash(pw) == _pw_hash(config.DASHBOARD_PASSWORD):
-            session["authenticated"] = True
+        email = (freq.form.get("email") or "").strip().lower()
+        pw    = freq.form.get("password", "")
+        user  = User.query.filter_by(email=email).first()
+        if user and user.password_hash and check_password_hash(user.password_hash, pw):
+            session["user_id"]    = user.id
+            session["user_name"]  = user.name or user.email
+            session["user_email"] = user.email
+            session["is_admin"]   = user.is_admin
+            user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.session.commit()
             return redirect(freq.form.get("next") or url_for("index"))
-        error = "Incorrect password."
-    return render_template("login.html", error=error,
-                           next=freq.args.get("next", ""))
+        error = "Incorrect email or password."
+    return render_template("login.html", error=error, next=freq.args.get("next", ""))
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    sent = False
+    if freq.method == "POST":
+        email = (freq.form.get("email") or "").strip().lower()
+        user = User.query.filter_by(email=email).first()
+        if user:
+            _send_password_link(user, kind="reset")
+        sent = True  # always show the same message so we don't leak which emails exist
+    return render_template("forgot_password.html", sent=sent)
+
+
+@app.route("/set-password", methods=["GET", "POST"])
+def set_password():
+    token_str = freq.values.get("token", "")
+    token = PasswordResetToken.query.filter_by(token=token_str).first()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    valid = bool(token and not token.used_at and token.expires_at > now)
+    error = None
+    if freq.method == "POST":
+        if not valid:
+            error = "This link is invalid or has expired."
+        else:
+            pw1 = freq.form.get("password", "")
+            pw2 = freq.form.get("password2", "")
+            if len(pw1) < 8:
+                error = "Password must be at least 8 characters."
+            elif pw1 != pw2:
+                error = "Passwords do not match."
+            else:
+                user = token.user
+                user.password_hash = generate_password_hash(pw1)
+                token.used_at = now
+                db.session.commit()
+                session["user_id"]    = user.id
+                session["user_name"]  = user.name or user.email
+                session["user_email"] = user.email
+                session["is_admin"]   = user.is_admin
+                return redirect(url_for("index"))
+    return render_template("set_password.html", valid=valid, error=error, token=token_str)
 
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/admin/users")
+def admin_users_page():
+    if not session.get("is_admin"):
+        return redirect(url_for("index"))
+    return render_template("admin_users.html")
+
+
+@app.route("/api/users", methods=["GET", "POST"])
+def users_collection():
+    err = _require_admin()
+    if err:
+        return err
+    if freq.method == "POST":
+        body = _decode_payload()
+        email = (body.get("email") or "").strip().lower()
+        name  = (body.get("name") or "").strip()
+        if not email or "@" not in email:
+            return jsonify({"error": "A valid email is required"}), 400
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            user = User(email=email, name=name or None, is_admin=bool(body.get("is_admin")))
+            db.session.add(user)
+            db.session.commit()
+        elif name and not user.name:
+            user.name = name
+            db.session.commit()
+        link = _send_password_link(user, kind="invite")
+        return jsonify({"ok": True, "user": user.to_dict(), "invite_link": link}), 201
+    return jsonify([u.to_dict() for u in User.query.order_by(User.created_at).all()])
+
+
+@app.route("/api/users/<int:user_id>/resend-invite", methods=["POST"])
+def users_resend_invite(user_id):
+    err = _require_admin()
+    if err:
+        return err
+    user = User.query.get_or_404(user_id)
+    link = _send_password_link(user, kind="invite" if not user.password_hash else "reset")
+    return jsonify({"ok": True, "invite_link": link})
+
+
+@app.route("/api/users/<int:user_id>/toggle-admin", methods=["POST"])
+def users_toggle_admin(user_id):
+    err = _require_admin()
+    if err:
+        return err
+    if user_id == session.get("user_id"):
+        return jsonify({"error": "You cannot change your own admin status"}), 400
+    user = User.query.get_or_404(user_id)
+    user.is_admin = not user.is_admin
+    db.session.commit()
+    return jsonify({"ok": True, "user": user.to_dict()})
+
+
+@app.route("/api/users/<int:user_id>/delete", methods=["POST"])
+def users_delete(user_id):
+    err = _require_admin()
+    if err:
+        return err
+    if user_id == session.get("user_id"):
+        return jsonify({"error": "You cannot delete your own account"}), 400
+    user = User.query.get_or_404(user_id)
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -575,7 +724,9 @@ def index():
                            endpoints=config.ENDPOINTS_TO_MONITOR,
                            has_token=bool(config.TOKEN),
                            build_date=_build_date(),
-                           git_sha=_BUILD_SHA)
+                           git_sha=_BUILD_SHA,
+                           user_name=session.get("user_name"),
+                           is_admin=session.get("is_admin", False))
 
 
 @app.route("/api/health/current")
@@ -2569,10 +2720,10 @@ def matomo_debug_pages():
 
 @app.route("/api/admin/reset", methods=["GET", "POST"])
 def admin_reset():
-    if config.DASHBOARD_PASSWORD:
-        body = _decode_payload()
-        if _pw_hash(body.get("password", "")) != _pw_hash(config.DASHBOARD_PASSWORD):
-            return jsonify({"error": "Incorrect password"}), 403
+    user = User.query.get(session.get("user_id"))
+    body = _decode_payload()
+    if not user or not user.password_hash or not check_password_hash(user.password_hash, body.get("password", "")):
+        return jsonify({"error": "Incorrect password"}), 403
     db.session.query(HealthCheck).delete()
     db.session.query(PortalSnapshot).delete()
     db.session.commit()

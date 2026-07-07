@@ -107,6 +107,14 @@
       <a href="{{ url_for('static', filename='manual.html') }}" target="_blank" class="btn btn-outline-light btn-sm px-3">
         <i class="bi bi-book me-1"></i><span data-i18n="nav.manual">Οδηγός</span>
       </a>
+      {% if is_admin %}
+      <a href="{{ url_for('admin_users_page') }}" class="btn btn-outline-light btn-sm px-3" data-i18n-title="nav.manage_users" title="Manage Users">
+        <i class="bi bi-people"></i>
+      </a>
+      {% endif %}
+      {% if user_name %}
+      <span class="text-white-50 small d-none d-lg-inline">{{ user_name }}</span>
+      {% endif %}
       <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm px-3">
         <i class="bi bi-box-arrow-right me-1"></i><span data-i18n="nav.sign_out">Sign out</span>
       </a>
@@ -918,6 +926,7 @@ const TRANSLATIONS = {
     'nav.check_now': 'Check Now',
     'nav.reset_stats': 'Reset Stats',
     'nav.manual': 'Manual',
+    'nav.manage_users': 'Manage Users',
     'nav.sign_out': 'Sign out',
     'nav.menu': 'Menu',
     'sidebar.toggle': 'Collapse sidebar',
@@ -1202,6 +1211,7 @@ const TRANSLATIONS = {
     'nav.check_now': 'Έλεγχος τώρα',
     'nav.reset_stats': 'Επαναφορά',
     'nav.manual': 'Οδηγός',
+    'nav.manage_users': 'Διαχείριση Χρηστών',
     'nav.sign_out': 'Αποσύνδεση',
     'nav.menu': 'Μενού',
     'sidebar.toggle': 'Σύμπτυξη μενού',

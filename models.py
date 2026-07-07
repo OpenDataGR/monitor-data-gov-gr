@@ -77,6 +77,42 @@ class OrgsCache(db.Model):
         return json.loads(self.data_json)
 
 
+class User(db.Model):
+    __tablename__ = "users"
+
+    id            = db.Column(db.Integer, primary_key=True)
+    email         = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    name          = db.Column(db.String(255))
+    password_hash = db.Column(db.String(255))  # null until the invite/reset link is used
+    is_admin      = db.Column(db.Boolean, nullable=False, default=False)
+    created_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    last_login_at = db.Column(db.DateTime)
+
+    def to_dict(self):
+        return {
+            "id":            self.id,
+            "email":         self.email,
+            "name":          self.name or self.email,
+            "is_admin":      self.is_admin,
+            "has_password":  bool(self.password_hash),
+            "created_at":    self.created_at.isoformat() if self.created_at else None,
+            "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
+        }
+
+
+class PasswordResetToken(db.Model):
+    """Single-use, time-limited token backing both the invite and forgot-password flows."""
+    __tablename__ = "password_reset_tokens"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    token      = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at    = db.Column(db.DateTime)
+
+    user = db.relationship("User")
+
+
 STALE_CASE_DAYS = 14  # an open case idle this many days is flagged as stale (treated as "No Response")
 
 
