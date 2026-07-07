@@ -12,6 +12,10 @@ DASHBOARD_PASSWORD  = os.environ.get("DASHBOARD_PASSWORD", "").strip()
 FLASK_SECRET_KEY    = os.environ.get("FLASK_SECRET_KEY", "").strip()
 DATABASE_URL        = os.environ.get("DATABASE_URL", "").strip()
 
+SENDGRID_API_KEY    = os.environ.get("SENDGRID_API_KEY", "").strip()
+SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL", "").strip()
+SENDGRID_FROM_NAME  = os.environ.get("SENDGRID_FROM_NAME", "data.gov.gr Monitor").strip()
+
 ENDPOINTS_TO_MONITOR = [
     {"name": "Portal Homepage",  "url": "https://data.gov.gr/",                          "critical": True},
     {"name": "CKAN API",         "url": "https://data.gov.gr/api/3/action/status_show",  "critical": True},

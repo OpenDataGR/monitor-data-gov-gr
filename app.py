@@ -139,6 +139,32 @@ def _api_headers():
     return h
 
 
+def send_email(to: str, subject: str, html: str, text: str = None) -> None:
+    """Send an email via SendGrid's v3 Mail Send API. Raises on failure — callers
+    decide whether that should surface to the user or just get logged."""
+    if not config.SENDGRID_API_KEY or not config.SENDGRID_FROM_EMAIL:
+        raise RuntimeError("SendGrid is not configured (SENDGRID_API_KEY / SENDGRID_FROM_EMAIL)")
+    content = [{"type": "text/plain", "value": text or re.sub("<[^<]+?>", "", html)}]
+    content.append({"type": "text/html", "value": html})
+    payload = {
+        "personalizations": [{"to": [{"email": to}]}],
+        "from": {"email": config.SENDGRID_FROM_EMAIL, "name": config.SENDGRID_FROM_NAME},
+        "subject": subject,
+        "content": content,
+    }
+    r = requests.post(
+        "https://api.sendgrid.com/v3/mail/send",
+        json=payload,
+        headers={
+            "Authorization": f"Bearer {config.SENDGRID_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        timeout=config.REQUEST_TIMEOUT,
+    )
+    if r.status_code >= 300:
+        raise RuntimeError(f"SendGrid error {r.status_code}: {r.text[:500]}")
+
+
 def _check_endpoint(ep: dict) -> dict:
     start = time.time()
     try:
@@ -2555,6 +2581,25 @@ def admin_reset():
     db.session.commit()
     threading.Thread(target=run_health_checks, daemon=True).start()
     return jsonify({"ok": True, "message": "All data cleared, fresh check started"})
+
+
+@app.route("/api/admin/test-email", methods=["POST"])
+def admin_test_email():
+    """One-off endpoint to confirm the SendGrid credentials work end-to-end."""
+    body = _decode_payload()
+    to = (body.get("to") or "").strip()
+    if not to:
+        return jsonify({"error": "to is required"}), 400
+    try:
+        send_email(
+            to,
+            "data.gov.gr Monitor — test email",
+            "<p>This is a test email from the data.gov.gr Monitor dashboard.</p>"
+            "<p>If you received this, SendGrid is configured correctly.</p>",
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
