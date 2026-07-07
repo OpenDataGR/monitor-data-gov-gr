@@ -114,8 +114,6 @@ class PasswordResetToken(db.Model):
     expires_at = db.Column(db.DateTime, nullable=False)
     used_at    = db.Column(db.DateTime)
 
-    user = db.relationship("User")
-
 
 STALE_CASE_DAYS = 14  # an open case idle this many days is flagged as stale (treated as "No Response")
 
