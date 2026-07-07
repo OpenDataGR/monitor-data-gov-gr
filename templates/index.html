@@ -598,6 +598,7 @@
                 </button>
               </div>
             </div>
+            <div id="contactsSummary" class="row g-2 mb-3"></div>
             <div id="contactsFlatView">
               <div style="max-height:65vh;overflow-y:auto">
               <table class="table table-hover align-middle mb-0" id="contactsTable">
@@ -947,6 +948,8 @@ const TRANSLATIONS = {
     'contacts.role_admin': 'Admin',
     'contacts.role_editor': 'Editor',
     'contacts.role_member': 'Member',
+    'contacts.role_sysadmin': 'Sysadmin',
+    'contacts.total': 'Total',
     'contacts.loading_portal': 'Loading portal members…',
     'contacts.no_token': 'No API token configured.',
     'contacts.all_types': 'All Types',
@@ -966,6 +969,7 @@ const TRANSLATIONS = {
     'contacts.state_all':   'All states',
     'contacts.state_active':  'Active',
     'contacts.state_pending': 'Pending',
+    'contacts.state_deleted': 'Deleted',
     'traffic.today_title': "Today's Traffic",
     'traffic.today': 'Today',
     'traffic.visits': 'Visits',
@@ -1228,6 +1232,8 @@ const TRANSLATIONS = {
     'contacts.role_admin': 'Διαχειριστής',
     'contacts.role_editor': 'Συντάκτης',
     'contacts.role_member': 'Μέλος',
+    'contacts.role_sysadmin': 'Sysadmin',
+    'contacts.total': 'Σύνολο',
     'contacts.loading_portal': 'Φόρτωση μελών πύλης…',
     'contacts.no_token': 'Δεν έχει ρυθμιστεί API token.',
     'contacts.all_types': 'Όλοι οι τύποι',
@@ -1247,6 +1253,7 @@ const TRANSLATIONS = {
     'contacts.state_all':   'Όλες οι καταστάσεις',
     'contacts.state_active':  'Ενεργοί',
     'contacts.state_pending': 'Σε εκκρεμότητα',
+    'contacts.state_deleted': 'Διαγραμμένοι',
     'traffic.today_title': 'Σημερινή Επισκεψιμότητα',
     'traffic.today': 'Σήμερα',
     'traffic.visits': 'Επισκέψεις',
@@ -1494,6 +1501,7 @@ function setLang(lang) {
   if (typeof _orgsLoaded   !== 'undefined' && _orgsLoaded)     { filterOrgs(); }
   if (typeof _commsLoaded  !== 'undefined' && _commsLoaded)    { renderCommsSummary(); filterComms(); }
   if (typeof _trafficLoaded !== 'undefined' && _trafficLoaded) { loadTrafficTab(); }
+  if (typeof _portalMembersCache !== 'undefined' && _portalMembersCache) { renderContactsSummary(); filterContactsTab(); }
 }
 
 // ── Sidebar navigation ───────────────────────────────────────────────────────
@@ -4235,7 +4243,7 @@ function _pmReadCache() {
 }
 
 async function loadContactsTab(force = false) {
-  if (_portalMembersCache && !force) { filterContactsTab(); return; }
+  if (_portalMembersCache && !force) { renderContactsSummary(); filterContactsTab(); return; }
 
   if (!force) {
     const cached = _pmReadCache();
@@ -4244,6 +4252,7 @@ async function loadContactsTab(force = false) {
       _pmUnmatched = cached.unmatched || [];
       show('contactsReloadBtn').disabled = false;
       _pmSetFetchedAt(cached.ts);
+      renderContactsSummary();
       filterContactsTab();
       renderUnmatchedContacts();
       if (_orgsLoaded) loadContactSummary();
@@ -4296,6 +4305,7 @@ async function _pollPortalMembers(attempt, silent = false) {
     _pmSaveCache(_portalMembersCache, _pmUnmatched);
     _pmSetFetchedAt(Date.now());
     show('contactsReloadBtn').disabled = false;
+    renderContactsSummary();
     filterContactsTab();
     renderUnmatchedContacts();
     if (_orgsLoaded) loadContactSummary();
@@ -4330,6 +4340,75 @@ const CONTACT_TYPE_CLS = {
   'Data Steward':         'bg-warning text-dark',
 };
 
+function _dedupeContacts(rows) {
+  // Keep highest role per username (sysadmin > admin > editor > member)
+  const _roleRank = { admin: 3, editor: 2, member: 1 };
+  const _rank = m => m.sysadmin ? 4 : (_roleRank[m.capacity] || 0);
+  const seen = new Map();
+  for (const m of rows) {
+    const prev = seen.get(m.username);
+    if (!prev || _rank(m) > _rank(prev)) seen.set(m.username, m);
+  }
+  return [...seen.values()];
+}
+
+let _contactsActiveFilter = null;   // { type: 'role'|'state', value } or null = show all
+let _contactsSummaryCards = [];
+
+function renderContactsSummary() {
+  if (!_portalMembersCache) { show('contactsSummary').innerHTML = ''; return; }
+  const rows = _dedupeContacts(_portalMembersCache);
+  const roleCounts  = { admin: 0, editor: 0, member: 0, sysadmin: 0 };
+  const stateCounts = { active: 0, deleted: 0, pending: 0 };
+  for (const m of rows) {
+    if (m.sysadmin) roleCounts.sysadmin++;
+    else if (m.capacity in roleCounts) roleCounts[m.capacity]++;
+    const st = m.state || 'active';
+    stateCounts[st] = (stateCounts[st] || 0) + 1;
+  }
+
+  _contactsSummaryCards = [
+    { filter: null, label: t('contacts.total'), value: rows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+    { filter: { type: 'role', value: 'admin' },    label: t('contacts.role_admin'),    value: roleCounts.admin,    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-shield-check" },
+    { filter: { type: 'role', value: 'editor' },   label: t('contacts.role_editor'),   value: roleCounts.editor,   bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-pencil-square" },
+    { filter: { type: 'role', value: 'member' },   label: t('contacts.role_member'),   value: roleCounts.member,   bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person" },
+    { filter: { type: 'role', value: 'sysadmin' }, label: t('contacts.role_sysadmin'), value: roleCounts.sysadmin, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-shield-lock" },
+    { filter: { type: 'state', value: 'active' },  label: t('contacts.state_active'),  value: stateCounts.active,  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-check-circle" },
+    { filter: { type: 'state', value: 'pending' }, label: t('contacts.state_pending'), value: stateCounts.pending, bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-hourglass-split" },
+    { filter: { type: 'state', value: 'deleted' }, label: t('contacts.state_deleted'), value: stateCounts.deleted, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-x-circle" },
+  ];
+
+  const isActive = (f) => {
+    if (!f) return !_contactsActiveFilter;
+    return !!_contactsActiveFilter && f.type === _contactsActiveFilter.type && f.value === _contactsActiveFilter.value;
+  };
+
+  show('contactsSummary').innerHTML = _contactsSummaryCards.map((c, i) => {
+    const active = isActive(c.filter);
+    const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
+    return `
+    <div class="col-6 col-sm-4 col-lg">
+      <div class="rounded-3 p-3 d-flex align-items-center gap-3 ${c.bg}" style="border:${active ? 2 : 1}px solid ${borderColor};cursor:pointer" onclick="setContactsFilter(${i})">
+        <i class="bi ${c.icon} fs-4 ${c.text}"></i>
+        <div>
+          <div class="fw-bold fs-5 lh-1 ${c.text}">${c.value}</div>
+          <div class="text-muted" style="font-size:.75rem">${c.label}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setContactsFilter(idx) {
+  const card = _contactsSummaryCards[idx];
+  if (!card) return;
+  const f = card.filter;
+  const isSame = f && _contactsActiveFilter && f.type === _contactsActiveFilter.type && f.value === _contactsActiveFilter.value;
+  _contactsActiveFilter = (!f || isSame) ? null : f;
+  renderContactsSummary();
+  filterContactsTab();
+}
+
 function filterContactsTab() {
   if (!_portalMembersCache) return;
 
@@ -4345,16 +4424,16 @@ function filterContactsTab() {
     _ns(m.about      || '').includes(search)
   );
 
-  // Deduplicate by username — keep highest role (sysadmin > admin > editor > member)
-  {
-    const _roleRank = { admin: 3, editor: 2, member: 1 };
-    const _rank = m => m.sysadmin ? 4 : (_roleRank[m.capacity] || 0);
-    const seen = new Map();
-    for (const m of rows) {
-      const prev = seen.get(m.username);
-      if (!prev || _rank(m) > _rank(prev)) seen.set(m.username, m);
+  rows = _dedupeContacts(rows);
+
+  if (_contactsActiveFilter) {
+    if (_contactsActiveFilter.type === 'role') {
+      rows = rows.filter(m => _contactsActiveFilter.value === 'sysadmin'
+        ? m.sysadmin
+        : (!m.sysadmin && m.capacity === _contactsActiveFilter.value));
+    } else if (_contactsActiveFilter.type === 'state') {
+      rows = rows.filter(m => (m.state || 'active') === _contactsActiveFilter.value);
     }
-    rows = [...seen.values()];
   }
 
   rows = [...rows].sort((a, b) => {
