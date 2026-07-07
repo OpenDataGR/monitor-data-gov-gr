@@ -303,6 +303,21 @@ def change_password():
     return jsonify({"ok": True})
 
 
+@app.route("/api/account/update-name", methods=["POST"])
+def update_name():
+    user = User.query.get(session.get("user_id"))
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    body = _decode_payload()
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+    user.name = name
+    db.session.commit()
+    session["user_name"] = user.name
+    return jsonify({"ok": True, "name": user.name})
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _api_headers():

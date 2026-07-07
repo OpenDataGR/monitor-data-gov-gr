@@ -116,7 +116,10 @@
         <i class="bi bi-key"></i>
       </button>
       {% if user_name %}
-      <span class="text-white-50 small d-none d-lg-inline">{{ user_name }}</span>
+      <span class="text-white-50 small d-none d-lg-inline" id="navUserName">{{ user_name }}</span>
+      <button class="btn btn-outline-light btn-sm px-2" onclick="openEditNameModal()" data-i18n-title="nav.edit_name" title="Edit name">
+        <i class="bi bi-pencil"></i>
+      </button>
       {% endif %}
       <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm px-3">
         <i class="bi bi-box-arrow-right me-1"></i><span data-i18n="nav.sign_out">Sign out</span>
@@ -956,6 +959,35 @@
   </div>
 </div>
 
+<!-- Edit Name modal -->
+<div class="modal fade" id="editNameModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-bottom">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-pencil me-2"></i><span data-i18n="name.modal_title">Edit Name</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-4">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" data-i18n="name.label">Name</label>
+          <input type="text" id="nameInput" class="form-control form-control-sm" autocomplete="name"
+                 onkeydown="if(event.key==='Enter')submitEditName()">
+        </div>
+        <div id="nameError" class="text-danger small d-none"></div>
+        <div id="nameSuccess" class="text-success small d-none" data-i18n="name.success">Name updated successfully.</div>
+      </div>
+      <div class="modal-footer border-top">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="comm_modal.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="nameSaveBtn" onclick="submitEditName()">
+          <i class="bi bi-check me-1"></i><span data-i18n="name.save">Save</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
@@ -1236,6 +1268,13 @@ const TRANSLATIONS = {
     'reset.modal_wrong_pw': 'Incorrect password.',
     'reset.modal_confirm': 'Delete all data',
     'nav.change_password': 'Change Password',
+    'nav.edit_name': 'Edit name',
+    'name.modal_title': 'Edit Name',
+    'name.label': 'Name',
+    'name.success': 'Name updated successfully.',
+    'name.save': 'Save',
+    'name.err_required': 'Name is required.',
+    'name.err_generic': 'Failed to update name.',
     'pw.modal_title': 'Change Password',
     'pw.current': 'Current password',
     'pw.new': 'New password',
@@ -1532,6 +1571,13 @@ const TRANSLATIONS = {
     'reset.modal_wrong_pw': 'Λανθασμένος κωδικός.',
     'reset.modal_confirm': 'Διαγραφή όλων των δεδομένων',
     'nav.change_password': 'Αλλαγή Κωδικού',
+    'nav.edit_name': 'Επεξεργασία ονόματος',
+    'name.modal_title': 'Επεξεργασία Ονόματος',
+    'name.label': 'Όνομα',
+    'name.success': 'Το όνομα ενημερώθηκε με επιτυχία.',
+    'name.save': 'Αποθήκευση',
+    'name.err_required': 'Το όνομα είναι υποχρεωτικό.',
+    'name.err_generic': 'Αποτυχία ενημέρωσης ονόματος.',
     'pw.modal_title': 'Αλλαγή Κωδικού',
     'pw.current': 'Τρέχων κωδικός',
     'pw.new': 'Νέος κωδικός',
@@ -4303,6 +4349,54 @@ async function submitChangePassword() {
     if (!resp.ok) throw new Error(data.error || t('pw.err_generic'));
     okEl.classList.remove('d-none');
     setTimeout(() => _changePasswordModal.hide(), 1200);
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+let _editNameModal = null;
+
+function openEditNameModal() {
+  if (!_editNameModal) _editNameModal = new bootstrap.Modal(document.getElementById('editNameModal'));
+  document.getElementById('nameInput').value = document.getElementById('navUserName')?.textContent.trim() || '';
+  document.getElementById('nameError').classList.add('d-none');
+  document.getElementById('nameSuccess').classList.add('d-none');
+  document.getElementById('nameSaveBtn').disabled = false;
+  _editNameModal.show();
+  setTimeout(() => document.getElementById('nameInput').focus(), 400);
+}
+
+async function submitEditName() {
+  const btn = document.getElementById('nameSaveBtn');
+  if (btn.disabled) return;
+  const name  = document.getElementById('nameInput').value.trim();
+  const errEl = document.getElementById('nameError');
+  const okEl  = document.getElementById('nameSuccess');
+  errEl.classList.add('d-none');
+  okEl.classList.add('d-none');
+
+  if (!name) {
+    errEl.textContent = t('name.err_required');
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const resp = await fetch(`${API_BASE}api/account/update-name`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || t('name.err_generic'));
+    const navName = document.getElementById('navUserName');
+    if (navName) navName.textContent = data.name;
+    okEl.classList.remove('d-none');
+    setTimeout(() => _editNameModal.hide(), 1200);
   } catch (e) {
     errEl.textContent = e.message;
     errEl.classList.remove('d-none');
