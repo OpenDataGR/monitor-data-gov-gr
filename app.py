@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 import io
 import secrets
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, User, PasswordResetToken
@@ -28,6 +30,11 @@ app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.secret_key = config.FLASK_SECRET_KEY or "insecure-dev-secret-key-change-me"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+# In-memory storage: limits are per gunicorn worker process, not shared across
+# workers. With N workers the effective ceiling is roughly N x the configured
+# limit — still a meaningful backstop against scripted abuse, just not exact.
+limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["200 per minute"])
 
 db.init_app(app)
 
@@ -155,6 +162,7 @@ def require_login():
 
 
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     if session.get("user_id"):
         return redirect(url_for("index"))
@@ -180,6 +188,7 @@ def login():
 
 
 @app.route("/forgot-password", methods=["GET", "POST"])
+@limiter.limit("5 per hour")
 def forgot_password():
     sent = False
     if freq.method == "POST":
@@ -192,6 +201,7 @@ def forgot_password():
 
 
 @app.route("/set-password", methods=["GET", "POST"])
+@limiter.limit("20 per hour")
 def set_password():
     token_str = freq.values.get("token", "")
     token = PasswordResetToken.query.filter_by(token=token_str).first()
@@ -236,6 +246,7 @@ def admin_users_page():
 
 
 @app.route("/api/users", methods=["GET", "POST"])
+@limiter.limit("20 per hour", methods=["POST"])
 def users_collection():
     err = _require_admin()
     if err:
@@ -260,6 +271,7 @@ def users_collection():
 
 
 @app.route("/api/users/<int:user_id>/resend-invite", methods=["POST"])
+@limiter.limit("20 per hour")
 def users_resend_invite(user_id):
     err = _require_admin()
     if err:
@@ -296,6 +308,7 @@ def users_delete(user_id):
 
 
 @app.route("/api/account/change-password", methods=["POST"])
+@limiter.limit("10 per hour")
 def change_password():
     user = User.query.get(session.get("user_id"))
     if not user:
@@ -2767,6 +2780,7 @@ def matomo_debug_pages():
 
 
 @app.route("/api/admin/reset", methods=["GET", "POST"])
+@limiter.limit("10 per hour")
 def admin_reset():
     err = _require_admin()
     if err:
@@ -2783,8 +2797,12 @@ def admin_reset():
 
 
 @app.route("/api/admin/test-email", methods=["POST"])
+@limiter.limit("10 per hour")
 def admin_test_email():
     """One-off endpoint to confirm the SendGrid credentials work end-to-end."""
+    err = _require_admin()
+    if err:
+        return err
     body = _decode_payload()
     to = (body.get("to") or "").strip()
     if not to:
