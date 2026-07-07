@@ -11,6 +11,10 @@ MATOMO_TOKEN   = os.environ.get("MATOMO_TOKEN", "")
 FLASK_SECRET_KEY    = os.environ.get("FLASK_SECRET_KEY", "").strip()
 DATABASE_URL        = os.environ.get("DATABASE_URL", "").strip()
 
+# Used to build absolute links (invite/reset emails) from contexts with no
+# incoming request to infer the host from, e.g. create_admin.py.
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://experiments.data.gov.gr/data_dashboard").strip().rstrip("/")
+
 SMTP_SERVER         = os.environ.get("SMTP_SERVER", "smtp.sendgrid.net").strip()
 SMTP_PORT           = int(os.environ.get("SMTP_PORT", "587") or 587)
 SMTP_USERNAME       = os.environ.get("SMTP_USERNAME", "").strip()

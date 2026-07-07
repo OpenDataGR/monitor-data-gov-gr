@@ -11,6 +11,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 from app import app, _send_password_link
 from models import db, User
+import config
 
 if len(sys.argv) < 2:
     print(f"Usage: python {sys.argv[0]} <email> [name]")
@@ -19,7 +20,10 @@ if len(sys.argv) < 2:
 email = sys.argv[1].strip().lower()
 name = sys.argv[2].strip() if len(sys.argv) > 2 else None
 
-with app.app_context():
+# A plain app_context() has no request to infer the host from, so
+# _send_password_link's url_for(..., _external=True) would fail. A test
+# request context anchored at the deployed URL gives it one.
+with app.test_request_context(base_url=config.PUBLIC_BASE_URL):
     user = User.query.filter_by(email=email).first()
     if user:
         print(f"User {email} already exists (admin={user.is_admin}) — sending a fresh set-password link.")
