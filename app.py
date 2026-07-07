@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import io
 import secrets
-from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file
+from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, User, PasswordResetToken
@@ -86,7 +86,7 @@ with app.app_context():
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 PASSWORD_LINK_VALID_HOURS = 24
-_PUBLIC_PATHS = ("/login", "/logout", "/forgot-password", "/set-password")
+_PUBLIC_PATHS = ("/login", "/logout", "/forgot-password", "/set-password", "/robots.txt")
 
 
 def _send_password_link(user: "User", kind: str = "invite") -> str:
@@ -132,7 +132,15 @@ def no_cache(response):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+    # This dashboard has no business being in search results — tell every crawler
+    # that respects the header to stay out, regardless of how it found a URL.
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     return response
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
 
 
 @app.before_request
