@@ -57,6 +57,9 @@
       .dashboard-sidebar.collapsed .nav-link { justify-content: flex-start; padding: .55rem .7rem; }
       .sidebar-toggle-btn { display: none !important; }
       .sidebar-backdrop.show { display: block; }
+      /* Tables are wider than a phone screen — scroll horizontally inside
+         their card instead of blowing out the page's width. */
+      .card { overflow-x: auto; }
     }
     .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
     .dot-up      { background: #198754; box-shadow: 0 0 0 3px rgba(25,135,84,.2); }
@@ -96,13 +99,13 @@
         <i class="bi bi-database-check me-2"></i>data.gov.gr Monitor
       </span>
     </div>
-    <div class="d-flex align-items-center gap-3">
-      <span class="text-white-50 small"><span data-i18n="nav.last_check">Last check:</span> <span id="lastChecked">—</span></span>
-      <button class="btn btn-outline-light btn-sm px-3" onclick="triggerCheck()">
-        <i class="bi bi-arrow-clockwise me-1"></i><span data-i18n="nav.check_now">Check Now</span>
+    <div class="d-flex align-items-center flex-wrap justify-content-end gap-2 gap-md-3 row-gap-2">
+      <span class="text-white-50 small d-none d-md-inline"><span data-i18n="nav.last_check">Last check:</span> <span id="lastChecked">—</span></span>
+      <button class="btn btn-outline-light btn-sm px-2 px-sm-3" onclick="triggerCheck()" data-i18n-title="nav.check_now" title="Check Now">
+        <i class="bi bi-arrow-clockwise me-sm-1"></i><span class="d-none d-sm-inline" data-i18n="nav.check_now">Check Now</span>
       </button>
-      <a href="{{ url_for('static', filename='manual.html') }}" target="_blank" class="btn btn-outline-light btn-sm px-3">
-        <i class="bi bi-book me-1"></i><span data-i18n="nav.manual">Οδηγός</span>
+      <a href="{{ url_for('static', filename='manual.html') }}" target="_blank" class="btn btn-outline-light btn-sm px-2 px-sm-3" data-i18n-title="nav.manual" title="Manual">
+        <i class="bi bi-book me-sm-1"></i><span class="d-none d-sm-inline" data-i18n="nav.manual">Οδηγός</span>
       </a>
       {% if is_admin %}
       <a href="{{ url_for('admin_users_page') }}" class="btn btn-outline-light btn-sm px-3" data-i18n-title="nav.admin_panel" title="Admin Panel">
@@ -136,8 +139,8 @@
         </ul>
       </div>
       {% else %}
-      <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm px-3">
-        <i class="bi bi-box-arrow-right me-1"></i><span data-i18n="nav.sign_out">Sign out</span>
+      <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm px-2 px-sm-3" data-i18n-title="nav.sign_out" title="Sign out">
+        <i class="bi bi-box-arrow-right me-sm-1"></i><span class="d-none d-sm-inline" data-i18n="nav.sign_out">Sign out</span>
       </a>
       {% endif %}
       <div class="btn-group btn-group-sm" role="group">
