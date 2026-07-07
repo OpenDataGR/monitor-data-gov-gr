@@ -696,7 +696,7 @@
                      oninput="_commOrgSearch(this.value)" onfocus="_commOrgSearch(this.value)"
                      onblur="setTimeout(()=>document.getElementById('commOrgDropdown').classList.add('d-none'),150)">
               <ul class="list-group shadow-sm position-absolute w-100 d-none"
-                  id="commOrgDropdown" style="z-index:1060;max-height:180px;overflow-y:auto;top:100%"></ul>
+                  id="commOrgDropdown" style="z-index:1060;max-height:260px;overflow-y:auto;top:100%"></ul>
             </div>
             <div id="commOrgSelected" class="mt-1 d-none">
               <span class="badge bg-secondary" id="commOrgBadge"></span>
@@ -4746,6 +4746,9 @@ function _commAllContacts() {
 function _commContactLabel(c) {
   return [c.first_name, c.last_name].filter(Boolean).join(' ') + (c.position ? ' (' + c.position + ')' : '');
 }
+function _commContactName(c) {
+  return [c.first_name, c.last_name].filter(Boolean).join(' ');
+}
 
 let _commContactSearchResults = [];
 
@@ -4771,23 +4774,23 @@ function _commOrgSearch(q) {
 
   dd.innerHTML = [
     ...contactMatches.map((c, i) =>
-      `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
+      `<li class="list-group-item list-group-item-action py-2 px-2" style="cursor:pointer"
            onmousedown="_commContactPick(${i})">
-         <i class="bi bi-person-fill me-1 text-primary"></i><span class="fw-semibold">${esc(_commContactLabel(c))}</span>
+         <i class="bi bi-person-fill me-1 text-primary"></i><span class="fw-semibold">${esc(_commContactName(c))}</span>
          <span class="badge bg-light text-dark border ms-1">${esc(c.org_label)}</span></li>`
     ),
     ...ckanMatches.map(o =>
-      `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
+      `<li class="list-group-item list-group-item-action py-2 px-2" style="cursor:pointer"
            data-code="${esc(o.name)}" data-label="${esc(o.title)}"
            onmousedown="_commOrgSelect(this.dataset.code,this.dataset.label)">
          <i class="bi bi-building me-1 text-muted"></i><span class="fw-semibold">${esc(o.title)}</span></li>`
     ),
     ...hrmsMatches.map(o =>
-      `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
+      `<li class="list-group-item list-group-item-action py-2 px-2" style="cursor:pointer"
            data-code="${esc(o.code)}" data-label="${esc(o.label)}"
            onmousedown="_commOrgSelect(this.dataset.code,this.dataset.label)">
          <i class="bi bi-building me-1 text-muted"></i><span class="fw-semibold">${esc(o.label)}</span>
-         <span class="badge bg-secondary ms-1" style="font-size:.6rem">HRMS only</span></li>`
+         <span class="badge bg-secondary ms-1" style="font-size:.75rem">HRMS only</span></li>`
     ),
   ].join('');
   dd.classList.remove('d-none');
