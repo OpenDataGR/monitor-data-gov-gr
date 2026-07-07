@@ -84,26 +84,30 @@ class Case(db.Model):
         cascade="all, delete-orphan",
     )
 
-    def to_dict(self, include_communications=False):
+    @property
+    def is_stale(self):
         entries = sorted(self.communications, key=lambda c: (c.contact_date, c.created_at))
         last_entry = entries[-1] if entries else None
         last_update = last_entry.contact_date if last_entry else None
-        is_stale = False
-        if self.status == "Open" and last_entry:
-            if last_entry.status == "No Response":
-                is_stale = True  # the latest logged attempt itself went unanswered
-            elif self.deadline:
-                try:
-                    is_stale = datetime.now(timezone.utc).date() > datetime.strptime(self.deadline, "%Y-%m-%d").date()
-                except ValueError:
-                    pass
-            else:
-                # legacy case with no deadline set - fall back to the old idle-time rule
-                try:
-                    idle_days = (datetime.now(timezone.utc).date() - datetime.strptime(last_update, "%Y-%m-%d").date()).days
-                    is_stale = idle_days >= STALE_CASE_DAYS
-                except ValueError:
-                    pass
+        if self.status != "Open" or not last_entry:
+            return False
+        if last_entry.status == "No Response":
+            return True  # the latest logged attempt itself went unanswered
+        if self.deadline:
+            try:
+                return datetime.now(timezone.utc).date() > datetime.strptime(self.deadline, "%Y-%m-%d").date()
+            except ValueError:
+                return False
+        # legacy case with no deadline set - fall back to the old idle-time rule
+        try:
+            idle_days = (datetime.now(timezone.utc).date() - datetime.strptime(last_update, "%Y-%m-%d").date()).days
+            return idle_days >= STALE_CASE_DAYS
+        except ValueError:
+            return False
+
+    def to_dict(self, include_communications=False):
+        entries = sorted(self.communications, key=lambda c: (c.contact_date, c.created_at))
+        last_entry = entries[-1] if entries else None
         d = {
             "id":          self.id,
             "org_name":    self.org_name,
@@ -114,8 +118,8 @@ class Case(db.Model):
             "opened_at":   self.opened_at.isoformat() if self.opened_at else None,
             "closed_at":   self.closed_at.isoformat() if self.closed_at else None,
             "entry_count": len(entries),
-            "last_update": last_update,
-            "is_stale":    is_stale,
+            "last_update": last_entry.contact_date if last_entry else None,
+            "is_stale":    self.is_stale,
         }
         if include_communications:
             d["communications"] = [c.to_dict() for c in entries]
@@ -142,6 +146,7 @@ class Communication(db.Model):
             "id":           self.id,
             "case_id":      self.case_id,
             "case_status":  self.case.status if self.case else None,
+            "case_is_stale": self.case.is_stale if self.case else False,
             "created_at":   self.created_at.isoformat(),
             "contact_date": self.contact_date,
             "org_name":     self.org_name,
