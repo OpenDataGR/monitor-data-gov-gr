@@ -2735,6 +2735,11 @@ function caseBadgeHtml(c, extraClass = '') {
   return `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'} ${extraClass}" style="font-size:.62rem" title="${t('comms.case_col')} #${c.case_id}">#${c.case_id}${label ? ' · ' + label : ''}</span>`;
 }
 
+function contactPersonHtml(c) {
+  if (!c.contact_person) return '';
+  return `<div class="text-muted" style="font-size:.7rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>`;
+}
+
 const MEDIUM_ICON = {
   "Telephone": "bi-telephone",
   "Email":     "bi-envelope",
@@ -2915,7 +2920,7 @@ function renderCommsTable(rows) {
           <tr>
             <td class="text-muted small mono text-nowrap">${c.contact_date}</td>
             <td class="fw-semibold small">${c.org_title}</td>
-            <td class="small">${c.subject} ${caseBadgeHtml(c)}</td>
+            <td class="small">${c.subject} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
             <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
             <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
             <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
@@ -2979,7 +2984,7 @@ function renderCommsGrouped(data) {
       ${comms.map(c => `
         <tr style="${isExpanded ? '' : 'display:none'}" class="comm-hist-row">
           <td class="text-muted small mono text-nowrap ps-4">${c.contact_date}</td>
-          <td class="small">${c.subject} ${caseBadgeHtml(c)}</td>
+          <td class="small">${c.subject} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
           <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
           <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
           <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
@@ -3061,7 +3066,7 @@ function renderCommsCases(data) {
       ${comms.map(c => `
         <tr style="${isExpanded ? '' : 'display:none'}" class="comm-hist-row">
           <td class="text-muted small mono text-nowrap ps-4">${c.contact_date}</td>
-          <td class="small">${c.subject}</td>
+          <td class="small">${c.subject}${contactPersonHtml(c)}</td>
           <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
           <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
           <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
