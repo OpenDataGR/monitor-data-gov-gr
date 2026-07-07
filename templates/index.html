@@ -112,18 +112,37 @@
         <i class="bi bi-people"></i>
       </a>
       {% endif %}
-      <button class="btn btn-outline-light btn-sm px-2" onclick="openChangePasswordModal()" data-i18n-title="nav.change_password" title="Change Password">
-        <i class="bi bi-key"></i>
-      </button>
       {% if user_name %}
-      <span class="text-white-50 small d-none d-lg-inline" id="navUserName">{{ user_name }}</span>
-      <button class="btn btn-outline-light btn-sm px-2" onclick="openEditNameModal()" data-i18n-title="nav.edit_name" title="Edit name">
-        <i class="bi bi-pencil"></i>
-      </button>
-      {% endif %}
+      <div class="dropdown">
+        <button class="btn btn-outline-light btn-sm px-3 dropdown-toggle d-flex align-items-center gap-2" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="bi bi-person-circle"></i>
+          <span class="d-none d-lg-inline" id="navUserName">{{ user_name }}</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li>
+            <button type="button" class="dropdown-item" onclick="openEditNameModal()">
+              <i class="bi bi-pencil me-2"></i><span data-i18n="nav.edit_name">Edit name</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" class="dropdown-item" onclick="openChangePasswordModal()">
+              <i class="bi bi-key me-2"></i><span data-i18n="nav.change_password">Change Password</span>
+            </button>
+          </li>
+          <li><hr class="dropdown-divider"></li>
+          <li>
+            <a class="dropdown-item" href="{{ url_for('logout') }}">
+              <i class="bi bi-box-arrow-right me-2"></i><span data-i18n="nav.sign_out">Sign out</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+      {% else %}
       <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm px-3">
         <i class="bi bi-box-arrow-right me-1"></i><span data-i18n="nav.sign_out">Sign out</span>
       </a>
+      {% endif %}
       <div class="btn-group btn-group-sm" role="group">
         <button id="langEl" type="button" class="btn btn-outline-light active" onclick="setLang('el')">ΕΛ</button>
         <button id="langEn" type="button" class="btn btn-outline-light" onclick="setLang('en')">EN</button>
