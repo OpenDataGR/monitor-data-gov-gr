@@ -2796,8 +2796,8 @@ function renderCommsSummary() {
   _commsSummaryCards = [
     { filter: null, label: t('comms.total'), value: total, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
     { filter: { type: 'case_status', value: 'Open' },   label: t('comms.open_cases'),   value: openCases,   bg: "bg-warning bg-opacity-10", text: "text-warning",   icon: "bi-folder2-open" },
-    { filter: { type: 'stale' },                        label: t('comms.stale_cases'),  value: staleCases,  bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-hourglass-split" },
     { filter: { type: 'case_status', value: 'Closed' }, label: t('comms.closed_cases'), value: closedCases, bg: "bg-success bg-opacity-10", text: "text-success",   icon: "bi-folder-check" },
+    { filter: { type: 'stale' },                        label: t('comms.stale_cases'),  value: staleCases,  bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-hourglass-split" },
     { filter: { type: 'status', value: 'Initial Contact' },      label: t('comms.initial_contact'),      value: counts["Initial Contact"],      bg: "bg-primary bg-opacity-10", text: "text-primary", icon: "bi-envelope" },
     { filter: { type: 'status', value: 'Intermediate Contact' }, label: t('comms.intermediate_contact'), value: counts["Intermediate Contact"], bg: "bg-info bg-opacity-10",    text: "text-info",    icon: "bi-reply" },
     { filter: { type: 'status', value: 'Positive Response' },    label: t('comms.positive_response'),    value: counts["Positive Response"],    bg: "bg-success bg-opacity-10", text: "text-success", icon: "bi-hand-thumbs-up" },
