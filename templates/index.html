@@ -1082,7 +1082,7 @@ const TRANSLATIONS = {
     'comm_modal.deadline': 'Deadline',
     'comm_modal.deadline_hint': 'If no follow-up is logged by this date, the case is treated as No Response.',
     'comm_modal.org': 'Organization',
-    'comm_modal.org_ph': 'Organization name',
+    'comm_modal.org_ph': 'Search by organization or contact name…',
     'comm_modal.org_locked': '(fixed to this case\'s organization)',
     'comm_modal.contact': 'Contact Person',
     'comm_modal.contact_ph': '— select contact —',
@@ -1366,7 +1366,7 @@ const TRANSLATIONS = {
     'comm_modal.deadline': 'Προθεσμία',
     'comm_modal.deadline_hint': 'Αν δεν καταχωρηθεί απάντηση μέχρι αυτή την ημερομηνία, η υπόθεση θεωρείται χωρίς απάντηση.',
     'comm_modal.org': 'Οργανισμός',
-    'comm_modal.org_ph': 'Όνομα οργανισμού',
+    'comm_modal.org_ph': 'Αναζήτηση με οργανισμό ή όνομα επαφής…',
     'comm_modal.org_locked': '(σταθερός οργανισμός για αυτή την υπόθεση)',
     'comm_modal.contact': 'Άτομο Επαφής',
     'comm_modal.contact_ph': '— επιλογή επαφής —',
@@ -2699,6 +2699,7 @@ let _commsData     = [];
 let _casesData     = [];   // [{id, org_name, org_title, subject, status, opened_at, closed_at, entry_count, last_update}]
 let _publicOrgs    = [];   // [{code, label}] from hrms.gov.gr
 let _commModal     = null;
+let _commContactsPrefetchStarted = false;
 let _commsSortCol   = 'contact_date';
 let _commsSortDir   = 'desc';
 let _commsViewMode  = 'cases';
@@ -3251,6 +3252,10 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
   show('commSaveBtn').disabled = false;
   _commOrgReset();
   _resetCommContact();
+  if (!_commContactsPrefetchStarted && _portalMembersCache === null) {
+    _commContactsPrefetchStarted = true;
+    loadContactsTab();  // warm the contacts cache so the org search can also match by contact name
+  }
 
   if (id) {
     const c = _commsData.find(x => x.id === id);
@@ -4714,7 +4719,86 @@ function _orgSearchDropdown(q, dropdownId, selectFn) {
   dd.classList.remove('d-none');
 }
 function _pmOrgSearch(q) { _orgSearchDropdown(q, 'pmEditOrgDropdown', '_pmOrgSelect'); }
-function _commOrgSearch(q) { _orgSearchDropdown(q, 'commOrgDropdown', '_commOrgSelect'); }
+
+function _commAllContacts() {
+  const contacts = [];
+  const seen = new Set();
+  for (const m of (_portalMembersCache || [])) {
+    if (!m.contact_id || seen.has(m.contact_id)) continue;
+    seen.add(m.contact_id);
+    contacts.push({
+      first_name: m.contact_first_name, last_name: m.contact_last_name,
+      position: m.contact_position, email: m.contact_email, tel: m.contact_tel,
+      org_code: m.org_name || '', org_label: m.org_title || m.org_name || '',
+    });
+  }
+  for (const c of (_pmUnmatched || [])) {
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    contacts.push({
+      first_name: c.first_name, last_name: c.last_name,
+      position: c.position, email: c.email, tel: c.tel,
+      org_code: c.org_code || '', org_label: c.org_label || c.org_code || '',
+    });
+  }
+  return contacts.filter(c => c.first_name || c.last_name);
+}
+function _commContactLabel(c) {
+  return [c.first_name, c.last_name].filter(Boolean).join(' ') + (c.position ? ' (' + c.position + ')' : '');
+}
+
+let _commContactSearchResults = [];
+
+function _commOrgSearch(q) {
+  const dd = document.getElementById('commOrgDropdown');
+  const nq = _ns((q || '').trim());
+
+  const ckanPool = _orgsData.length ? _orgsData : (() => {
+    try { const c = JSON.parse(localStorage.getItem(_ORGS_CACHE_KEY) || 'null'); return (c && c.data) || []; } catch(_) { return []; }
+  })();
+  const ckanMatches = nq
+    ? ckanPool.filter(o => _ns(o.title).includes(nq) || _ns(o.name).includes(nq)).slice(0, 10)
+    : ckanPool.slice(0, 20);
+  const hrmsMatches = nq && _publicOrgs.length
+    ? _publicOrgs.filter(o => !(_ckanByHrms && _ckanByHrms.get(o.code)) && _ns(o.label).includes(nq)).slice(0, 5)
+    : [];
+  const contactMatches = nq
+    ? _commAllContacts().filter(c => _ns(_commContactLabel(c)).includes(nq)).slice(0, 10)
+    : [];
+  _commContactSearchResults = contactMatches;
+
+  if (!ckanMatches.length && !hrmsMatches.length && !contactMatches.length) { dd.classList.add('d-none'); return; }
+
+  dd.innerHTML = [
+    ...contactMatches.map((c, i) =>
+      `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
+           onmousedown="_commContactPick(${i})">
+         <i class="bi bi-person-fill me-1 text-primary"></i><span class="fw-semibold">${esc(_commContactLabel(c))}</span>
+         <span class="badge bg-light text-dark border ms-1">${esc(c.org_label)}</span></li>`
+    ),
+    ...ckanMatches.map(o =>
+      `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
+           data-code="${esc(o.name)}" data-label="${esc(o.title)}"
+           onmousedown="_commOrgSelect(this.dataset.code,this.dataset.label)">
+         <i class="bi bi-building me-1 text-muted"></i><span class="fw-semibold">${esc(o.title)}</span></li>`
+    ),
+    ...hrmsMatches.map(o =>
+      `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
+           data-code="${esc(o.code)}" data-label="${esc(o.label)}"
+           onmousedown="_commOrgSelect(this.dataset.code,this.dataset.label)">
+         <i class="bi bi-building me-1 text-muted"></i><span class="fw-semibold">${esc(o.label)}</span>
+         <span class="badge bg-secondary ms-1" style="font-size:.6rem">HRMS only</span></li>`
+    ),
+  ].join('');
+  dd.classList.remove('d-none');
+}
+
+function _commContactPick(i) {
+  const c = _commContactSearchResults[i];
+  if (!c) return;
+  _commOrgSet(c.org_code, c.org_label);
+  onCommOrgInput(_commContactLabel(c));
+}
 function _pmOrgRenderTags() {
   const container = document.getElementById('pmEditOrgTags');
   if (!container) return;
