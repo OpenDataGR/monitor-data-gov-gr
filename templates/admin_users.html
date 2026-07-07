@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Manage Users — data.gov.gr Monitor</title>
+  <title>Admin Panel — data.gov.gr Monitor</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -17,6 +17,14 @@
     .badge-admin  { background: #0d6efd; }
     .badge-active { background: #198754; }
     .badge-invited{ background: #6c757d; }
+    .admin-nav .nav-link {
+      color: #495057;
+      border-radius: .5rem;
+      font-weight: 600;
+      font-size: .9rem;
+    }
+    .admin-nav .nav-link.active { background: #0057b8; color: #fff; }
+    .admin-nav .nav-link:not(.active):hover { background: #e9ecef; }
   </style>
 </head>
 <body>
@@ -25,46 +33,88 @@
       <a href="{{ url_for('index') }}" class="text-white-50 text-decoration-none small d-block mb-1">
         <i class="bi bi-arrow-left me-1"></i>Back to dashboard
       </a>
-      <div class="fw-bold fs-5"><i class="bi bi-people-fill me-2"></i>Manage Users</div>
+      <div class="fw-bold fs-5"><i class="bi bi-shield-lock-fill me-2"></i>Admin Panel</div>
     </div>
   </div>
 
-  <div class="container py-4" style="max-width:900px">
-    <div class="card p-4 mb-4">
-      <h6 class="fw-semibold mb-3">Invite a new user</h6>
-      <form id="inviteForm" class="row g-2 align-items-end" onsubmit="return inviteUser(event)">
-        <div class="col-sm-4">
-          <label class="form-label small mb-1">Email</label>
-          <input type="email" id="inviteEmail" class="form-control form-control-sm" required>
-        </div>
-        <div class="col-sm-4">
-          <label class="form-label small mb-1">Name</label>
-          <input type="text" id="inviteName" class="form-control form-control-sm">
-        </div>
-        <div class="col-sm-2 form-check ms-1 mb-1">
-          <input type="checkbox" id="inviteAdmin" class="form-check-input">
-          <label class="form-check-label small" for="inviteAdmin">Admin</label>
-        </div>
-        <div class="col-sm-2">
-          <button type="submit" class="btn btn-primary btn-sm w-100">
-            <i class="bi bi-envelope-plus me-1"></i>Invite
+  <div class="container py-4" style="max-width:1100px">
+    <div class="row g-4">
+      <div class="col-md-3">
+        <div class="nav flex-column nav-pills admin-nav gap-1" role="tablist" aria-orientation="vertical">
+          <button class="nav-link active text-start" data-bs-toggle="pill" data-bs-target="#panel-users" type="button">
+            <i class="bi bi-people-fill me-2"></i>Users
+          </button>
+          <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-system" type="button">
+            <i class="bi bi-gear-fill me-2"></i>System
           </button>
         </div>
-      </form>
-      <div id="inviteResult" class="mt-2 small d-none"></div>
-    </div>
+      </div>
 
-    <div class="card p-4 mb-4">
-      <h6 class="fw-semibold mb-3">Users</h6>
-      <div id="usersTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
-    </div>
+      <div class="col-md-9">
+        <div class="tab-content">
 
-    <div class="card p-4 border-danger">
-      <h6 class="fw-semibold mb-1 text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Danger Zone</h6>
-      <p class="text-muted small mb-3">Permanently delete all historical health checks and portal snapshots, then start a fresh check.</p>
-      <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#resetModal">
-        <i class="bi bi-trash me-1"></i>Reset All Stats
-      </button>
+          <!-- Users section -->
+          <div class="tab-pane fade show active" id="panel-users">
+            <div class="card p-4 mb-4">
+              <h6 class="fw-semibold mb-3">Invite a new user</h6>
+              <form id="inviteForm" class="row g-2 align-items-end" onsubmit="return inviteUser(event)">
+                <div class="col-sm-4">
+                  <label class="form-label small mb-1">Email</label>
+                  <input type="email" id="inviteEmail" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label small mb-1">Name</label>
+                  <input type="text" id="inviteName" class="form-control form-control-sm">
+                </div>
+                <div class="col-sm-2 form-check ms-1 mb-1">
+                  <input type="checkbox" id="inviteAdmin" class="form-check-input">
+                  <label class="form-check-label small" for="inviteAdmin">Admin</label>
+                </div>
+                <div class="col-sm-2">
+                  <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="bi bi-envelope-plus me-1"></i>Invite
+                  </button>
+                </div>
+              </form>
+              <div id="inviteResult" class="mt-2 small d-none"></div>
+            </div>
+
+            <div class="card p-4">
+              <h6 class="fw-semibold mb-3">Users</h6>
+              <div id="usersTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
+            </div>
+          </div>
+
+          <!-- System section -->
+          <div class="tab-pane fade" id="panel-system">
+            <div class="card p-4 mb-4">
+              <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-check me-2"></i>Email Delivery</h6>
+              <p class="text-muted small mb-3">Send a test email to confirm the SendGrid configuration works end-to-end.</p>
+              <form class="row g-2 align-items-end" onsubmit="return sendTestEmail(event)">
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1">Recipient</label>
+                  <input type="email" id="testEmailTo" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-sm-3">
+                  <button type="submit" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-send me-1"></i>Send Test Email
+                  </button>
+                </div>
+              </form>
+              <div id="testEmailResult" class="mt-2 small d-none"></div>
+            </div>
+
+            <div class="card p-4 border-danger">
+              <h6 class="fw-semibold mb-1 text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Danger Zone</h6>
+              <p class="text-muted small mb-3">Permanently delete all historical health checks and portal snapshots, then start a fresh check.</p>
+              <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#resetModal">
+                <i class="bi bi-trash me-1"></i>Reset All Stats
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
     </div>
   </div>
 
@@ -184,6 +234,28 @@
       const data = await resp.json();
       if (resp.ok) loadUsers();
       else alert(data.error || 'Failed');
+    }
+
+    async function sendTestEmail(ev) {
+      ev.preventDefault();
+      const to = document.getElementById('testEmailTo').value.trim();
+      const resultEl = document.getElementById('testEmailResult');
+      resultEl.classList.add('d-none');
+      try {
+        const resp = await fetch('../api/admin/test-email', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({to}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to send test email');
+        resultEl.className = 'mt-2 small alert alert-success';
+        resultEl.textContent = `Test email sent to ${to}.`;
+      } catch (e) {
+        resultEl.className = 'mt-2 small alert alert-danger';
+        resultEl.textContent = e.message;
+      }
+      resultEl.classList.remove('d-none');
+      return false;
     }
 
     function _b64enc(obj) {
