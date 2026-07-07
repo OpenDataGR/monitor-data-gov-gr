@@ -1484,7 +1484,7 @@ function setLang(lang) {
   applyI18n();
   if (typeof _healthLoaded !== 'undefined' && _healthLoaded)   { loadOverview(); }
   if (typeof _orgsLoaded   !== 'undefined' && _orgsLoaded)     { filterOrgs(); }
-  if (typeof _commsLoaded  !== 'undefined' && _commsLoaded)    { filterComms(); }
+  if (typeof _commsLoaded  !== 'undefined' && _commsLoaded)    { renderCommsSummary(); filterComms(); }
   if (typeof _trafficLoaded !== 'undefined' && _trafficLoaded) { loadTrafficTab(); }
 }
 
