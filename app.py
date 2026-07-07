@@ -60,6 +60,10 @@ with app.app_context():
             db.session.flush()
             _c.case_id = _case.id
         db.session.commit()
+    _case_cols = [c['name'] for c in _insp.get_columns('cases')]
+    if 'deadline' not in _case_cols:
+        db.session.execute(text('ALTER TABLE cases ADD COLUMN deadline VARCHAR(10)'))
+        db.session.commit()
     _contact_cols = [c['name'] for c in _insp.get_columns('org_contacts')]
     if 'contact_type' not in _contact_cols:
         db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN contact_type VARCHAR(200)'))
@@ -1057,6 +1061,14 @@ VALID_STATUSES = {"Initial Contact", "Intermediate Contact", "Positive Response"
 VALID_MEDIUMS  = {"Telephone", "Email", "In Person", "Other"}
 
 
+def _default_deadline(contact_date_str, days=14):
+    try:
+        d = datetime.strptime(contact_date_str, "%Y-%m-%d").date()
+        return (d + timedelta(days=days)).isoformat()
+    except (ValueError, TypeError):
+        return None
+
+
 @app.route("/api/communications", methods=["GET"])
 def communications_list():
     rows = Communication.query.order_by(Communication.contact_date.desc(), Communication.created_at.desc()).all()
@@ -1078,12 +1090,15 @@ def communications_create():
     if medium and medium not in VALID_MEDIUMS:
         return jsonify({"error": f"medium must be one of {sorted(VALID_MEDIUMS)}"}), 400
     org_title = (body.get("org_title") or "").strip() or None
+    deadline  = (body.get("deadline") or "").strip() or None
 
     case_id = body.get("case_id")
     if case_id:
         if status == "Initial Contact":
             return jsonify({"error": "Initial Contact is reserved for the entry that opens a case"}), 400
         case = Case.query.get_or_404(int(case_id))
+        if deadline:
+            case.deadline = deadline
         if status in ("Positive Response", "Negative Response"):  # a resolution closes the case
             case.status = "Closed"
             case.closed_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -1092,7 +1107,10 @@ def communications_create():
             case.closed_at = None
     else:
         status = "Initial Contact"  # the entry that opens a case is always its initial contact
-        case = Case(org_name=org_name, org_title=org_title, subject=subject, status="Open")
+        case = Case(
+            org_name=org_name, org_title=org_title, subject=subject, status="Open",
+            deadline=deadline or _default_deadline(contact_date),
+        )
         db.session.add(case)
         db.session.flush()
 
@@ -1137,6 +1155,8 @@ def communications_update(comm_id):
         if medium and medium not in VALID_MEDIUMS:
             return jsonify({"error": f"medium must be one of {sorted(VALID_MEDIUMS)}"}), 400
         comm.medium = medium or None
+    if "deadline" in body and comm.case:
+        comm.case.deadline = (body["deadline"] or "").strip() or None
     db.session.commit()
     return jsonify(comm.to_dict())
 
@@ -1180,6 +1200,8 @@ def case_update(case_id):
         case.org_name = (body["org_name"] or "").strip()
     if "org_title" in body:
         case.org_title = (body["org_title"] or "").strip() or None
+    if "deadline" in body:
+        case.deadline = (body["deadline"] or "").strip() or None
     db.session.commit()
     return jsonify(case.to_dict())
 

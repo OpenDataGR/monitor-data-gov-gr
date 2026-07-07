@@ -692,11 +692,16 @@
               <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="commCaseToggleBtn" onclick="_toggleCaseFromModal()"></button>
             </div>
           </div>
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.date">Date</label> <span class="text-danger">*</span>
-            <input type="date" id="commDate" class="form-control form-control-sm">
+            <input type="date" id="commDate" class="form-control form-control-sm" onchange="_onCommDateChange()">
           </div>
-          <div class="col-md-8">
+          <div class="col-md-6">
+            <label class="form-label small fw-semibold" data-i18n="comm_modal.deadline">Deadline</label>
+            <input type="date" id="commDeadline" class="form-control form-control-sm">
+            <div class="form-text small" data-i18n="comm_modal.deadline_hint">If no follow-up is logged by this date, the case is treated as No Response.</div>
+          </div>
+          <div class="col-12">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.org">Organization</label> <span class="text-danger">*</span>
             <input type="hidden" id="commOrgCode">
             <input type="hidden" id="commOrgLabel">
@@ -1087,6 +1092,8 @@ const TRANSLATIONS = {
     'comm_modal.add_title': 'Add Communication',
     'comm_modal.edit_title': 'Edit Communication',
     'comm_modal.date': 'Date',
+    'comm_modal.deadline': 'Deadline',
+    'comm_modal.deadline_hint': 'If no follow-up is logged by this date, the case is treated as No Response.',
     'comm_modal.org': 'Organization',
     'comm_modal.org_ph': 'Organization name',
     'comm_modal.org_locked': '(fixed to this case\'s organization)',
@@ -1367,6 +1374,8 @@ const TRANSLATIONS = {
     'comm_modal.add_title': 'Προσθήκη Επικοινωνίας',
     'comm_modal.edit_title': 'Επεξεργασία Επικοινωνίας',
     'comm_modal.date': 'Ημερομηνία',
+    'comm_modal.deadline': 'Προθεσμία',
+    'comm_modal.deadline_hint': 'Αν δεν καταχωρηθεί απάντηση μέχρι αυτή την ημερομηνία, η υπόθεση θεωρείται χωρίς απάντηση.',
     'comm_modal.org': 'Οργανισμός',
     'comm_modal.org_ph': 'Όνομα οργανισμού',
     'comm_modal.org_locked': '(σταθερός οργανισμός για αυτή την υπόθεση)',
@@ -3038,7 +3047,7 @@ function renderCommsCases(data) {
             <span class="fw-semibold">${esc(cs.org_title)}</span>
             <span class="text-muted small">— ${esc(cs.subject)}</span>
             <span class="badge bg-primary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
-            <span class="text-muted small ms-auto">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}${isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : ''}</span>
+            <span class="text-muted small ms-auto">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}${isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')}</span>
             <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('comms.case_add_entry')}"
                     onclick="event.stopPropagation();openFollowupForCase(${caseId})">
               <i class="bi bi-plus"></i>
@@ -3208,6 +3217,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commId').value      = c.id;
     show('commCaseId').value  = c.case_id || '';
     show('commDate').value    = c.contact_date;
+    show('commDeadline').value = (_casesData.find(x => x.id === c.case_id) || {}).deadline || _plus14(c.contact_date);
     show('commSubject').value = c.subject;
     show('commStatus').value  = c.status;
     show('commStatus').disabled = false;
@@ -3223,6 +3233,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commId').value      = '';
     show('commCaseId').value  = prefillCaseId || '';
     show('commDate').value    = new Date().toISOString().slice(0, 10);
+    show('commDeadline').value = (prefillCaseId && (_casesData.find(x => x.id === prefillCaseId) || {}).deadline) || _plus14(show('commDate').value);
     show('commSubject').value = prefillSubject || '';
     show('commStatus').disabled = !prefillCaseId;  // a brand-new case always opens as Initial Contact
     show('commStatusInitialOption').hidden = !!prefillCaseId;  // reserved for the entry that opens a case
@@ -3249,7 +3260,7 @@ function _renderCommCaseInfo(caseId, isEdit = false) {
   show('commCaseStatusBadge').className = 'badge ' + (CASE_STATUS_BADGE[cs.status] || 'bg-secondary');
   show('commCaseStatusBadge').textContent = caseStatusLabel(cs.status);
   show('commCaseInfoText').textContent = `${t('comms.case_col')} #${cs.id} · ${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
-    (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : '');
+    (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : ''));
   show('commCaseFollowupBtn').classList.toggle('d-none', !isEdit);
   const btn = show('commCaseToggleBtn');
   btn.textContent = isClosed ? t('comms.case_reopen') : t('comms.case_close');
@@ -3304,6 +3315,16 @@ function _onCommStatusChange() {
   const status = show('commStatus').value;
   const closes = isAdding && (status === 'Positive Response' || status === 'Negative Response');
   show('commStatusCloseHint').classList.toggle('d-none', !closes);
+}
+
+function _plus14(dateStr) {
+  const d = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+  d.setDate(d.getDate() + 14);
+  return d.toISOString().slice(0, 10);
+}
+
+function _onCommDateChange() {
+  show('commDeadline').value = _plus14(show('commDate').value);
 }
 
 function _resetCommContact() {
@@ -3409,6 +3430,7 @@ async function saveComm() {
 
   const body = {
     contact_date: show('commDate').value,
+    deadline:     show('commDeadline').value || null,
     org_name:     orgName,
     org_title:    orgTitle,
     subject:      show('commSubject').value.trim(),

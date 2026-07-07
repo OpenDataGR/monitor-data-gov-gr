@@ -74,6 +74,7 @@ class Case(db.Model):
     org_title  = db.Column(db.String(200))
     subject    = db.Column(db.String(500), nullable=False)
     status     = db.Column(db.String(20), nullable=False, default="Open")  # Open | Closed
+    deadline   = db.Column(db.String(10))  # ISO date; past this with no follow-up -> treated as No Response
     opened_at  = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     closed_at  = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
@@ -91,7 +92,13 @@ class Case(db.Model):
         if self.status == "Open" and last_entry:
             if last_entry.status == "No Response":
                 is_stale = True  # the latest logged attempt itself went unanswered
+            elif self.deadline:
+                try:
+                    is_stale = datetime.now(timezone.utc).date() > datetime.strptime(self.deadline, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
             else:
+                # legacy case with no deadline set - fall back to the old idle-time rule
                 try:
                     idle_days = (datetime.now(timezone.utc).date() - datetime.strptime(last_update, "%Y-%m-%d").date()).days
                     is_stale = idle_days >= STALE_CASE_DAYS
@@ -103,6 +110,7 @@ class Case(db.Model):
             "org_title":   self.org_title or self.org_name,
             "subject":     self.subject,
             "status":      self.status,
+            "deadline":    self.deadline,
             "opened_at":   self.opened_at.isoformat() if self.opened_at else None,
             "closed_at":   self.closed_at.isoformat() if self.closed_at else None,
             "entry_count": len(entries),
