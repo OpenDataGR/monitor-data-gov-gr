@@ -88,12 +88,31 @@ with app.app_context():
             db.session.commit()
         except Exception:
             db.session.rollback()
+    _user_cols = [c['name'] for c in _insp.get_columns('users')]
+    if 'allowed_tabs' not in _user_cols:
+        db.session.execute(text('ALTER TABLE users ADD COLUMN allowed_tabs TEXT'))
+        db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 PASSWORD_LINK_VALID_HOURS = 24
 _PUBLIC_PATHS = ("/login", "/logout", "/forgot-password", "/set-password", "/robots.txt")
+
+# Dashboard sidebar tabs, in the order they appear. "overview" is the landing
+# tab and is always included so a restricted user is never left with nothing.
+ALL_TABS = ["overview", "comms", "contacts", "orgs", "health", "traffic", "datasets", "stats", "quality"]
+
+
+def _effective_allowed_tabs(user: "User"):
+    """None means unrestricted (sees every tab) — true for admins and for any
+    user who hasn't been given an explicit allow-list."""
+    if not user or user.is_admin or not user.allowed_tabs:
+        return None
+    tabs = [t for t in user.allowed_tabs.split(",") if t in ALL_TABS]
+    if "overview" not in tabs:
+        tabs.insert(0, "overview")
+    return tabs
 
 
 def _send_password_link(user: "User", kind: str = "invite") -> str:
@@ -290,6 +309,23 @@ def users_toggle_admin(user_id):
         return jsonify({"error": "You cannot change your own admin status"}), 400
     user = User.query.get_or_404(user_id)
     user.is_admin = not user.is_admin
+    db.session.commit()
+    return jsonify({"ok": True, "user": user.to_dict()})
+
+
+@app.route("/api/users/<int:user_id>/tabs", methods=["POST"])
+def users_set_tabs(user_id):
+    err = _require_admin()
+    if err:
+        return err
+    user = User.query.get_or_404(user_id)
+    body = _decode_payload()
+    if not body.get("restricted"):
+        user.allowed_tabs = None  # unrestricted — an empty tab list still means "restricted to Overview only"
+    else:
+        tabs = body.get("tabs") or []
+        cleaned = [t for t in tabs if t in ALL_TABS and t != "overview"]
+        user.allowed_tabs = ",".join(cleaned) if cleaned else "overview"
     db.session.commit()
     return jsonify({"ok": True, "user": user.to_dict()})
 
@@ -781,13 +817,15 @@ _BUILD_SHA = _git_sha()
 
 @app.route("/")
 def index():
+    user = User.query.get(session.get("user_id"))
     return render_template("index.html",
                            endpoints=config.ENDPOINTS_TO_MONITOR,
                            has_token=bool(config.TOKEN),
                            build_date=_build_date(),
                            git_sha=_BUILD_SHA,
                            user_name=session.get("user_name"),
-                           is_admin=session.get("is_admin", False))
+                           is_admin=session.get("is_admin", False),
+                           allowed_tabs=_effective_allowed_tabs(user))
 
 
 @app.route("/api/health/current")

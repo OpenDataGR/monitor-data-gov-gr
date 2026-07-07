@@ -87,6 +87,7 @@ class User(db.Model):
     is_admin      = db.Column(db.Boolean, nullable=False, default=False)
     created_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     last_login_at = db.Column(db.DateTime)
+    allowed_tabs  = db.Column(db.Text)  # comma-separated tab keys; NULL/empty = unrestricted (all tabs)
 
     reset_tokens = db.relationship(
         "PasswordResetToken", backref="user", cascade="all, delete-orphan",
@@ -101,6 +102,7 @@ class User(db.Model):
             "has_password":  bool(self.password_hash),
             "created_at":    self.created_at.isoformat() if self.created_at else None,
             "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
+            "allowed_tabs":  self.allowed_tabs.split(",") if self.allowed_tabs else None,
         }
 
 

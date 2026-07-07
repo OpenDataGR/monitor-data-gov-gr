@@ -158,6 +158,35 @@
     </div>
   </div>
 
+  <!-- Manage tab access modal -->
+  <div class="modal fade" id="tabsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold">
+            <i class="bi bi-ui-checks-grid me-2"></i>Tab access — <span id="tabsModalUserLabel"></span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-3">
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="tabsRestrictSwitch" onchange="_renderTabsChecklistState()">
+            <label class="form-check-label small fw-semibold" for="tabsRestrictSwitch">Restrict this user to specific tabs</label>
+          </div>
+          <p class="text-muted small" id="tabsUnrestrictedHint">This user can see every tab, same as everyone else by default.</p>
+          <div id="tabsChecklist" class="d-none"></div>
+          <p class="text-muted small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>Overview is always available.</p>
+        </div>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveTabsModal()">
+            <i class="bi bi-check me-1"></i>Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     const CURRENT_USER_ID = {{ current_user_id|tojson }};
@@ -171,12 +200,15 @@
       return d.toLocaleString();
     }
 
+    let _usersCache = [];
+
     async function loadUsers() {
       const el = document.getElementById('usersTable');
       try {
         const resp = await fetch('../api/users');
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const users = await resp.json();
+        _usersCache = users;
         if (!users.length) { el.innerHTML = '<p class="text-muted text-center py-3">No users yet.</p>'; return; }
         el.innerHTML = `
           <table class="table table-hover align-middle mb-0">
@@ -201,6 +233,9 @@
                   <td class="small text-muted">${relTime(u.last_login_at)}</td>
                   <td class="text-end text-nowrap">
                     <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="Resend invite / reset link" onclick="resendInvite(${u.id})"><i class="bi bi-envelope-arrow-up"></i></button>
+                    ${u.is_admin
+                      ? `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" disabled title="Admins always see every tab"><i class="bi bi-ui-checks-grid"></i></button>`
+                      : `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="Manage tab access" onclick="openTabsModal(${u.id})"><i class="bi bi-ui-checks-grid"></i></button>`}
                     <button class="btn btn-outline-danger btn-sm py-0 px-2" title="Delete" onclick="deleteUser(${u.id})"><i class="bi bi-trash"></i></button>
                   </td>
                 </tr>`;
@@ -250,6 +285,56 @@
       const data = await resp.json();
       if (resp.ok) loadUsers();
       else alert(data.error || 'Failed');
+    }
+
+    const TAB_DEFS = [
+      {key: 'comms',    label: 'Communications', icon: 'bi-envelope'},
+      {key: 'contacts', label: 'Contacts',        icon: 'bi-people'},
+      {key: 'orgs',     label: 'Organizations',   icon: 'bi-building'},
+      {key: 'health',   label: 'Health',          icon: 'bi-heart-pulse'},
+      {key: 'traffic',  label: 'Traffic',         icon: 'bi-bar-chart-line'},
+      {key: 'datasets', label: 'Dataset Totals',  icon: 'bi-database'},
+      {key: 'stats',    label: 'Statistics',      icon: 'bi-graph-up'},
+      {key: 'quality',  label: 'Quality',         icon: 'bi-shield-check'},
+    ];
+    let _tabsModalUserId = null;
+    let _tabsModal = null;
+
+    function openTabsModal(id) {
+      const u = _usersCache.find(x => x.id === id);
+      if (!u) return;
+      _tabsModalUserId = id;
+      document.getElementById('tabsModalUserLabel').textContent = u.name;
+      const restricted = Array.isArray(u.allowed_tabs);
+      document.getElementById('tabsRestrictSwitch').checked = restricted;
+      document.getElementById('tabsChecklist').innerHTML = TAB_DEFS.map(t => `
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="${t.key}" id="tabChk-${t.key}"
+                 ${restricted && u.allowed_tabs.includes(t.key) ? 'checked' : ''}>
+          <label class="form-check-label" for="tabChk-${t.key}"><i class="bi ${t.icon} me-1"></i>${t.label}</label>
+        </div>`).join('');
+      _renderTabsChecklistState();
+      if (!_tabsModal) _tabsModal = new bootstrap.Modal(document.getElementById('tabsModal'));
+      _tabsModal.show();
+    }
+
+    function _renderTabsChecklistState() {
+      const restricted = document.getElementById('tabsRestrictSwitch').checked;
+      document.getElementById('tabsChecklist').classList.toggle('d-none', !restricted);
+      document.getElementById('tabsUnrestrictedHint').classList.toggle('d-none', restricted);
+    }
+
+    async function saveTabsModal() {
+      const restricted = document.getElementById('tabsRestrictSwitch').checked;
+      const tabs = Array.from(document.querySelectorAll('#tabsChecklist input:checked')).map(el => el.value);
+      const resp = await fetch(`../api/users/${_tabsModalUserId}/tabs`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({restricted, tabs}),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.error || 'Failed'); return; }
+      _tabsModal.hide();
+      loadUsers();
     }
 
     async function deleteUser(id) {

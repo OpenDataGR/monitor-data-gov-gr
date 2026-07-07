@@ -1628,6 +1628,29 @@ const API_BASE = (() => {
   return h.endsWith('/') ? h : h + '/';
 })();
 
+// null = unrestricted (admins, or a user with no explicit allow-list); otherwise
+// an array of tab keys (e.g. "health") matching the "tab-health" pane id suffix.
+const ALLOWED_TABS = {{ allowed_tabs|tojson }};
+
+function _applyTabRestrictions() {
+  if (!ALLOWED_TABS) return;
+  let activeRemoved = false;
+  document.querySelectorAll('#mainTabs .nav-link[data-bs-target^="#tab-"]').forEach(btn => {
+    const key = btn.dataset.bsTarget.replace('#tab-', '');
+    if (ALLOWED_TABS.includes(key)) return;
+    if (btn.classList.contains('active')) activeRemoved = true;
+    const li = btn.closest('li.nav-item') || btn;
+    li.classList.add('d-none');
+    const pane = document.getElementById(`tab-${key}`);
+    if (pane) pane.classList.remove('show', 'active');
+  });
+  if (activeRemoved) {
+    const firstAllowed = document.querySelector('#mainTabs li.nav-item:not(.d-none) .nav-link[data-bs-target^="#tab-"]');
+    if (firstAllowed) bootstrap.Tab.getOrCreateInstance(firstAllowed).show();
+  }
+}
+_applyTabRestrictions();
+
 // ── Tiny helpers ─────────────────────────────────────────────────────────────
 const fmt  = n  => n == null ? '—' : Number(n).toLocaleString('el-GR');
 const show = id => document.getElementById(id);
