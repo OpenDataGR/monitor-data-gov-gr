@@ -199,6 +199,7 @@ def set_password():
             else:
                 user = token.user
                 user.password_hash = generate_password_hash(pw1)
+                user.last_login_at = now
                 token.used_at = now
                 db.session.commit()
                 session["user_id"]    = user.id
