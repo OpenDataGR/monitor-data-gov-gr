@@ -73,6 +73,8 @@
     .comm-timeline-day:first-child { padding-top: 0; }
     .comm-timeline-day:hover { background: rgba(0,0,0,.025); }
     .comm-timeline-item { position: relative; padding: .6rem .75rem .6rem 40px; border-radius: 8px; }
+    .comm-group-row { background-color: #f6f8fa; }
+    .comm-group-row:hover { background-color: #eef1f4; }
     .comm-timeline-item:hover { background: rgba(0,0,0,.025); }
     .comm-timeline-item .comm-dot { position: absolute; left: 10px; top: 1.1rem; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 4px #f0f2f5; }
   </style>
@@ -553,6 +555,8 @@
                 </div>
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button id="commsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="expandAllComms()" data-i18n-title="comms.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
+                <button id="commsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="collapseAllComms()" data-i18n-title="comms.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
                 <input type="search" id="commsSearch" class="form-control form-control-sm" placeholder="Search…" data-i18n-ph="comms.search" style="width:180px" oninput="filterComms()">
                 <button class="btn btn-success btn-sm" onclick="downloadCommsExcel()" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="comms.excel">Excel</span></button>
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
@@ -1028,6 +1032,8 @@ const TRANSLATIONS = {
     'comms.view_by_org': 'By Organization',
     'comms.view_cases': 'Cases',
     'comms.view_timeline': 'Timeline',
+    'comms.expand_all': 'Expand all',
+    'comms.collapse_all': 'Collapse all',
     'comms.initial_contact': 'Initial Contact',
     'comms.intermediate_contact': 'Intermediate Contact',
     'comms.positive_response': 'Positive Response',
@@ -1307,6 +1313,8 @@ const TRANSLATIONS = {
     'comms.view_by_org': 'Ανά Οργανισμό',
     'comms.view_cases': 'Υποθέσεις',
     'comms.view_timeline': 'Χρονολόγιο',
+    'comms.expand_all': 'Ανάπτυξη όλων',
+    'comms.collapse_all': 'Σύμπτυξη όλων',
     'comms.initial_contact': 'Αρχική Επικοινωνία',
     'comms.intermediate_contact': 'Ενδιάμεση Επικοινωνία',
     'comms.positive_response': 'Θετική Απάντηση',
@@ -2875,6 +2883,24 @@ function setCommsView(mode) {
   show('commsViewGroupedBtn').className  = 'btn btn-sm ' + (mode === 'grouped'  ? 'btn-primary' : 'btn-outline-primary');
   show('commsViewCasesBtn').className    = 'btn btn-sm ' + (mode === 'cases'    ? 'btn-primary' : 'btn-outline-primary');
   show('commsViewTimelineBtn').className = 'btn btn-sm ' + (mode === 'timeline' ? 'btn-primary' : 'btn-outline-primary');
+  const showExpandBtns = (mode === 'cases' || mode === 'grouped');
+  show('commsExpandAllBtn').classList.toggle('d-none', !showExpandBtns);
+  show('commsCollapseAllBtn').classList.toggle('d-none', !showExpandBtns);
+  filterComms();
+}
+
+function expandAllComms() {
+  if (_commsViewMode === 'cases') {
+    for (const cs of _casesData) _expandedCases.add(cs.id);
+  } else if (_commsViewMode === 'grouped') {
+    for (const c of _commsData) _expandedOrgs.add(c.org_title || c.org_name);
+  }
+  filterComms();
+}
+
+function collapseAllComms() {
+  if (_commsViewMode === 'cases') _expandedCases.clear();
+  else if (_commsViewMode === 'grouped') _expandedOrgs.clear();
   filterComms();
 }
 
@@ -2965,7 +2991,7 @@ function renderCommsGrouped(data) {
     const isExpanded = _expandedOrgs.has(orgTitle);
     const safeAttr   = orgTitle.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
     return `
-      <tr class="table-secondary" style="cursor:pointer" data-org="${safeAttr}" onclick="toggleOrgComms(this.dataset.org)">
+      <tr class="comm-group-row" style="cursor:pointer" data-org="${safeAttr}" onclick="toggleOrgComms(this.dataset.org)">
         <td colspan="6">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
@@ -3040,7 +3066,7 @@ function renderCommsCases(data) {
     const isExpanded = _expandedCases.has(caseId);
     const isClosed    = cs.status === 'Closed';
     return `
-      <tr class="table-secondary" style="cursor:pointer" onclick="toggleCaseExpand(${caseId})">
+      <tr class="comm-group-row" style="cursor:pointer" onclick="toggleCaseExpand(${caseId})">
         <td colspan="6">
           <div class="d-flex align-items-center gap-2 flex-wrap">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
