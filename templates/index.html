@@ -101,9 +101,6 @@
       <button class="btn btn-outline-light btn-sm px-3" onclick="triggerCheck()">
         <i class="bi bi-arrow-clockwise me-1"></i><span data-i18n="nav.check_now">Check Now</span>
       </button>
-      <button class="btn btn-outline-danger btn-sm px-3" onclick="resetStats()">
-        <i class="bi bi-trash me-1"></i><span data-i18n="nav.reset_stats">Reset Stats</span>
-      </button>
       <a href="{{ url_for('static', filename='manual.html') }}" target="_blank" class="btn btn-outline-light btn-sm px-3">
         <i class="bi bi-book me-1"></i><span data-i18n="nav.manual">Οδηγός</span>
       </a>
@@ -911,35 +908,6 @@
   </div>
 </div>
 
-<!-- Reset Stats password modal -->
-<div class="modal fade" id="resetModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content border-danger">
-      <div class="modal-header bg-danger text-white border-0">
-        <h5 class="modal-title fw-bold">
-          <i class="bi bi-exclamation-triangle-fill me-2"></i><span data-i18n="reset.modal_title">Reset Statistics</span>
-        </h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body pt-4">
-        <p class="fw-semibold text-danger mb-1" data-i18n="reset.modal_warning">This action is irreversible.</p>
-        <p class="text-muted small mb-4" data-i18n="reset.modal_desc">All historical health checks and portal snapshots will be permanently deleted.</p>
-        <label class="form-label small fw-semibold" data-i18n="reset.modal_pw_label">Enter your password to confirm</label>
-        <input type="password" id="resetPassword" class="form-control form-control-sm"
-               data-i18n-ph="reset.modal_pw_ph" placeholder="Password"
-               onkeydown="if(event.key==='Enter')confirmReset()">
-        <div id="resetError" class="text-danger small mt-2 d-none" data-i18n="reset.modal_wrong_pw">Incorrect password.</div>
-      </div>
-      <div class="modal-footer border-top">
-        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="comm_modal.cancel">Cancel</button>
-        <button type="button" class="btn btn-danger btn-sm" onclick="confirmReset()">
-          <i class="bi bi-trash me-1"></i><span data-i18n="reset.modal_confirm">Delete all data</span>
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Change Password modal -->
 <div class="modal fade" id="changePasswordModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
@@ -1016,7 +984,6 @@ const TRANSLATIONS = {
     'page.title': 'data.gov.gr Monitor',
     'nav.last_check': 'Last check:',
     'nav.check_now': 'Check Now',
-    'nav.reset_stats': 'Reset Stats',
     'nav.manual': 'Manual',
     'nav.manage_users': 'Manage Users',
     'nav.sign_out': 'Sign out',
@@ -1277,15 +1244,6 @@ const TRANSLATIONS = {
     'datasets.col_org': 'Organization',
     'datasets.col_datasets': 'Datasets',
     'datasets.none': 'No datasets found.',
-    'reset.confirm': 'Clear all historical data and start fresh?',
-    'reset.failed': 'Reset failed:',
-    'reset.modal_title': 'Reset Statistics',
-    'reset.modal_warning': 'This action is irreversible.',
-    'reset.modal_desc': 'All historical health checks and portal snapshots will be permanently deleted.',
-    'reset.modal_pw_label': 'Enter your password to confirm',
-    'reset.modal_pw_ph': 'Password',
-    'reset.modal_wrong_pw': 'Incorrect password.',
-    'reset.modal_confirm': 'Delete all data',
     'nav.change_password': 'Change Password',
     'nav.edit_name': 'Edit name',
     'name.modal_title': 'Edit Name',
@@ -1319,7 +1277,6 @@ const TRANSLATIONS = {
     'page.title': 'data.gov.gr Monitor',
     'nav.last_check': 'Τελευταίος έλεγχος:',
     'nav.check_now': 'Έλεγχος τώρα',
-    'nav.reset_stats': 'Επαναφορά',
     'nav.manual': 'Οδηγός',
     'nav.manage_users': 'Διαχείριση Χρηστών',
     'nav.sign_out': 'Αποσύνδεση',
@@ -1580,15 +1537,6 @@ const TRANSLATIONS = {
     'datasets.col_org': 'Οργανισμός',
     'datasets.col_datasets': 'Δεδομένα',
     'datasets.none': 'Δεν βρέθηκαν σύνολα δεδομένων.',
-    'reset.confirm': 'Εκκαθάριση όλων των ιστορικών δεδομένων;',
-    'reset.failed': 'Η επαναφορά απέτυχε:',
-    'reset.modal_title': 'Επαναφορά Στατιστικών',
-    'reset.modal_warning': 'Η ενέργεια αυτή είναι μη αναστρέψιμη.',
-    'reset.modal_desc': 'Όλοι οι ιστορικοί έλεγχοι και τα στιγμιότυπα πύλης θα διαγραφούν οριστικά.',
-    'reset.modal_pw_label': 'Εισάγετε τον κωδικό σας για επιβεβαίωση',
-    'reset.modal_pw_ph': 'Κωδικός',
-    'reset.modal_wrong_pw': 'Λανθασμένος κωδικός.',
-    'reset.modal_confirm': 'Διαγραφή όλων των δεδομένων',
     'nav.change_password': 'Αλλαγή Κωδικού',
     'nav.edit_name': 'Επεξεργασία ονόματος',
     'name.modal_title': 'Επεξεργασία Ονόματος',
@@ -4277,45 +4225,6 @@ async function triggerCheck() {
     show('lastChecked').textContent = new Date().toLocaleString('el-GR');
   } catch (e) {
     alert(t('error') + ' ' + e.message);
-  } finally {
-    showSpinner(false);
-  }
-}
-
-let _resetModal = null;
-
-function resetStats() {
-  if (!_resetModal) _resetModal = new bootstrap.Modal(document.getElementById('resetModal'));
-  document.getElementById('resetPassword').value = '';
-  document.getElementById('resetError').classList.add('d-none');
-  _resetModal.show();
-  setTimeout(() => document.getElementById('resetPassword').focus(), 400);
-}
-
-async function confirmReset() {
-  const pw    = document.getElementById('resetPassword').value;
-  const errEl = document.getElementById('resetError');
-  errEl.classList.add('d-none');
-  showSpinner(true);
-  try {
-    const resp = await fetch(`${API_BASE}api/admin/reset?d=${_b64enc({password: pw})}`, {
-      method: 'POST', cache: 'no-store',
-    });
-    if (resp.status === 403) {
-      errEl.textContent = t('reset.modal_wrong_pw');
-      errEl.classList.remove('d-none');
-      document.getElementById('resetPassword').select();
-      return;
-    }
-    if (!resp.ok) throw new Error(await resp.text());
-    _resetModal.hide();
-    await new Promise(r => setTimeout(r, 6000));
-    _healthLoaded = false;
-    _statsLoaded  = false;
-    await loadOverview();
-    show('lastChecked').textContent = new Date().toLocaleString('el-GR');
-  } catch (e) {
-    alert(t('reset.failed') + ' ' + e.message);
   } finally {
     showSpinner(false);
   }

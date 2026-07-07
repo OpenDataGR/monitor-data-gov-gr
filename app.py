@@ -2756,6 +2756,9 @@ def matomo_debug_pages():
 
 @app.route("/api/admin/reset", methods=["GET", "POST"])
 def admin_reset():
+    err = _require_admin()
+    if err:
+        return err
     user = User.query.get(session.get("user_id"))
     body = _decode_payload()
     if not user or not user.password_hash or not check_password_hash(user.password_hash, body.get("password", "")):
