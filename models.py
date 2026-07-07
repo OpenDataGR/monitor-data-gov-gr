@@ -63,6 +63,20 @@ class DatasetGrowthCache(db.Model):
         return json.loads(self.weeks_json)
 
 
+class OrgsCache(db.Model):
+    """Persists the last computed organizations list (with last_updated dates, see
+    app._do_refresh_orgs) so a fresh process/restart can serve it immediately instead
+    of re-paginating CKAN's full package list from scratch."""
+    __tablename__ = "orgs_cache"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    data_json  = db.Column(db.Text, nullable=False)
+    fetched_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def data(self):
+        return json.loads(self.data_json)
+
+
 STALE_CASE_DAYS = 14  # an open case idle this many days is flagged as stale (treated as "No Response")
 
 

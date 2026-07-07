@@ -13,7 +13,7 @@ import hashlib
 import io
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file
 from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache
 import config
 
 app = Flask(__name__)
@@ -336,6 +336,26 @@ def public_orgs():
 _ORGS_REFRESH_INTERVAL = 30 * 60  # refresh org cache every 30 minutes
 _orgs_cache: dict = {"data": None, "fetched_at": None, "enriching": False}
 
+with app.app_context():
+    # Warm the in-memory cache from the DB so a fresh process (e.g. after a deploy)
+    # serves last_updated dates immediately instead of showing blanks until a full
+    # CKAN re-pagination completes.
+    _orgs_row = OrgsCache.query.get(1)
+    if _orgs_row:
+        _orgs_cache["data"]       = _orgs_row.data()
+        _orgs_cache["fetched_at"] = _orgs_row.fetched_at.isoformat()
+
+
+def _save_orgs_cache(data: list) -> None:
+    with app.app_context():
+        row = OrgsCache.query.get(1)
+        if not row:
+            row = OrgsCache(id=1, data_json="[]")
+            db.session.add(row)
+        row.data_json  = json.dumps(data)
+        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
 
 def _fetch_orgs_quick() -> None:
     """Fast path: org list only. Populates cache in ~2-3 s.
@@ -431,6 +451,7 @@ def _do_refresh_orgs() -> None:
     _orgs_cache["data"]      = sorted(orgs.values(), key=lambda o: o["package_count"], reverse=True)
     _orgs_cache["fetched_at"] = datetime.now(timezone.utc).isoformat()
     _orgs_cache["enriching"]  = False
+    _save_orgs_cache(_orgs_cache["data"])
 
 
 def _background_loop():
