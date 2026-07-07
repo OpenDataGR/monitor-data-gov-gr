@@ -88,6 +88,10 @@ class User(db.Model):
     created_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     last_login_at = db.Column(db.DateTime)
 
+    reset_tokens = db.relationship(
+        "PasswordResetToken", backref="user", cascade="all, delete-orphan",
+    )
+
     def to_dict(self):
         return {
             "id":            self.id,
