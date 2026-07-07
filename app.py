@@ -7,6 +7,9 @@ load_dotenv(Path(__file__).parent / ".env")
 import time
 import threading
 import requests
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -140,29 +143,23 @@ def _api_headers():
 
 
 def send_email(to: str, subject: str, html: str, text: str = None) -> None:
-    """Send an email via SendGrid's v3 Mail Send API. Raises on failure — callers
-    decide whether that should surface to the user or just get logged."""
-    if not config.SENDGRID_API_KEY or not config.SENDGRID_FROM_EMAIL:
-        raise RuntimeError("SendGrid is not configured (SENDGRID_API_KEY / SENDGRID_FROM_EMAIL)")
-    content = [{"type": "text/plain", "value": text or re.sub("<[^<]+?>", "", html)}]
-    content.append({"type": "text/html", "value": html})
-    payload = {
-        "personalizations": [{"to": [{"email": to}]}],
-        "from": {"email": config.SENDGRID_FROM_EMAIL, "name": config.SENDGRID_FROM_NAME},
-        "subject": subject,
-        "content": content,
-    }
-    r = requests.post(
-        "https://api.sendgrid.com/v3/mail/send",
-        json=payload,
-        headers={
-            "Authorization": f"Bearer {config.SENDGRID_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        timeout=config.REQUEST_TIMEOUT,
-    )
-    if r.status_code >= 300:
-        raise RuntimeError(f"SendGrid error {r.status_code}: {r.text[:500]}")
+    """Send an email via SendGrid's SMTP relay. Raises on failure — callers decide
+    whether that should surface to the user or just get logged."""
+    if not (config.SMTP_USERNAME and config.SMTP_PASSWORD and config.SENDGRID_FROM_EMAIL):
+        raise RuntimeError("SMTP is not configured (SMTP_USERNAME / SMTP_PASSWORD / SENDGRID_FROM_EMAIL)")
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = f"{config.SENDGRID_FROM_NAME} <{config.SENDGRID_FROM_EMAIL}>"
+    msg["To"]      = to
+    msg.attach(MIMEText(text or re.sub("<[^<]+?>", "", html), "plain"))
+    msg.attach(MIMEText(html, "html"))
+
+    smtp_cls = smtplib.SMTP_SSL if config.SMTP_PORT == 465 else smtplib.SMTP
+    with smtp_cls(config.SMTP_SERVER, config.SMTP_PORT, timeout=config.REQUEST_TIMEOUT) as server:
+        if config.SMTP_PORT != 465:
+            server.starttls()
+        server.login(config.SMTP_USERNAME, config.SMTP_PASSWORD)
+        server.sendmail(config.SENDGRID_FROM_EMAIL, [to], msg.as_string())
 
 
 def _check_endpoint(ep: dict) -> dict:

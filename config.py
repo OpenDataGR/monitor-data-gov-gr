@@ -12,7 +12,10 @@ DASHBOARD_PASSWORD  = os.environ.get("DASHBOARD_PASSWORD", "").strip()
 FLASK_SECRET_KEY    = os.environ.get("FLASK_SECRET_KEY", "").strip()
 DATABASE_URL        = os.environ.get("DATABASE_URL", "").strip()
 
-SENDGRID_API_KEY    = os.environ.get("SENDGRID_API_KEY", "").strip()
+SMTP_SERVER         = os.environ.get("SMTP_SERVER", "smtp.sendgrid.net").strip()
+SMTP_PORT           = int(os.environ.get("SMTP_PORT", "587") or 587)
+SMTP_USERNAME       = os.environ.get("SMTP_USERNAME", "").strip()
+SMTP_PASSWORD       = os.environ.get("SMTP_PASSWORD", "").strip()
 SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL", "").strip()
 SENDGRID_FROM_NAME  = os.environ.get("SENDGRID_FROM_NAME", "data.gov.gr Monitor").strip()
 
