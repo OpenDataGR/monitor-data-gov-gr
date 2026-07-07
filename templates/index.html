@@ -2883,7 +2883,7 @@ function setCommsView(mode) {
   show('commsViewGroupedBtn').className  = 'btn btn-sm ' + (mode === 'grouped'  ? 'btn-primary' : 'btn-outline-primary');
   show('commsViewCasesBtn').className    = 'btn btn-sm ' + (mode === 'cases'    ? 'btn-primary' : 'btn-outline-primary');
   show('commsViewTimelineBtn').className = 'btn btn-sm ' + (mode === 'timeline' ? 'btn-primary' : 'btn-outline-primary');
-  const showExpandBtns = (mode === 'cases' || mode === 'grouped');
+  const showExpandBtns = (mode === 'cases' || mode === 'grouped' || mode === 'timeline');
   show('commsExpandAllBtn').classList.toggle('d-none', !showExpandBtns);
   show('commsCollapseAllBtn').classList.toggle('d-none', !showExpandBtns);
   filterComms();
@@ -2894,6 +2894,8 @@ function expandAllComms() {
     for (const cs of _casesData) _expandedCases.add(cs.id);
   } else if (_commsViewMode === 'grouped') {
     for (const c of _commsData) _expandedOrgs.add(c.org_title || c.org_name);
+  } else if (_commsViewMode === 'timeline') {
+    for (const c of _commsData) _expandedTimelineDays.add(c.contact_date);
   }
   filterComms();
 }
@@ -2901,6 +2903,7 @@ function expandAllComms() {
 function collapseAllComms() {
   if (_commsViewMode === 'cases') _expandedCases.clear();
   else if (_commsViewMode === 'grouped') _expandedOrgs.clear();
+  else if (_commsViewMode === 'timeline') _expandedTimelineDays.clear();
   filterComms();
 }
 
