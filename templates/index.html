@@ -33,6 +33,7 @@
     .dashboard-sidebar .nav-link.active { color: #0057b8; background: rgba(0,87,184,.08); }
     .dashboard-sidebar .nav-link i { font-size: 1.05rem; width: 1.4rem; text-align: center; flex-shrink: 0; }
     .dashboard-sidebar .nav-item + .nav-item { margin-top: 2px; }
+    .sidebar-divider { height: 1px; background: #e9ecef; margin: .5rem .7rem; }
     .sidebar-toggle-btn {
       width: 100%; border: none; background: transparent; color: #6c757d;
       padding: .45rem; border-radius: 8px; margin-bottom: .5rem;
@@ -201,36 +202,7 @@
             <i class="bi bi-grid"></i><span class="sidebar-label" data-i18n="tab.overview">Overview</span>
           </button>
         </li>
-        <li class="nav-item">
-          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-health" id="healthTabBtn" data-i18n-title="tab.health" title="Health">
-            <i class="bi bi-heart-pulse"></i><span class="sidebar-label" data-i18n="tab.health">Health</span>
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-stats" id="statsTabBtn" data-i18n-title="tab.statistics" title="Statistics">
-            <i class="bi bi-graph-up"></i><span class="sidebar-label" data-i18n="tab.statistics">Statistics</span>
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-datasets" id="datasetsTabBtn" data-i18n-title="tab.datasets" title="Datasets">
-            <i class="bi bi-database"></i><span class="sidebar-label" data-i18n="tab.datasets">Datasets</span>
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-traffic" id="trafficTabBtn" data-i18n-title="tab.traffic" title="Traffic">
-            <i class="bi bi-bar-chart-line"></i><span class="sidebar-label" data-i18n="tab.traffic">Traffic</span>
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-quality" data-i18n-title="tab.quality" title="Quality">
-            <i class="bi bi-shield-check"></i><span class="sidebar-label" data-i18n="tab.quality">Quality</span>
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-orgs" id="orgsTabBtn" data-i18n-title="tab.organizations" title="Organizations">
-            <i class="bi bi-building"></i><span class="sidebar-label" data-i18n="tab.organizations">Organizations</span>
-          </button>
-        </li>
+        <li class="sidebar-divider"></li>
         <li class="nav-item">
           <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-comms" id="commsTabBtn" data-i18n-title="tab.communications" title="Communications">
             <i class="bi bi-envelope"></i><span class="sidebar-label" data-i18n="tab.communications">Communications</span>
@@ -239,6 +211,38 @@
         <li class="nav-item">
           <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-contacts" id="contactsTabBtn" data-i18n-title="tab.contacts" title="Contacts">
             <i class="bi bi-people"></i><span class="sidebar-label" data-i18n="tab.contacts">Contacts</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-orgs" id="orgsTabBtn" data-i18n-title="tab.organizations" title="Organizations">
+            <i class="bi bi-building"></i><span class="sidebar-label" data-i18n="tab.organizations">Organizations</span>
+          </button>
+        </li>
+        <li class="sidebar-divider"></li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-health" id="healthTabBtn" data-i18n-title="tab.health" title="Health">
+            <i class="bi bi-heart-pulse"></i><span class="sidebar-label" data-i18n="tab.health">Health</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-traffic" id="trafficTabBtn" data-i18n-title="tab.traffic" title="Traffic">
+            <i class="bi bi-bar-chart-line"></i><span class="sidebar-label" data-i18n="tab.traffic">Traffic</span>
+          </button>
+        </li>
+        <li class="sidebar-divider"></li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-datasets" id="datasetsTabBtn" data-i18n-title="tab.datasets" title="Dataset Totals">
+            <i class="bi bi-database"></i><span class="sidebar-label" data-i18n="tab.datasets">Dataset Totals</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-stats" id="statsTabBtn" data-i18n-title="tab.statistics" title="Statistics">
+            <i class="bi bi-graph-up"></i><span class="sidebar-label" data-i18n="tab.statistics">Statistics</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-quality" data-i18n-title="tab.quality" title="Quality">
+            <i class="bi bi-shield-check"></i><span class="sidebar-label" data-i18n="tab.quality">Quality</span>
           </button>
         </li>
       </ul>
@@ -938,7 +942,7 @@ const TRANSLATIONS = {
     'tab.overview': 'Overview',
     'tab.health': 'Health',
     'tab.statistics': 'Statistics',
-    'tab.datasets': 'Datasets',
+    'tab.datasets': 'Dataset Totals',
     'tab.traffic': 'Traffic',
     'tab.quality': 'Quality',
     'tab.organizations': 'Organizations',
@@ -1218,7 +1222,7 @@ const TRANSLATIONS = {
     'tab.overview': 'Επισκόπηση',
     'tab.health': 'Κατάσταση',
     'tab.statistics': 'Στατιστικά',
-    'tab.datasets': 'Δεδομένα',
+    'tab.datasets': 'Σύνολα Δεδομένων',
     'tab.traffic': 'Επισκεψιμότητα',
     'tab.quality': 'Ποιότητα',
     'tab.organizations': 'Οργανισμοί',
