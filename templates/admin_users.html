@@ -17,6 +17,20 @@
     .badge-admin  { background: #0d6efd; }
     .badge-active { background: #198754; }
     .badge-invited{ background: #6c757d; }
+    .role-toggle {
+      appearance: none;
+      -webkit-appearance: none;
+      border: none;
+      margin: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+    .role-toggle:hover { filter: brightness(0.9); }
+    .role-toggle:disabled {
+      cursor: default;
+      filter: none;
+      opacity: .65;
+    }
     .admin-nav .nav-link {
       color: #495057;
       border-radius: .5rem;
@@ -146,6 +160,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
+    const CURRENT_USER_ID = {{ current_user_id|tojson }};
+
     function esc(s) {
       return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
@@ -168,19 +184,27 @@
               <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last login</th><th></th>
             </tr></thead>
             <tbody>
-              ${users.map(u => `
+              ${users.map(u => {
+                const isSelf = u.id === CURRENT_USER_ID;
+                const roleTitle = isSelf ? "You can't change your own role" : (u.is_admin ? 'Click to revoke admin' : 'Click to make admin');
+                return `
                 <tr>
                   <td>${esc(u.name)}</td>
                   <td class="small">${esc(u.email)}</td>
-                  <td><span class="badge ${u.is_admin ? 'badge-admin' : 'bg-secondary'}">${u.is_admin ? 'Admin' : 'User'}</span></td>
+                  <td>
+                    <button type="button" class="badge role-toggle ${u.is_admin ? 'badge-admin' : 'bg-secondary'}"
+                            ${isSelf ? 'disabled' : `onclick="toggleAdmin(${u.id})"`} title="${roleTitle}">
+                      ${u.is_admin ? 'Admin' : 'User'}
+                    </button>
+                  </td>
                   <td><span class="badge ${u.has_password ? 'badge-active' : 'badge-invited'}">${u.has_password ? 'Active' : 'Invited'}</span></td>
                   <td class="small text-muted">${relTime(u.last_login_at)}</td>
                   <td class="text-end text-nowrap">
                     <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="Resend invite / reset link" onclick="resendInvite(${u.id})"><i class="bi bi-envelope-arrow-up"></i></button>
-                    <button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" title="Toggle admin" onclick="toggleAdmin(${u.id})"><i class="bi bi-shield"></i></button>
                     <button class="btn btn-outline-danger btn-sm py-0 px-2" title="Delete" onclick="deleteUser(${u.id})"><i class="bi bi-trash"></i></button>
                   </td>
-                </tr>`).join('')}
+                </tr>`;
+              }).join('')}
             </tbody>
           </table>`;
       } catch (e) {
