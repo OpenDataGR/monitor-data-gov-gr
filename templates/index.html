@@ -705,7 +705,7 @@
       </div>
       <div class="modal-footer border-top">
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="comm_modal.cancel">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm" onclick="saveComm()"><i class="bi bi-check me-1"></i><span data-i18n="comm_modal.save">Save</span></button>
+        <button type="button" class="btn btn-primary btn-sm" id="commSaveBtn" onclick="saveComm()"><i class="bi bi-check me-1"></i><span data-i18n="comm_modal.save">Save</span></button>
       </div>
     </div>
   </div>
@@ -3113,6 +3113,7 @@ function toggleOrgComms(orgTitle) {
 function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCaseId = null, prefillSubject = null, prefillMedium = null, prefillContactPerson = null) {
   if (!_commModal) _commModal = new bootstrap.Modal(document.getElementById('commModal'));
   show('commError').classList.add('d-none');
+  show('commSaveBtn').disabled = false;
   _commOrgReset();
   _resetCommContact();
 
@@ -3314,6 +3315,9 @@ function onCommContactChange() {
 }
 
 async function saveComm() {
+  const btn = show('commSaveBtn');
+  if (btn.disabled) return;  // guard against double-submit (e.g. a fast double-click)
+
   const err      = show('commError');
   const id       = show('commId').value;
   const orgName  = show('commOrgCode').value.trim();
@@ -3337,6 +3341,7 @@ async function saveComm() {
     return;
   }
 
+  btn.disabled = true;
   try {
     const url  = id ? `${API_BASE}api/communications/${id}?d=${_b64enc(body)}` : `${API_BASE}api/communications?d=${_b64enc(body)}`;
     const resp = await fetch(url, { method: id ? 'PATCH' : 'POST', cache: 'no-store' });
@@ -3357,6 +3362,8 @@ async function saveComm() {
   } catch (e) {
     err.textContent = 'Network error: ' + e.message;
     err.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
   }
 }
 
