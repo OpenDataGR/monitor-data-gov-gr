@@ -23,6 +23,16 @@
       text-align: center;
       color: #fff;
     }
+    /* Honeypot: invisible to humans, but present in the DOM/tab order removed —
+       bots that auto-fill every input on the page will populate it. */
+    .hp-field {
+      position: absolute;
+      left: -9999px;
+      top: -9999px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
   </style>
 </head>
 <body>
@@ -35,6 +45,10 @@
     <div class="card-body p-4">
       <form method="post" action="{{ url_for('login') }}">
         <input type="hidden" name="next" value="{{ next }}">
+        <div class="hp-field" aria-hidden="true">
+          <label for="website">Website</label>
+          <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+        </div>
         <div class="mb-3">
           <label class="form-label fw-semibold small">Email</label>
           <input type="email" name="email" class="form-control {% if error %}is-invalid{% endif %}"
