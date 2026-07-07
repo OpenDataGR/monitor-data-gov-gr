@@ -112,6 +112,9 @@
         <i class="bi bi-people"></i>
       </a>
       {% endif %}
+      <button class="btn btn-outline-light btn-sm px-2" onclick="openChangePasswordModal()" data-i18n-title="nav.change_password" title="Change Password">
+        <i class="bi bi-key"></i>
+      </button>
       {% if user_name %}
       <span class="text-white-50 small d-none d-lg-inline">{{ user_name }}</span>
       {% endif %}
@@ -915,6 +918,44 @@
   </div>
 </div>
 
+<!-- Change Password modal -->
+<div class="modal fade" id="changePasswordModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-bottom">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-key me-2"></i><span data-i18n="pw.modal_title">Change Password</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-4">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" data-i18n="pw.current">Current password</label>
+          <input type="password" id="pwCurrent" class="form-control form-control-sm" autocomplete="current-password">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" data-i18n="pw.new">New password</label>
+          <input type="password" id="pwNew" class="form-control form-control-sm" autocomplete="new-password" minlength="8">
+          <div class="form-text small" data-i18n="pw.new_hint">At least 8 characters.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" data-i18n="pw.confirm">Confirm new password</label>
+          <input type="password" id="pwConfirm" class="form-control form-control-sm" autocomplete="new-password" minlength="8"
+                 onkeydown="if(event.key==='Enter')submitChangePassword()">
+        </div>
+        <div id="pwError" class="text-danger small d-none"></div>
+        <div id="pwSuccess" class="text-success small d-none" data-i18n="pw.success">Password changed successfully.</div>
+      </div>
+      <div class="modal-footer border-top">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="comm_modal.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="pwSaveBtn" onclick="submitChangePassword()">
+          <i class="bi bi-check me-1"></i><span data-i18n="pw.save">Change Password</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
@@ -1194,6 +1235,17 @@ const TRANSLATIONS = {
     'reset.modal_pw_ph': 'Password',
     'reset.modal_wrong_pw': 'Incorrect password.',
     'reset.modal_confirm': 'Delete all data',
+    'nav.change_password': 'Change Password',
+    'pw.modal_title': 'Change Password',
+    'pw.current': 'Current password',
+    'pw.new': 'New password',
+    'pw.new_hint': 'At least 8 characters.',
+    'pw.confirm': 'Confirm new password',
+    'pw.success': 'Password changed successfully.',
+    'pw.save': 'Change Password',
+    'pw.err_length': 'New password must be at least 8 characters.',
+    'pw.err_mismatch': 'New passwords do not match.',
+    'pw.err_generic': 'Failed to change password.',
     'loading': 'Loading…',
     'error': 'Error:',
     'date.never': '—',
@@ -1479,6 +1531,17 @@ const TRANSLATIONS = {
     'reset.modal_pw_ph': 'Κωδικός',
     'reset.modal_wrong_pw': 'Λανθασμένος κωδικός.',
     'reset.modal_confirm': 'Διαγραφή όλων των δεδομένων',
+    'nav.change_password': 'Αλλαγή Κωδικού',
+    'pw.modal_title': 'Αλλαγή Κωδικού',
+    'pw.current': 'Τρέχων κωδικός',
+    'pw.new': 'Νέος κωδικός',
+    'pw.new_hint': 'Τουλάχιστον 8 χαρακτήρες.',
+    'pw.confirm': 'Επιβεβαίωση νέου κωδικού',
+    'pw.success': 'Ο κωδικός άλλαξε με επιτυχία.',
+    'pw.save': 'Αλλαγή Κωδικού',
+    'pw.err_length': 'Ο νέος κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες.',
+    'pw.err_mismatch': 'Οι νέοι κωδικοί δεν ταιριάζουν.',
+    'pw.err_generic': 'Αποτυχία αλλαγής κωδικού.',
     'loading': 'Φόρτωση…',
     'error': 'Σφάλμα:',
     'date.never': '—',
@@ -4190,6 +4253,61 @@ async function confirmReset() {
     alert(t('reset.failed') + ' ' + e.message);
   } finally {
     showSpinner(false);
+  }
+}
+
+let _changePasswordModal = null;
+
+function openChangePasswordModal() {
+  if (!_changePasswordModal) _changePasswordModal = new bootstrap.Modal(document.getElementById('changePasswordModal'));
+  document.getElementById('pwCurrent').value = '';
+  document.getElementById('pwNew').value = '';
+  document.getElementById('pwConfirm').value = '';
+  document.getElementById('pwError').classList.add('d-none');
+  document.getElementById('pwSuccess').classList.add('d-none');
+  document.getElementById('pwSaveBtn').disabled = false;
+  _changePasswordModal.show();
+  setTimeout(() => document.getElementById('pwCurrent').focus(), 400);
+}
+
+async function submitChangePassword() {
+  const btn = document.getElementById('pwSaveBtn');
+  if (btn.disabled) return;
+  const current_password  = document.getElementById('pwCurrent').value;
+  const new_password      = document.getElementById('pwNew').value;
+  const new_password2     = document.getElementById('pwConfirm').value;
+  const errEl = document.getElementById('pwError');
+  const okEl  = document.getElementById('pwSuccess');
+  errEl.classList.add('d-none');
+  okEl.classList.add('d-none');
+
+  if (new_password.length < 8) {
+    errEl.textContent = t('pw.err_length');
+    errEl.classList.remove('d-none');
+    return;
+  }
+  if (new_password !== new_password2) {
+    errEl.textContent = t('pw.err_mismatch');
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const resp = await fetch(`${API_BASE}api/account/change-password`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({current_password, new_password, new_password2}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || t('pw.err_generic'));
+    okEl.classList.remove('d-none');
+    setTimeout(() => _changePasswordModal.hide(), 1200);
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
   }
 }
 

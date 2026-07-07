@@ -282,6 +282,26 @@ def users_delete(user_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/account/change-password", methods=["POST"])
+def change_password():
+    user = User.query.get(session.get("user_id"))
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    body = _decode_payload()
+    current  = body.get("current_password", "")
+    new_pw   = body.get("new_password", "")
+    new_pw2  = body.get("new_password2", "")
+    if not user.password_hash or not check_password_hash(user.password_hash, current):
+        return jsonify({"error": "Current password is incorrect"}), 403
+    if len(new_pw) < 8:
+        return jsonify({"error": "New password must be at least 8 characters"}), 400
+    if new_pw != new_pw2:
+        return jsonify({"error": "New passwords do not match"}), 400
+    user.password_hash = generate_password_hash(new_pw)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _api_headers():
