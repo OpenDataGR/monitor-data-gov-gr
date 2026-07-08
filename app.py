@@ -82,6 +82,14 @@ with app.app_context():
     if 'org_codes' not in _contact_cols:
         db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN org_codes TEXT'))
         db.session.commit()
+    # Renamed contact-type value: "Data Officer" -> "Data Governance Officer".
+    # Safe to run on every startup — after the first run no row contains the
+    # old substring anymore, so the WHERE clause matches nothing.
+    db.session.execute(text(
+        "UPDATE org_contacts SET contact_type = REPLACE(contact_type, 'Data Officer', 'Data Governance Officer') "
+        "WHERE contact_type LIKE '%Data Officer%'"
+    ))
+    db.session.commit()
     if db.engine.dialect.name == 'postgresql':
         try:
             db.session.execute(text('ALTER TABLE org_contacts ALTER COLUMN position TYPE TEXT'))
@@ -552,13 +560,15 @@ _ROLE_MAP = {
     "συντακτης":                "Portal Editor",
     "χρηστης πυλης":            "Portal User",
     "χρηστης":                  "Portal User",
-    "υπευθυνος δεδομενων":      "Data Officer",
-    "θεματοφυλακας δεδομενων":  "Data Steward",
-    "portal administrator":     "Portal Administrator",
-    "portal editor":            "Portal Editor",
-    "portal user":              "Portal User",
-    "data officer":             "Data Officer",
-    "data steward":             "Data Steward",
+    "υπευθυνος δεδομενων":              "Data Governance Officer",
+    "υπευθυνος διακυβερνησης δεδομενων": "Data Governance Officer",
+    "θεματοφυλακας δεδομενων":          "Data Steward",
+    "portal administrator":            "Portal Administrator",
+    "portal editor":                   "Portal Editor",
+    "portal user":                     "Portal User",
+    "data officer":                    "Data Governance Officer",
+    "data governance officer":         "Data Governance Officer",
+    "data steward":                    "Data Steward",
 }
 
 
