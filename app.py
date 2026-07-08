@@ -1141,6 +1141,7 @@ def datasets_search():
     q        = (freq.args.get("q") or "").strip()
     org      = (freq.args.get("org") or "").strip()
     fmt      = (freq.args.get("format") or "").strip()
+    ds_type  = (freq.args.get("type") or "").strip()
     sort_key = (freq.args.get("sort") or "").strip()
     rows     = min(max(int(freq.args.get("rows", 20) or 20), 1), 100)
     start    = max(int(freq.args.get("start", 0) or 0), 0)
@@ -1159,6 +1160,8 @@ def datasets_search():
         fq_parts.append(f"organization:{org}")
     if fmt:
         fq_parts.append(f'res_format:"{fmt}"')
+    if ds_type:
+        fq_parts.append(f'type:"{ds_type}"')
     if fq_parts:
         params["fq"] = " AND ".join(fq_parts)
 
@@ -1177,6 +1180,7 @@ def datasets_search():
         datasets = [{
             "name":              p.get("name"),
             "title":             p.get("title") or p.get("name"),
+            "type":              p.get("type") or "dataset",
             "org_name":          (p.get("organization") or {}).get("name") or "",
             "org_title":         (p.get("organization") or {}).get("title") or "",
             "num_resources":     len(p.get("resources") or []),
@@ -1218,6 +1222,37 @@ def dataset_formats():
         return jsonify({"error": str(exc)}), 503
 
 
+_dataset_types_cache: dict = {"data": None, "ts": 0}
+
+
+@app.route("/api/datasets/types")
+def dataset_types():
+    now = time.time()
+    if _dataset_types_cache["data"] is not None and now - _dataset_types_cache["ts"] < 3600:
+        return jsonify(_dataset_types_cache["data"])
+    try:
+        r = requests.get(
+            f"{config.API_BASE}/package_search",
+            params={"rows": 0, "facet": "true", "facet.field": '["type"]', "facet.limit": 20},
+            headers=_api_headers(),
+            timeout=config.REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
+        items = ((data["result"].get("search_facets") or {}).get("type") or {}).get("items") or []
+        types = sorted(
+            [{"name": i["name"], "count": i["count"]} for i in items if i.get("name") and i.get("count")],
+            key=lambda x: -x["count"],
+        )
+        _dataset_types_cache["data"] = types
+        _dataset_types_cache["ts"] = now
+        return jsonify(types)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/datasets/<name>")
 def dataset_detail(name):
     try:
@@ -1234,15 +1269,28 @@ def dataset_detail(name):
         if not data.get("success"):
             return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
         p = data["result"]
+        ds_type = p.get("type") or "dataset"
         resources = [{
             "name":          res.get("name") or res.get("format") or "Resource",
             "format":        res.get("format") or "",
             "url":           res.get("url") or "",
             "last_modified": res.get("last_modified") or res.get("created") or "",
         } for res in p.get("resources", [])]
+
+        # Data services (DCAT-AP type "data-service") have no resources; instead
+        # they expose one or more API/endpoint URLs and, sometimes, landing pages.
+        endpoints, landing_pages, service_format = [], [], ""
+        if ds_type == "data-service":
+            raw_endpoints = p.get("endpoint_url") or []
+            endpoints = [raw_endpoints] if isinstance(raw_endpoints, str) else list(raw_endpoints)
+            raw_landing = p.get("landing_page") or []
+            landing_pages = [raw_landing] if isinstance(raw_landing, str) else list(raw_landing)
+            service_format = (p.get("format") or "").rstrip("/").rsplit("/", 1)[-1]
+
         return jsonify({
             "name":              p.get("name"),
             "title":             p.get("title") or p.get("name"),
+            "type":              ds_type,
             "notes":             p.get("notes") or "",
             "org_name":          (p.get("organization") or {}).get("name") or "",
             "org_title":         (p.get("organization") or {}).get("title") or "",
@@ -1251,6 +1299,9 @@ def dataset_detail(name):
             "metadata_created":  p.get("metadata_created"),
             "metadata_modified": p.get("metadata_modified"),
             "resources":         resources,
+            "endpoints":         endpoints,
+            "landing_pages":     landing_pages,
+            "service_format":    service_format,
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503

@@ -469,6 +469,9 @@
               <h6 class="fw-semibold mb-0"><i class="bi bi-search me-2 text-primary"></i><span data-i18n="catalog.title">Dataset Catalog</span></h6>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span id="catalogCount" class="text-muted small"></span>
+                <select id="catalogTypeFilter" class="form-select form-select-sm" style="width:150px" onchange="_catalogStart=0;loadCatalog();">
+                  <option value="" data-i18n="catalog.filter_type_all">All types</option>
+                </select>
                 <select id="catalogOrgFilter" class="form-select form-select-sm" style="width:190px" onchange="_catalogStart=0;loadCatalog();">
                   <option value="" data-i18n="catalog.filter_org_all">All organizations</option>
                 </select>
@@ -1373,6 +1376,13 @@ const TRANSLATIONS = {
     'catalog.filter_format_all': 'All formats',
     'catalog.related': 'Related Datasets',
     'catalog.related_none': 'No related datasets found.',
+    'catalog.filter_type_all': 'All types',
+    'catalog.type_dataset': 'Dataset',
+    'catalog.type_data_service': 'Data Service',
+    'catalog.type_decision': 'Decision',
+    'catalog.endpoints': 'Endpoints',
+    'catalog.no_endpoints': 'No endpoint URLs listed.',
+    'catalog.open_endpoint': 'Open endpoint',
     'nav.change_password': 'Change Password',
     'nav.edit_name': 'Edit name',
     'name.modal_title': 'Edit Name',
@@ -1708,6 +1718,13 @@ const TRANSLATIONS = {
     'catalog.filter_format_all': 'Όλοι οι μορφότυποι',
     'catalog.related': 'Σχετικά Σύνολα Δεδομένων',
     'catalog.related_none': 'Δεν βρέθηκαν σχετικά σύνολα δεδομένων.',
+    'catalog.filter_type_all': 'Όλοι οι τύποι',
+    'catalog.type_dataset': 'Σύνολο Δεδομένων',
+    'catalog.type_data_service': 'Υπηρεσία Δεδομένων',
+    'catalog.type_decision': 'Απόφαση',
+    'catalog.endpoints': 'Σημεία Πρόσβασης',
+    'catalog.no_endpoints': 'Δεν υπάρχουν διαθέσιμα URL σημείων πρόσβασης.',
+    'catalog.open_endpoint': 'Άνοιγμα σημείου πρόσβασης',
     'nav.change_password': 'Αλλαγή Κωδικού',
     'nav.edit_name': 'Επεξεργασία ονόματος',
     'name.modal_title': 'Επεξεργασία Ονόματος',
@@ -1971,10 +1988,32 @@ document.getElementById('datasetsTabBtn').addEventListener('click', () => {
   if (_catalogLoaded) return;
   _catalogLoaded = true;
   loadCatalog();
+  _loadCatalogTypeFilter();
   _loadCatalogOrgFilter();
   _loadCatalogFormatData();
   _loadCatalogTopViewed();
 });
+
+function _datasetTypeLabel(type) {
+  if (type === 'data-service') return t('catalog.type_data_service');
+  if (type === 'decision')     return t('catalog.type_decision');
+  if (type && type !== 'dataset') return type;
+  return t('catalog.type_dataset');
+}
+
+async function _loadCatalogTypeFilter() {
+  try {
+    const types = await fetch(API_BASE + 'api/datasets/types').then(r => r.json());
+    if (!Array.isArray(types) || types.length < 2) return;  // nothing to filter if only one type exists
+    const sel = show('catalogTypeFilter');
+    types.forEach(ty => {
+      const opt = document.createElement('option');
+      opt.value = ty.name;
+      opt.textContent = `${_datasetTypeLabel(ty.name)} (${fmt(ty.count)})`;
+      sel.appendChild(opt);
+    });
+  } catch (e) { /* filter just stays "All types" */ }
+}
 
 async function _loadCatalogOrgFilter() {
   try {
@@ -2087,10 +2126,12 @@ async function loadCatalog() {
   try {
     const org  = show('catalogOrgFilter').value;
     const fmt_ = show('catalogFormatFilter').value;
+    const type = show('catalogTypeFilter').value;
     const params = new URLSearchParams({ rows: CATALOG_PAGE_SIZE, start: _catalogStart });
     if (q) params.set('q', q);
     if (org) params.set('org', org);
     if (fmt_) params.set('format', fmt_);
+    if (type) params.set('type', type);
     if (_catalogSortCol) params.set('sort', `${_catalogSortCol}_${_catalogSortDir}`);
     const resp = await fetch(`${API_BASE}api/datasets/search?${params}`);
     const data = await resp.json();
@@ -2121,7 +2162,10 @@ async function loadCatalog() {
           <tbody>
             ${data.datasets.map(d => `
               <tr>
-                <td><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none fw-semibold">${esc(d.title)}</a></td>
+                <td>
+                  <a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none fw-semibold">${esc(d.title)}</a>
+                  ${d.type && d.type !== 'dataset' ? `<span class="badge bg-info-subtle text-info-emphasis border ms-1" style="font-size:.65rem">${esc(_datasetTypeLabel(d.type))}</span>` : ''}
+                </td>
                 <td class="small text-muted">${esc(d.org_title)}</td>
                 <td class="text-end">${fmt(d.num_resources)}</td>
                 <td class="text-end small text-muted">${d.metadata_modified ? esc(d.metadata_modified.slice(0, 10)) : '—'}</td>
@@ -4293,29 +4337,46 @@ function openDatasetPanel(name) {
 function renderDatasetPanel(d) {
   show('datasetDetailTitle').textContent = d.title;
   const fmtDate = (s) => s ? esc(s.slice(0, 10)) : '—';
+  const isService = d.type === 'data-service';
 
   const tagsHtml = (d.tags || []).map(tag =>
     `<span class="badge bg-light text-dark border me-1 mb-1">${esc(tag)}</span>`
   ).join('') || `<span class="text-muted small">—</span>`;
 
-  const resourcesHtml = (d.resources || []).length
-    ? `<div class="list-group list-group-flush">
-        ${d.resources.map(r => `
-          <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center gap-2">
-            <span class="small text-truncate" style="max-width:260px" title="${esc(r.name)}">
-              ${esc(r.name)}
-              ${r.format ? `<span class="badge bg-secondary ms-1" style="font-size:.65rem">${esc(r.format)}</span>` : ''}
-            </span>
-            ${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm py-0 px-2 flex-shrink-0" title="${t('catalog.download')}"><i class="bi bi-download"></i></a>` : ''}
-          </div>`).join('')}
-      </div>`
-    : `<p class="text-muted small">${t('catalog.no_resources')}</p>`;
+  const resourcesHtml = isService
+    ? ((d.endpoints || []).length
+        ? `<div class="list-group list-group-flush">
+            ${d.endpoints.map(url => `
+              <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center gap-2">
+                <span class="small text-truncate" style="max-width:260px" title="${esc(url)}">
+                  ${esc(url)}
+                  ${d.service_format ? `<span class="badge bg-secondary ms-1" style="font-size:.65rem">${esc(d.service_format)}</span>` : ''}
+                </span>
+                <a href="${esc(url)}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm py-0 px-2 flex-shrink-0" title="${t('catalog.open_endpoint')}"><i class="bi bi-box-arrow-up-right"></i></a>
+              </div>`).join('')}
+          </div>`
+        : `<p class="text-muted small">${t('catalog.no_endpoints')}</p>`)
+    : ((d.resources || []).length
+        ? `<div class="list-group list-group-flush">
+            ${d.resources.map(r => `
+              <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center gap-2">
+                <span class="small text-truncate" style="max-width:260px" title="${esc(r.name)}">
+                  ${esc(r.name)}
+                  ${r.format ? `<span class="badge bg-secondary ms-1" style="font-size:.65rem">${esc(r.format)}</span>` : ''}
+                </span>
+                ${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm py-0 px-2 flex-shrink-0" title="${t('catalog.download')}"><i class="bi bi-download"></i></a>` : ''}
+              </div>`).join('')}
+          </div>`
+        : `<p class="text-muted small">${t('catalog.no_resources')}</p>`);
 
   show('datasetDetailBody').innerHTML = `
-    <a href="#" onclick="openOrgPanel('${esc(d.org_name)}');return false;"
-       class="badge bg-light text-dark border text-decoration-none mb-3 d-inline-block">
-      <i class="bi bi-building me-1"></i>${esc(d.org_title)}
-    </a>
+    <div class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+      <a href="#" onclick="openOrgPanel('${esc(d.org_name)}');return false;"
+         class="badge bg-light text-dark border text-decoration-none d-inline-block">
+        <i class="bi bi-building me-1"></i>${esc(d.org_title)}
+      </a>
+      ${d.type && d.type !== 'dataset' ? `<span class="badge bg-info-subtle text-info-emphasis border">${esc(_datasetTypeLabel(d.type))}</span>` : ''}
+    </div>
     ${d.notes ? `<p class="small">${esc(d.notes).replace(/\n/g, '<br>')}</p>` : ''}
     <div class="row g-2 small text-muted mb-3">
       <div class="col-6"><strong>${t('catalog.created')}</strong><br>${fmtDate(d.metadata_created)}</div>
@@ -4324,7 +4385,7 @@ function renderDatasetPanel(d) {
     </div>
     <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.tags')}</h6>
     <div class="mb-3">${tagsHtml}</div>
-    <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.resources')} (${d.resources ? d.resources.length : 0})</h6>
+    <h6 class="fw-semibold small text-uppercase text-muted mb-2">${isService ? t('catalog.endpoints') : t('catalog.resources')} (${isService ? (d.endpoints || []).length : (d.resources ? d.resources.length : 0)})</h6>
     ${resourcesHtml}
     <h6 class="fw-semibold small text-uppercase text-muted mb-2 mt-4">${t('catalog.related')}</h6>
     <div id="datasetRelated"><div class="text-center py-2 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
