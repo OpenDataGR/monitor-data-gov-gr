@@ -966,8 +966,11 @@
      and Bootstrap ties same-z-index elements to DOM order — this one is earlier in the
      document, so without the bump it would render underneath the panel that opened it. -->
 <div class="offcanvas offcanvas-end" tabindex="-1" id="orgDetailPanel" style="width:440px;max-width:95vw;z-index:1050">
-  <div class="offcanvas-header border-bottom">
-    <h5 class="offcanvas-title fw-bold" id="orgDetailTitle" data-i18n="org_detail.org">Organization</h5>
+  <div class="offcanvas-header border-bottom align-items-start">
+    <div>
+      <h5 class="offcanvas-title fw-bold mb-1" id="orgDetailTitle" data-i18n="org_detail.org">Organization</h5>
+      <div class="text-muted small font-monospace d-none" id="orgDetailIdLink"></div>
+    </div>
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
   </div>
   <div class="offcanvas-body" id="orgDetailBody">
@@ -4257,6 +4260,7 @@ let _orgPanel = null;
 function openOrgPanel(name) {
   if (!_orgPanel) _orgPanel = new bootstrap.Offcanvas(document.getElementById('orgDetailPanel'));
   document.getElementById('orgDetailTitle').textContent = t('loading');
+  document.getElementById('orgDetailIdLink').classList.add('d-none');
   document.getElementById('orgDetailBody').innerHTML =
     '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
   _orgPanel.show();
@@ -4588,6 +4592,9 @@ async function loadUserActivity(username) {
 function renderOrgPanel(data) {
   const org = data.org;
   document.getElementById('orgDetailTitle').textContent = org.title;
+  const orgIdLink = document.getElementById('orgDetailIdLink');
+  orgIdLink.innerHTML = `${esc(org.name)}&ensp;<a href="https://data.gov.gr/organization/${encodeURIComponent(org.name)}" target="_blank" rel="noopener" class="text-muted" title="${t('org_detail.view')}"><i class="bi bi-box-arrow-up-right"></i></a>`;
+  orgIdLink.classList.remove('d-none');
 
   const imgHtml = org.image_url
     ? `<img src="${org.image_url}" class="d-block mb-3" style="max-height:72px;max-width:180px;object-fit:contain" onerror="this.remove()">`
@@ -4689,10 +4696,6 @@ function renderOrgPanel(data) {
       ${createdHtml}
     </div>
     ${descHtml}
-    <a href="https://data.gov.gr/organization/${org.name}" target="_blank"
-       class="btn btn-outline-primary btn-sm w-100">
-      <i class="bi bi-box-arrow-up-right me-1"></i>${t('org_detail.view')}
-    </a>
     ${datasetsHtml}
     ${commsHtml}
     ${membersHtml}`;
