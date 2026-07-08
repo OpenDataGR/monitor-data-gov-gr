@@ -2470,7 +2470,7 @@ function relativeDate(iso) {
 
 let _orgsLoaded  = false;
 let _orgsData    = [];
-let _orgsSortCol  = 'package_count';
+let _orgsSortCol  = 'last_updated';
 let _orgsSortDir  = 'desc';
 let _orgsViewMode = 'portal';
 let _ckanLookup   = null;
@@ -2602,11 +2602,23 @@ function renderOrgsTable(orgs) {
   if (!orgs.length) { el.innerHTML = `<p class="text-muted text-center py-3">${t('orgs.none_found')}</p>`; return; }
 
   const sorted = [...orgs].sort((a, b) => {
+    if (_orgsSortCol === 'last_updated') {
+      const aHas = !!a.last_updated, bHas = !!b.last_updated;
+      if (aHas && bHas) {
+        if (a.last_updated < b.last_updated) return _orgsSortDir === 'asc' ? -1 : 1;
+        if (a.last_updated > b.last_updated) return _orgsSortDir === 'asc' ? 1  : -1;
+        return 0;
+      }
+      if (aHas !== bHas) {
+        // an org with a known date always ranks above one without, in either direction
+        return _orgsSortDir === 'asc' ? (aHas ? 1 : -1) : (aHas ? -1 : 1);
+      }
+      return b.package_count - a.package_count;  // neither has a date — fall back to dataset count
+    }
     let av, bv;
     switch (_orgsSortCol) {
-      case 'title':        av = a.title.toLowerCase(); bv = b.title.toLowerCase(); break;
-      case 'last_updated': av = a.last_updated || ''; bv = b.last_updated || ''; break;
-      default:             av = a.package_count;      bv = b.package_count;
+      case 'title': av = a.title.toLowerCase(); bv = b.title.toLowerCase(); break;
+      default:      av = a.package_count;       bv = b.package_count;
     }
     if (av < bv) return _orgsSortDir === 'asc' ? -1 : 1;
     if (av > bv) return _orgsSortDir === 'asc' ? 1  : -1;
