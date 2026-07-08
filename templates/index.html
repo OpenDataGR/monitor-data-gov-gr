@@ -472,15 +472,6 @@
               </div>
             </div>
             <div id="catalogResults"><p class="text-muted text-center py-4" data-i18n="catalog.hint">Search for datasets by title or keyword, or leave blank to browse the most recently updated.</p></div>
-            <div id="catalogPagination" class="d-flex justify-content-between align-items-center mt-3 d-none">
-              <button class="btn btn-outline-secondary btn-sm" id="catalogPrevBtn" onclick="_catalogPrevPage()">
-                <i class="bi bi-chevron-left"></i> <span data-i18n="catalog.prev">Previous</span>
-              </button>
-              <span class="text-muted small" id="catalogPageInfo"></span>
-              <button class="btn btn-outline-secondary btn-sm" id="catalogNextBtn" onclick="_catalogNextPage()">
-                <span data-i18n="catalog.next">Next</span> <i class="bi bi-chevron-right"></i>
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -1329,11 +1320,10 @@ const TRANSLATIONS = {
     'catalog.search_ph': 'Search datasets…',
     'catalog.hint': 'Search for datasets by title or keyword, or leave blank to browse the most recently updated.',
     'catalog.filter_since': 'Uploaded since',
-    'catalog.prev': 'Previous',
-    'catalog.next': 'Next',
     'catalog.results_for': 'results for',
     'catalog.total_datasets': 'datasets total',
     'catalog.none': 'No datasets match your search.',
+    'catalog.end_of_results': '— End of results —',
     'catalog.col_title': 'Title',
     'catalog.col_org': 'Organization',
     'catalog.col_resources': 'Resources',
@@ -1663,11 +1653,10 @@ const TRANSLATIONS = {
     'catalog.search_ph': 'Αναζήτηση συνόλων δεδομένων…',
     'catalog.hint': 'Αναζητήστε σύνολα δεδομένων με τίτλο ή λέξη-κλειδί, ή αφήστε κενό για τα πιο πρόσφατα ενημερωμένα.',
     'catalog.filter_since': 'Ανέβηκε από',
-    'catalog.prev': 'Προηγούμενα',
-    'catalog.next': 'Επόμενα',
     'catalog.results_for': 'αποτελέσματα για',
     'catalog.total_datasets': 'σύνολα δεδομένων συνολικά',
     'catalog.none': 'Δεν βρέθηκαν σύνολα δεδομένων με αυτά τα κριτήρια.',
+    'catalog.end_of_results': '— Τέλος αποτελεσμάτων —',
     'catalog.col_title': 'Τίτλος',
     'catalog.col_org': 'Οργανισμός',
     'catalog.col_resources': 'Πόροι',
@@ -2078,9 +2067,6 @@ function _catalogSearchDebounced() {
   _catalogDebounceTimer = setTimeout(() => { _catalogStart = 0; loadCatalog(); }, 400);
 }
 
-function _catalogPrevPage() { _catalogStart = Math.max(0, _catalogStart - CATALOG_PAGE_SIZE); loadCatalog(); }
-function _catalogNextPage() { _catalogStart += CATALOG_PAGE_SIZE; loadCatalog(); }
-
 function sortCatalog(col) {
   if (_catalogSortCol === col) {
     _catalogSortDir = _catalogSortDir === 'asc' ? 'desc' : 'asc';
@@ -2097,10 +2083,46 @@ function _catalogSortArrow(col) {
   return _catalogSortDir === 'asc' ? ' ↑' : ' ↓';
 }
 
-async function loadCatalog() {
+let _catalogTotalCount  = 0;
+let _catalogLoadingMore = false;
+let _catalogObserver    = null;
+
+function _ensureCatalogObserver() {
+  if (!_catalogObserver) {
+    _catalogObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) _catalogLoadMore();
+    }, { rootMargin: '400px 0px' });
+  }
+  return _catalogObserver;
+}
+
+function _catalogLoadMore() {
+  if (_catalogLoadingMore || _catalogStart >= _catalogTotalCount) return;
+  loadCatalog(true);
+}
+
+// Keeps loading more pages while the sentinel is still on-screen — plain
+// IntersectionObserver only fires on enter/exit, so a short result list that
+// never fully leaves the viewport would otherwise stop after one page.
+function _catalogMaybeAutoLoadMore() {
+  const sentinel = document.getElementById('catalogLoadMoreSentinel');
+  if (!sentinel || _catalogLoadingMore || _catalogStart >= _catalogTotalCount) return;
+  const rect = sentinel.getBoundingClientRect();
+  if (rect.top < window.innerHeight && rect.bottom >= 0) _catalogLoadMore();
+}
+
+async function loadCatalog(append = false) {
+  if (!append) _catalogStart = 0;
   const q  = show('catalogSearch').value.trim();
   const el = show('catalogResults');
-  el.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}</div>`;
+  const sentinelBefore = document.getElementById('catalogLoadMoreSentinel');
+  if (append) {
+    _catalogLoadingMore = true;
+    if (sentinelBefore) sentinelBefore.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}`;
+  } else {
+    if (_catalogObserver) _catalogObserver.disconnect();
+    el.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}</div>`;
+  }
   try {
     const org   = show('catalogOrgFilter').value;
     const fmt_  = show('catalogFormatFilter').value;
@@ -2116,53 +2138,69 @@ async function loadCatalog() {
     const resp = await fetch(`${API_BASE}api/datasets/search?${params}`);
     const data = await resp.json();
     if (data.error) {
-      el.innerHTML = `<div class="alert alert-warning mb-0">${esc(data.error)}</div>`;
-      show('catalogPagination').classList.add('d-none');
+      _catalogTotalCount = 0;
+      if (!append) el.innerHTML = `<div class="alert alert-warning mb-0">${esc(data.error)}</div>`;
       return;
     }
+    _catalogTotalCount = data.count;
     show('catalogCount').textContent = q
       ? `${fmt(data.count)} ${t('catalog.results_for')} "${q}"`
       : `${fmt(data.count)} ${t('catalog.total_datasets')}`;
-    if (!data.datasets.length) {
+    if (!append && !data.datasets.length) {
       el.innerHTML = `<p class="text-muted text-center py-4">${t('catalog.none')}</p>`;
-      show('catalogPagination').classList.add('d-none');
       return;
     }
-    const th = (col, label, extraClass = '') =>
-      `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="sortCatalog('${col}')">${label}${_catalogSortArrow(col)}</th>`;
-    el.innerHTML = `
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-          <thead><tr>
-            ${th('title', t('catalog.col_title'))}
-            ${th('org',   t('catalog.col_org'))}
-            <th class="text-end" title="${esc(t('catalog.resources_not_sortable'))}">${t('catalog.col_resources')}</th>
-            ${th('modified', t('catalog.col_modified'), 'text-end')}
-          </tr></thead>
-          <tbody>
-            ${data.datasets.map(d => `
-              <tr>
-                <td>
-                  <a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none fw-semibold">${esc(d.title)}</a>
-                  ${d.type && d.type !== 'dataset' ? `<span class="badge bg-info-subtle text-info-emphasis border ms-1" style="font-size:.65rem">${esc(_datasetTypeLabel(d.type))}</span>` : ''}
-                </td>
-                <td class="small text-muted">${esc(d.org_title)}</td>
-                <td class="text-end">${fmt(d.num_resources)}</td>
-                <td class="text-end small text-muted">${d.metadata_modified ? esc(d.metadata_modified.slice(0, 10)) : '—'}</td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`;
-    show('catalogPagination').classList.remove('d-none');
-    show('catalogPrevBtn').disabled = _catalogStart === 0;
-    show('catalogNextBtn').disabled = _catalogStart + CATALOG_PAGE_SIZE >= data.count;
-    const pageNum     = Math.floor(_catalogStart / CATALOG_PAGE_SIZE) + 1;
-    const totalPages  = Math.max(1, Math.ceil(data.count / CATALOG_PAGE_SIZE));
-    show('catalogPageInfo').textContent = `${pageNum} / ${totalPages}`;
+
+    const rowsHtml = data.datasets.map(d => `
+      <tr>
+        <td>
+          <a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none fw-semibold">${esc(d.title)}</a>
+          ${d.type && d.type !== 'dataset' ? `<span class="badge bg-info-subtle text-info-emphasis border ms-1" style="font-size:.65rem">${esc(_datasetTypeLabel(d.type))}</span>` : ''}
+        </td>
+        <td class="small text-muted">${esc(d.org_title)}</td>
+        <td class="text-end">${fmt(d.num_resources)}</td>
+        <td class="text-end small text-muted">${d.metadata_modified ? esc(d.metadata_modified.slice(0, 10)) : '—'}</td>
+      </tr>`).join('');
+
+    if (append) {
+      const tbody = document.getElementById('catalogTableBody');
+      if (tbody) tbody.insertAdjacentHTML('beforeend', rowsHtml);
+    } else {
+      const th = (col, label, extraClass = '') =>
+        `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="sortCatalog('${col}')">${label}${_catalogSortArrow(col)}</th>`;
+      el.innerHTML = `
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr>
+              ${th('title', t('catalog.col_title'))}
+              ${th('org',   t('catalog.col_org'))}
+              <th class="text-end" title="${esc(t('catalog.resources_not_sortable'))}">${t('catalog.col_resources')}</th>
+              ${th('modified', t('catalog.col_modified'), 'text-end')}
+            </tr></thead>
+            <tbody id="catalogTableBody">${rowsHtml}</tbody>
+          </table>
+        </div>
+        <div id="catalogLoadMoreSentinel" class="text-center py-3 text-muted small"></div>`;
+    }
+
+    _catalogStart += data.datasets.length;
+
+    const sentinel = document.getElementById('catalogLoadMoreSentinel');
+    if (sentinel) {
+      if (_catalogStart < _catalogTotalCount) {
+        sentinel.innerHTML = '';
+        _ensureCatalogObserver().observe(sentinel);
+      } else {
+        _ensureCatalogObserver().unobserve(sentinel);
+        sentinel.innerHTML = data.count ? t('catalog.end_of_results') : '';
+      }
+    }
   } catch (e) {
-    el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
-    show('catalogPagination').classList.add('d-none');
+    if (!append) el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
+  } finally {
+    _catalogLoadingMore = false;
   }
+  _catalogMaybeAutoLoadMore();
 }
 
 // ── Health tab ───────────────────────────────────────────────────────────────
