@@ -5497,7 +5497,7 @@ const LIVE_MAP_EXIT_FADE_SECONDS = 8;  // how long a marker takes to fade once i
 
 function _initLiveMap() {
   if (_liveMap || typeof L === 'undefined') return;
-  _liveMap = L.map('liveVisitorsMap', { attributionControl: true, scrollWheelZoom: false })
+  _liveMap = L.map('liveVisitorsMap', { attributionControl: true, scrollWheelZoom: true })
     .setView([30, 15], 2);
   _liveMap.attributionControl.setPrefix(false);  // drops Leaflet's own logo/link from the attribution
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
