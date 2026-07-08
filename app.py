@@ -2853,7 +2853,29 @@ def matomo_top_datasets():
                 "unique_visitors": page.get("nb_uniq_visitors", 0),
             })
         result.sort(key=lambda x: x["visits"], reverse=True)
-        return jsonify(result[:limit])
+        top = result[:limit]
+        # Matomo only knows the URL slug — look up the real (Greek) title from
+        # CKAN in one batched query rather than showing the transliterated slug.
+        if top:
+            slugs = [item["slug"] for item in top]
+            fq = "name:(" + " OR ".join(f'"{s}"' for s in slugs) + ")"
+            try:
+                r2 = requests.get(
+                    f"{config.API_BASE}/package_search",
+                    params={"fq": fq, "rows": len(slugs)},
+                    headers=_api_headers(),
+                    timeout=config.REQUEST_TIMEOUT,
+                )
+                r2.raise_for_status()
+                titles = {
+                    p.get("name"): p.get("title") or p.get("name")
+                    for p in r2.json().get("result", {}).get("results", [])
+                }
+            except Exception:
+                titles = {}
+            for item in top:
+                item["title"] = titles.get(item["slug"], item["slug"])
+        return jsonify(top)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 

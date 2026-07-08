@@ -2096,7 +2096,7 @@ async function _loadCatalogTopViewed() {
       <a href="#" onclick="openDatasetPanel('${esc(d.slug)}');return false;"
          class="list-group-item list-group-item-action px-0 py-2 d-flex justify-content-between align-items-center">
         <span class="text-truncate small" style="max-width:70%">
-          <span class="text-muted me-2">#${i + 1}</span>${esc(d.slug.replace(/-/g, ' '))}
+          <span class="text-muted me-2">#${i + 1}</span>${esc(d.title || d.slug)}
         </span>
         <span class="badge bg-primary rounded-pill">${fmt(d.visits)}</span>
       </a>`).join('')}</div>`;
