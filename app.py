@@ -2864,6 +2864,7 @@ def matomo_live():
 
         visits = _matomo_live_call("Live.getLastVisitsDetails", {
             "period": "day", "date": "today", "filter_limit": limit,
+            "language": "en",  # otherwise device/browser labels come back localized to Matomo's UI language
         })
         out = []
         for v in (visits or []):
