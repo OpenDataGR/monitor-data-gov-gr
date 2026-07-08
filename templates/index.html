@@ -5492,8 +5492,8 @@ function exportContactsExcel() {
 }
 
 let _liveMap = null;
-const _liveMarkers = new Map();  // id_visit -> {marker, ts}
-const LIVE_MAP_FADE_SECONDS = 120;
+const _liveMarkers = new Map();  // id_visit -> {marker, removedAt: null|epochSeconds}
+const LIVE_MAP_EXIT_FADE_SECONDS = 8;  // how long a marker takes to fade once it drops off the list
 
 function _initLiveMap() {
   if (_liveMap || typeof L === 'undefined') return;
@@ -5508,16 +5508,32 @@ function _initLiveMap() {
 
 function _updateLiveMapMarkers(visits) {
   if (!_liveMap) return;
-  const nowSec = Date.now() / 1000;
+  const currentKeys = new Set();
   for (const v of visits) {
     if (v.lat == null || v.lon == null) continue;
     const key = v.id_visit ?? `${v.lat},${v.lon},${v.timestamp}`;
-    if (_liveMarkers.has(key)) continue;  // already plotted, let it fade on its own
+    currentKeys.add(key);
+    if (_liveMarkers.has(key)) {
+      // still in the list — cancel any fade-out in case it had just started
+      const entry = _liveMarkers.get(key);
+      if (entry.removedAt != null) {
+        entry.removedAt = null;
+        entry.marker.setStyle({ opacity: 1, fillOpacity: 0.6 });
+      }
+      continue;
+    }
     const marker = L.circleMarker([v.lat, v.lon], {
       radius: 6, color: '#dc3545', fillColor: '#dc3545', fillOpacity: 0.6, weight: 1, opacity: 1,
     }).bindTooltip(`${esc(v.city ? v.city + ', ' : '')}${esc(v.country || t('live.unknown'))}`);
     marker.addTo(_liveMap);
-    _liveMarkers.set(key, { marker, ts: v.timestamp || nowSec });
+    _liveMarkers.set(key, { marker, removedAt: null });
+  }
+  // A marker starts fading only once its visit has dropped off the list
+  const nowSec = Date.now() / 1000;
+  for (const [key, entry] of _liveMarkers) {
+    if (!currentKeys.has(key) && entry.removedAt == null) {
+      entry.removedAt = nowSec;
+    }
   }
 }
 
@@ -5525,13 +5541,14 @@ function _fadeLiveMapMarkers() {
   if (!_liveMap) return;
   const nowSec = Date.now() / 1000;
   for (const [key, entry] of _liveMarkers) {
-    const age = nowSec - entry.ts;
-    if (age >= LIVE_MAP_FADE_SECONDS) {
+    if (entry.removedAt == null) continue;  // still in the list — stay at full opacity
+    const age = nowSec - entry.removedAt;
+    if (age >= LIVE_MAP_EXIT_FADE_SECONDS) {
       _liveMap.removeLayer(entry.marker);
       _liveMarkers.delete(key);
       continue;
     }
-    const frac = 1 - (age / LIVE_MAP_FADE_SECONDS);
+    const frac = 1 - (age / LIVE_MAP_EXIT_FADE_SECONDS);
     entry.marker.setStyle({ opacity: frac, fillOpacity: frac * 0.6 });
   }
 }
