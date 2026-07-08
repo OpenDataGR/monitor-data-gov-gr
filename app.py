@@ -1123,6 +1123,47 @@ def datasets_check():
     return jsonify(results)
 
 
+@app.route("/api/datasets/search")
+def datasets_search():
+    q     = (freq.args.get("q") or "").strip()
+    org   = (freq.args.get("org") or "").strip()
+    rows  = min(max(int(freq.args.get("rows", 20) or 20), 1), 100)
+    start = max(int(freq.args.get("start", 0) or 0), 0)
+
+    params = {"rows": rows, "start": start}
+    if q:
+        params["q"] = q
+        params["sort"] = "score desc, metadata_modified desc"
+    else:
+        params["sort"] = "metadata_modified desc"
+    if org:
+        params["fq"] = f"organization:{org}"
+
+    try:
+        r = requests.get(
+            f"{config.API_BASE}/package_search",
+            params=params,
+            headers=_api_headers(),
+            timeout=config.REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
+        result = data["result"]
+        datasets = [{
+            "name":              p.get("name"),
+            "title":             p.get("title") or p.get("name"),
+            "org_name":          (p.get("organization") or {}).get("name") or "",
+            "org_title":         (p.get("organization") or {}).get("title") or "",
+            "num_resources":     len(p.get("resources") or []),
+            "metadata_modified": p.get("metadata_modified"),
+        } for p in result.get("results", [])]
+        return jsonify({"count": result.get("count", 0), "datasets": datasets})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/quality/check")
 def quality_check():
     issues = []

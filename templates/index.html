@@ -442,8 +442,32 @@
       </div>
     </div>
 
-    <!-- Datasets: reserved for future functionality -->
+    <!-- Datasets: searchable catalog browser -->
     <div class="tab-pane fade" id="tab-datasets">
+      <div class="row g-3">
+        <div class="col-12">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <h6 class="fw-semibold mb-0"><i class="bi bi-search me-2 text-primary"></i><span data-i18n="catalog.title">Dataset Catalog</span></h6>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span id="catalogCount" class="text-muted small"></span>
+                <input type="search" id="catalogSearch" class="form-control form-control-sm" style="width:260px"
+                       placeholder="Search datasets…" data-i18n-ph="catalog.search_ph" oninput="_catalogSearchDebounced()">
+              </div>
+            </div>
+            <div id="catalogResults"><p class="text-muted text-center py-4" data-i18n="catalog.hint">Search for datasets by title or keyword, or leave blank to browse the most recently updated.</p></div>
+            <div id="catalogPagination" class="d-flex justify-content-between align-items-center mt-3 d-none">
+              <button class="btn btn-outline-secondary btn-sm" id="catalogPrevBtn" onclick="_catalogPrevPage()">
+                <i class="bi bi-chevron-left"></i> <span data-i18n="catalog.prev">Previous</span>
+              </button>
+              <span class="text-muted small" id="catalogPageInfo"></span>
+              <button class="btn btn-outline-secondary btn-sm" id="catalogNextBtn" onclick="_catalogNextPage()">
+                <span data-i18n="catalog.next">Next</span> <i class="bi bi-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Traffic -->
@@ -1281,6 +1305,18 @@ const TRANSLATIONS = {
     'datasets.col_org': 'Organization',
     'datasets.col_datasets': 'Datasets',
     'datasets.none': 'No datasets found.',
+    'catalog.title': 'Dataset Catalog',
+    'catalog.search_ph': 'Search datasets…',
+    'catalog.hint': 'Search for datasets by title or keyword, or leave blank to browse the most recently updated.',
+    'catalog.prev': 'Previous',
+    'catalog.next': 'Next',
+    'catalog.results_for': 'results for',
+    'catalog.total_datasets': 'datasets total',
+    'catalog.none': 'No datasets match your search.',
+    'catalog.col_title': 'Title',
+    'catalog.col_org': 'Organization',
+    'catalog.col_resources': 'Resources',
+    'catalog.col_modified': 'Last Modified',
     'nav.change_password': 'Change Password',
     'nav.edit_name': 'Edit name',
     'name.modal_title': 'Edit Name',
@@ -1585,6 +1621,18 @@ const TRANSLATIONS = {
     'datasets.col_org': 'Οργανισμός',
     'datasets.col_datasets': 'Δεδομένα',
     'datasets.none': 'Δεν βρέθηκαν σύνολα δεδομένων.',
+    'catalog.title': 'Κατάλογος Συνόλων Δεδομένων',
+    'catalog.search_ph': 'Αναζήτηση συνόλων δεδομένων…',
+    'catalog.hint': 'Αναζητήστε σύνολα δεδομένων με τίτλο ή λέξη-κλειδί, ή αφήστε κενό για τα πιο πρόσφατα ενημερωμένα.',
+    'catalog.prev': 'Προηγούμενα',
+    'catalog.next': 'Επόμενα',
+    'catalog.results_for': 'αποτελέσματα για',
+    'catalog.total_datasets': 'σύνολα δεδομένων συνολικά',
+    'catalog.none': 'Δεν βρέθηκαν σύνολα δεδομένων με αυτά τα κριτήρια.',
+    'catalog.col_title': 'Τίτλος',
+    'catalog.col_org': 'Οργανισμός',
+    'catalog.col_resources': 'Πόροι',
+    'catalog.col_modified': 'Τελευταία Ενημέρωση',
     'nav.change_password': 'Αλλαγή Κωδικού',
     'nav.edit_name': 'Επεξεργασία ονόματος',
     'name.modal_title': 'Επεξεργασία Ονόματος',
@@ -1834,6 +1882,80 @@ function renderUptimeChart(summary) {
       }
     }
   });
+}
+
+// ── Dataset Catalog tab ──────────────────────────────────────────────────────
+let _catalogLoaded = false;
+let _catalogStart  = 0;
+let _catalogDebounceTimer = null;
+const CATALOG_PAGE_SIZE = 20;
+
+document.getElementById('datasetsTabBtn').addEventListener('click', () => {
+  if (_catalogLoaded) return;
+  _catalogLoaded = true;
+  loadCatalog();
+});
+
+function _catalogSearchDebounced() {
+  clearTimeout(_catalogDebounceTimer);
+  _catalogDebounceTimer = setTimeout(() => { _catalogStart = 0; loadCatalog(); }, 400);
+}
+
+function _catalogPrevPage() { _catalogStart = Math.max(0, _catalogStart - CATALOG_PAGE_SIZE); loadCatalog(); }
+function _catalogNextPage() { _catalogStart += CATALOG_PAGE_SIZE; loadCatalog(); }
+
+async function loadCatalog() {
+  const q  = show('catalogSearch').value.trim();
+  const el = show('catalogResults');
+  el.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}</div>`;
+  try {
+    const params = new URLSearchParams({ rows: CATALOG_PAGE_SIZE, start: _catalogStart });
+    if (q) params.set('q', q);
+    const resp = await fetch(`${API_BASE}api/datasets/search?${params}`);
+    const data = await resp.json();
+    if (data.error) {
+      el.innerHTML = `<div class="alert alert-warning mb-0">${esc(data.error)}</div>`;
+      show('catalogPagination').classList.add('d-none');
+      return;
+    }
+    show('catalogCount').textContent = q
+      ? `${fmt(data.count)} ${t('catalog.results_for')} "${q}"`
+      : `${fmt(data.count)} ${t('catalog.total_datasets')}`;
+    if (!data.datasets.length) {
+      el.innerHTML = `<p class="text-muted text-center py-4">${t('catalog.none')}</p>`;
+      show('catalogPagination').classList.add('d-none');
+      return;
+    }
+    el.innerHTML = `
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead><tr>
+            <th data-i18n="catalog.col_title">Title</th>
+            <th data-i18n="catalog.col_org">Organization</th>
+            <th class="text-end" data-i18n="catalog.col_resources">Resources</th>
+            <th class="text-end" data-i18n="catalog.col_modified">Last Modified</th>
+          </tr></thead>
+          <tbody>
+            ${data.datasets.map(d => `
+              <tr>
+                <td><a href="https://data.gov.gr/dataset/${esc(d.name)}" target="_blank" rel="noopener" class="text-decoration-none fw-semibold">${esc(d.title)}</a></td>
+                <td class="small text-muted">${esc(d.org_title)}</td>
+                <td class="text-end">${fmt(d.num_resources)}</td>
+                <td class="text-end small text-muted">${d.metadata_modified ? esc(d.metadata_modified.slice(0, 10)) : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    show('catalogPagination').classList.remove('d-none');
+    show('catalogPrevBtn').disabled = _catalogStart === 0;
+    show('catalogNextBtn').disabled = _catalogStart + CATALOG_PAGE_SIZE >= data.count;
+    const pageNum     = Math.floor(_catalogStart / CATALOG_PAGE_SIZE) + 1;
+    const totalPages  = Math.max(1, Math.ceil(data.count / CATALOG_PAGE_SIZE));
+    show('catalogPageInfo').textContent = `${pageNum} / ${totalPages}`;
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
+    show('catalogPagination').classList.add('d-none');
+  }
 }
 
 // ── Health tab ───────────────────────────────────────────────────────────────
