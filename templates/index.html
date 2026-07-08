@@ -1078,6 +1078,11 @@ const TRANSLATIONS = {
     'live.just_now': 'just now',
     'live.min_ago': ' min ago',
     'live.unknown': 'Unknown',
+    'live.col_time': 'Time',
+    'live.col_location': 'Location / Last Page',
+    'live.col_device': 'Device',
+    'live.col_browser': 'Browser',
+    'live.col_actions': 'Actions',
     'health.response_history': 'Response Time History',
     'health.recent_checks': 'Recent Checks',
     'health.6h': '6 h',
@@ -1377,6 +1382,11 @@ const TRANSLATIONS = {
     'live.just_now': 'μόλις τώρα',
     'live.min_ago': ' λεπτά πριν',
     'live.unknown': 'Άγνωστο',
+    'live.col_time': 'Ώρα',
+    'live.col_location': 'Τοποθεσία / Τελευταία Σελίδα',
+    'live.col_device': 'Συσκευή',
+    'live.col_browser': 'Πρόγραμμα Περιήγησης',
+    'live.col_actions': 'Ενέργειες',
     'health.response_history': 'Ιστορικό Χρόνου Απόκρισης',
     'health.recent_checks': 'Πρόσφατοι Έλεγχοι',
     'health.6h': '6 ω',
@@ -5500,6 +5510,16 @@ async function loadLiveVisitors() {
     el.innerHTML = `
       <div class="table-responsive" style="max-height:320px;overflow-y:auto">
         <table class="table table-sm table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th class="small text-muted fw-semibold" style="width:80px">${t('live.col_time')}</th>
+              <th class="small text-muted fw-semibold" style="width:32px"></th>
+              <th class="small text-muted fw-semibold">${t('live.col_location')}</th>
+              <th class="small text-muted fw-semibold text-center" style="width:32px" title="${t('live.col_device')}"><i class="bi bi-display"></i></th>
+              <th class="small text-muted fw-semibold">${t('live.col_browser')}</th>
+              <th class="small text-muted fw-semibold text-end" style="width:60px">${t('live.col_actions')}</th>
+            </tr>
+          </thead>
           <tbody>
             ${data.visits.map(v => `
               <tr>
