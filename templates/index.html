@@ -982,7 +982,7 @@
   <div class="offcanvas-header border-bottom align-items-start">
     <div>
       <h5 class="offcanvas-title fw-bold mb-1" id="datasetDetailTitle" data-i18n="catalog.panel_title">Dataset</h5>
-      <a href="#" id="datasetDetailIdLink" target="_blank" rel="noopener" class="small text-muted text-decoration-none d-none font-monospace"></a>
+      <div class="text-muted small font-monospace d-none" id="datasetDetailIdLink"></div>
     </div>
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
   </div>
@@ -1356,6 +1356,7 @@ const TRANSLATIONS = {
     'catalog.resources': 'Resources',
     'catalog.no_resources': 'No resources.',
     'catalog.download': 'Download',
+    'catalog.view_on_portal': 'View on data.gov.gr',
     'catalog.formats_title': 'Format Distribution',
     'catalog.formats_none': 'No format data available.',
     'catalog.formats_other': 'Other',
@@ -1693,6 +1694,7 @@ const TRANSLATIONS = {
     'catalog.resources': 'Πόροι',
     'catalog.no_resources': 'Δεν υπάρχουν πόροι.',
     'catalog.download': 'Λήψη',
+    'catalog.view_on_portal': 'Προβολή στο data.gov.gr',
     'catalog.formats_title': 'Κατανομή Μορφοτύπων',
     'catalog.formats_none': 'Δεν υπάρχουν διαθέσιμα δεδομένα μορφοτύπων.',
     'catalog.formats_other': 'Άλλα',
@@ -4289,8 +4291,7 @@ function openDatasetPanel(name) {
 function renderDatasetPanel(d) {
   show('datasetDetailTitle').textContent = d.title;
   const idLink = document.getElementById('datasetDetailIdLink');
-  idLink.href = `https://data.gov.gr/dataset/${encodeURIComponent(d.name)}`;
-  idLink.textContent = d.name;
+  idLink.innerHTML = `${esc(d.name)}&ensp;<a href="https://data.gov.gr/dataset/${encodeURIComponent(d.name)}" target="_blank" rel="noopener" class="text-muted" title="${t('catalog.view_on_portal')}"><i class="bi bi-box-arrow-up-right"></i></a>`;
   idLink.classList.remove('d-none');
   const fmtDate = (s) => s ? esc(s.slice(0, 10)) : '—';
   const isService = d.type === 'data-service';
