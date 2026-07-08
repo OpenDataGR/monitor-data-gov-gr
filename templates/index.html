@@ -440,11 +440,7 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- Datasets: searchable catalog browser -->
-    <div class="tab-pane fade" id="tab-datasets">
-      <div class="row g-3 mb-3">
+      <div class="row g-3 mt-1">
         <div class="col-12 col-lg-6">
           <div class="card p-4 h-100">
             <h6 class="fw-semibold mb-3"><i class="bi bi-pie-chart me-2 text-primary"></i><span data-i18n="catalog.formats_title">Format Distribution</span></h6>
@@ -462,6 +458,10 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Datasets: searchable catalog browser -->
+    <div class="tab-pane fade" id="tab-datasets">
       <div class="row g-3">
         <div class="col-12">
           <div class="card p-4">
@@ -1990,8 +1990,7 @@ document.getElementById('datasetsTabBtn').addEventListener('click', () => {
   loadCatalog();
   _loadCatalogTypeFilter();
   _loadCatalogOrgFilter();
-  _loadCatalogFormatData();
-  _loadCatalogTopViewed();
+  _loadCatalogFormatFilterOptions();
 });
 
 function _datasetTypeLabel(type) {
@@ -2031,15 +2030,10 @@ async function _loadCatalogOrgFilter() {
   } catch (e) { /* filter just stays "All organizations" */ }
 }
 
-let _catalogFormatChart = null;
-async function _loadCatalogFormatData() {
+async function _loadCatalogFormatFilterOptions() {
   try {
     const formats = await fetch(API_BASE + 'api/datasets/formats').then(r => r.json());
-    if (!Array.isArray(formats) || !formats.length) {
-      show('catalogFormatChartWrap').classList.add('d-none');
-      show('catalogFormatChartEmpty').classList.remove('d-none');
-      return;
-    }
+    if (!Array.isArray(formats) || !formats.length) return;
     const sel = show('catalogFormatFilter');
     formats.slice(0, 30).forEach(f => {
       const opt = document.createElement('option');
@@ -2047,7 +2041,18 @@ async function _loadCatalogFormatData() {
       opt.textContent = `${f.name} (${fmt(f.count)})`;
       sel.appendChild(opt);
     });
+  } catch (e) { /* filter just stays "All formats" */ }
+}
 
+let _catalogFormatChart = null;
+async function _loadStatsFormatChart() {
+  try {
+    const formats = await fetch(API_BASE + 'api/datasets/formats').then(r => r.json());
+    if (!Array.isArray(formats) || !formats.length) {
+      show('catalogFormatChartWrap').classList.add('d-none');
+      show('catalogFormatChartEmpty').classList.remove('d-none');
+      return;
+    }
     const top = formats.slice(0, 8);
     const otherCount = formats.slice(8).reduce((s, f) => s + f.count, 0);
     const labels = top.map(f => f.name);
@@ -2256,6 +2261,8 @@ document.getElementById('statsTabBtn').addEventListener('click', () => {
   if (_statsLoaded) return;
   _statsLoaded = true;
   loadStatsTab();
+  _loadStatsFormatChart();
+  _loadCatalogTopViewed();
 });
 
 async function loadStatsTab() {
