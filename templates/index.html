@@ -338,6 +338,19 @@
         </div>
       </div>
 
+      <div class="card p-4 mb-3">
+        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+          <h6 class="fw-semibold mb-0">
+            <i class="bi bi-broadcast-pin me-2 text-danger"></i><span data-i18n="live.title">Live Visitors</span>
+            <span class="badge rounded-pill bg-danger ms-1" style="font-size:.6rem;vertical-align:middle" id="liveDot">●</span>
+          </h6>
+          <div class="d-flex align-items-center gap-3">
+            <span class="small text-muted"><span class="fw-bold text-danger fs-6" id="liveActiveCount">—</span> <span data-i18n="live.active_now">active in the last 30 min</span></span>
+          </div>
+        </div>
+        <div id="liveVisitorsList"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
+      </div>
+
       <div class="row g-3">
         <div class="col-12 col-lg-7">
           <div class="card p-4">
@@ -349,20 +362,6 @@
           <div class="card p-4 h-100">
             <h6 class="fw-semibold mb-3"><i class="bi bi-bar-chart me-2 text-primary"></i><span data-i18n="health.uptime_24h">Uptime Last 24h</span></h6>
             <canvas id="uptimeChart"></canvas>
-          </div>
-        </div>
-        <div class="col-12">
-          <div class="card p-4">
-            <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-              <h6 class="fw-semibold mb-0">
-                <i class="bi bi-broadcast-pin me-2 text-danger"></i><span data-i18n="live.title">Live Visitors</span>
-                <span class="badge rounded-pill bg-danger ms-1" style="font-size:.6rem;vertical-align:middle" id="liveDot">●</span>
-              </h6>
-              <div class="d-flex align-items-center gap-3">
-                <span class="small text-muted"><span class="fw-bold text-danger fs-6" id="liveActiveCount">—</span> <span data-i18n="live.active_now">active in the last 30 min</span></span>
-              </div>
-            </div>
-            <div id="liveVisitorsList"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
           </div>
         </div>
       </div>
