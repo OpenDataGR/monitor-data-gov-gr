@@ -5499,6 +5499,7 @@ function _initLiveMap() {
   if (_liveMap || typeof L === 'undefined') return;
   _liveMap = L.map('liveVisitorsMap', { attributionControl: true, scrollWheelZoom: false })
     .setView([30, 15], 2);
+  _liveMap.attributionControl.setPrefix(false);  // drops Leaflet's own logo/link from the attribution
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
