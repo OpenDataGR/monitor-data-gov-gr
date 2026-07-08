@@ -961,7 +961,11 @@
 
 
 <!-- Org detail offcanvas -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="orgDetailPanel" style="width:440px;max-width:95vw">
+<!-- z-index bumped above the default offcanvas stack (1045) since this panel can be
+     opened from within another already-open offcanvas (e.g. the dataset detail panel),
+     and Bootstrap ties same-z-index elements to DOM order — this one is earlier in the
+     document, so without the bump it would render underneath the panel that opened it. -->
+<div class="offcanvas offcanvas-end" tabindex="-1" id="orgDetailPanel" style="width:440px;max-width:95vw;z-index:1050">
   <div class="offcanvas-header border-bottom">
     <h5 class="offcanvas-title fw-bold" id="orgDetailTitle" data-i18n="org_detail.org">Organization</h5>
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
