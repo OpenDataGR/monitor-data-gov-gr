@@ -2841,16 +2841,25 @@ def matomo_live():
             "period": "day", "date": "today", "filter_limit": limit,
             "language": "en",  # otherwise device/browser labels come back localized to Matomo's UI language
         })
+        def _to_float(x):
+            try:
+                return float(x)
+            except (TypeError, ValueError):
+                return None
+
         out = []
         for v in (visits or []):
             actions = v.get("actionDetails") or []
             pages = [a.get("pageTitle") or a.get("url") for a in actions if a.get("type") == "action"]
             out.append({
+                "id_visit":        v.get("idVisit"),
                 "time_pretty":     v.get("lastActionDateTime") or v.get("serverTimePretty") or "",
                 "timestamp":       v.get("lastActionTimestamp") or v.get("serverTimestamp"),
                 "country":         v.get("country") or "",
                 "country_code":    (v.get("countryCode") or "").lower(),
                 "city":            v.get("city") or "",
+                "lat":             _to_float(v.get("latitude")),
+                "lon":             _to_float(v.get("longitude")),
                 "device_type":     v.get("deviceType") or "",
                 "browser":         v.get("browserName") or "",
                 "os":              v.get("operatingSystem") or "",
