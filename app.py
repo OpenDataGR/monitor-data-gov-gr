@@ -1140,6 +1140,7 @@ _DATASET_SORT_MAP = {
 def datasets_search():
     q        = (freq.args.get("q") or "").strip()
     org      = (freq.args.get("org") or "").strip()
+    fmt      = (freq.args.get("format") or "").strip()
     sort_key = (freq.args.get("sort") or "").strip()
     rows     = min(max(int(freq.args.get("rows", 20) or 20), 1), 100)
     start    = max(int(freq.args.get("start", 0) or 0), 0)
@@ -1153,8 +1154,13 @@ def datasets_search():
         params["sort"] = "metadata_modified desc"
     if q:
         params["q"] = q
+    fq_parts = []
     if org:
-        params["fq"] = f"organization:{org}"
+        fq_parts.append(f"organization:{org}")
+    if fmt:
+        fq_parts.append(f'res_format:"{fmt}"')
+    if fq_parts:
+        params["fq"] = " AND ".join(fq_parts)
 
     try:
         r = requests.get(
@@ -1177,6 +1183,37 @@ def datasets_search():
             "metadata_modified": p.get("metadata_modified"),
         } for p in result.get("results", [])]
         return jsonify({"count": result.get("count", 0), "datasets": datasets})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+_dataset_formats_cache: dict = {"data": None, "ts": 0}
+
+
+@app.route("/api/datasets/formats")
+def dataset_formats():
+    now = time.time()
+    if _dataset_formats_cache["data"] is not None and now - _dataset_formats_cache["ts"] < 3600:
+        return jsonify(_dataset_formats_cache["data"])
+    try:
+        r = requests.get(
+            f"{config.API_BASE}/package_search",
+            params={"rows": 0, "facet": "true", "facet.field": '["res_format"]', "facet.limit": 100},
+            headers=_api_headers(),
+            timeout=config.REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
+        items = ((data["result"].get("search_facets") or {}).get("res_format") or {}).get("items") or []
+        formats = sorted(
+            [{"name": i["name"], "count": i["count"]} for i in items if i.get("name") and i.get("count")],
+            key=lambda x: -x["count"],
+        )
+        _dataset_formats_cache["data"] = formats
+        _dataset_formats_cache["ts"] = now
+        return jsonify(formats)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 

@@ -444,6 +444,24 @@
 
     <!-- Datasets: searchable catalog browser -->
     <div class="tab-pane fade" id="tab-datasets">
+      <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-6">
+          <div class="card p-4 h-100">
+            <h6 class="fw-semibold mb-3"><i class="bi bi-pie-chart me-2 text-primary"></i><span data-i18n="catalog.formats_title">Format Distribution</span></h6>
+            <div id="catalogFormatChartWrap" style="height:220px"><canvas id="catalogFormatChart"></canvas></div>
+            <div id="catalogFormatChartEmpty" class="text-center text-muted small py-4 d-none" data-i18n="catalog.formats_none">No format data available.</div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <div class="card p-4 h-100">
+            <h6 class="fw-semibold mb-3">
+              <i class="bi bi-eye me-2 text-danger"></i><span data-i18n="catalog.top_viewed_title">Most Viewed Datasets</span>
+              <span class="text-muted small fw-normal" data-i18n="catalog.top_viewed_period">(last 30 days)</span>
+            </h6>
+            <div id="catalogTopViewed"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
+          </div>
+        </div>
+      </div>
       <div class="row g-3">
         <div class="col-12">
           <div class="card p-4">
@@ -451,7 +469,13 @@
               <h6 class="fw-semibold mb-0"><i class="bi bi-search me-2 text-primary"></i><span data-i18n="catalog.title">Dataset Catalog</span></h6>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span id="catalogCount" class="text-muted small"></span>
-                <input type="search" id="catalogSearch" class="form-control form-control-sm" style="width:260px"
+                <select id="catalogOrgFilter" class="form-select form-select-sm" style="width:190px" onchange="_catalogStart=0;loadCatalog();">
+                  <option value="" data-i18n="catalog.filter_org_all">All organizations</option>
+                </select>
+                <select id="catalogFormatFilter" class="form-select form-select-sm" style="width:140px" onchange="_catalogStart=0;loadCatalog();">
+                  <option value="" data-i18n="catalog.filter_format_all">All formats</option>
+                </select>
+                <input type="search" id="catalogSearch" class="form-control form-control-sm" style="width:220px"
                        placeholder="Search datasets…" data-i18n-ph="catalog.search_ph" oninput="_catalogSearchDebounced()">
               </div>
             </div>
@@ -1339,6 +1363,16 @@ const TRANSLATIONS = {
     'catalog.no_resources': 'No resources.',
     'catalog.download': 'Download',
     'catalog.view_on_portal': 'View on data.gov.gr',
+    'catalog.formats_title': 'Format Distribution',
+    'catalog.formats_none': 'No format data available.',
+    'catalog.formats_other': 'Other',
+    'catalog.top_viewed_title': 'Most Viewed Datasets',
+    'catalog.top_viewed_period': '(last 30 days)',
+    'catalog.top_viewed_none': 'No view data available yet.',
+    'catalog.filter_org_all': 'All organizations',
+    'catalog.filter_format_all': 'All formats',
+    'catalog.related': 'Related Datasets',
+    'catalog.related_none': 'No related datasets found.',
     'nav.change_password': 'Change Password',
     'nav.edit_name': 'Edit name',
     'name.modal_title': 'Edit Name',
@@ -1664,6 +1698,16 @@ const TRANSLATIONS = {
     'catalog.no_resources': 'Δεν υπάρχουν πόροι.',
     'catalog.download': 'Λήψη',
     'catalog.view_on_portal': 'Προβολή στο data.gov.gr',
+    'catalog.formats_title': 'Κατανομή Μορφοτύπων',
+    'catalog.formats_none': 'Δεν υπάρχουν διαθέσιμα δεδομένα μορφοτύπων.',
+    'catalog.formats_other': 'Άλλα',
+    'catalog.top_viewed_title': 'Σύνολα Δεδομένων με Περισσότερες Προβολές',
+    'catalog.top_viewed_period': '(τελευταίες 30 ημέρες)',
+    'catalog.top_viewed_none': 'Δεν υπάρχουν ακόμη δεδομένα προβολών.',
+    'catalog.filter_org_all': 'Όλοι οι οργανισμοί',
+    'catalog.filter_format_all': 'Όλοι οι μορφότυποι',
+    'catalog.related': 'Σχετικά Σύνολα Δεδομένων',
+    'catalog.related_none': 'Δεν βρέθηκαν σχετικά σύνολα δεδομένων.',
     'nav.change_password': 'Αλλαγή Κωδικού',
     'nav.edit_name': 'Επεξεργασία ονόματος',
     'name.modal_title': 'Επεξεργασία Ονόματος',
@@ -1927,7 +1971,90 @@ document.getElementById('datasetsTabBtn').addEventListener('click', () => {
   if (_catalogLoaded) return;
   _catalogLoaded = true;
   loadCatalog();
+  _loadCatalogOrgFilter();
+  _loadCatalogFormatData();
+  _loadCatalogTopViewed();
 });
+
+async function _loadCatalogOrgFilter() {
+  try {
+    if (!_orgsData.length) {
+      const json = await fetch(API_BASE + 'api/organizations').then(r => r.json());
+      if (json.data) _orgsData = json.data;
+    }
+    const sel = show('catalogOrgFilter');
+    [..._orgsData].sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name)).forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o.name;
+      opt.textContent = o.title || o.name;
+      sel.appendChild(opt);
+    });
+  } catch (e) { /* filter just stays "All organizations" */ }
+}
+
+let _catalogFormatChart = null;
+async function _loadCatalogFormatData() {
+  try {
+    const formats = await fetch(API_BASE + 'api/datasets/formats').then(r => r.json());
+    if (!Array.isArray(formats) || !formats.length) {
+      show('catalogFormatChartWrap').classList.add('d-none');
+      show('catalogFormatChartEmpty').classList.remove('d-none');
+      return;
+    }
+    const sel = show('catalogFormatFilter');
+    formats.slice(0, 30).forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.name;
+      opt.textContent = `${f.name} (${fmt(f.count)})`;
+      sel.appendChild(opt);
+    });
+
+    const top = formats.slice(0, 8);
+    const otherCount = formats.slice(8).reduce((s, f) => s + f.count, 0);
+    const labels = top.map(f => f.name);
+    const counts = top.map(f => f.count);
+    if (otherCount > 0) { labels.push(t('catalog.formats_other')); counts.push(otherCount); }
+    const palette = ['#0057b8','#0dcaf0','#20c997','#ffc107','#fd7e14','#dc3545','#6f42c1','#6c757d','#adb5bd'];
+    const ctx = show('catalogFormatChart').getContext('2d');
+    if (_catalogFormatChart) _catalogFormatChart.destroy();
+    _catalogFormatChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: counts, backgroundColor: palette }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } },
+      },
+    });
+  } catch (e) {
+    show('catalogFormatChartWrap').classList.add('d-none');
+    show('catalogFormatChartEmpty').classList.remove('d-none');
+  }
+}
+
+async function _loadCatalogTopViewed() {
+  const el = show('catalogTopViewed');
+  try {
+    const data = await fetch(API_BASE + 'api/matomo/top-datasets?limit=8&days=30').then(r => r.json());
+    if (data.error) {
+      el.innerHTML = `<p class="text-muted small mb-0">${esc(data.error)}</p>`;
+      return;
+    }
+    if (!data.length) {
+      el.innerHTML = `<p class="text-muted small mb-0">${t('catalog.top_viewed_none')}</p>`;
+      return;
+    }
+    el.innerHTML = `<div class="list-group list-group-flush">${data.map((d, i) => `
+      <a href="#" onclick="openDatasetPanel('${esc(d.slug)}');return false;"
+         class="list-group-item list-group-item-action px-0 py-2 d-flex justify-content-between align-items-center">
+        <span class="text-truncate small" style="max-width:70%">
+          <span class="text-muted me-2">#${i + 1}</span>${esc(d.slug.replace(/-/g, ' '))}
+        </span>
+        <span class="badge bg-primary rounded-pill">${fmt(d.visits)}</span>
+      </a>`).join('')}</div>`;
+  } catch (e) {
+    el.innerHTML = `<p class="text-muted small mb-0">${t('error')} ${esc(e.message)}</p>`;
+  }
+}
 
 function _catalogSearchDebounced() {
   clearTimeout(_catalogDebounceTimer);
@@ -1958,8 +2085,12 @@ async function loadCatalog() {
   const el = show('catalogResults');
   el.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}</div>`;
   try {
+    const org  = show('catalogOrgFilter').value;
+    const fmt_ = show('catalogFormatFilter').value;
     const params = new URLSearchParams({ rows: CATALOG_PAGE_SIZE, start: _catalogStart });
     if (q) params.set('q', q);
+    if (org) params.set('org', org);
+    if (fmt_) params.set('format', fmt_);
     if (_catalogSortCol) params.set('sort', `${_catalogSortCol}_${_catalogSortDir}`);
     const resp = await fetch(`${API_BASE}api/datasets/search?${params}`);
     const data = await resp.json();
@@ -4195,9 +4326,32 @@ function renderDatasetPanel(d) {
     <div class="mb-3">${tagsHtml}</div>
     <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.resources')} (${d.resources ? d.resources.length : 0})</h6>
     ${resourcesHtml}
+    <h6 class="fw-semibold small text-uppercase text-muted mb-2 mt-4">${t('catalog.related')}</h6>
+    <div id="datasetRelated"><div class="text-center py-2 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
     <a href="https://data.gov.gr/dataset/${esc(d.name)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm w-100 mt-4">
       <i class="bi bi-box-arrow-up-right me-1"></i>${t('catalog.view_on_portal')}
     </a>`;
+  _loadRelatedDatasets(d.name, d.org_name);
+}
+
+async function _loadRelatedDatasets(name, orgName) {
+  const el = document.getElementById('datasetRelated');
+  if (!el) return;
+  try {
+    const params = new URLSearchParams({ org: orgName, rows: 6, sort: 'modified_desc' });
+    const data = await fetch(API_BASE + 'api/datasets/search?' + params).then(r => r.json());
+    const related = (data.datasets || []).filter(x => x.name !== name).slice(0, 5);
+    if (!document.getElementById('datasetRelated')) return;  // panel closed/replaced while fetching
+    if (!related.length) {
+      el.innerHTML = `<p class="text-muted small mb-0">${t('catalog.related_none')}</p>`;
+      return;
+    }
+    el.innerHTML = `<div class="list-group list-group-flush">${related.map(r => `
+      <a href="#" onclick="openDatasetPanel('${esc(r.name)}');return false;"
+         class="list-group-item list-group-item-action px-0 py-2 small text-truncate">${esc(r.title)}</a>`).join('')}</div>`;
+  } catch (e) {
+    if (document.getElementById('datasetRelated')) el.innerHTML = '';
+  }
 }
 
 // ── User detail panel ─────────────────────────────────────────────────────────
