@@ -467,6 +467,14 @@
                   <input type="date" id="catalogSinceFilter" class="form-control form-control-sm" style="width:150px"
                          onchange="_catalogStart=0;loadCatalog();">
                 </div>
+                <div class="form-check form-check-inline mb-0" title="High-Value Dataset — Commission Implementing Regulation (EU) 2023/138" data-i18n-title="catalog.hvd_tooltip">
+                  <input class="form-check-input" type="checkbox" id="catalogHvdFilter" onchange="_catalogStart=0;loadCatalog();">
+                  <label class="form-check-label small text-muted" for="catalogHvdFilter">
+                    <i class="bi bi-gem text-warning"></i>
+                    <span data-i18n="catalog.filter_hvd">High-Value only</span>
+                    <span id="catalogHvdCount"></span>
+                  </label>
+                </div>
                 <input type="search" id="catalogSearch" class="form-control form-control-sm" style="width:220px"
                        placeholder="Search datasets…" data-i18n-ph="catalog.search_ph" oninput="_catalogSearchDebounced()">
               </div>
@@ -1320,6 +1328,9 @@ const TRANSLATIONS = {
     'catalog.search_ph': 'Search datasets…',
     'catalog.hint': 'Search for datasets by title or keyword, or leave blank to browse the most recently updated.',
     'catalog.filter_since': 'Uploaded since',
+    'catalog.filter_hvd': 'High-Value only',
+    'catalog.hvd_full': 'High-Value Dataset',
+    'catalog.hvd_tooltip': 'High-Value Dataset — Commission Implementing Regulation (EU) 2023/138',
     'catalog.results_for': 'results for',
     'catalog.total_datasets': 'datasets total',
     'catalog.none': 'No datasets match your search.',
@@ -1653,6 +1664,9 @@ const TRANSLATIONS = {
     'catalog.search_ph': 'Αναζήτηση συνόλων δεδομένων…',
     'catalog.hint': 'Αναζητήστε σύνολα δεδομένων με τίτλο ή λέξη-κλειδί, ή αφήστε κενό για τα πιο πρόσφατα ενημερωμένα.',
     'catalog.filter_since': 'Ανέβηκε από',
+    'catalog.filter_hvd': 'Μόνο Υψηλής Αξίας',
+    'catalog.hvd_full': 'Σύνολο Δεδομένων Υψηλής Αξίας',
+    'catalog.hvd_tooltip': 'Σύνολο Δεδομένων Υψηλής Αξίας — Εκτελεστικός Κανονισμός (ΕΕ) 2023/138 της Επιτροπής',
     'catalog.results_for': 'αποτελέσματα για',
     'catalog.total_datasets': 'σύνολα δεδομένων συνολικά',
     'catalog.none': 'Δεν βρέθηκαν σύνολα δεδομένων με αυτά τα κριτήρια.',
@@ -1953,7 +1967,15 @@ document.getElementById('datasetsTabBtn').addEventListener('click', () => {
   _loadCatalogTypeFilter();
   _loadCatalogOrgFilter();
   _loadCatalogFormatFilterOptions();
+  _loadCatalogHvdCount();
 });
+
+async function _loadCatalogHvdCount() {
+  try {
+    const data = await fetch(API_BASE + 'api/datasets/hvd-count').then(r => r.json());
+    if (typeof data.count === 'number') show('catalogHvdCount').textContent = `(${fmt(data.count)})`;
+  } catch (e) { /* count just stays blank */ }
+}
 
 function _datasetTypeLabel(type) {
   if (type === 'data-service') return t('catalog.type_data_service');
@@ -2128,12 +2150,14 @@ async function loadCatalog(append = false) {
     const fmt_  = show('catalogFormatFilter').value;
     const type  = show('catalogTypeFilter').value;
     const since = show('catalogSinceFilter').value;
+    const hvd   = show('catalogHvdFilter').checked;
     const params = new URLSearchParams({ rows: CATALOG_PAGE_SIZE, start: _catalogStart });
     if (q) params.set('q', q);
     if (org) params.set('org', org);
     if (fmt_) params.set('format', fmt_);
     if (type) params.set('type', type);
     if (since) params.set('since', since);
+    if (hvd) params.set('hvd', '1');
     if (_catalogSortCol) params.set('sort', `${_catalogSortCol}_${_catalogSortDir}`);
     const resp = await fetch(`${API_BASE}api/datasets/search?${params}`);
     const data = await resp.json();
@@ -2154,6 +2178,7 @@ async function loadCatalog(append = false) {
     const rowsHtml = data.datasets.map(d => `
       <tr>
         <td>
+          ${d.is_hvd ? `<i class="bi bi-gem text-warning me-1" title="${esc(t('catalog.hvd_tooltip'))}"></i>` : ''}
           <a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none fw-semibold">${esc(d.title)}</a>
           ${d.type && d.type !== 'dataset' ? `<span class="badge bg-info-subtle text-info-emphasis border ms-1" style="font-size:.65rem">${esc(_datasetTypeLabel(d.type))}</span>` : ''}
         </td>
@@ -4274,6 +4299,7 @@ function renderDatasetPanel(d) {
         <i class="bi bi-building me-1"></i>${esc(d.org_title)}
       </a>
       ${d.type && d.type !== 'dataset' ? `<span class="badge bg-info-subtle text-info-emphasis border">${esc(_datasetTypeLabel(d.type))}</span>` : ''}
+      ${d.is_hvd ? `<span class="badge bg-warning-subtle text-warning-emphasis border" title="${esc(t('catalog.hvd_tooltip'))}"><i class="bi bi-gem me-1"></i>${t('catalog.hvd_full')}</span>` : ''}
     </div>
     ${d.notes ? `<p class="small">${esc(d.notes).replace(/\n/g, '<br>')}</p>` : ''}
     <div class="row g-2 small text-muted mb-3">

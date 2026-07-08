@@ -1057,6 +1057,19 @@ _DATASET_SORT_MAP = {
 }
 
 
+def _is_hvd(pkg: dict) -> bool:
+    """True if the CKAN package carries an EU High-Value Dataset category
+    (Implementing Regulation (EU) 2023/138) — data.gov.gr stores this as the
+    `hvd_category` extra, indexed as a JSON-array-shaped string; "[]" or empty
+    means the package isn't classified as an HVD."""
+    val = pkg.get("hvd_category")
+    if isinstance(val, str):
+        return val.strip() not in ("", "[]")
+    if isinstance(val, list):
+        return len(val) > 0
+    return bool(val)
+
+
 @app.route("/api/datasets/search")
 def datasets_search():
     q        = (freq.args.get("q") or "").strip()
@@ -1064,6 +1077,7 @@ def datasets_search():
     fmt      = (freq.args.get("format") or "").strip()
     ds_type  = (freq.args.get("type") or "").strip()
     since    = (freq.args.get("since") or "").strip()
+    hvd_only = (freq.args.get("hvd") or "").strip() in ("1", "true", "yes")
     sort_key = (freq.args.get("sort") or "").strip()
     rows     = min(max(int(freq.args.get("rows", 20) or 20), 1), 100)
     start    = max(int(freq.args.get("start", 0) or 0), 0)
@@ -1090,6 +1104,8 @@ def datasets_search():
             fq_parts.append(f"metadata_created:[{solr_date} TO NOW]")
         except ValueError:
             pass  # ignore a malformed date rather than failing the whole search
+    if hvd_only:
+        fq_parts.append('-hvd_category:"[]"')
     if fq_parts:
         params["fq"] = " AND ".join(fq_parts)
 
@@ -1113,8 +1129,36 @@ def datasets_search():
             "org_title":         (p.get("organization") or {}).get("title") or "",
             "num_resources":     len(p.get("resources") or []),
             "metadata_modified": p.get("metadata_modified"),
+            "is_hvd":            _is_hvd(p),
         } for p in result.get("results", [])]
         return jsonify({"count": result.get("count", 0), "datasets": datasets})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+_dataset_hvd_count_cache: dict = {"count": None, "ts": 0}
+
+
+@app.route("/api/datasets/hvd-count")
+def dataset_hvd_count():
+    now = time.time()
+    if _dataset_hvd_count_cache["count"] is not None and now - _dataset_hvd_count_cache["ts"] < 3600:
+        return jsonify({"count": _dataset_hvd_count_cache["count"]})
+    try:
+        r = requests.get(
+            f"{config.API_BASE}/package_search",
+            params={"rows": 0, "fq": '-hvd_category:"[]"'},
+            headers=_api_headers(),
+            timeout=config.REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
+        count = data["result"].get("count", 0)
+        _dataset_hvd_count_cache["count"] = count
+        _dataset_hvd_count_cache["ts"] = now
+        return jsonify({"count": count})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 
@@ -1230,6 +1274,7 @@ def dataset_detail(name):
             "endpoints":         endpoints,
             "landing_pages":     landing_pages,
             "service_format":    service_format,
+            "is_hvd":            _is_hvd(p),
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
