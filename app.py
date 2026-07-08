@@ -2827,31 +2827,6 @@ def _matomo_live_call(method: str, extra: dict):
     return data
 
 
-# Substrings matched (case-insensitive) against the visit's ISP/organization name
-# to flag "probably a VPN, proxy, or datacenter, not a home/office connection".
-# This is a best-effort heuristic, not a real VPN detection service: it only
-# catches providers whose name gives them away, and it does nothing if Matomo
-# isn't configured with a GeoIP ISP database (no ISP name to check at all).
-_VPN_HOSTING_KEYWORDS = [
-    "vpn", "proxy", "hosting", "colocation", "datacenter", "data center",
-    "amazon", "aws", "digitalocean", "digital ocean", "ovh", "linode",
-    "vultr", "hetzner", "google cloud", "microsoft azure", "azure",
-    "cloudflare", "leaseweb", "m247", "choopa", "contabo", "scaleway",
-    "oracle cloud", "alibaba", "tencent", "packet", "colocrossing",
-    "psychz", "quadranet", "datacamp", "servers.com",
-    "nordvpn", "expressvpn", "surfshark", "protonvpn", "mullvad",
-    "windscribe", "cyberghost", "ipvanish", "hidemyass", "tunnelbear",
-    "private internet access", "privateinternetaccess",
-]
-
-
-def _looks_like_vpn_or_hosting(provider: str) -> bool:
-    if not provider:
-        return False
-    p = provider.lower()
-    return any(kw in p for kw in _VPN_HOSTING_KEYWORDS)
-
-
 @app.route("/api/matomo/live")
 def matomo_live():
     if not config.MATOMO_TOKEN:
@@ -2870,7 +2845,6 @@ def matomo_live():
         for v in (visits or []):
             actions = v.get("actionDetails") or []
             pages = [a.get("pageTitle") or a.get("url") for a in actions if a.get("type") == "action"]
-            provider = v.get("provider") or v.get("providerName") or v.get("org") or v.get("isp") or ""
             out.append({
                 "time_pretty":     v.get("lastActionDateTime") or v.get("serverTimePretty") or "",
                 "timestamp":       v.get("lastActionTimestamp") or v.get("serverTimestamp"),
@@ -2886,8 +2860,6 @@ def matomo_live():
                 "referrer_name":   v.get("referrerName") or "",
                 "entry_page":      pages[0] if pages else "",
                 "last_page":       pages[-1] if pages else "",
-                "provider":        provider,
-                "is_vpn_hint":     _looks_like_vpn_or_hosting(provider),
             })
         return jsonify({
             "active_visits":   counters.get("visits", 0) or 0,
