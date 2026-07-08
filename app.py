@@ -2930,6 +2930,52 @@ def matomo_top_downloads():
         return jsonify({"error": str(exc)}), 503
 
 
+@app.route("/api/matomo/dataset-stats")
+def matomo_dataset_stats():
+    """Page views and resource downloads for a single dataset, for the detail
+    panel. Reuses the same flat-page fetching already proven out in
+    top-datasets / top-downloads rather than a single-URL Matomo lookup."""
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    name = (freq.args.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    resource_urls = set(freq.args.getlist("resource_url"))
+    days = min(int(freq.args.get("days", 30)), 365)
+    try:
+        pages = _matomo_flat_pages("Actions.getPageUrls", days,
+                                   {"flat": 1, "filter_limit": 300})
+        visits, unique_visitors = 0, 0
+        target = f"/dataset/{name}"
+        for page in pages:
+            label = page.get("label", "")
+            path = "/" + "/".join(p.strip().lstrip("/") for p in label.split(" > "))
+            if path.rstrip("/").lower() == target.lower():
+                visits = page.get("nb_visits", 0)
+                unique_visitors = page.get("nb_uniq_visitors", 0)
+                break
+
+        downloads = 0
+        if resource_urls:
+            start, end = _matomo_date_range(days)
+            items = _matomo_get("Actions.getDownloads", {
+                "period": "range",
+                "date": f"{start},{end}",
+                "flat": 1,
+                "filter_limit": 1000,
+            })
+            if isinstance(items, list):
+                for item in items:
+                    label = item.get("label", "")
+                    url = label if label.startswith("http") else f"https://{label}"
+                    if url in resource_urls:
+                        downloads += item.get("nb_visits", 0) or item.get("nb_hits", 0)
+
+        return jsonify({"visits": visits, "unique_visitors": unique_visitors, "downloads": downloads})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/matomo/top-api-calls")
 def matomo_top_api_calls():
     """CKAN API calls tracked as Matomo events (category=API, action=ckan_action_name)."""

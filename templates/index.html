@@ -1362,6 +1362,8 @@ const TRANSLATIONS = {
     'catalog.top_viewed_title': 'Most Viewed Datasets',
     'catalog.top_viewed_period': '(last 30 days)',
     'catalog.top_viewed_none': 'No view data available yet.',
+    'catalog.stats_views_tooltip': 'Views in the last 30 days',
+    'catalog.stats_downloads_tooltip': 'Downloads in the last 30 days',
     'catalog.filter_org_all': 'All organizations',
     'catalog.filter_format_all': 'All formats',
     'catalog.related': 'Related Datasets',
@@ -1700,6 +1702,8 @@ const TRANSLATIONS = {
     'catalog.top_viewed_title': 'Σύνολα Δεδομένων με Περισσότερες Προβολές',
     'catalog.top_viewed_period': '(τελευταίες 30 ημέρες)',
     'catalog.top_viewed_none': 'Δεν υπάρχουν ακόμη δεδομένα προβολών.',
+    'catalog.stats_views_tooltip': 'Προβολές τις τελευταίες 30 ημέρες',
+    'catalog.stats_downloads_tooltip': 'Λήψεις τις τελευταίες 30 ημέρες',
     'catalog.filter_org_all': 'Όλοι οι οργανισμοί',
     'catalog.filter_format_all': 'Όλοι οι μορφότυποι',
     'catalog.related': 'Σχετικά Σύνολα Δεδομένων',
@@ -4347,6 +4351,10 @@ function renderDatasetPanel(d) {
       ${d.type && d.type !== 'dataset' ? `<span class="badge bg-info-subtle text-info-emphasis border">${esc(_datasetTypeLabel(d.type))}</span>` : ''}
       ${d.is_hvd ? `<span class="badge bg-warning-subtle text-warning-emphasis border" title="${esc(t('catalog.hvd_tooltip'))}"><i class="bi bi-gem me-1"></i>${t('catalog.hvd_full')}</span>` : ''}
     </div>
+    <div id="datasetStatsRow" class="d-flex gap-3 small text-muted mb-3 d-none">
+      <span title="${esc(t('catalog.stats_views_tooltip'))}"><i class="bi bi-eye me-1"></i><span id="datasetStatsViews">—</span></span>
+      <span title="${esc(t('catalog.stats_downloads_tooltip'))}"><i class="bi bi-download me-1"></i><span id="datasetStatsDownloads">—</span></span>
+    </div>
     ${d.notes ? `<p class="small">${esc(d.notes).replace(/\n/g, '<br>')}</p>` : ''}
     <div class="row g-2 small text-muted mb-3">
       <div class="col-6"><strong>${t('catalog.created')}</strong><br>${fmtDate(d.metadata_created)}</div>
@@ -4360,6 +4368,20 @@ function renderDatasetPanel(d) {
     <h6 class="fw-semibold small text-uppercase text-muted mb-2 mt-4">${t('catalog.related')}</h6>
     <div id="datasetRelated"><div class="text-center py-2 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>`;
   _loadRelatedDatasets(d.name, d.org_name);
+  _loadDatasetStats(d.name, d.resources || []);
+}
+
+async function _loadDatasetStats(name, resources) {
+  try {
+    const params = new URLSearchParams({ name, days: 30 });
+    resources.forEach(r => { if (r.url) params.append('resource_url', r.url); });
+    const data = await fetch(API_BASE + 'api/matomo/dataset-stats?' + params).then(r => r.json());
+    const row = document.getElementById('datasetStatsRow');
+    if (!row || data.error) return;  // Matomo not configured, or panel closed/replaced while fetching
+    document.getElementById('datasetStatsViews').textContent = fmt(data.visits);
+    document.getElementById('datasetStatsDownloads').textContent = fmt(data.downloads);
+    row.classList.remove('d-none');
+  } catch (e) { /* stats are a nice-to-have — fail silently */ }
 }
 
 async function _loadRelatedDatasets(name, orgName) {
