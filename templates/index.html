@@ -5544,7 +5544,9 @@ async function loadLiveVisitors() {
                   ${v.is_vpn_hint ? `<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem" title="${esc(t('live.vpn_hint_title'))}${v.provider ? ': ' + esc(v.provider) : ''}"><i class="bi bi-shield-lock me-1"></i>${t('live.vpn_badge')}</span>` : ''}
                   <div class="text-muted text-truncate" style="max-width:320px" title="${esc(v.last_page || '')}">${esc(v.last_page || '')}</div>
                 </td>
-                <td class="text-muted small text-center" style="width:32px" title="${esc(v.device_type || '')}"><i class="bi ${deviceIconFor(v.device_type)}"></i></td>
+                <td class="text-muted small text-center" style="width:32px" title="${esc(v.device_type || '')}">${v.device_icon_url
+                  ? `<img src="${esc(v.device_icon_url)}" alt="" style="width:16px;height:16px" onerror="this.outerHTML='<i class=&quot;bi ${deviceIconFor(v.device_type)}&quot;></i>'">`
+                  : `<i class="bi ${deviceIconFor(v.device_type)}"></i>`}</td>
                 <td class="text-muted small text-nowrap" style="width:90px">${esc(v.browser || '')}</td>
                 <td class="text-muted small text-end text-nowrap" style="width:60px">${v.actions} <i class="bi bi-arrow-right-short"></i></td>
               </tr>`).join('')}

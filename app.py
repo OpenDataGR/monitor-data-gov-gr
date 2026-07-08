@@ -2865,11 +2865,15 @@ def matomo_live():
         visits = _matomo_live_call("Live.getLastVisitsDetails", {
             "period": "day", "date": "today", "filter_limit": limit,
         })
+        # Matomo's own icon for each device type (it already ships one per visit) —
+        # more reliable than guessing a Bootstrap icon from the device-type name.
+        matomo_base = config.MATOMO_URL.split("index.php")[0]
         out = []
         for v in (visits or []):
             actions = v.get("actionDetails") or []
             pages = [a.get("pageTitle") or a.get("url") for a in actions if a.get("type") == "action"]
             provider = v.get("provider") or v.get("providerName") or v.get("org") or v.get("isp") or ""
+            device_icon = v.get("deviceTypeIcon") or ""
             out.append({
                 "time_pretty":     v.get("lastActionDateTime") or v.get("serverTimePretty") or "",
                 "timestamp":       v.get("lastActionTimestamp") or v.get("serverTimestamp"),
@@ -2877,6 +2881,7 @@ def matomo_live():
                 "country_code":    (v.get("countryCode") or "").lower(),
                 "city":            v.get("city") or "",
                 "device_type":     v.get("deviceType") or "",
+                "device_icon_url": (matomo_base + device_icon) if device_icon else "",
                 "browser":         v.get("browserName") or "",
                 "os":              v.get("operatingSystem") or "",
                 "actions":         v.get("actions") or len(actions),
