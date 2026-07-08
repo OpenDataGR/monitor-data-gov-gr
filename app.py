@@ -2811,6 +2811,66 @@ def matomo_today():
         return jsonify({"error": str(exc)}), 503
 
 
+def _matomo_live_call(method: str, extra: dict):
+    """Uncached Matomo API call — _matomo_get's 1-hour cache would defeat the
+    purpose of a "live" view."""
+    r = requests.post(config.MATOMO_URL, data={
+        "module": "API", "method": method,
+        "idSite": config.MATOMO_SITE_ID, "format": "JSON",
+        "token_auth": config.MATOMO_TOKEN,
+        **extra,
+    }, timeout=15, headers={"User-Agent": "DataGovGR-Dashboard/1.0"})
+    r.raise_for_status()
+    data = r.json()
+    if isinstance(data, dict) and data.get("result") == "error":
+        raise RuntimeError(data.get("message", "Matomo API error"))
+    return data
+
+
+@app.route("/api/matomo/live")
+def matomo_live():
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    limit   = min(int(freq.args.get("limit", 20)), 50)
+    minutes = min(int(freq.args.get("minutes", 30)), 1440)
+    try:
+        counters = _matomo_live_call("Live.getCounters", {"lastMinutes": minutes})
+        counters = (counters[0] if isinstance(counters, list) and counters else counters) or {}
+
+        visits = _matomo_live_call("Live.getLastVisitsDetails", {
+            "period": "day", "date": "today", "filter_limit": limit,
+        })
+        out = []
+        for v in (visits or []):
+            actions = v.get("actionDetails") or []
+            pages = [a.get("pageTitle") or a.get("url") for a in actions if a.get("type") == "action"]
+            out.append({
+                "time_pretty":     v.get("lastActionDateTime") or v.get("serverTimePretty") or "",
+                "timestamp":       v.get("lastActionTimestamp") or v.get("serverTimestamp"),
+                "country":         v.get("country") or "",
+                "country_code":    (v.get("countryCode") or "").lower(),
+                "city":            v.get("city") or "",
+                "device_type":     v.get("deviceType") or "",
+                "browser":         v.get("browserName") or "",
+                "os":              v.get("operatingSystem") or "",
+                "actions":         v.get("actions") or len(actions),
+                "duration_pretty": v.get("visitDurationPretty") or "",
+                "referrer_type":   v.get("referrerType") or "",
+                "referrer_name":   v.get("referrerName") or "",
+                "entry_page":      pages[0] if pages else "",
+                "last_page":       pages[-1] if pages else "",
+            })
+        return jsonify({
+            "active_visits":   counters.get("visits", 0) or 0,
+            "active_visitors": counters.get("visitors", 0) or 0,
+            "active_actions":  counters.get("actions", 0) or 0,
+            "minutes":         minutes,
+            "visits":          out,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/matomo/debug-pages")
 def matomo_debug_pages():
     """Return top 30 raw page labels from Matomo — for diagnosing missing data."""

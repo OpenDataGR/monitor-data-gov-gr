@@ -351,6 +351,20 @@
             <canvas id="uptimeChart"></canvas>
           </div>
         </div>
+        <div class="col-12">
+          <div class="card p-4">
+            <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+              <h6 class="fw-semibold mb-0">
+                <i class="bi bi-broadcast-pin me-2 text-danger"></i><span data-i18n="live.title">Live Visitors</span>
+                <span class="badge rounded-pill bg-danger ms-1" style="font-size:.6rem;vertical-align:middle" id="liveDot">●</span>
+              </h6>
+              <div class="d-flex align-items-center gap-3">
+                <span class="small text-muted"><span class="fw-bold text-danger fs-6" id="liveActiveCount">—</span> <span data-i18n="live.active_now">active in the last 30 min</span></span>
+              </div>
+            </div>
+            <div id="liveVisitorsList"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1059,6 +1073,12 @@ const TRANSLATIONS = {
     'traffic.last90': 'Last 90 days',
     'health.endpoint_status': 'Endpoint Status',
     'health.uptime_24h': 'Uptime Last 24h',
+    'live.title': 'Live Visitors',
+    'live.active_now': 'active in the last 30 min',
+    'live.none': 'No recent visits.',
+    'live.just_now': 'just now',
+    'live.min_ago': ' min ago',
+    'live.unknown': 'Unknown',
     'health.response_history': 'Response Time History',
     'health.recent_checks': 'Recent Checks',
     'health.6h': '6 h',
@@ -1352,6 +1372,12 @@ const TRANSLATIONS = {
     'traffic.last90': 'Τελευταίες 90 ημέρες',
     'health.endpoint_status': 'Κατάσταση Τελικών Σημείων',
     'health.uptime_24h': 'Διαθεσιμότητα 24ω',
+    'live.title': 'Ζωντανοί Επισκέπτες',
+    'live.active_now': 'ενεργοί τα τελευταία 30 λεπτά',
+    'live.none': 'Καμία πρόσφατη επίσκεψη.',
+    'live.just_now': 'μόλις τώρα',
+    'live.min_ago': ' λεπτά πριν',
+    'live.unknown': 'Άγνωστο',
     'health.response_history': 'Ιστορικό Χρόνου Απόκρισης',
     'health.recent_checks': 'Πρόσφατοι Έλεγχοι',
     'health.6h': '6 ω',
@@ -5446,12 +5472,66 @@ function exportContactsExcel() {
   window.location = API_BASE + 'api/contacts/export?' + params.toString();
 }
 
+async function loadLiveVisitors() {
+  const el      = document.getElementById('liveVisitorsList');
+  const countEl = document.getElementById('liveActiveCount');
+  try {
+    const resp = await fetch(`${API_BASE}api/matomo/live?limit=15&minutes=30`, {cache: 'no-store'});
+    const data = await resp.json();
+    if (data.error) {
+      countEl.textContent = '—';
+      el.innerHTML = `<p class="text-muted text-center py-3 mb-0 small">${esc(data.error)}</p>`;
+      return;
+    }
+    countEl.textContent = fmt(data.active_visitors ?? data.active_visits ?? 0);
+    if (!data.visits || !data.visits.length) {
+      el.innerHTML = `<p class="text-muted text-center py-3 mb-0 small">${t('live.none')}</p>`;
+      return;
+    }
+    const deviceIcon = { desktop: 'bi-display', smartphone: 'bi-phone', tablet: 'bi-tablet', tv: 'bi-tv', console: 'bi-controller' };
+    const flagEmoji = (cc) => (cc && cc.length === 2 && cc !== 'xx')
+      ? cc.toUpperCase().replace(/./g, c => String.fromCodePoint(127397 + c.charCodeAt(0)))
+      : '🌐';
+    const nowSec = Date.now() / 1000;
+    const relTime = (ts, fallback) => {
+      if (!ts) return fallback || '';
+      const mins = Math.max(0, Math.round((nowSec - ts) / 60));
+      return mins < 1 ? t('live.just_now') : (mins + t('live.min_ago'));
+    };
+    el.innerHTML = `
+      <div class="table-responsive" style="max-height:320px;overflow-y:auto">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <tbody>
+            ${data.visits.map(v => `
+              <tr>
+                <td class="text-nowrap small text-muted" style="width:80px">${esc(relTime(v.timestamp, v.time_pretty))}</td>
+                <td style="width:32px" class="text-center fs-5" title="${esc(v.country || '')}">${flagEmoji(v.country_code)}</td>
+                <td class="small">
+                  <span class="fw-semibold">${esc(v.country || t('live.unknown'))}</span>
+                  ${v.city ? `<span class="text-muted"> — ${esc(v.city)}</span>` : ''}
+                  <div class="text-muted text-truncate" style="max-width:320px" title="${esc(v.last_page || '')}">${esc(v.last_page || '')}</div>
+                </td>
+                <td class="text-muted small text-center" style="width:32px" title="${esc(v.device_type || '')}"><i class="bi ${deviceIcon[v.device_type] || 'bi-question-circle'}"></i></td>
+                <td class="text-muted small text-nowrap" style="width:90px">${esc(v.browser || '')}</td>
+                <td class="text-muted small text-end text-nowrap" style="width:60px">${v.actions} <i class="bi bi-arrow-right-short"></i></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    countEl.textContent = '—';
+    el.innerHTML = `<p class="text-danger text-center py-3 mb-0 small">${esc(e.message)}</p>`;
+  }
+}
+
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   applyI18n();
   initSidebar();
   loadOverview();
   setInterval(loadOverview, 60_000);  // auto-refresh overview every 60 s
+  loadLiveVisitors();
+  setInterval(loadLiveVisitors, 20_000);  // faster cadence — this widget is meant to feel live
 });
 </script>
 
