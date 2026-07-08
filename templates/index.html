@@ -1752,6 +1752,7 @@ function setLang(lang) {
   if (typeof _commsLoaded  !== 'undefined' && _commsLoaded)    { renderCommsSummary(); filterComms(); }
   if (typeof _trafficLoaded !== 'undefined' && _trafficLoaded) { loadTrafficTab(); }
   if (typeof _portalMembersCache !== 'undefined' && _portalMembersCache) { renderContactsSummary(); filterContactsTab(); }
+  if (typeof _catalogLoaded !== 'undefined' && _catalogLoaded) { loadCatalog(); }
 }
 
 // ── Sidebar navigation ───────────────────────────────────────────────────────
