@@ -2124,6 +2124,15 @@ function _catalogLoadMore() {
   loadCatalog(true);
 }
 
+function _catalogModifiedLabel(iso) {
+  if (!iso) return '—';
+  const d = new Date(/[Zz]$/.test(iso) || /[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso + 'Z');
+  if (isNaN(d)) return esc(iso.slice(0, 10));
+  const now = new Date();
+  const isToday = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  return isToday ? relativeDate(iso) : esc(iso.slice(0, 10));
+}
+
 // Keeps loading more pages while the sentinel is still on-screen — plain
 // IntersectionObserver only fires on enter/exit, so a short result list that
 // never fully leaves the viewport would otherwise stop after one page.
@@ -2185,7 +2194,7 @@ async function loadCatalog(append = false) {
         </td>
         <td class="small text-muted">${esc(d.org_title)}</td>
         <td class="text-end">${fmt(d.num_resources)}</td>
-        <td class="text-end small text-muted">${d.metadata_modified ? esc(d.metadata_modified.slice(0, 10)) : '—'}</td>
+        <td class="text-end small text-muted" title="${d.metadata_modified ? esc(d.metadata_modified.replace('T', ' ').slice(0, 16)) : ''}">${_catalogModifiedLabel(d.metadata_modified)}</td>
       </tr>`).join('');
 
     if (append) {
