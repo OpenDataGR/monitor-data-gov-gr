@@ -904,85 +904,6 @@ def stats_live():
     return jsonify(_fetch_portal_stats())
 
 
-@app.route("/api/stats/datasets-since")
-def datasets_since():
-    date_str = freq.args.get("date", "").strip()
-    if not date_str:
-        return jsonify({"error": "date parameter required (YYYY-MM-DD)"}), 400
-    try:
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-    except ValueError:
-        return jsonify({"error": "invalid date, use YYYY-MM-DD"}), 400
-    solr_date = dt.strftime("%Y-%m-%dT00:00:00Z")
-    fq = f"type:dataset AND metadata_created:[{solr_date} TO NOW]"
-    h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
-    try:
-        r = requests.get(
-            f"{config.PORTAL_BASE}/api/3/action/package_search",
-            params={
-                "rows": 0,
-                "fq": fq,
-                "facet.field": '["organization"]',
-                "facet.limit": 500,
-                "facet.mincount": 1,
-            },
-            timeout=config.REQUEST_TIMEOUT, headers=h,
-        )
-        if r.status_code == 200:
-            data = r.json()
-            if data.get("success"):
-                orgs = (
-                    data.get("result", {})
-                        .get("search_facets", {})
-                        .get("organization", {})
-                        .get("items", [])
-                )
-                return jsonify({
-                    "count": data["result"]["count"],
-                    "since": date_str,
-                    "organizations": sorted(orgs, key=lambda o: o["count"], reverse=True),
-                })
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 503
-    return jsonify({"error": "CKAN API error"}), 503
-
-
-@app.route("/api/stats/org-datasets-since")
-def org_datasets_since():
-    date_str = freq.args.get("date", "").strip()
-    org_name = freq.args.get("org",  "").strip()
-    if not date_str or not org_name:
-        return jsonify({"error": "date and org parameters required"}), 400
-    try:
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-    except ValueError:
-        return jsonify({"error": "invalid date, use YYYY-MM-DD"}), 400
-    solr_date = dt.strftime("%Y-%m-%dT00:00:00Z")
-    fq = f"type:dataset AND metadata_created:[{solr_date} TO NOW] AND organization:{org_name}"
-    h = {"User-Agent": "DataGovGR-Dashboard/1.0"}
-    try:
-        r = requests.get(
-            f"{config.PORTAL_BASE}/api/3/action/package_search",
-            params={"rows": 500, "fq": fq, "sort": "metadata_created desc"},
-            timeout=config.REQUEST_TIMEOUT, headers=h,
-        )
-        if r.status_code == 200:
-            data = r.json()
-            if data.get("success"):
-                datasets = [
-                    {
-                        "name":             pkg.get("name"),
-                        "title":            pkg.get("title") or pkg.get("name"),
-                        "metadata_created": (pkg.get("metadata_created") or "")[:10],
-                    }
-                    for pkg in data["result"]["results"]
-                ]
-                return jsonify({"datasets": datasets, "org": org_name, "since": date_str})
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 503
-    return jsonify({"error": "CKAN API error"}), 503
-
-
 @app.route("/api/stats/history")
 def stats_history():
     days  = int(freq.args.get("days", 30))
@@ -1142,6 +1063,7 @@ def datasets_search():
     org      = (freq.args.get("org") or "").strip()
     fmt      = (freq.args.get("format") or "").strip()
     ds_type  = (freq.args.get("type") or "").strip()
+    since    = (freq.args.get("since") or "").strip()
     sort_key = (freq.args.get("sort") or "").strip()
     rows     = min(max(int(freq.args.get("rows", 20) or 20), 1), 100)
     start    = max(int(freq.args.get("start", 0) or 0), 0)
@@ -1162,6 +1084,12 @@ def datasets_search():
         fq_parts.append(f'res_format:"{fmt}"')
     if ds_type:
         fq_parts.append(f'type:"{ds_type}"')
+    if since:
+        try:
+            solr_date = datetime.strptime(since, "%Y-%m-%d").strftime("%Y-%m-%dT00:00:00Z")
+            fq_parts.append(f"metadata_created:[{solr_date} TO NOW]")
+        except ValueError:
+            pass  # ignore a malformed date rather than failing the whole search
     if fq_parts:
         params["fq"] = " AND ".join(fq_parts)
 
