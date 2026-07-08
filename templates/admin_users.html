@@ -197,7 +197,7 @@
     function relTime(iso) {
       if (!iso) return 'Never';
       const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
-      return d.toLocaleString();
+      return d.toLocaleString('el-GR');
     }
 
     let _usersCache = [];
