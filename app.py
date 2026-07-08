@@ -1181,6 +1181,44 @@ def datasets_search():
         return jsonify({"error": str(exc)}), 503
 
 
+@app.route("/api/datasets/<name>")
+def dataset_detail(name):
+    try:
+        r = requests.get(
+            f"{config.API_BASE}/package_show",
+            params={"id": name},
+            headers=_api_headers(),
+            timeout=config.REQUEST_TIMEOUT,
+        )
+        if r.status_code == 404:
+            return jsonify({"error": "Dataset not found"}), 404
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
+        p = data["result"]
+        resources = [{
+            "name":          res.get("name") or res.get("format") or "Resource",
+            "format":        res.get("format") or "",
+            "url":           res.get("url") or "",
+            "last_modified": res.get("last_modified") or res.get("created") or "",
+        } for res in p.get("resources", [])]
+        return jsonify({
+            "name":              p.get("name"),
+            "title":             p.get("title") or p.get("name"),
+            "notes":             p.get("notes") or "",
+            "org_name":          (p.get("organization") or {}).get("name") or "",
+            "org_title":         (p.get("organization") or {}).get("title") or "",
+            "license_title":     p.get("license_title") or "",
+            "tags":              [tag.get("name") for tag in p.get("tags", []) if tag.get("name")],
+            "metadata_created":  p.get("metadata_created"),
+            "metadata_modified": p.get("metadata_modified"),
+            "resources":         resources,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
 @app.route("/api/quality/check")
 def quality_check():
     issues = []
