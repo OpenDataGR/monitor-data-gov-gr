@@ -5502,10 +5502,13 @@ async function loadLiveVisitors() {
       el.innerHTML = `<p class="text-muted text-center py-3 mb-0 small">${t('live.none')}</p>`;
       return;
     }
-    // Matomo ships an icon per visit (deviceTypeIcon); if that image fails to load,
-    // fall back to showing the actual device-type text rather than a guessed icon —
-    // an honest label (or a dash) beats a question mark that could mean anything.
-    const deviceLabel = (d) => d ? esc(d) : '—';
+    // Confirmed real values from Matomo: "Desktop", "Smartphone", "Tablet", etc.
+    const deviceIcon = {
+      desktop: 'bi-display', smartphone: 'bi-phone', phablet: 'bi-phone', tablet: 'bi-tablet',
+      tv: 'bi-tv', 'smart display': 'bi-tv', console: 'bi-controller', camera: 'bi-camera',
+      'car browser': 'bi-car-front', 'portable media player': 'bi-music-player-fill',
+    };
+    const deviceIconFor = (d) => deviceIcon[(d || '').toLowerCase()] || 'bi-question-circle';
     // Actual flag images (flag-icons lib) instead of Unicode flag emoji — regional-indicator
     // emoji don't render as flags on every OS/font (notably plain two-letter codes on Windows).
     const flagHtml = (cc) => (cc && /^[a-z]{2}$/.test(cc) && cc !== 'xx')
@@ -5525,7 +5528,7 @@ async function loadLiveVisitors() {
               <th class="small text-muted fw-semibold" style="width:80px">${t('live.col_time')}</th>
               <th class="small text-muted fw-semibold" style="width:32px"></th>
               <th class="small text-muted fw-semibold">${t('live.col_location')}</th>
-              <th class="small text-muted fw-semibold text-center" style="width:70px" title="${t('live.col_device')}"><i class="bi bi-display"></i></th>
+              <th class="small text-muted fw-semibold text-center" style="width:32px" title="${t('live.col_device')}"><i class="bi bi-display"></i></th>
               <th class="small text-muted fw-semibold">${t('live.col_browser')}</th>
               <th class="small text-muted fw-semibold text-end" style="width:60px">${t('live.col_actions')}</th>
             </tr>
@@ -5541,9 +5544,7 @@ async function loadLiveVisitors() {
                   ${v.is_vpn_hint ? `<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem" title="${esc(t('live.vpn_hint_title'))}${v.provider ? ': ' + esc(v.provider) : ''}"><i class="bi bi-shield-lock me-1"></i>${t('live.vpn_badge')}</span>` : ''}
                   <div class="text-muted text-truncate" style="max-width:320px" title="${esc(v.last_page || '')}">${esc(v.last_page || '')}</div>
                 </td>
-                <td class="text-muted small text-center" style="width:70px">${v.device_icon_url
-                  ? `<img src="${esc(v.device_icon_url)}" alt="" data-fallback="${deviceLabel(v.device_type)}" title="${esc(v.device_type || '')}" style="width:16px;height:16px" onerror="this.replaceWith(this.dataset.fallback)">`
-                  : deviceLabel(v.device_type)}</td>
+                <td class="text-muted small text-center" style="width:32px" title="${esc(v.device_type || '')}"><i class="bi ${deviceIconFor(v.device_type)}"></i></td>
                 <td class="text-muted small text-nowrap" style="width:90px">${esc(v.browser || '')}</td>
                 <td class="text-muted small text-end text-nowrap" style="width:60px">${v.actions} <i class="bi bi-arrow-right-short"></i></td>
               </tr>`).join('')}
