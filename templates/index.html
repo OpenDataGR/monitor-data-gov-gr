@@ -5545,7 +5545,10 @@ async function loadLiveVisitors() {
                   <div class="text-muted text-truncate" style="max-width:320px" title="${esc(v.last_page || '')}">${esc(v.last_page || '')}</div>
                 </td>
                 <td class="text-muted small text-center" style="width:32px" title="${esc(v.device_type || '')}"><i class="bi ${deviceIconFor(v.device_type)}"></i></td>
-                <td class="text-muted small text-nowrap" style="width:90px">${esc(v.browser || '')}</td>
+                <td class="text-muted small text-nowrap" style="width:90px">
+                  ${esc(v.browser || '')}
+                  ${v.provider ? `<div class="text-truncate" style="max-width:110px;font-size:.68rem" title="${esc(v.provider)}"><i class="bi bi-hdd-network me-1"></i>${esc(v.provider)}</div>` : ''}
+                </td>
                 <td class="text-muted small text-end text-nowrap" style="width:60px">${v.actions} <i class="bi bi-arrow-right-short"></i></td>
               </tr>`).join('')}
           </tbody>
