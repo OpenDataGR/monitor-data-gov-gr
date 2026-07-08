@@ -1083,6 +1083,8 @@ const TRANSLATIONS = {
     'live.col_device': 'Device',
     'live.col_browser': 'Browser',
     'live.col_actions': 'Actions',
+    'live.vpn_badge': 'VPN?',
+    'live.vpn_hint_title': 'ISP name suggests a VPN, proxy, or hosting provider (best-effort guess)',
     'health.response_history': 'Response Time History',
     'health.recent_checks': 'Recent Checks',
     'health.6h': '6 h',
@@ -1387,6 +1389,8 @@ const TRANSLATIONS = {
     'live.col_device': 'Συσκευή',
     'live.col_browser': 'Πρόγραμμα Περιήγησης',
     'live.col_actions': 'Ενέργειες',
+    'live.vpn_badge': 'VPN;',
+    'live.vpn_hint_title': 'Το όνομα του παρόχου υποδηλώνει VPN, proxy ή πάροχο φιλοξενίας (κατά προσέγγιση)',
     'health.response_history': 'Ιστορικό Χρόνου Απόκρισης',
     'health.recent_checks': 'Πρόσφατοι Έλεγχοι',
     'health.6h': '6 ω',
@@ -5528,6 +5532,7 @@ async function loadLiveVisitors() {
                 <td class="small">
                   <span class="fw-semibold">${esc(v.country || t('live.unknown'))}</span>
                   ${v.city ? `<span class="text-muted"> — ${esc(v.city)}</span>` : ''}
+                  ${v.is_vpn_hint ? `<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem" title="${esc(t('live.vpn_hint_title'))}${v.provider ? ': ' + esc(v.provider) : ''}"><i class="bi bi-shield-lock me-1"></i>${t('live.vpn_badge')}</span>` : ''}
                   <div class="text-muted text-truncate" style="max-width:320px" title="${esc(v.last_page || '')}">${esc(v.last_page || '')}</div>
                 </td>
                 <td class="text-muted small text-center" style="width:32px" title="${esc(v.device_type || '')}"><i class="bi ${deviceIcon[v.device_type] || 'bi-question-circle'}"></i></td>
