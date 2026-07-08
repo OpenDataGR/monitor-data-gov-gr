@@ -100,6 +100,9 @@ with app.app_context():
     if 'allowed_tabs' not in _user_cols:
         db.session.execute(text('ALTER TABLE users ADD COLUMN allowed_tabs TEXT'))
         db.session.commit()
+    if 'last_active_at' not in _user_cols:
+        db.session.execute(text('ALTER TABLE users ADD COLUMN last_active_at TIMESTAMP'))
+        db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -177,11 +180,33 @@ def robots_txt():
     return Response("User-agent: *\nDisallow: /\n", mimetype="text/plain")
 
 
+LAST_ACTIVE_THROTTLE_MINUTES = 5
+
+
+def _touch_last_active(user_id):
+    """Bump User.last_active_at, but at most once per throttle window per
+    session — stashing the last write time in the (signed, client-side)
+    session cookie means the throttle check itself never costs a DB read."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    last_write = session.get("_last_active_write")
+    if last_write:
+        try:
+            if (now - datetime.fromisoformat(last_write)).total_seconds() < LAST_ACTIVE_THROTTLE_MINUTES * 60:
+                return
+        except ValueError:
+            pass
+    User.query.filter_by(id=user_id).update({"last_active_at": now})
+    db.session.commit()
+    session["_last_active_write"] = now.isoformat()
+
+
 @app.before_request
 def require_login():
     if freq.path in _PUBLIC_PATHS or freq.path.startswith("/static/"):
         return
-    if session.get("user_id"):
+    user_id = session.get("user_id")
+    if user_id:
+        _touch_last_active(user_id)
         return
     if freq.path.startswith("/api/"):
         return jsonify({"error": "Unauthorized"}), 401
