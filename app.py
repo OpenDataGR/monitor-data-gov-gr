@@ -1123,19 +1123,36 @@ def datasets_check():
     return jsonify(results)
 
 
+# Maps a column+direction the frontend can ask for to a CKAN/Solr sort clause.
+# "resources" has no counterpart — CKAN's search index doesn't store a resource
+# count field at all, so that column can't be sorted server-side.
+_DATASET_SORT_MAP = {
+    "title_asc":    "title_string asc",
+    "title_desc":   "title_string desc",
+    "org_asc":      "organization asc",
+    "org_desc":     "organization desc",
+    "modified_asc":  "metadata_modified asc",
+    "modified_desc": "metadata_modified desc",
+}
+
+
 @app.route("/api/datasets/search")
 def datasets_search():
-    q     = (freq.args.get("q") or "").strip()
-    org   = (freq.args.get("org") or "").strip()
-    rows  = min(max(int(freq.args.get("rows", 20) or 20), 1), 100)
-    start = max(int(freq.args.get("start", 0) or 0), 0)
+    q        = (freq.args.get("q") or "").strip()
+    org      = (freq.args.get("org") or "").strip()
+    sort_key = (freq.args.get("sort") or "").strip()
+    rows     = min(max(int(freq.args.get("rows", 20) or 20), 1), 100)
+    start    = max(int(freq.args.get("start", 0) or 0), 0)
 
     params = {"rows": rows, "start": start}
-    if q:
-        params["q"] = q
+    if sort_key in _DATASET_SORT_MAP:
+        params["sort"] = _DATASET_SORT_MAP[sort_key]
+    elif q:
         params["sort"] = "score desc, metadata_modified desc"
     else:
         params["sort"] = "metadata_modified desc"
+    if q:
+        params["q"] = q
     if org:
         params["fq"] = f"organization:{org}"
 

@@ -1316,6 +1316,7 @@ const TRANSLATIONS = {
     'catalog.col_title': 'Title',
     'catalog.col_org': 'Organization',
     'catalog.col_resources': 'Resources',
+    'catalog.resources_not_sortable': 'Not sortable',
     'catalog.col_modified': 'Last Modified',
     'nav.change_password': 'Change Password',
     'nav.edit_name': 'Edit name',
@@ -1632,6 +1633,7 @@ const TRANSLATIONS = {
     'catalog.col_title': 'Τίτλος',
     'catalog.col_org': 'Οργανισμός',
     'catalog.col_resources': 'Πόροι',
+    'catalog.resources_not_sortable': 'Δεν ταξινομείται',
     'catalog.col_modified': 'Τελευταία Ενημέρωση',
     'nav.change_password': 'Αλλαγή Κωδικού',
     'nav.edit_name': 'Επεξεργασία ονόματος',
@@ -1888,6 +1890,8 @@ function renderUptimeChart(summary) {
 let _catalogLoaded = false;
 let _catalogStart  = 0;
 let _catalogDebounceTimer = null;
+let _catalogSortCol = null;   // null = default (relevance while searching, else last-modified)
+let _catalogSortDir = 'desc';
 const CATALOG_PAGE_SIZE = 20;
 
 document.getElementById('datasetsTabBtn').addEventListener('click', () => {
@@ -1904,6 +1908,22 @@ function _catalogSearchDebounced() {
 function _catalogPrevPage() { _catalogStart = Math.max(0, _catalogStart - CATALOG_PAGE_SIZE); loadCatalog(); }
 function _catalogNextPage() { _catalogStart += CATALOG_PAGE_SIZE; loadCatalog(); }
 
+function sortCatalog(col) {
+  if (_catalogSortCol === col) {
+    _catalogSortDir = _catalogSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _catalogSortCol = col;
+    _catalogSortDir = (col === 'title' || col === 'org') ? 'asc' : 'desc';
+  }
+  _catalogStart = 0;
+  loadCatalog();
+}
+
+function _catalogSortArrow(col) {
+  if (_catalogSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
+  return _catalogSortDir === 'asc' ? ' ↑' : ' ↓';
+}
+
 async function loadCatalog() {
   const q  = show('catalogSearch').value.trim();
   const el = show('catalogResults');
@@ -1911,6 +1931,7 @@ async function loadCatalog() {
   try {
     const params = new URLSearchParams({ rows: CATALOG_PAGE_SIZE, start: _catalogStart });
     if (q) params.set('q', q);
+    if (_catalogSortCol) params.set('sort', `${_catalogSortCol}_${_catalogSortDir}`);
     const resp = await fetch(`${API_BASE}api/datasets/search?${params}`);
     const data = await resp.json();
     if (data.error) {
@@ -1926,14 +1947,16 @@ async function loadCatalog() {
       show('catalogPagination').classList.add('d-none');
       return;
     }
+    const th = (col, label, extraClass = '') =>
+      `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="sortCatalog('${col}')">${label}${_catalogSortArrow(col)}</th>`;
     el.innerHTML = `
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
           <thead><tr>
-            <th data-i18n="catalog.col_title">Title</th>
-            <th data-i18n="catalog.col_org">Organization</th>
-            <th class="text-end" data-i18n="catalog.col_resources">Resources</th>
-            <th class="text-end" data-i18n="catalog.col_modified">Last Modified</th>
+            ${th('title', t('catalog.col_title'))}
+            ${th('org',   t('catalog.col_org'))}
+            <th class="text-end" title="${esc(t('catalog.resources_not_sortable'))}">${t('catalog.col_resources')}</th>
+            ${th('modified', t('catalog.col_modified'), 'text-end')}
           </tr></thead>
           <tbody>
             ${data.datasets.map(d => `
