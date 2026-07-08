@@ -5502,7 +5502,13 @@ async function loadLiveVisitors() {
       el.innerHTML = `<p class="text-muted text-center py-3 mb-0 small">${t('live.none')}</p>`;
       return;
     }
-    const deviceIcon = { desktop: 'bi-display', smartphone: 'bi-phone', tablet: 'bi-tablet', tv: 'bi-tv', console: 'bi-controller' };
+    // Matomo returns capitalized device-type names (e.g. "Smartphone"), so match case-insensitively.
+    const deviceIcon = {
+      desktop: 'bi-display', smartphone: 'bi-phone', phablet: 'bi-phone', tablet: 'bi-tablet',
+      tv: 'bi-tv', 'smart display': 'bi-tv', console: 'bi-controller', camera: 'bi-camera',
+      'car browser': 'bi-car-front', 'portable media player': 'bi-music-player-fill',
+    };
+    const deviceIconFor = (d) => deviceIcon[(d || '').toLowerCase()] || 'bi-question-circle';
     // Actual flag images (flag-icons lib) instead of Unicode flag emoji — regional-indicator
     // emoji don't render as flags on every OS/font (notably plain two-letter codes on Windows).
     const flagHtml = (cc) => (cc && /^[a-z]{2}$/.test(cc) && cc !== 'xx')
@@ -5538,7 +5544,7 @@ async function loadLiveVisitors() {
                   ${v.is_vpn_hint ? `<span class="badge bg-warning text-dark ms-1" style="font-size:.6rem" title="${esc(t('live.vpn_hint_title'))}${v.provider ? ': ' + esc(v.provider) : ''}"><i class="bi bi-shield-lock me-1"></i>${t('live.vpn_badge')}</span>` : ''}
                   <div class="text-muted text-truncate" style="max-width:320px" title="${esc(v.last_page || '')}">${esc(v.last_page || '')}</div>
                 </td>
-                <td class="text-muted small text-center" style="width:32px" title="${esc(v.device_type || '')}"><i class="bi ${deviceIcon[v.device_type] || 'bi-question-circle'}"></i></td>
+                <td class="text-muted small text-center" style="width:32px" title="${esc(v.device_type || '')}"><i class="bi ${deviceIconFor(v.device_type)}"></i></td>
                 <td class="text-muted small text-nowrap" style="width:90px">${esc(v.browser || '')}</td>
                 <td class="text-muted small text-end text-nowrap" style="width:60px">${v.actions} <i class="bi bi-arrow-right-short"></i></td>
               </tr>`).join('')}
