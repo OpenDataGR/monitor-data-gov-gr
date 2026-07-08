@@ -467,13 +467,13 @@
                   <input type="date" id="catalogSinceFilter" class="form-control form-control-sm" style="width:150px"
                          onchange="_catalogStart=0;loadCatalog();">
                 </div>
-                <div class="form-check form-check-inline mb-0" title="High-Value Dataset — Commission Implementing Regulation (EU) 2023/138" data-i18n-title="catalog.hvd_tooltip">
-                  <input class="form-check-input" type="checkbox" id="catalogHvdFilter" onchange="_catalogStart=0;loadCatalog();">
-                  <label class="form-check-label small text-muted" for="catalogHvdFilter">
-                    <i class="bi bi-gem text-warning"></i>
-                    <span data-i18n="catalog.filter_hvd">High-Value only</span>
-                    <span id="catalogHvdCount"></span>
-                  </label>
+                <div class="btn-group btn-group-sm" role="group">
+                  <button id="catalogHvdBtnAll" type="button" class="btn btn-primary" onclick="setCatalogHvdFilter('')" data-i18n="catalog.filter_hvd_all">All</button>
+                  <button id="catalogHvdBtnHvd" type="button" class="btn btn-outline-primary" onclick="setCatalogHvdFilter('1')"
+                          title="High-Value Dataset — Commission Implementing Regulation (EU) 2023/138" data-i18n-title="catalog.hvd_tooltip">
+                    <i class="bi bi-gem text-warning me-1"></i><span data-i18n="catalog.filter_hvd_only">HVD</span> <span id="catalogHvdCount" class="text-muted"></span>
+                  </button>
+                  <button id="catalogHvdBtnNonHvd" type="button" class="btn btn-outline-primary" onclick="setCatalogHvdFilter('0')" data-i18n="catalog.filter_hvd_non">Non-HVD</button>
                 </div>
                 <input type="search" id="catalogSearch" class="form-control form-control-sm" style="width:220px"
                        placeholder="Search datasets…" data-i18n-ph="catalog.search_ph" oninput="_catalogSearchDebounced()">
@@ -1328,7 +1328,9 @@ const TRANSLATIONS = {
     'catalog.search_ph': 'Search datasets…',
     'catalog.hint': 'Search for datasets by title or keyword, or leave blank to browse the most recently updated.',
     'catalog.filter_since': 'Uploaded since',
-    'catalog.filter_hvd': 'High-Value only',
+    'catalog.filter_hvd_all': 'All',
+    'catalog.filter_hvd_only': 'HVD',
+    'catalog.filter_hvd_non': 'Non-HVD',
     'catalog.hvd_full': 'High-Value Dataset',
     'catalog.hvd_tooltip': 'High-Value Dataset — Commission Implementing Regulation (EU) 2023/138',
     'catalog.results_for': 'results for',
@@ -1664,7 +1666,9 @@ const TRANSLATIONS = {
     'catalog.search_ph': 'Αναζήτηση συνόλων δεδομένων…',
     'catalog.hint': 'Αναζητήστε σύνολα δεδομένων με τίτλο ή λέξη-κλειδί, ή αφήστε κενό για τα πιο πρόσφατα ενημερωμένα.',
     'catalog.filter_since': 'Ανέβηκε από',
-    'catalog.filter_hvd': 'Μόνο Υψηλής Αξίας',
+    'catalog.filter_hvd_all': 'Όλα',
+    'catalog.filter_hvd_only': 'ΣΔΥΑ',
+    'catalog.filter_hvd_non': 'Μη ΣΔΥΑ',
     'catalog.hvd_full': 'Σύνολο Δεδομένων Υψηλής Αξίας',
     'catalog.hvd_tooltip': 'Σύνολο Δεδομένων Υψηλής Αξίας — Εκτελεστικός Κανονισμός (ΕΕ) 2023/138 της Επιτροπής',
     'catalog.results_for': 'αποτελέσματα για',
@@ -1959,6 +1963,16 @@ let _catalogStart  = 0;
 let _catalogDebounceTimer = null;
 let _catalogSortCol = null;   // null = default (relevance while searching, else last-modified)
 let _catalogSortDir = 'desc';
+let _catalogHvdFilter = '';   // '' = all, '1' = HVD only, '0' = non-HVD only
+
+function setCatalogHvdFilter(mode) {
+  _catalogHvdFilter = mode;
+  show('catalogHvdBtnAll').className    = 'btn btn-sm ' + (mode === ''  ? 'btn-primary' : 'btn-outline-primary');
+  show('catalogHvdBtnHvd').className    = 'btn btn-sm ' + (mode === '1' ? 'btn-primary' : 'btn-outline-primary');
+  show('catalogHvdBtnNonHvd').className = 'btn btn-sm ' + (mode === '0' ? 'btn-primary' : 'btn-outline-primary');
+  _catalogStart = 0;
+  loadCatalog();
+}
 const CATALOG_PAGE_SIZE = 20;
 
 document.getElementById('datasetsTabBtn').addEventListener('click', () => {
@@ -2160,14 +2174,13 @@ async function loadCatalog(append = false) {
     const fmt_  = show('catalogFormatFilter').value;
     const type  = show('catalogTypeFilter').value;
     const since = show('catalogSinceFilter').value;
-    const hvd   = show('catalogHvdFilter').checked;
     const params = new URLSearchParams({ rows: CATALOG_PAGE_SIZE, start: _catalogStart });
     if (q) params.set('q', q);
     if (org) params.set('org', org);
     if (fmt_) params.set('format', fmt_);
     if (type) params.set('type', type);
     if (since) params.set('since', since);
-    if (hvd) params.set('hvd', '1');
+    if (_catalogHvdFilter) params.set('hvd', _catalogHvdFilter);
     if (_catalogSortCol) params.set('sort', `${_catalogSortCol}_${_catalogSortDir}`);
     const resp = await fetch(`${API_BASE}api/datasets/search?${params}`);
     const data = await resp.json();

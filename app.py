@@ -1077,7 +1077,7 @@ def datasets_search():
     fmt      = (freq.args.get("format") or "").strip()
     ds_type  = (freq.args.get("type") or "").strip()
     since    = (freq.args.get("since") or "").strip()
-    hvd_only = (freq.args.get("hvd") or "").strip() in ("1", "true", "yes")
+    hvd_filter = (freq.args.get("hvd") or "").strip()  # "1" = HVD only, "0" = non-HVD only, "" = all
     sort_key = (freq.args.get("sort") or "").strip()
     rows     = min(max(int(freq.args.get("rows", 20) or 20), 1), 100)
     start    = max(int(freq.args.get("start", 0) or 0), 0)
@@ -1104,8 +1104,10 @@ def datasets_search():
             fq_parts.append(f"metadata_created:[{solr_date} TO NOW]")
         except ValueError:
             pass  # ignore a malformed date rather than failing the whole search
-    if hvd_only:
+    if hvd_filter == "1":
         fq_parts.append('-hvd_category:"[]"')
+    elif hvd_filter == "0":
+        fq_parts.append('hvd_category:"[]"')
     if fq_parts:
         params["fq"] = " AND ".join(fq_parts)
 
