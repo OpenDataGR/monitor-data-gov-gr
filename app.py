@@ -1129,6 +1129,19 @@ def _harvest_source(pkg: dict):
     return None
 
 
+def _package_count(q: str, fq_parts: list) -> int:
+    """rows=0 package_search — just the match count, for summary cards."""
+    params = {"rows": 0}
+    if q:
+        params["q"] = q
+    if fq_parts:
+        params["fq"] = " AND ".join(fq_parts)
+    r = requests.get(f"{config.API_BASE}/package_search", params=params,
+                      headers=_api_headers(), timeout=config.REQUEST_TIMEOUT)
+    r.raise_for_status()
+    return r.json()["result"]["count"]
+
+
 @app.route("/api/datasets/search")
 def datasets_search():
     q        = (freq.args.get("q") or "").strip()
@@ -1151,28 +1164,33 @@ def datasets_search():
         params["sort"] = "metadata_modified desc"
     if q:
         params["q"] = q
-    fq_parts = []
+
+    # Filters shared by both summary-card rows (org/format/type/since), kept
+    # separate from the hvd/harvested clauses so each row's counts can be
+    # scoped to "every other active filter, including the other row's
+    # selection, but not its own split" — see below.
+    core_fq_parts = []
     if org:
-        fq_parts.append(f"organization:{org}")
+        core_fq_parts.append(f"organization:{org}")
     if fmt:
-        fq_parts.append(f'res_format:"{fmt}"')
+        core_fq_parts.append(f'res_format:"{fmt}"')
     if ds_type:
-        fq_parts.append(f'type:"{ds_type}"')
+        core_fq_parts.append(f'type:"{ds_type}"')
     if since:
         try:
             solr_date = datetime.strptime(since, "%Y-%m-%d").strftime("%Y-%m-%dT00:00:00Z")
-            fq_parts.append(f"metadata_created:[{solr_date} TO NOW]")
+            core_fq_parts.append(f"metadata_created:[{solr_date} TO NOW]")
         except ValueError:
             pass  # ignore a malformed date rather than failing the whole search
-    if hvd_filter == "1":
-        fq_parts.append('-hvd_category:"[]"')
-    elif hvd_filter == "0":
-        fq_parts.append('hvd_category:"[]"')
-    base_fq_parts = list(fq_parts)  # everything except the harvested/manual split, for the summary cards below
-    if harvested_filter == "1":
-        fq_parts.append("harvest_source_id:[* TO *]")
-    elif harvested_filter == "0":
-        fq_parts.append("-harvest_source_id:[* TO *]")
+
+    hvd_fq       = '-hvd_category:"[]"'        if hvd_filter == "1"       else 'hvd_category:"[]"'          if hvd_filter == "0"       else None
+    harvested_fq = "harvest_source_id:[* TO *]" if harvested_filter == "1" else "-harvest_source_id:[* TO *]" if harvested_filter == "0" else None
+
+    fq_parts = list(core_fq_parts)
+    if hvd_fq:
+        fq_parts.append(hvd_fq)
+    if harvested_fq:
+        fq_parts.append(harvested_fq)
     if fq_parts:
         params["fq"] = " AND ".join(fq_parts)
 
@@ -1200,70 +1218,35 @@ def datasets_search():
             "harvest_source":    _harvest_source(p),
         } for p in result.get("results", [])]
 
-        # Harvested/manual counts for the summary cards, scoped to every filter
-        # except the harvested/manual split itself, so all three numbers stay
-        # visible and stable regardless of which one is currently selected.
-        # Only computed on a fresh search (start=0), not on infinite-scroll
-        # pagination calls, since it can't have changed since the last page.
-        harvested_count = manual_count = None
+        # Summary-card counts for both HVD and Harvested rows. Each is scoped
+        # to core filters + the OTHER row's current selection, but not its own
+        # split, so all card counts stay visible and consistent no matter
+        # which cards are currently active. Only computed on a fresh search
+        # (start=0), not on infinite-scroll pagination calls, since it can't
+        # have changed since the last page.
+        hvd_count = non_hvd_count = harvested_count = manual_count = None
         if start == 0:
             try:
-                count_params = {"rows": 0}
-                if q:
-                    count_params["q"] = q
-                base_fq = " AND ".join(base_fq_parts) if base_fq_parts else None
-                harvested_fq = " AND ".join(base_fq_parts + ["harvest_source_id:[* TO *]"])
-                r_total = requests.get(
-                    f"{config.API_BASE}/package_search",
-                    params={**count_params, **({"fq": base_fq} if base_fq else {})},
-                    headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
-                )
-                r_harvested = requests.get(
-                    f"{config.API_BASE}/package_search",
-                    params={**count_params, "fq": harvested_fq},
-                    headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
-                )
-                r_total.raise_for_status()
-                r_harvested.raise_for_status()
-                base_total = r_total.json()["result"]["count"]
-                harvested_count = r_harvested.json()["result"]["count"]
-                manual_count = base_total - harvested_count
+                hvd_scope = core_fq_parts + ([harvested_fq] if harvested_fq else [])
+                hvd_scope_total = _package_count(q, hvd_scope)
+                hvd_count = _package_count(q, hvd_scope + ['-hvd_category:"[]"'])
+                non_hvd_count = hvd_scope_total - hvd_count
+
+                harvest_scope = core_fq_parts + ([hvd_fq] if hvd_fq else [])
+                harvest_scope_total = _package_count(q, harvest_scope)
+                harvested_count = _package_count(q, harvest_scope + ["harvest_source_id:[* TO *]"])
+                manual_count = harvest_scope_total - harvested_count
             except Exception:
                 pass  # summary cards just won't show counts this time
 
         return jsonify({
-            "count": result.get("count", 0),
-            "datasets": datasets,
+            "count":           result.get("count", 0),
+            "datasets":        datasets,
+            "hvd_count":       hvd_count,
+            "non_hvd_count":   non_hvd_count,
             "harvested_count": harvested_count,
-            "manual_count": manual_count,
+            "manual_count":    manual_count,
         })
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 503
-
-
-_dataset_hvd_count_cache: dict = {"count": None, "ts": 0}
-
-
-@app.route("/api/datasets/hvd-count")
-def dataset_hvd_count():
-    now = time.time()
-    if _dataset_hvd_count_cache["count"] is not None and now - _dataset_hvd_count_cache["ts"] < 3600:
-        return jsonify({"count": _dataset_hvd_count_cache["count"]})
-    try:
-        r = requests.get(
-            f"{config.API_BASE}/package_search",
-            params={"rows": 0, "fq": '-hvd_category:"[]"'},
-            headers=_api_headers(),
-            timeout=config.REQUEST_TIMEOUT,
-        )
-        r.raise_for_status()
-        data = r.json()
-        if not data.get("success"):
-            return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
-        count = data["result"].get("count", 0)
-        _dataset_hvd_count_cache["count"] = count
-        _dataset_hvd_count_cache["ts"] = now
-        return jsonify({"count": count})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 

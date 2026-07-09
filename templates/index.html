@@ -458,18 +458,11 @@
                   <input type="date" id="catalogSinceFilter" class="form-control form-control-sm" style="width:150px"
                          onchange="_catalogStart=0;loadCatalog();">
                 </div>
-                <div class="btn-group btn-group-sm" role="group">
-                  <button id="catalogHvdBtnAll" type="button" class="btn btn-primary" onclick="setCatalogHvdFilter('')" data-i18n="catalog.filter_hvd_all">All</button>
-                  <button id="catalogHvdBtnHvd" type="button" class="btn btn-outline-primary" onclick="setCatalogHvdFilter('1')"
-                          title="High-Value Dataset — Commission Implementing Regulation (EU) 2023/138" data-i18n-title="catalog.hvd_tooltip">
-                    <i class="bi bi-gem text-warning me-1"></i><span data-i18n="catalog.filter_hvd_only">HVD</span> <span id="catalogHvdCount" class="text-muted"></span>
-                  </button>
-                  <button id="catalogHvdBtnNonHvd" type="button" class="btn btn-outline-primary" onclick="setCatalogHvdFilter('0')" data-i18n="catalog.filter_hvd_non">Non-HVD</button>
-                </div>
                 <input type="search" id="catalogSearch" class="form-control form-control-sm" style="width:220px"
                        placeholder="Search datasets…" data-i18n-ph="catalog.search_ph" oninput="_catalogSearchDebounced()">
               </div>
             </div>
+            <div id="catalogHvdSummary" class="row g-2 mb-3"></div>
             <div id="catalogHarvestSummary" class="row g-2 mb-3"></div>
             <div id="catalogResults"><p class="text-muted text-center py-4" data-i18n="catalog.hint">Search for datasets by title or keyword, or leave blank to browse the most recently updated.</p></div>
           </div>
@@ -1967,17 +1960,49 @@ let _catalogStart  = 0;
 let _catalogDebounceTimer = null;
 let _catalogSortCol = null;   // null = default (relevance while searching, else last-modified)
 let _catalogSortDir = 'desc';
-let _catalogHvdFilter = '';   // '' = all, '1' = HVD only, '0' = non-HVD only
+const CATALOG_PAGE_SIZE = 20;
 
-function setCatalogHvdFilter(mode) {
-  _catalogHvdFilter = mode;
-  show('catalogHvdBtnAll').className    = 'btn btn-sm ' + (mode === ''  ? 'btn-primary' : 'btn-outline-primary');
-  show('catalogHvdBtnHvd').className    = 'btn btn-sm ' + (mode === '1' ? 'btn-primary' : 'btn-outline-primary');
-  show('catalogHvdBtnNonHvd').className = 'btn btn-sm ' + (mode === '0' ? 'btn-primary' : 'btn-outline-primary');
+// HVD-vs-non-HVD and harvested-vs-manual summary cards — same clickable-
+// filter-card pattern as the Contacts and Communications tabs
+// (renderContactsSummary/renderCommsSummary). The two are independent,
+// combinable facets (a dataset can be both HVD and harvested at once), so
+// each gets its own card row and its own toggleable filter state, rather
+// than the single-selection model Contacts uses for role-or-state.
+let _catalogHvdFilter = '';   // '' = all, '1' = HVD only, '0' = non-HVD only
+let _catalogHvdSummaryCards = [];
+
+function renderCatalogHvdSummary(hvdCount, nonHvdCount) {
+  const el = document.getElementById('catalogHvdSummary');
+  if (hvdCount == null || nonHvdCount == null) { el.innerHTML = ''; return; }
+  _catalogHvdSummaryCards = [
+    { filter: '',  label: t('catalog.filter_hvd_all'), value: hvdCount + nonHvdCount, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-database" },
+    { filter: '1', label: t('catalog.filter_hvd_only'), value: hvdCount,               bg: "bg-warning bg-opacity-10",    text: "text-warning",   icon: "bi-gem" },
+    { filter: '0', label: t('catalog.filter_hvd_non'),  value: nonHvdCount,            bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-gem" },
+  ];
+  el.innerHTML = _catalogHvdSummaryCards.map((c, i) => {
+    const active = c.filter === _catalogHvdFilter;
+    const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
+    return `
+    <div class="col-6 col-sm-4 col-lg-3">
+      <div class="rounded-3 p-3 d-flex align-items-center gap-3 ${c.bg}" style="border:${active ? 2 : 1}px solid ${borderColor};cursor:pointer" onclick="setCatalogHvdFilter(${i})"
+           ${i === 1 ? `title="High-Value Dataset — Commission Implementing Regulation (EU) 2023/138"` : ''}>
+        <i class="bi ${c.icon} fs-4 ${c.text}"></i>
+        <div>
+          <div class="fw-bold fs-5 lh-1 ${c.text}">${fmt(c.value)}</div>
+          <div class="text-muted" style="font-size:.75rem">${c.label}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setCatalogHvdFilter(idx) {
+  const card = _catalogHvdSummaryCards[idx];
+  if (!card) return;
+  _catalogHvdFilter = card.filter === _catalogHvdFilter ? '' : card.filter;
   _catalogStart = 0;
   loadCatalog();
 }
-const CATALOG_PAGE_SIZE = 20;
 
 // Harvested-vs-manual summary cards — same clickable-filter-card pattern as
 // the Contacts and Communications tabs (renderContactsSummary/renderCommsSummary).
@@ -2023,15 +2048,7 @@ document.getElementById('datasetsTabBtn').addEventListener('click', () => {
   _loadCatalogTypeFilter();
   _loadCatalogOrgFilter();
   _loadCatalogFormatFilterOptions();
-  _loadCatalogHvdCount();
 });
-
-async function _loadCatalogHvdCount() {
-  try {
-    const data = await fetch(API_BASE + 'api/datasets/hvd-count').then(r => r.json());
-    if (typeof data.count === 'number') show('catalogHvdCount').textContent = `(${fmt(data.count)})`;
-  } catch (e) { /* count just stays blank */ }
-}
 
 function _datasetTypeLabel(type) {
   if (type === 'data-service') return t('catalog.type_data_service');
@@ -2203,11 +2220,11 @@ async function loadCatalog(append = false) {
     const data = await resp.json();
     if (data.error) {
       _catalogTotalCount = 0;
-      if (!append) { el.innerHTML = `<div class="alert alert-warning mb-0">${esc(data.error)}</div>`; renderCatalogHarvestSummary(null, null); }
+      if (!append) { el.innerHTML = `<div class="alert alert-warning mb-0">${esc(data.error)}</div>`; renderCatalogHvdSummary(null, null); renderCatalogHarvestSummary(null, null); }
       return;
     }
     _catalogTotalCount = data.count;
-    if (!append) renderCatalogHarvestSummary(data.harvested_count, data.manual_count);
+    if (!append) { renderCatalogHvdSummary(data.hvd_count, data.non_hvd_count); renderCatalogHarvestSummary(data.harvested_count, data.manual_count); }
     show('catalogCount').textContent = q
       ? `${fmt(data.count)} ${t('catalog.results_for')} "${q}"`
       : `${fmt(data.count)} ${t('catalog.total_datasets')}`;
