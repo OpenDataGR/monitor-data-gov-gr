@@ -1119,6 +1119,16 @@ def _is_hvd(pkg: dict) -> bool:
     return bool(val)
 
 
+def _harvest_source(pkg: dict):
+    """The harvest source title if this package was imported by a CKAN
+    harvester, else None if it was created directly on the portal. Harvested
+    packages carry a `harvest_source_title` extra (ckanext-harvest)."""
+    for extra in pkg.get("extras") or []:
+        if extra.get("key") == "harvest_source_title":
+            return extra.get("value")
+    return None
+
+
 @app.route("/api/datasets/search")
 def datasets_search():
     q        = (freq.args.get("q") or "").strip()
@@ -1127,6 +1137,7 @@ def datasets_search():
     ds_type  = (freq.args.get("type") or "").strip()
     since    = (freq.args.get("since") or "").strip()
     hvd_filter = (freq.args.get("hvd") or "").strip()  # "1" = HVD only, "0" = non-HVD only, "" = all
+    harvested_filter = (freq.args.get("harvested") or "").strip()  # "1" = harvested only, "0" = manual only, "" = all
     sort_key = (freq.args.get("sort") or "").strip()
     rows     = min(max(int(freq.args.get("rows", 20) or 20), 1), 100)
     start    = max(int(freq.args.get("start", 0) or 0), 0)
@@ -1157,6 +1168,11 @@ def datasets_search():
         fq_parts.append('-hvd_category:"[]"')
     elif hvd_filter == "0":
         fq_parts.append('hvd_category:"[]"')
+    base_fq_parts = list(fq_parts)  # everything except the harvested/manual split, for the summary cards below
+    if harvested_filter == "1":
+        fq_parts.append("harvest_source_id:[* TO *]")
+    elif harvested_filter == "0":
+        fq_parts.append("-harvest_source_id:[* TO *]")
     if fq_parts:
         params["fq"] = " AND ".join(fq_parts)
 
@@ -1181,8 +1197,46 @@ def datasets_search():
             "num_resources":     len(p.get("resources") or []),
             "metadata_modified": p.get("metadata_modified"),
             "is_hvd":            _is_hvd(p),
+            "harvest_source":    _harvest_source(p),
         } for p in result.get("results", [])]
-        return jsonify({"count": result.get("count", 0), "datasets": datasets})
+
+        # Harvested/manual counts for the summary cards, scoped to every filter
+        # except the harvested/manual split itself, so all three numbers stay
+        # visible and stable regardless of which one is currently selected.
+        # Only computed on a fresh search (start=0), not on infinite-scroll
+        # pagination calls, since it can't have changed since the last page.
+        harvested_count = manual_count = None
+        if start == 0:
+            try:
+                count_params = {"rows": 0}
+                if q:
+                    count_params["q"] = q
+                base_fq = " AND ".join(base_fq_parts) if base_fq_parts else None
+                harvested_fq = " AND ".join(base_fq_parts + ["harvest_source_id:[* TO *]"])
+                r_total = requests.get(
+                    f"{config.API_BASE}/package_search",
+                    params={**count_params, **({"fq": base_fq} if base_fq else {})},
+                    headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
+                )
+                r_harvested = requests.get(
+                    f"{config.API_BASE}/package_search",
+                    params={**count_params, "fq": harvested_fq},
+                    headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
+                )
+                r_total.raise_for_status()
+                r_harvested.raise_for_status()
+                base_total = r_total.json()["result"]["count"]
+                harvested_count = r_harvested.json()["result"]["count"]
+                manual_count = base_total - harvested_count
+            except Exception:
+                pass  # summary cards just won't show counts this time
+
+        return jsonify({
+            "count": result.get("count", 0),
+            "datasets": datasets,
+            "harvested_count": harvested_count,
+            "manual_count": manual_count,
+        })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 
@@ -1326,6 +1380,7 @@ def dataset_detail(name):
             "landing_pages":     landing_pages,
             "service_format":    service_format,
             "is_hvd":            _is_hvd(p),
+            "harvest_source":    _harvest_source(p),
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503

@@ -470,6 +470,7 @@
                        placeholder="Search datasets…" data-i18n-ph="catalog.search_ph" oninput="_catalogSearchDebounced()">
               </div>
             </div>
+            <div id="catalogHarvestSummary" class="row g-2 mb-3"></div>
             <div id="catalogResults"><p class="text-muted text-center py-4" data-i18n="catalog.hint">Search for datasets by title or keyword, or leave blank to browse the most recently updated.</p></div>
           </div>
         </div>
@@ -1329,6 +1330,10 @@ const TRANSLATIONS = {
     'catalog.filter_hvd_only': 'HVD',
     'catalog.filter_hvd_non': 'Non-HVD',
     'catalog.hvd_full': 'High-Value Dataset',
+    'catalog.filter_harvest_all': 'Total',
+    'catalog.filter_harvest_harvested': 'Harvested',
+    'catalog.filter_harvest_manual': 'Manual',
+    'catalog.harvested_tooltip': 'Imported automatically by a harvester, not created directly on the portal',
     'catalog.hvd_tooltip': 'High-Value Dataset — Commission Implementing Regulation (EU) 2023/138',
     'catalog.results_for': 'results for',
     'catalog.total_datasets': 'datasets total',
@@ -1667,6 +1672,10 @@ const TRANSLATIONS = {
     'catalog.filter_hvd_non': 'Μη ΣΔΥΑ',
     'catalog.hvd_full': 'Σύνολο Δεδομένων Υψηλής Αξίας',
     'catalog.hvd_tooltip': 'Σύνολο Δεδομένων Υψηλής Αξίας — Εκτελεστικός Κανονισμός (ΕΕ) 2023/138 της Επιτροπής',
+    'catalog.filter_harvest_all': 'Σύνολο',
+    'catalog.filter_harvest_harvested': 'Συλλεγμένα',
+    'catalog.filter_harvest_manual': 'Χειροκίνητα',
+    'catalog.harvested_tooltip': 'Εισήχθη αυτόματα μέσω συλλέκτη δεδομένων (harvester), όχι απευθείας στην πύλη',
     'catalog.results_for': 'αποτελέσματα για',
     'catalog.total_datasets': 'σύνολα δεδομένων συνολικά',
     'catalog.none': 'Δεν βρέθηκαν σύνολα δεδομένων με αυτά τα κριτήρια.',
@@ -1970,6 +1979,43 @@ function setCatalogHvdFilter(mode) {
 }
 const CATALOG_PAGE_SIZE = 20;
 
+// Harvested-vs-manual summary cards — same clickable-filter-card pattern as
+// the Contacts and Communications tabs (renderContactsSummary/renderCommsSummary).
+let _catalogHarvestedFilter = '';   // '' = all, '1' = harvested only, '0' = manual only
+let _catalogHarvestSummaryCards = [];
+
+function renderCatalogHarvestSummary(harvestedCount, manualCount) {
+  const el = document.getElementById('catalogHarvestSummary');
+  if (harvestedCount == null || manualCount == null) { el.innerHTML = ''; return; }
+  _catalogHarvestSummaryCards = [
+    { filter: '',  label: t('catalog.filter_harvest_all'),      value: harvestedCount + manualCount, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-database" },
+    { filter: '1', label: t('catalog.filter_harvest_harvested'), value: harvestedCount,               bg: "bg-info bg-opacity-10",      text: "text-info",      icon: "bi-cloud-arrow-down" },
+    { filter: '0', label: t('catalog.filter_harvest_manual'),    value: manualCount,                  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-pencil-square" },
+  ];
+  el.innerHTML = _catalogHarvestSummaryCards.map((c, i) => {
+    const active = c.filter === _catalogHarvestedFilter;
+    const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
+    return `
+    <div class="col-6 col-sm-4 col-lg-3">
+      <div class="rounded-3 p-3 d-flex align-items-center gap-3 ${c.bg}" style="border:${active ? 2 : 1}px solid ${borderColor};cursor:pointer" onclick="setCatalogHarvestFilter(${i})">
+        <i class="bi ${c.icon} fs-4 ${c.text}"></i>
+        <div>
+          <div class="fw-bold fs-5 lh-1 ${c.text}">${fmt(c.value)}</div>
+          <div class="text-muted" style="font-size:.75rem">${c.label}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setCatalogHarvestFilter(idx) {
+  const card = _catalogHarvestSummaryCards[idx];
+  if (!card) return;
+  _catalogHarvestedFilter = card.filter === _catalogHarvestedFilter ? '' : card.filter;
+  _catalogStart = 0;
+  loadCatalog();
+}
+
 document.getElementById('datasetsTabBtn').addEventListener('click', () => {
   if (_catalogLoaded) return;
   _catalogLoaded = true;
@@ -2151,15 +2197,17 @@ async function loadCatalog(append = false) {
     if (type) params.set('type', type);
     if (since) params.set('since', since);
     if (_catalogHvdFilter) params.set('hvd', _catalogHvdFilter);
+    if (_catalogHarvestedFilter) params.set('harvested', _catalogHarvestedFilter);
     if (_catalogSortCol) params.set('sort', `${_catalogSortCol}_${_catalogSortDir}`);
     const resp = await fetch(`${API_BASE}api/datasets/search?${params}`);
     const data = await resp.json();
     if (data.error) {
       _catalogTotalCount = 0;
-      if (!append) el.innerHTML = `<div class="alert alert-warning mb-0">${esc(data.error)}</div>`;
+      if (!append) { el.innerHTML = `<div class="alert alert-warning mb-0">${esc(data.error)}</div>`; renderCatalogHarvestSummary(null, null); }
       return;
     }
     _catalogTotalCount = data.count;
+    if (!append) renderCatalogHarvestSummary(data.harvested_count, data.manual_count);
     show('catalogCount').textContent = q
       ? `${fmt(data.count)} ${t('catalog.results_for')} "${q}"`
       : `${fmt(data.count)} ${t('catalog.total_datasets')}`;
@@ -2172,6 +2220,7 @@ async function loadCatalog(append = false) {
       <tr>
         <td>
           ${d.is_hvd ? `<i class="bi bi-gem text-warning me-1" title="${esc(t('catalog.hvd_tooltip'))}"></i>` : ''}
+          ${d.harvest_source ? `<i class="bi bi-cloud-arrow-down text-info me-1" title="${esc(t('catalog.harvested_tooltip'))}: ${esc(d.harvest_source)}"></i>` : ''}
           <a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none fw-semibold">${esc(d.title)}</a>
           ${d.type && d.type !== 'dataset' ? `<span class="badge bg-info-subtle text-info-emphasis border ms-1" style="font-size:.65rem">${esc(_datasetTypeLabel(d.type))}</span>` : ''}
         </td>
@@ -4309,6 +4358,7 @@ function renderDatasetPanel(d) {
       </a>
       ${d.type && d.type !== 'dataset' ? `<span class="badge bg-info-subtle text-info-emphasis border">${esc(_datasetTypeLabel(d.type))}</span>` : ''}
       ${d.is_hvd ? `<span class="badge bg-warning-subtle text-warning-emphasis border" title="${esc(t('catalog.hvd_tooltip'))}"><i class="bi bi-gem me-1"></i>${t('catalog.hvd_full')}</span>` : ''}
+      ${d.harvest_source ? `<span class="badge bg-info-subtle text-info-emphasis border" title="${esc(t('catalog.harvested_tooltip'))}"><i class="bi bi-cloud-arrow-down me-1"></i>${esc(d.harvest_source)}</span>` : ''}
     </div>
     <div id="datasetStatsRow" class="d-flex gap-3 small text-muted mb-3 d-none">
       <span title="${esc(t('catalog.stats_views_tooltip'))}"><i class="bi bi-eye me-1"></i><span id="datasetStatsViews">—</span></span>
