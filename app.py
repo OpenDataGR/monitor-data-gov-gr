@@ -1165,28 +1165,29 @@ def datasets_search():
     if q:
         params["q"] = q
 
-    # Filters shared by both summary-card rows (org/format/type/since), kept
-    # separate from the hvd/harvested clauses so each row's counts can be
-    # scoped to "every other active filter, including the other row's
-    # selection, but not its own split" — see below.
-    core_fq_parts = []
+    # Filters shared by every summary-card row (org/format/since), kept
+    # separate from the type/hvd/harvested clauses so each row's counts can be
+    # scoped to "every other active filter, including the other rows'
+    # selections, but not its own split" — see below.
+    shared_fq_parts = []
     if org:
-        core_fq_parts.append(f"organization:{org}")
+        shared_fq_parts.append(f"organization:{org}")
     if fmt:
-        core_fq_parts.append(f'res_format:"{fmt}"')
-    if ds_type:
-        core_fq_parts.append(f'type:"{ds_type}"')
+        shared_fq_parts.append(f'res_format:"{fmt}"')
     if since:
         try:
             solr_date = datetime.strptime(since, "%Y-%m-%d").strftime("%Y-%m-%dT00:00:00Z")
-            core_fq_parts.append(f"metadata_created:[{solr_date} TO NOW]")
+            shared_fq_parts.append(f"metadata_created:[{solr_date} TO NOW]")
         except ValueError:
             pass  # ignore a malformed date rather than failing the whole search
 
+    type_fq      = f'type:"{ds_type}"'          if ds_type                else None
     hvd_fq       = '-hvd_category:"[]"'        if hvd_filter == "1"       else 'hvd_category:"[]"'          if hvd_filter == "0"       else None
     harvested_fq = "harvest_source_id:[* TO *]" if harvested_filter == "1" else "-harvest_source_id:[* TO *]" if harvested_filter == "0" else None
 
-    fq_parts = list(core_fq_parts)
+    fq_parts = list(shared_fq_parts)
+    if type_fq:
+        fq_parts.append(type_fq)
     if hvd_fq:
         fq_parts.append(hvd_fq)
     if harvested_fq:
@@ -1218,21 +1219,37 @@ def datasets_search():
             "harvest_source":    _harvest_source(p),
         } for p in result.get("results", [])]
 
-        # Summary-card counts for both HVD and Harvested rows. Each is scoped
-        # to core filters + the OTHER row's current selection, but not its own
-        # split, so all card counts stay visible and consistent no matter
-        # which cards are currently active. Only computed on a fresh search
-        # (start=0), not on infinite-scroll pagination calls, since it can't
-        # have changed since the last page.
+        # Summary-card counts for the Type, HVD, and Harvested rows. Each is
+        # scoped to the shared filters + the OTHER rows' current selections,
+        # but not its own split, so all card counts stay visible and
+        # consistent no matter which cards are currently active. Only
+        # computed on a fresh search (start=0), not on infinite-scroll
+        # pagination calls, since it can't have changed since the last page.
+        type_counts = None
         hvd_count = non_hvd_count = harvested_count = manual_count = None
         if start == 0:
             try:
-                hvd_scope = core_fq_parts + ([harvested_fq] if harvested_fq else [])
+                type_scope = shared_fq_parts + ([hvd_fq] if hvd_fq else []) + ([harvested_fq] if harvested_fq else [])
+                type_params = {"rows": 0, "facet": "true", "facet.field": '["type"]', "facet.limit": 20}
+                if q:
+                    type_params["q"] = q
+                if type_scope:
+                    type_params["fq"] = " AND ".join(type_scope)
+                r_types = requests.get(f"{config.API_BASE}/package_search", params=type_params,
+                                        headers=_api_headers(), timeout=config.REQUEST_TIMEOUT)
+                r_types.raise_for_status()
+                items = ((r_types.json()["result"].get("search_facets") or {}).get("type") or {}).get("items") or []
+                type_counts = sorted(
+                    [{"name": i["name"], "count": i["count"]} for i in items if i.get("name") and i.get("count")],
+                    key=lambda x: -x["count"],
+                )
+
+                hvd_scope = shared_fq_parts + ([type_fq] if type_fq else []) + ([harvested_fq] if harvested_fq else [])
                 hvd_scope_total = _package_count(q, hvd_scope)
                 hvd_count = _package_count(q, hvd_scope + ['-hvd_category:"[]"'])
                 non_hvd_count = hvd_scope_total - hvd_count
 
-                harvest_scope = core_fq_parts + ([hvd_fq] if hvd_fq else [])
+                harvest_scope = shared_fq_parts + ([type_fq] if type_fq else []) + ([hvd_fq] if hvd_fq else [])
                 harvest_scope_total = _package_count(q, harvest_scope)
                 harvested_count = _package_count(q, harvest_scope + ["harvest_source_id:[* TO *]"])
                 manual_count = harvest_scope_total - harvested_count
@@ -1242,6 +1259,7 @@ def datasets_search():
         return jsonify({
             "count":           result.get("count", 0),
             "datasets":        datasets,
+            "type_counts":     type_counts,
             "hvd_count":       hvd_count,
             "non_hvd_count":   non_hvd_count,
             "harvested_count": harvested_count,
@@ -1278,37 +1296,6 @@ def dataset_formats():
         _dataset_formats_cache["data"] = formats
         _dataset_formats_cache["ts"] = now
         return jsonify(formats)
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 503
-
-
-_dataset_types_cache: dict = {"data": None, "ts": 0}
-
-
-@app.route("/api/datasets/types")
-def dataset_types():
-    now = time.time()
-    if _dataset_types_cache["data"] is not None and now - _dataset_types_cache["ts"] < 3600:
-        return jsonify(_dataset_types_cache["data"])
-    try:
-        r = requests.get(
-            f"{config.API_BASE}/package_search",
-            params={"rows": 0, "facet": "true", "facet.field": '["type"]', "facet.limit": 20},
-            headers=_api_headers(),
-            timeout=config.REQUEST_TIMEOUT,
-        )
-        r.raise_for_status()
-        data = r.json()
-        if not data.get("success"):
-            return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
-        items = ((data["result"].get("search_facets") or {}).get("type") or {}).get("items") or []
-        types = sorted(
-            [{"name": i["name"], "count": i["count"]} for i in items if i.get("name") and i.get("count")],
-            key=lambda x: -x["count"],
-        )
-        _dataset_types_cache["data"] = types
-        _dataset_types_cache["ts"] = now
-        return jsonify(types)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 
