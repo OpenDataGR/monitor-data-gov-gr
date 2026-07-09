@@ -425,20 +425,11 @@
         </div>
       </div>
       <div class="row g-3 mt-1">
-        <div class="col-12 col-lg-6">
+        <div class="col-12">
           <div class="card p-4 h-100">
             <h6 class="fw-semibold mb-3"><i class="bi bi-pie-chart me-2 text-primary"></i><span data-i18n="catalog.formats_title">Format Distribution</span></h6>
             <div id="catalogFormatChartWrap" style="height:220px"><canvas id="catalogFormatChart"></canvas></div>
             <div id="catalogFormatChartEmpty" class="text-center text-muted small py-4 d-none" data-i18n="catalog.formats_none">No format data available.</div>
-          </div>
-        </div>
-        <div class="col-12 col-lg-6">
-          <div class="card p-4 h-100">
-            <h6 class="fw-semibold mb-3">
-              <i class="bi bi-eye me-2 text-danger"></i><span data-i18n="catalog.top_viewed_title">Most Viewed Datasets</span>
-              <span class="text-muted small fw-normal" data-i18n="catalog.top_viewed_period">(last 30 days)</span>
-            </h6>
-            <div id="catalogTopViewed"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
           </div>
         </div>
       </div>
@@ -1359,9 +1350,6 @@ const TRANSLATIONS = {
     'catalog.formats_title': 'Format Distribution',
     'catalog.formats_none': 'No format data available.',
     'catalog.formats_other': 'Other',
-    'catalog.top_viewed_title': 'Most Viewed Datasets',
-    'catalog.top_viewed_period': '(last 30 days)',
-    'catalog.top_viewed_none': 'No view data available yet.',
     'catalog.stats_views_tooltip': 'Views in the last 30 days',
     'catalog.stats_downloads_tooltip': 'Downloads in the last 30 days',
     'catalog.filter_org_all': 'All organizations',
@@ -1699,9 +1687,6 @@ const TRANSLATIONS = {
     'catalog.formats_title': 'Κατανομή Μορφοτύπων',
     'catalog.formats_none': 'Δεν υπάρχουν διαθέσιμα δεδομένα μορφοτύπων.',
     'catalog.formats_other': 'Άλλα',
-    'catalog.top_viewed_title': 'Σύνολα Δεδομένων με Περισσότερες Προβολές',
-    'catalog.top_viewed_period': '(τελευταίες 30 ημέρες)',
-    'catalog.top_viewed_none': 'Δεν υπάρχουν ακόμη δεδομένα προβολών.',
     'catalog.stats_views_tooltip': 'Προβολές τις τελευταίες 30 ημέρες',
     'catalog.stats_downloads_tooltip': 'Λήψεις τις τελευταίες 30 ημέρες',
     'catalog.filter_org_all': 'Όλοι οι οργανισμοί',
@@ -2084,31 +2069,6 @@ async function _loadStatsFormatChart() {
   }
 }
 
-async function _loadCatalogTopViewed() {
-  const el = show('catalogTopViewed');
-  try {
-    const data = await fetch(API_BASE + 'api/matomo/top-datasets?limit=8&days=30').then(r => r.json());
-    if (data.error) {
-      el.innerHTML = `<p class="text-muted small mb-0">${esc(data.error)}</p>`;
-      return;
-    }
-    if (!data.length) {
-      el.innerHTML = `<p class="text-muted small mb-0">${t('catalog.top_viewed_none')}</p>`;
-      return;
-    }
-    el.innerHTML = `<div class="list-group list-group-flush">${data.map((d, i) => `
-      <a href="#" onclick="openDatasetPanel('${esc(d.slug)}');return false;"
-         class="list-group-item list-group-item-action px-0 py-2 d-flex justify-content-between align-items-center">
-        <span class="text-truncate small" style="max-width:70%">
-          <span class="text-muted me-2">#${i + 1}</span>${esc(d.title || d.slug)}
-        </span>
-        <span class="badge bg-primary rounded-pill">${fmt(d.visits)}</span>
-      </a>`).join('')}</div>`;
-  } catch (e) {
-    el.innerHTML = `<p class="text-muted small mb-0">${t('error')} ${esc(e.message)}</p>`;
-  }
-}
-
 function _catalogSearchDebounced() {
   clearTimeout(_catalogDebounceTimer);
   _catalogDebounceTimer = setTimeout(() => { _catalogStart = 0; loadCatalog(); }, 400);
@@ -2333,7 +2293,6 @@ document.getElementById('statsTabBtn').addEventListener('click', () => {
   _statsLoaded = true;
   loadStatsTab();
   _loadStatsFormatChart();
-  _loadCatalogTopViewed();
 });
 
 async function loadStatsTab() {
