@@ -28,6 +28,7 @@ if _db_url.startswith("postgres://"):  # normalize legacy Heroku-style prefix
     _db_url = _db_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=14)  # absolute cap; see also the idle timeout in require_login
 app.secret_key = config.FLASK_SECRET_KEY or "insecure-dev-secret-key-change-me"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
@@ -200,12 +201,33 @@ def _touch_last_active(user_id):
     session["_last_active_write"] = now.isoformat()
 
 
+IDLE_TIMEOUT_MINUTES = 60
+
+
+def _session_idle_seconds():
+    """Seconds since this session's last request, from a per-request session
+    marker (cheap — no DB) separate from the throttled last_active_at write."""
+    last_seen = session.get("_last_seen")
+    if not last_seen:
+        return 0
+    try:
+        return (datetime.now(timezone.utc).replace(tzinfo=None) - datetime.fromisoformat(last_seen)).total_seconds()
+    except ValueError:
+        return 0
+
+
 @app.before_request
 def require_login():
     if freq.path in _PUBLIC_PATHS or freq.path.startswith("/static/"):
         return
     user_id = session.get("user_id")
     if user_id:
+        if _session_idle_seconds() > IDLE_TIMEOUT_MINUTES * 60:
+            session.clear()
+            if freq.path.startswith("/api/"):
+                return jsonify({"error": "Session expired"}), 401
+            return redirect(url_for("login", next=freq.script_root + freq.path))
+        session["_last_seen"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         _touch_last_active(user_id)
         return
     if freq.path.startswith("/api/"):
@@ -228,6 +250,7 @@ def login():
         pw    = freq.form.get("password", "")
         user  = User.query.filter_by(email=email).first()
         if user and user.password_hash and check_password_hash(user.password_hash, pw):
+            session.permanent      = True
             session["user_id"]    = user.id
             session["user_name"]  = user.name or user.email
             session["user_email"] = user.email
@@ -276,6 +299,7 @@ def set_password():
                 user.last_login_at = now
                 token.used_at = now
                 db.session.commit()
+                session.permanent      = True
                 session["user_id"]    = user.id
                 session["user_name"]  = user.name or user.email
                 session["user_email"] = user.email
