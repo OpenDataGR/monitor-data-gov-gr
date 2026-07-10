@@ -4606,7 +4606,7 @@ function renderUserPanel(u) {
         ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">Position</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
         ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">Tel</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a></dd>` : ''}
         ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">Mobile</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a></dd>` : ''}
-        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Role</dt><dd class="col-7 mb-1">${
+        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Role (file)</dt><dd class="col-7 mb-1">${
           c.contact_type.split(',').map(s => s.trim()).filter(Boolean)
             .map(s => `<span class="badge me-1 mb-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(s)}</span>`).join('')
         }</dd>` : ''}
@@ -4623,7 +4623,7 @@ function renderUserPanel(u) {
       <dd class="col-7 mb-1">${_portalFirst ? esc(_portalFirst) : '—'}</dd>
       <dt class="col-5 text-muted fw-normal mb-1">Last Name</dt>
       <dd class="col-7 mb-1">${_portalLast ? esc(_portalLast) : '—'}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">Role</dt>
+      <dt class="col-5 text-muted fw-normal mb-1">Role (portal)</dt>
       <dd class="col-7 mb-1"><span class="badge ${_portalRoleCls}">${esc(_portalRoleLabel)}</span></dd>
       <dt class="col-5 text-muted fw-normal mb-1">Email</dt>
       <dd class="col-7 mb-1">${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</dd>
