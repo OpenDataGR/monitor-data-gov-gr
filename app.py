@@ -2225,9 +2225,8 @@ _CONTACT_EXPORT_COLUMNS = [
     ("email",        "Email",        lambda c: c.email),
     ("tel",          "Tel",          lambda c: c.tel),
     ("mobile",       "Mobile",       lambda c: c.mobile),
-    ("created_at",   "Registered On", lambda c: c.created_at.strftime("%Y-%m-%d") if c.created_at else ""),
 ]
-_CONTACT_EXPORT_COLUMN_KEYS = {key for key, _, _ in _CONTACT_EXPORT_COLUMNS} | {"username"}
+_CONTACT_EXPORT_COLUMN_KEYS = {key for key, _, _ in _CONTACT_EXPORT_COLUMNS} | {"username", "created_at"}
 
 
 @app.route("/api/contacts/export", methods=["GET"])
@@ -2239,12 +2238,15 @@ def contacts_export():
     type_filter = [t.strip() for t in freq.args.getlist("type") if t.strip()]
     requested_cols = [c.strip() for c in freq.args.getlist("columns") if c.strip() in _CONTACT_EXPORT_COLUMN_KEYS]
 
-    # Portal username isn't stored on OrgContact — it's matched at request time
-    # against the portal-members cache by email, same join key used elsewhere.
+    # Portal username and registration date aren't stored on OrgContact — both are
+    # matched at request time against the portal-members cache by email, same join
+    # key used elsewhere ("Registered On" is the CKAN account's own creation date,
+    # same value shown in the user detail panel — OrgContact rows have no reliable
+    # history of when the contact-file entry itself was added).
     # The cache is populated lazily (only once the Contacts tab has been opened
     # or the background fetch has finished), so fetch it inline here if it's
-    # missing rather than silently exporting a blank column.
-    if not requested_cols or "username" in requested_cols:
+    # missing rather than silently exporting blank columns.
+    if not requested_cols or "username" in requested_cols or "created_at" in requested_cols:
         if _pm_cache["data"] is None:
             if not _pm_cache["loading"]:
                 _do_fetch_portal_members()
@@ -2253,13 +2255,22 @@ def contacts_export():
                     if not _pm_cache["loading"]:
                         break
                     time.sleep(0.5)
-    email_to_username = {
-        (m.get("email") or "").lower().strip(): m.get("username", "")
+    email_to_member = {
+        (m.get("email") or "").lower().strip(): m
         for m in ((_pm_cache["data"] or {}).get("members") or [])
         if m.get("email")
     }
+
+    def _matched_username(c):
+        return email_to_member.get((c.email or "").lower().strip(), {}).get("username", "")
+
+    def _matched_registered(c):
+        created = email_to_member.get((c.email or "").lower().strip(), {}).get("created", "")
+        return created[:10] if created else ""
+
     all_columns = _CONTACT_EXPORT_COLUMNS + [
-        ("username", "Portal Username", lambda c: email_to_username.get((c.email or "").lower().strip(), "")),
+        ("username",   "Portal Username", _matched_username),
+        ("created_at", "Registered On",   _matched_registered),
     ]
     columns = [col for col in all_columns if col[0] in requested_cols] if requested_cols else all_columns
 
@@ -2638,6 +2649,7 @@ def _do_fetch_portal_members():
                     "state":        u.get("state", "active"),
                     "sysadmin":     bool(u.get("sysadmin", False)),
                     "about":        (u.get("about") or "").strip(),
+                    "created":      u.get("created", ""),
                 }
 
         # Step 2 – fetch org memberships in parallel
@@ -2693,6 +2705,7 @@ def _do_fetch_portal_members():
                 "state":        ui.get("state", "active"),
                 "sysadmin":     ui.get("sysadmin", False),
                 "about":        ui.get("about", ""),
+                "created":      ui.get("created", ""),
             })
 
         # Step 4 – add users not in any org
@@ -2711,6 +2724,7 @@ def _do_fetch_portal_members():
                     "state":        ui.get("state", "active"),
                     "sysadmin":     ui.get("sysadmin", False),
                     "about":        ui.get("about", ""),
+                    "created":      ui.get("created", ""),
                 })
 
         # Enrich with OrgContact data matched by email; collect unmatched contacts
