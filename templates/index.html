@@ -4207,8 +4207,7 @@ function _renderOrgContactsPanel() {
     const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
     const roleCls   = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (CONTACT_TYPE_CLS[_ROLE_LBL[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
     const hasFile   = !!m.contact_id;
-    const name      = hasFile ? `${m.contact_first_name || ''} ${m.contact_last_name || ''}`.trim() : '';
-    const displayName = name || esc(m.display_name);
+    const displayName = esc(_pmDisplayName(m));
     return `
     <div class="card mb-2 border" style="${hasFile ? '' : 'border-style:dashed!important;opacity:.8'}">
       <div class="card-body py-2 px-3">
@@ -4552,7 +4551,10 @@ function renderUserPanel(u) {
     return isNaN(d) ? s : d.toLocaleDateString('el-GR', {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
   };
   const stateCls = u.state === 'active' ? 'success' : 'secondary';
-  document.getElementById('userPanelName').textContent = u.display_name || u.username;
+  // Prefer the name on file over the portal account's own display name — the
+  // CKAN profile is often a romanized username, the contact file has the real name.
+  const _fileName = u.contact ? `${u.contact.first_name || ''} ${u.contact.last_name || ''}`.trim() : '';
+  document.getElementById('userPanelName').textContent = _fileName || u.display_name || u.username;
   document.getElementById('userPanelUsername').innerHTML =
     `@${esc(u.username)}&ensp;<a href="https://data.gov.gr/user/${encodeURIComponent(u.username)}" target="_blank" rel="noopener" class="text-muted" title="View on data.gov.gr"><i class="bi bi-box-arrow-up-right"></i></a>`;
 
@@ -5113,6 +5115,14 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
   }
 }
 
+// Prefers the name on file (entered manually / from the contacts Excel) over
+// the portal account's own display name, since the CKAN profile is often a
+// romanized username while the contact file has the person's real name.
+function _pmDisplayName(m) {
+  const fileName = `${m.contact_first_name || ''} ${m.contact_last_name || ''}`.trim();
+  return fileName || m.display_name || m.username || '';
+}
+
 function sortContacts(col) {
   if (_contactsSortCol === col) _contactsSortDir = _contactsSortDir === 'asc' ? 'desc' : 'asc';
   else { _contactsSortCol = col; _contactsSortDir = 'asc'; }
@@ -5213,6 +5223,7 @@ function filterContactsTab() {
   if (search) rows = rows.filter(m =>
     _ns(m.org_title  || '').includes(search) ||
     _ns(m.display_name || '').includes(search) ||
+    _ns(_pmDisplayName(m)).includes(search) ||
     _ns(m.username   || '').includes(search) ||
     _ns(m.email      || '').includes(search) ||
     _ns(m.contact_position || '').includes(search) ||
@@ -5234,13 +5245,13 @@ function filterContactsTab() {
   rows = [...rows].sort((a, b) => {
     let av, bv;
     switch (_contactsSortCol) {
-      case 'name':  av = _ns(a.display_name || ''); bv = _ns(b.display_name || ''); break;
+      case 'name':  av = _ns(_pmDisplayName(a)); bv = _ns(_pmDisplayName(b)); break;
       case 'org':   av = _ns(a.org_title || a.org_name || ''); bv = _ns(b.org_title || b.org_name || ''); break;
       case 'type': { const r = { sysadmin: 0, admin: 1, editor: 2, member: 3 };
                      av = a.sysadmin ? 0 : (r[a.capacity] ?? 4); bv = b.sysadmin ? 0 : (r[b.capacity] ?? 4); break; }
       case 'state': av = (a.state || 'active'); bv = (b.state || 'active'); break;
       case 'email': av = (a.email || '').toLowerCase(); bv = (b.email || '').toLowerCase(); break;
-      default:      av = _ns(a.display_name || ''); bv = _ns(b.display_name || '');
+      default:      av = _ns(_pmDisplayName(a)); bv = _ns(_pmDisplayName(b));
     }
     if (av < bv) return _contactsSortDir === 'asc' ? -1 : 1;
     if (av > bv) return _contactsSortDir === 'asc' ?  1 : -1;
@@ -5303,7 +5314,7 @@ function filterContactsTab() {
     return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
       <td class="text-muted small">${i + 1}</td>
       <td style="max-width:200px">
-        <span class="fw-semibold">${esc(m.display_name)}</span> ${presenceBadges}
+        <span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${presenceBadges}
         ${posLine}
       </td>
       <td style="max-width:180px">${orgsHtml}</td>
@@ -5387,7 +5398,7 @@ function renderContactsGrouped(rows) {
                 (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="Has contact file entry"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
               return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
                 <td style="max-width:200px">
-                  <span class="fw-semibold">${esc(m.display_name)}</span> ${presenceBadges}
+                  <span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${presenceBadges}
                   ${posLine}
                 </td>
                 <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
