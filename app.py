@@ -2241,6 +2241,18 @@ def contacts_export():
 
     # Portal username isn't stored on OrgContact — it's matched at request time
     # against the portal-members cache by email, same join key used elsewhere.
+    # The cache is populated lazily (only once the Contacts tab has been opened
+    # or the background fetch has finished), so fetch it inline here if it's
+    # missing rather than silently exporting a blank column.
+    if not requested_cols or "username" in requested_cols:
+        if _pm_cache["data"] is None:
+            if not _pm_cache["loading"]:
+                _do_fetch_portal_members()
+            else:
+                for _ in range(20):  # another request is already fetching — wait up to ~10s for it
+                    if not _pm_cache["loading"]:
+                        break
+                    time.sleep(0.5)
     email_to_username = {
         (m.get("email") or "").lower().strip(): m.get("username", "")
         for m in ((_pm_cache["data"] or {}).get("members") or [])
