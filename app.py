@@ -2777,7 +2777,7 @@ def _do_fetch_portal_members():
                     "org_title":    "",
                     "username":     uname,
                     "display_name": ui.get("display_name", uname),
-                    "capacity":     "",
+                    "capacity":     "member",  # no org membership = no assigned role; default to Org Member
                     "email":        ui.get("email", ""),
                     "state":        ui.get("state", "active"),
                     "sysadmin":     ui.get("sysadmin", False),
