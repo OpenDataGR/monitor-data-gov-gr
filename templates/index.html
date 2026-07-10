@@ -4693,7 +4693,7 @@ async function loadUserDatasets(username) {
     list.innerHTML = ds.map(d => `
       <div class="py-2 border-bottom">
         <div class="d-flex align-items-center gap-2">
-          <a href="https://data.gov.gr/dataset/${esc(d.name)}" target="_blank" rel="noopener"
+          <a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;"
              class="small fw-semibold text-decoration-none flex-grow-1" style="word-break:break-word">${esc(d.title)}</a>
           ${d.private ? '<span class="badge bg-warning text-dark text-nowrap" style="font-size:.65rem"><i class="bi bi-lock-fill me-1"></i>Private</span>' : ''}
         </div>
@@ -4750,7 +4750,7 @@ async function loadUserActivity(username) {
         </div>
         ${a.package_name ? `
         <div class="d-flex align-items-center gap-2">
-          <a href="https://data.gov.gr/dataset/${esc(a.package_name)}" target="_blank" rel="noopener"
+          <a href="#" onclick="openDatasetPanel('${esc(a.package_name)}');return false;"
               class="text-muted text-decoration-none flex-grow-1" style="font-size:.8rem;word-break:break-word">${esc(a.package_title || a.package_name)}</a>
           ${a.private ? '<span class="badge bg-warning text-dark text-nowrap" style="font-size:.62rem"><i class="bi bi-lock-fill me-1"></i>Private</span>' : ''}
         </div>` : ''}
