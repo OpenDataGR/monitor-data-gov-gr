@@ -2233,7 +2233,11 @@ def _contact_export_role(m):
 # Order here is the order columns appear in the workbook regardless of ?columns= order.
 _CONTACT_EXPORT_COLUMNS = [
     ("org",          "Organization",   lambda m: m.get("org_title") or m.get("org_name") or ""),
-    ("first_name",   "First Name",     lambda m: m.get("contact_first_name", "")),
+    # contact_first_name/contact_last_name only exist when this portal account was
+    # matched to a contact-file entry by email; most accounts have no such match,
+    # so fall back to the CKAN account's own display name (what the Contacts tab
+    # itself shows for every row) rather than leaving the export blank.
+    ("first_name",   "First Name",     lambda m: m.get("contact_first_name") or m.get("display_name") or m.get("username", "")),
     ("last_name",    "Last Name",      lambda m: m.get("contact_last_name", "")),
     ("position",     "Position",       lambda m: m.get("contact_position", "")),
     ("contact_type", "Contact Type",   lambda m: m.get("contact_type", "")),
