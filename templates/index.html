@@ -674,6 +674,9 @@
                 <button class="btn btn-outline-primary btn-sm" onclick="openPmEditNew()">
                   <i class="bi bi-person-plus me-1"></i>Add contact
                 </button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="openContactsExportModal()">
+                  <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="contacts.export">Export</span>
+                </button>
               </div>
             </div>
             <div id="contactsSummary" class="row g-2 mb-3"></div>
@@ -1013,6 +1016,38 @@
   </div>
 </div>
 
+<!-- Contacts Export column-selection modal -->
+<div class="modal fade" id="contactsExportModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-bottom">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-file-earmark-excel me-2"></i><span data-i18n="contacts.export_modal_title">Export Contacts</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <p class="small text-muted mb-0" data-i18n="contacts.export_modal_hint">Choose which columns to include.</p>
+          <div>
+            <a href="#" class="small" onclick="_setContactsExportCols(true);return false;" data-i18n="contacts.export_select_all">All</a>
+            <span class="text-muted">/</span>
+            <a href="#" class="small" onclick="_setContactsExportCols(false);return false;" data-i18n="contacts.export_select_none">None</a>
+          </div>
+        </div>
+        <div id="contactsExportColumns" class="d-flex flex-column gap-2"></div>
+        <div id="contactsExportError" class="text-danger small mt-2 d-none" data-i18n="contacts.export_none_selected">Select at least one column.</div>
+      </div>
+      <div class="modal-footer border-top">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="comm_modal.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="submitContactsExport()">
+          <i class="bi bi-download me-1"></i><span data-i18n="contacts.export_download">Download</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Name modal -->
 <div class="modal fade" id="editNameModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
@@ -1077,6 +1112,22 @@ const TRANSLATIONS = {
     'contacts.view_all': 'All',
     'contacts.view_by_org': 'By Organization',
     'contacts.reload': 'Reload',
+    'contacts.export': 'Export',
+    'contacts.export_modal_title': 'Export Contacts',
+    'contacts.export_modal_hint': 'Choose which columns to include.',
+    'contacts.export_select_all': 'All',
+    'contacts.export_select_none': 'None',
+    'contacts.export_none_selected': 'Select at least one column.',
+    'contacts.export_download': 'Download',
+    'contacts.export_col_org': 'Organization',
+    'contacts.export_col_first_name': 'First Name',
+    'contacts.export_col_last_name': 'Last Name',
+    'contacts.export_col_position': 'Position',
+    'contacts.export_col_contact_type': 'Contact Type',
+    'contacts.export_col_email': 'Email',
+    'contacts.export_col_tel': 'Tel',
+    'contacts.export_col_mobile': 'Mobile',
+    'contacts.export_col_created_at': 'Registered On',
     'contacts.col_username': 'Username',
     'contacts.col_role': 'Role',
     'contacts.col_state': 'State',
@@ -1418,6 +1469,22 @@ const TRANSLATIONS = {
     'contacts.view_all': 'Όλα',
     'contacts.view_by_org': 'Ανά Οργανισμό',
     'contacts.reload': 'Ανανέωση',
+    'contacts.export': 'Εξαγωγή',
+    'contacts.export_modal_title': 'Εξαγωγή Επαφών',
+    'contacts.export_modal_hint': 'Επιλέξτε ποιες στήλες θα συμπεριληφθούν.',
+    'contacts.export_select_all': 'Όλα',
+    'contacts.export_select_none': 'Κανένα',
+    'contacts.export_none_selected': 'Επιλέξτε τουλάχιστον μία στήλη.',
+    'contacts.export_download': 'Λήψη',
+    'contacts.export_col_org': 'Οργανισμός',
+    'contacts.export_col_first_name': 'Όνομα',
+    'contacts.export_col_last_name': 'Επώνυμο',
+    'contacts.export_col_position': 'Θέση',
+    'contacts.export_col_contact_type': 'Τύπος Επαφής',
+    'contacts.export_col_email': 'Email',
+    'contacts.export_col_tel': 'Τηλέφωνο',
+    'contacts.export_col_mobile': 'Κινητό',
+    'contacts.export_col_created_at': 'Ημερομηνία Εγγραφής',
     'contacts.col_username': 'Username',
     'contacts.col_role': 'Ρόλος',
     'contacts.col_state': 'Κατάσταση',
@@ -5947,11 +6014,56 @@ async function savePmContact() {
   }
 }
 
-function exportContactsExcel() {
+const CONTACTS_EXPORT_COLUMNS = [
+  { key: 'org',          i18n: 'contacts.export_col_org' },
+  { key: 'first_name',   i18n: 'contacts.export_col_first_name' },
+  { key: 'last_name',    i18n: 'contacts.export_col_last_name' },
+  { key: 'position',     i18n: 'contacts.export_col_position' },
+  { key: 'contact_type', i18n: 'contacts.export_col_contact_type' },
+  { key: 'email',        i18n: 'contacts.export_col_email' },
+  { key: 'tel',          i18n: 'contacts.export_col_tel' },
+  { key: 'mobile',       i18n: 'contacts.export_col_mobile' },
+  { key: 'created_at',   i18n: 'contacts.export_col_created_at' },
+];
+const CONTACTS_EXPORT_COLS_STORAGE_KEY = 'contactsExportColumns';
+
+let _contactsExportModal = null;
+
+function openContactsExportModal() {
+  if (!_contactsExportModal) _contactsExportModal = new bootstrap.Modal(document.getElementById('contactsExportModal'));
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(CONTACTS_EXPORT_COLS_STORAGE_KEY) || 'null'); } catch (e) {}
+  show('contactsExportError').classList.add('d-none');
+  show('contactsExportColumns').innerHTML = CONTACTS_EXPORT_COLUMNS.map(c => `
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="expcol_${c.key}" ${(!saved || saved.includes(c.key)) ? 'checked' : ''}>
+      <label class="form-check-label small" for="expcol_${c.key}">${t(c.i18n)}</label>
+    </div>`).join('');
+  _contactsExportModal.show();
+}
+
+function _setContactsExportCols(checked) {
+  CONTACTS_EXPORT_COLUMNS.forEach(c => {
+    const el = document.getElementById('expcol_' + c.key);
+    if (el) el.checked = checked;
+  });
+}
+
+function submitContactsExport() {
+  const selected = CONTACTS_EXPORT_COLUMNS
+    .map(c => c.key)
+    .filter(key => document.getElementById('expcol_' + key)?.checked);
+  if (!selected.length) {
+    show('contactsExportError').classList.remove('d-none');
+    return;
+  }
+  localStorage.setItem(CONTACTS_EXPORT_COLS_STORAGE_KEY, JSON.stringify(selected));
   const search = (show('contactsSearch').value || '').trim();
   const params = new URLSearchParams();
   if (search) params.set('search', search);
+  selected.forEach(key => params.append('columns', key));
   window.location = API_BASE + 'api/contacts/export?' + params.toString();
+  _contactsExportModal.hide();
 }
 
 let _liveMap = null;

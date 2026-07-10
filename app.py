@@ -83,6 +83,9 @@ with app.app_context():
     if 'org_codes' not in _contact_cols:
         db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN org_codes TEXT'))
         db.session.commit()
+    if 'created_at' not in _contact_cols:
+        db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN created_at TIMESTAMP'))
+        db.session.commit()
     # Renamed contact-type value: "Data Officer" -> "Data Governance Officer".
     # Safe to run on every startup — after the first run no row contains the
     # old substring anymore, so the WHERE clause matches nothing.
@@ -2211,6 +2214,22 @@ def contacts_all():
     return jsonify([c.to_dict() for c in contacts])
 
 
+# Canonical export columns: key -> (header, value getter). Order here is the
+# order columns appear in the workbook regardless of the order ?columns= lists them.
+_CONTACT_EXPORT_COLUMNS = [
+    ("org",          "Organization",  lambda c: c.org_label or c.org_code),
+    ("first_name",   "First Name",   lambda c: c.first_name),
+    ("last_name",    "Last Name",    lambda c: c.last_name),
+    ("position",     "Position",     lambda c: c.position),
+    ("contact_type", "Contact Type", lambda c: c.contact_type),
+    ("email",        "Email",        lambda c: c.email),
+    ("tel",          "Tel",          lambda c: c.tel),
+    ("mobile",       "Mobile",       lambda c: c.mobile),
+    ("created_at",   "Registered On", lambda c: c.created_at.strftime("%Y-%m-%d") if c.created_at else ""),
+]
+_CONTACT_EXPORT_COLUMN_KEYS = {key for key, _, _ in _CONTACT_EXPORT_COLUMNS}
+
+
 @app.route("/api/contacts/export", methods=["GET"])
 def contacts_export():
     from openpyxl import Workbook
@@ -2218,6 +2237,8 @@ def contacts_export():
 
     search = freq.args.get("search", "").strip().lower()
     type_filter = [t.strip() for t in freq.args.getlist("type") if t.strip()]
+    requested_cols = [c.strip() for c in freq.args.getlist("columns") if c.strip() in _CONTACT_EXPORT_COLUMN_KEYS]
+    columns = [col for col in _CONTACT_EXPORT_COLUMNS if col[0] in requested_cols] if requested_cols else _CONTACT_EXPORT_COLUMNS
 
     contacts = (
         OrgContact.query
@@ -2241,25 +2262,17 @@ def contacts_export():
     ws = wb.active
     ws.title = "Contacts"
 
-    headers = ["Organization", "First Name", "Last Name", "Position",
-               "Contact Type", "Email", "Tel", "Mobile"]
     hdr_font = Font(bold=True, color="FFFFFF")
     hdr_fill = PatternFill("solid", fgColor="2563EB")
-    for col, h in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=h)
+    for col_idx, (_key, header, _getter) in enumerate(columns, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
         cell.font = hdr_font
         cell.fill = hdr_fill
         cell.alignment = Alignment(horizontal="center")
 
     for ri, c in enumerate(contacts, 2):
-        ws.cell(ri, 1, c.org_label or c.org_code)
-        ws.cell(ri, 2, c.first_name)
-        ws.cell(ri, 3, c.last_name)
-        ws.cell(ri, 4, c.position)
-        ws.cell(ri, 5, c.contact_type)
-        ws.cell(ri, 6, c.email)
-        ws.cell(ri, 7, c.tel)
-        ws.cell(ri, 8, c.mobile)
+        for col_idx, (_key, _header, getter) in enumerate(columns, 1):
+            ws.cell(ri, col_idx, getter(c))
 
     for col in ws.columns:
         width = max((len(str(cell.value or "")) for cell in col), default=0)

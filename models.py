@@ -228,6 +228,7 @@ class OrgContact(db.Model):
     tel          = db.Column(db.String(50))
     mobile       = db.Column(db.String(50))
     org_codes    = db.Column(db.Text)  # JSON: [{code, label}, ...]
+    created_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     def to_dict(self):
         orgs = []
@@ -250,4 +251,5 @@ class OrgContact(db.Model):
             "email":        self.email or "",
             "tel":          self.tel or "",
             "mobile":       self.mobile or "",
+            "created_at":   self.created_at.isoformat() if self.created_at else None,
         }
