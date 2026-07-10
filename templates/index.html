@@ -1136,10 +1136,9 @@ const TRANSLATIONS = {
     'contacts.export_col_first_name': 'First Name',
     'contacts.export_col_last_name': 'Last Name',
     'contacts.export_col_position': 'Position',
-    'contacts.export_col_contact_type': 'Contact Type',
     'contacts.export_col_username': 'Portal Username',
     'contacts.export_col_email': 'Email',
-    'contacts.export_col_role': 'Portal Role',
+    'contacts.export_col_role': 'Role',
     'contacts.export_col_state': 'State',
     'contacts.export_col_tel': 'Tel',
     'contacts.export_col_mobile': 'Mobile',
@@ -1500,8 +1499,7 @@ const TRANSLATIONS = {
     'contacts.export_col_first_name': 'Όνομα',
     'contacts.export_col_last_name': 'Επώνυμο',
     'contacts.export_col_position': 'Θέση',
-    'contacts.export_col_contact_type': 'Τύπος Επαφής',
-    'contacts.export_col_role': 'Ρόλος Πύλης',
+    'contacts.export_col_role': 'Ρόλος',
     'contacts.export_col_state': 'Κατάσταση',
     'contacts.export_col_username': 'Όνομα Χρήστη Πύλης',
     'contacts.export_col_email': 'Email',
@@ -4606,7 +4604,7 @@ function renderUserPanel(u) {
         ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">Position</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
         ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">Tel</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a></dd>` : ''}
         ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">Mobile</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a></dd>` : ''}
-        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Role (file)</dt><dd class="col-7 mb-1">${
+        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Role</dt><dd class="col-7 mb-1">${
           c.contact_type.split(',').map(s => s.trim()).filter(Boolean)
             .map(s => `<span class="badge me-1 mb-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(s)}</span>`).join('')
         }</dd>` : ''}
@@ -4623,7 +4621,7 @@ function renderUserPanel(u) {
       <dd class="col-7 mb-1">${_portalFirst ? esc(_portalFirst) : '—'}</dd>
       <dt class="col-5 text-muted fw-normal mb-1">Last Name</dt>
       <dd class="col-7 mb-1">${_portalLast ? esc(_portalLast) : '—'}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">Role (portal)</dt>
+      <dt class="col-5 text-muted fw-normal mb-1">Role</dt>
       <dd class="col-7 mb-1"><span class="badge ${_portalRoleCls}">${esc(_portalRoleLabel)}</span></dd>
       <dt class="col-5 text-muted fw-normal mb-1">Email</dt>
       <dd class="col-7 mb-1">${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</dd>
@@ -6077,7 +6075,6 @@ const CONTACTS_EXPORT_COLUMNS = [
   { key: 'first_name',   i18n: 'contacts.export_col_first_name' },
   { key: 'last_name',    i18n: 'contacts.export_col_last_name' },
   { key: 'position',     i18n: 'contacts.export_col_position' },
-  { key: 'contact_type', i18n: 'contacts.export_col_contact_type' },
   { key: 'role',         i18n: 'contacts.export_col_role' },
   { key: 'state',        i18n: 'contacts.export_col_state' },
   { key: 'username',     i18n: 'contacts.export_col_username' },
