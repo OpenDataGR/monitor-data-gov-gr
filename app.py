@@ -94,6 +94,18 @@ with app.app_context():
         "WHERE contact_type LIKE '%Data Officer%'"
     ))
     db.session.commit()
+    # Renamed contact-type values: "Portal Administrator/Editor/User" -> "Org Administrator/Editor/Member".
+    # Same idempotent pattern as above.
+    for _old, _new in (
+        ("Portal Administrator", "Org Administrator"),
+        ("Portal Editor", "Org Editor"),
+        ("Portal User", "Org Member"),
+    ):
+        db.session.execute(text(
+            f"UPDATE org_contacts SET contact_type = REPLACE(contact_type, '{_old}', '{_new}') "
+            f"WHERE contact_type LIKE '%{_old}%'"
+        ))
+        db.session.commit()
     if db.engine.dialect.name == 'postgresql':
         try:
             db.session.execute(text('ALTER TABLE org_contacts ALTER COLUMN position TYPE TEXT'))
@@ -606,18 +618,21 @@ _HRMS_TTL = 24 * 3600  # refresh once per day
 # Canonical contact-type values (norm'd Greek or English → stored value)
 # Keys are already accent-stripped lowercase (output of _norm()).
 _ROLE_MAP = {
-    "διαχειριστης πυλης":       "Portal Administrator",
-    "διαχειριστης":             "Portal Administrator",
-    "συντακτης πυλης":          "Portal Editor",
-    "συντακτης":                "Portal Editor",
-    "χρηστης πυλης":            "Portal User",
-    "χρηστης":                  "Portal User",
+    "διαχειριστης πυλης":       "Org Administrator",
+    "διαχειριστης":             "Org Administrator",
+    "συντακτης πυλης":          "Org Editor",
+    "συντακτης":                "Org Editor",
+    "χρηστης πυλης":            "Org Member",
+    "χρηστης":                  "Org Member",
     "υπευθυνος δεδομενων":              "Data Governance Officer",
     "υπευθυνος διακυβερνησης δεδομενων": "Data Governance Officer",
     "θεματοφυλακας δεδομενων":          "Data Steward",
-    "portal administrator":            "Portal Administrator",
-    "portal editor":                   "Portal Editor",
-    "portal user":                     "Portal User",
+    "portal administrator":            "Org Administrator",
+    "portal editor":                   "Org Editor",
+    "portal user":                     "Org Member",
+    "org administrator":               "Org Administrator",
+    "org editor":                      "Org Editor",
+    "org member":                      "Org Member",
     "data officer":                    "Data Governance Officer",
     "data governance officer":         "Data Governance Officer",
     "data steward":                    "Data Steward",
@@ -2220,7 +2235,7 @@ def _search_normalize(s):
     return "".join(ch for ch in s if not unicodedata.combining(ch)).lower()
 
 
-_CONTACT_EXPORT_ROLE_LABELS = {"admin": "Portal Administrator", "editor": "Portal Editor", "member": "Portal User"}
+_CONTACT_EXPORT_ROLE_LABELS = {"admin": "Org Administrator", "editor": "Org Editor", "member": "Org Member"}
 
 
 def _contact_export_role(m):
