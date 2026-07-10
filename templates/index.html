@@ -1037,6 +1037,16 @@
           </div>
         </div>
         <div id="contactsExportColumns" class="d-flex flex-column gap-2"></div>
+        <hr class="my-3">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="contactsExportAnonymize">
+          <label class="form-check-label small" for="contactsExportAnonymize" data-i18n="contacts.export_anonymize">
+            Anonymize personal data
+          </label>
+          <div class="form-text small" data-i18n="contacts.export_anonymize_hint">
+            Masks First Name, Last Name, Email, Tel and Mobile — keeps the first and last character (e.g. "Kostas" → "K____s").
+          </div>
+        </div>
         <div id="contactsExportError" class="text-danger small mt-2 d-none" data-i18n="contacts.export_none_selected">Select at least one column.</div>
       </div>
       <div class="modal-footer border-top">
@@ -1120,6 +1130,8 @@ const TRANSLATIONS = {
     'contacts.export_select_none': 'None',
     'contacts.export_none_selected': 'Select at least one column.',
     'contacts.export_download': 'Download',
+    'contacts.export_anonymize': 'Anonymize personal data',
+    'contacts.export_anonymize_hint': 'Masks First Name, Last Name, Email, Tel and Mobile — keeps the first and last character (e.g. "Kostas" → "K____s").',
     'contacts.export_col_org': 'Organization',
     'contacts.export_col_first_name': 'First Name',
     'contacts.export_col_last_name': 'Last Name',
@@ -1482,6 +1494,8 @@ const TRANSLATIONS = {
     'contacts.export_select_none': 'Κανένα',
     'contacts.export_none_selected': 'Επιλέξτε τουλάχιστον μία στήλη.',
     'contacts.export_download': 'Λήψη',
+    'contacts.export_anonymize': 'Ανωνυμοποίηση προσωπικών δεδομένων',
+    'contacts.export_anonymize_hint': 'Αποκρύπτει Όνομα, Επώνυμο, Email, Τηλέφωνο και Κινητό — διατηρεί τον πρώτο και τελευταίο χαρακτήρα (π.χ. «Κώστας» → «Κ____ς»).',
     'contacts.export_col_org': 'Οργανισμός',
     'contacts.export_col_first_name': 'Όνομα',
     'contacts.export_col_last_name': 'Επώνυμο',
@@ -6060,6 +6074,7 @@ function openContactsExportModal() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(CONTACTS_EXPORT_COLS_STORAGE_KEY) || 'null'); } catch (e) {}
   show('contactsExportError').classList.add('d-none');
+  show('contactsExportAnonymize').checked = false;
   show('contactsExportFilterHint').textContent = `${t('contacts.export_filter_label')}: ${_contactsExportFilterLabel()}`;
   show('contactsExportColumns').innerHTML = CONTACTS_EXPORT_COLUMNS.map(c => `
     <div class="form-check">
@@ -6093,6 +6108,7 @@ function submitContactsExport() {
     else if (_contactsActiveFilter.type === 'state') params.set('state', _contactsActiveFilter.value);
   }
   selected.forEach(key => params.append('columns', key));
+  if (show('contactsExportAnonymize').checked) params.set('anonymize', '1');
   window.location = API_BASE + 'api/contacts/export?' + params.toString();
   _contactsExportModal.hide();
 }

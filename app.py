@@ -2246,6 +2246,17 @@ _CONTACT_EXPORT_COLUMNS = [
     ("created_at",   "Registered On",  lambda m: (m.get("created") or "")[:10]),
 ]
 _CONTACT_EXPORT_COLUMN_KEYS = {key for key, _, _ in _CONTACT_EXPORT_COLUMNS}
+_CONTACT_EXPORT_ANONYMIZABLE_KEYS = {"first_name", "last_name", "email", "tel", "mobile"}
+
+
+def _mask_personal_value(s):
+    """Keep the first and last character, blank out the rest — e.g. "Kostas" -> "K____s"."""
+    s = str(s or "").strip()
+    if len(s) <= 1:
+        return "_" if s else ""
+    if len(s) == 2:
+        return s[0] + "_"
+    return s[0] + "_" * (len(s) - 2) + s[-1]
 
 
 @app.route("/api/contacts/export", methods=["GET"])
@@ -2256,8 +2267,14 @@ def contacts_export():
     search        = _search_normalize(freq.args.get("search", "").strip())
     role_filter   = (freq.args.get("role") or "").strip()   # admin | editor | member | sysadmin
     state_filter  = (freq.args.get("state") or "").strip()  # active | pending | deleted
+    anonymize     = (freq.args.get("anonymize") or "").strip() in ("1", "true", "yes")
     requested_cols = [c.strip() for c in freq.args.getlist("columns") if c.strip() in _CONTACT_EXPORT_COLUMN_KEYS]
     columns = [col for col in _CONTACT_EXPORT_COLUMNS if col[0] in requested_cols] if requested_cols else _CONTACT_EXPORT_COLUMNS
+    if anonymize:
+        columns = [
+            (key, header, (lambda m, g=getter: _mask_personal_value(g(m))) if key in _CONTACT_EXPORT_ANONYMIZABLE_KEYS else getter)
+            for key, header, getter in columns
+        ]
 
     # The export mirrors the Contacts tab exactly: every active.gov.gr portal
     # account (not just the ones with a contact-file entry), deduped by
