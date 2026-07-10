@@ -2227,7 +2227,7 @@ _CONTACT_EXPORT_COLUMNS = [
     ("mobile",       "Mobile",       lambda c: c.mobile),
     ("created_at",   "Registered On", lambda c: c.created_at.strftime("%Y-%m-%d") if c.created_at else ""),
 ]
-_CONTACT_EXPORT_COLUMN_KEYS = {key for key, _, _ in _CONTACT_EXPORT_COLUMNS}
+_CONTACT_EXPORT_COLUMN_KEYS = {key for key, _, _ in _CONTACT_EXPORT_COLUMNS} | {"username"}
 
 
 @app.route("/api/contacts/export", methods=["GET"])
@@ -2238,7 +2238,18 @@ def contacts_export():
     search = freq.args.get("search", "").strip().lower()
     type_filter = [t.strip() for t in freq.args.getlist("type") if t.strip()]
     requested_cols = [c.strip() for c in freq.args.getlist("columns") if c.strip() in _CONTACT_EXPORT_COLUMN_KEYS]
-    columns = [col for col in _CONTACT_EXPORT_COLUMNS if col[0] in requested_cols] if requested_cols else _CONTACT_EXPORT_COLUMNS
+
+    # Portal username isn't stored on OrgContact — it's matched at request time
+    # against the portal-members cache by email, same join key used elsewhere.
+    email_to_username = {
+        (m.get("email") or "").lower().strip(): m.get("username", "")
+        for m in ((_pm_cache["data"] or {}).get("members") or [])
+        if m.get("email")
+    }
+    all_columns = _CONTACT_EXPORT_COLUMNS + [
+        ("username", "Portal Username", lambda c: email_to_username.get((c.email or "").lower().strip(), "")),
+    ]
+    columns = [col for col in all_columns if col[0] in requested_cols] if requested_cols else all_columns
 
     contacts = (
         OrgContact.query
