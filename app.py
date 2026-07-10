@@ -2214,19 +2214,38 @@ def contacts_all():
     return jsonify([c.to_dict() for c in contacts])
 
 
-# Canonical export columns: key -> (header, value getter). Order here is the
-# order columns appear in the workbook regardless of the order ?columns= lists them.
+def _search_normalize(s):
+    import unicodedata
+    s = unicodedata.normalize("NFD", str(s or ""))
+    return "".join(ch for ch in s if not unicodedata.combining(ch)).lower()
+
+
+_CONTACT_EXPORT_ROLE_LABELS = {"admin": "Portal Administrator", "editor": "Portal Editor", "member": "Portal User"}
+
+
+def _contact_export_role(m):
+    if m.get("sysadmin"):
+        return "Sysadmin"
+    return _CONTACT_EXPORT_ROLE_LABELS.get(m.get("capacity"), m.get("capacity") or "")
+
+
+# Canonical export columns: key -> (header, value getter over a portal-member dict).
+# Order here is the order columns appear in the workbook regardless of ?columns= order.
 _CONTACT_EXPORT_COLUMNS = [
-    ("org",          "Organization",  lambda c: c.org_label or c.org_code),
-    ("first_name",   "First Name",   lambda c: c.first_name),
-    ("last_name",    "Last Name",    lambda c: c.last_name),
-    ("position",     "Position",     lambda c: c.position),
-    ("contact_type", "Contact Type", lambda c: c.contact_type),
-    ("email",        "Email",        lambda c: c.email),
-    ("tel",          "Tel",          lambda c: c.tel),
-    ("mobile",       "Mobile",       lambda c: c.mobile),
+    ("org",          "Organization",   lambda m: m.get("org_title") or m.get("org_name") or ""),
+    ("first_name",   "First Name",     lambda m: m.get("contact_first_name", "")),
+    ("last_name",    "Last Name",      lambda m: m.get("contact_last_name", "")),
+    ("position",     "Position",       lambda m: m.get("contact_position", "")),
+    ("contact_type", "Contact Type",   lambda m: m.get("contact_type", "")),
+    ("role",         "Portal Role",    _contact_export_role),
+    ("state",        "State",          lambda m: (m.get("state") or "active").capitalize()),
+    ("username",     "Portal Username", lambda m: m.get("username", "")),
+    ("email",        "Email",          lambda m: m.get("email", "")),
+    ("tel",          "Tel",            lambda m: m.get("contact_tel", "")),
+    ("mobile",       "Mobile",         lambda m: m.get("contact_mobile", "")),
+    ("created_at",   "Registered On",  lambda m: (m.get("created") or "")[:10]),
 ]
-_CONTACT_EXPORT_COLUMN_KEYS = {key for key, _, _ in _CONTACT_EXPORT_COLUMNS} | {"username", "created_at"}
+_CONTACT_EXPORT_COLUMN_KEYS = {key for key, _, _ in _CONTACT_EXPORT_COLUMNS}
 
 
 @app.route("/api/contacts/export", methods=["GET"])
@@ -2234,63 +2253,60 @@ def contacts_export():
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
 
-    search = freq.args.get("search", "").strip().lower()
-    type_filter = [t.strip() for t in freq.args.getlist("type") if t.strip()]
+    search        = _search_normalize(freq.args.get("search", "").strip())
+    role_filter   = (freq.args.get("role") or "").strip()   # admin | editor | member | sysadmin
+    state_filter  = (freq.args.get("state") or "").strip()  # active | pending | deleted
     requested_cols = [c.strip() for c in freq.args.getlist("columns") if c.strip() in _CONTACT_EXPORT_COLUMN_KEYS]
+    columns = [col for col in _CONTACT_EXPORT_COLUMNS if col[0] in requested_cols] if requested_cols else _CONTACT_EXPORT_COLUMNS
 
-    # Portal username and registration date aren't stored on OrgContact — both are
-    # matched at request time against the portal-members cache by email, same join
-    # key used elsewhere ("Registered On" is the CKAN account's own creation date,
-    # same value shown in the user detail panel — OrgContact rows have no reliable
-    # history of when the contact-file entry itself was added).
-    # The cache is populated lazily (only once the Contacts tab has been opened
-    # or the background fetch has finished), so fetch it inline here if it's
-    # missing rather than silently exporting blank columns.
-    if not requested_cols or "username" in requested_cols or "created_at" in requested_cols:
-        if _pm_cache["data"] is None:
-            if not _pm_cache["loading"]:
-                _do_fetch_portal_members()
-            else:
-                for _ in range(20):  # another request is already fetching — wait up to ~10s for it
-                    if not _pm_cache["loading"]:
-                        break
-                    time.sleep(0.5)
-    email_to_member = {
-        (m.get("email") or "").lower().strip(): m
-        for m in ((_pm_cache["data"] or {}).get("members") or [])
-        if m.get("email")
-    }
+    # The export mirrors the Contacts tab exactly: every active.gov.gr portal
+    # account (not just the ones with a contact-file entry), deduped by
+    # username and filtered the same way the on-screen summary cards/search
+    # filter it, so the row count always matches whatever's selected there.
+    if _pm_cache["data"] is None:
+        if not _pm_cache["loading"]:
+            _do_fetch_portal_members()
+        else:
+            for _ in range(20):  # another request is already fetching — wait up to ~10s for it
+                if not _pm_cache["loading"]:
+                    break
+                time.sleep(0.5)
+    members = (_pm_cache["data"] or {}).get("members") or []
 
-    def _matched_username(c):
-        return email_to_member.get((c.email or "").lower().strip(), {}).get("username", "")
-
-    def _matched_registered(c):
-        created = email_to_member.get((c.email or "").lower().strip(), {}).get("created", "")
-        return created[:10] if created else ""
-
-    all_columns = _CONTACT_EXPORT_COLUMNS + [
-        ("username",   "Portal Username", _matched_username),
-        ("created_at", "Registered On",   _matched_registered),
-    ]
-    columns = [col for col in all_columns if col[0] in requested_cols] if requested_cols else all_columns
-
-    contacts = (
-        OrgContact.query
-        .order_by(OrgContact.org_code, OrgContact.last_name, OrgContact.first_name)
-        .all()
-    )
+    # Dedupe by username, keeping the highest-ranked role per user — same rule
+    # as the frontend's _dedupeContacts so counts always match the dashboard.
+    role_rank = {"admin": 3, "editor": 2, "member": 1}
+    def _rank(m):
+        return 4 if m.get("sysadmin") else role_rank.get(m.get("capacity"), 0)
+    by_username = {}
+    for m in members:
+        uname = m.get("username")
+        if not uname:
+            continue
+        prev = by_username.get(uname)
+        if not prev or _rank(m) > _rank(prev):
+            by_username[uname] = m
+    rows = list(by_username.values())
 
     if search:
-        contacts = [
-            c for c in contacts
-            if any(search in (v or "").lower() for v in
-                   [c.org_label, c.org_code, c.first_name, c.last_name, c.position, c.email])
+        rows = [
+            m for m in rows
+            if search in _search_normalize(m.get("org_title", ""))
+            or search in _search_normalize(m.get("display_name", ""))
+            or search in _search_normalize(m.get("username", ""))
+            or search in _search_normalize(m.get("email", ""))
+            or search in _search_normalize(m.get("contact_position", ""))
+            or search in _search_normalize(m.get("about", ""))
         ]
-    if type_filter:
-        contacts = [
-            c for c in contacts
-            if any(t in (c.contact_type or "") for t in type_filter)
-        ]
+    if role_filter:
+        if role_filter == "sysadmin":
+            rows = [m for m in rows if m.get("sysadmin")]
+        else:
+            rows = [m for m in rows if not m.get("sysadmin") and m.get("capacity") == role_filter]
+    if state_filter:
+        rows = [m for m in rows if (m.get("state") or "active") == state_filter]
+
+    rows.sort(key=lambda m: (_search_normalize(m.get("org_title", "")), _search_normalize(m.get("display_name", ""))))
 
     wb = Workbook()
     ws = wb.active
@@ -2304,9 +2320,9 @@ def contacts_export():
         cell.fill = hdr_fill
         cell.alignment = Alignment(horizontal="center")
 
-    for ri, c in enumerate(contacts, 2):
+    for ri, m in enumerate(rows, 2):
         for col_idx, (_key, _header, getter) in enumerate(columns, 1):
-            ws.cell(ri, col_idx, getter(c))
+            ws.cell(ri, col_idx, getter(m))
 
     for col in ws.columns:
         width = max((len(str(cell.value or "")) for cell in col), default=0)

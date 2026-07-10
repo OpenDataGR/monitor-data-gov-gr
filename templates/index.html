@@ -1027,6 +1027,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body pt-4">
+        <div id="contactsExportFilterHint" class="small text-muted bg-light rounded p-2 mb-3"></div>
         <div class="d-flex justify-content-between align-items-center mb-2">
           <p class="small text-muted mb-0" data-i18n="contacts.export_modal_hint">Choose which columns to include.</p>
           <div>
@@ -1126,9 +1127,13 @@ const TRANSLATIONS = {
     'contacts.export_col_contact_type': 'Contact Type',
     'contacts.export_col_username': 'Portal Username',
     'contacts.export_col_email': 'Email',
+    'contacts.export_col_role': 'Portal Role',
+    'contacts.export_col_state': 'State',
     'contacts.export_col_tel': 'Tel',
     'contacts.export_col_mobile': 'Mobile',
     'contacts.export_col_created_at': 'Registered On',
+    'contacts.export_filter_label': 'Exporting',
+    'contacts.export_filter_none': 'all portal members',
     'contacts.col_username': 'Username',
     'contacts.col_role': 'Role',
     'contacts.col_state': 'State',
@@ -1482,11 +1487,15 @@ const TRANSLATIONS = {
     'contacts.export_col_last_name': 'Επώνυμο',
     'contacts.export_col_position': 'Θέση',
     'contacts.export_col_contact_type': 'Τύπος Επαφής',
+    'contacts.export_col_role': 'Ρόλος Πύλης',
+    'contacts.export_col_state': 'Κατάσταση',
     'contacts.export_col_username': 'Όνομα Χρήστη Πύλης',
     'contacts.export_col_email': 'Email',
     'contacts.export_col_tel': 'Τηλέφωνο',
     'contacts.export_col_mobile': 'Κινητό',
     'contacts.export_col_created_at': 'Ημερομηνία Εγγραφής',
+    'contacts.export_filter_label': 'Εξαγωγή',
+    'contacts.export_filter_none': 'όλων των μελών πύλης',
     'contacts.col_username': 'Username',
     'contacts.col_role': 'Ρόλος',
     'contacts.col_state': 'Κατάσταση',
@@ -6022,6 +6031,8 @@ const CONTACTS_EXPORT_COLUMNS = [
   { key: 'last_name',    i18n: 'contacts.export_col_last_name' },
   { key: 'position',     i18n: 'contacts.export_col_position' },
   { key: 'contact_type', i18n: 'contacts.export_col_contact_type' },
+  { key: 'role',         i18n: 'contacts.export_col_role' },
+  { key: 'state',        i18n: 'contacts.export_col_state' },
   { key: 'username',     i18n: 'contacts.export_col_username' },
   { key: 'email',        i18n: 'contacts.export_col_email' },
   { key: 'tel',          i18n: 'contacts.export_col_tel' },
@@ -6032,11 +6043,24 @@ const CONTACTS_EXPORT_COLS_STORAGE_KEY = 'contactsExportColumns';
 
 let _contactsExportModal = null;
 
+function _contactsExportFilterLabel() {
+  const parts = [];
+  const search = (show('contactsSearch').value || '').trim();
+  if (search) parts.push(`"${search}"`);
+  if (_contactsActiveFilter) {
+    const card = _contactsSummaryCards.find(c => c.filter
+      && c.filter.type === _contactsActiveFilter.type && c.filter.value === _contactsActiveFilter.value);
+    if (card) parts.push(card.label);
+  }
+  return parts.length ? parts.join(' + ') : t('contacts.export_filter_none');
+}
+
 function openContactsExportModal() {
   if (!_contactsExportModal) _contactsExportModal = new bootstrap.Modal(document.getElementById('contactsExportModal'));
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(CONTACTS_EXPORT_COLS_STORAGE_KEY) || 'null'); } catch (e) {}
   show('contactsExportError').classList.add('d-none');
+  show('contactsExportFilterHint').textContent = `${t('contacts.export_filter_label')}: ${_contactsExportFilterLabel()}`;
   show('contactsExportColumns').innerHTML = CONTACTS_EXPORT_COLUMNS.map(c => `
     <div class="form-check">
       <input class="form-check-input" type="checkbox" id="expcol_${c.key}" ${(!saved || saved.includes(c.key)) ? 'checked' : ''}>
@@ -6064,6 +6088,10 @@ function submitContactsExport() {
   const search = (show('contactsSearch').value || '').trim();
   const params = new URLSearchParams();
   if (search) params.set('search', search);
+  if (_contactsActiveFilter) {
+    if (_contactsActiveFilter.type === 'role') params.set('role', _contactsActiveFilter.value);
+    else if (_contactsActiveFilter.type === 'state') params.set('state', _contactsActiveFilter.value);
+  }
   selected.forEach(key => params.append('columns', key));
   window.location = API_BASE + 'api/contacts/export?' + params.toString();
   _contactsExportModal.hide();
