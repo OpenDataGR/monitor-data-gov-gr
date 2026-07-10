@@ -5060,10 +5060,10 @@ async function loadContactsTab(force = false) {
 
   _portalMembersCache = null;
   if (_pmPollTimer) { clearTimeout(_pmPollTimer); _pmPollTimer = null; }
-  _pollPortalMembers(0, false);
+  _pollPortalMembers(0, false, force);
 }
 
-async function _pollPortalMembers(attempt, silent = false) {
+async function _pollPortalMembers(attempt, silent = false, force = false) {
   const cols = 8;
   const MAX = 40;   // give up after ~200 s
   const INTERVAL = 5000;
@@ -5078,12 +5078,14 @@ async function _pollPortalMembers(attempt, silent = false) {
   }
 
   try {
-    const resp = await fetch(API_BASE + 'api/portal-members');
+    // POST forces the server to bypass its own 2-hour cache and recompute
+    // from CKAN — only needed on the first request of an explicit Reload.
+    const resp = await fetch(API_BASE + 'api/portal-members', { method: (attempt === 0 && force) ? 'POST' : 'GET' });
     const data = await resp.json();
 
     if (resp.status === 202) {
       if (attempt < MAX) {
-        _pmPollTimer = setTimeout(() => _pollPortalMembers(attempt + 1, silent), INTERVAL);
+        _pmPollTimer = setTimeout(() => _pollPortalMembers(attempt + 1, silent, force), INTERVAL);
       } else if (!silent) {
         show('contactsTableBody').innerHTML =
           `<tr><td colspan="${cols}" class="text-center text-danger py-4">Timed out waiting for portal data.</td></tr>`;

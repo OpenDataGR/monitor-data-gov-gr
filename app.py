@@ -2831,19 +2831,21 @@ def _do_fetch_portal_members():
         _pm_cache["loading"] = False
 
 
-@app.route("/api/portal-members", methods=["GET"])
+@app.route("/api/portal-members", methods=["GET", "POST"])
 def portal_members_all():
     """Return all portal users across every CKAN organisation, cached for 2 hours.
 
     Returns immediately — fetches in background on first call or after cache expiry.
     Client receives {loading: true} (HTTP 202) while the fetch is in progress and
-    should poll until it gets a 200 response.
+    should poll until it gets a 200 response. POST forces a fresh fetch, bypassing
+    the 2-hour cache (used by the Contacts tab's Reload button).
     """
     now = time.time()
-    if _pm_cache["data"] and now - _pm_cache["ts"] < 7200:
+    force = freq.method == "POST"
+    if not force and _pm_cache["data"] and now - _pm_cache["ts"] < 7200:
         return jsonify(_pm_cache["data"])
 
-    if _pm_cache["error"] and not _pm_cache["loading"]:
+    if not force and _pm_cache["error"] and not _pm_cache["loading"]:
         return jsonify({"error": _pm_cache["error"]}), 500
 
     if not _pm_cache["loading"]:
