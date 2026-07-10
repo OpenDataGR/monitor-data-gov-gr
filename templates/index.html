@@ -478,6 +478,15 @@
           <button id="trafficBtn30" class="btn btn-primary"         onclick="setTrafficPeriod(30)"><span data-i18n="traffic.last30">Last 30 days</span></button>
           <button id="trafficBtn90" class="btn btn-outline-primary" onclick="setTrafficPeriod(90)"><span data-i18n="traffic.last90">Last 90 days</span></button>
         </div>
+        <div class="d-flex align-items-center gap-1 ms-2">
+          <label for="trafficFrom" class="text-muted small mb-0" data-i18n="traffic.from">From</label>
+          <input type="date" id="trafficFrom" class="form-control form-control-sm" style="width:150px">
+          <label for="trafficTo" class="text-muted small mb-0" data-i18n="traffic.to">To</label>
+          <input type="date" id="trafficTo" class="form-control form-control-sm" style="width:150px">
+          <button class="btn btn-outline-secondary btn-sm" onclick="applyTrafficCustomRange()">
+            <i class="bi bi-check me-1"></i><span data-i18n="traffic.apply">Apply</span>
+          </button>
+        </div>
         <span id="trafficError" class="text-danger small d-none ms-2"></span>
       </div>
 
@@ -1189,6 +1198,11 @@ const TRANSLATIONS = {
     'traffic.last7': 'Last 7 days',
     'traffic.last30': 'Last 30 days',
     'traffic.last90': 'Last 90 days',
+    'traffic.from': 'From',
+    'traffic.to': 'To',
+    'traffic.apply': 'Apply',
+    'traffic.range_required': 'Pick both a from and to date.',
+    'traffic.range_invalid': 'The from date must be before the to date.',
     'health.endpoint_status': 'Endpoint Status',
     'health.uptime_24h': 'Uptime Last 24h',
     'live.title': 'Live Visitors',
@@ -1552,6 +1566,11 @@ const TRANSLATIONS = {
     'traffic.last7': 'Τελευταίες 7 ημέρες',
     'traffic.last30': 'Τελευταίες 30 ημέρες',
     'traffic.last90': 'Τελευταίες 90 ημέρες',
+    'traffic.from': 'Από',
+    'traffic.to': 'Έως',
+    'traffic.apply': 'Εφαρμογή',
+    'traffic.range_required': 'Επιλέξτε και τις δύο ημερομηνίες.',
+    'traffic.range_invalid': 'Η ημερομηνία «Από» πρέπει να είναι πριν την «Έως».',
     'health.endpoint_status': 'Κατάσταση Τελικών Σημείων',
     'health.uptime_24h': 'Διαθεσιμότητα 24ω',
     'live.title': 'Ζωντανοί Επισκέπτες',
@@ -2554,6 +2573,7 @@ async function _pollDatasetGrowth(attempts = 0) {
 // ── Traffic tab ──────────────────────────────────────────────────────────────
 let _trafficLoaded = false;
 let _trafficPeriod = 30;
+let _trafficCustomRange = null;  // { start, end } (YYYY-MM-DD) when a custom range is active, else null
 let _trafficChart  = null;
 
 document.getElementById('trafficTabBtn').addEventListener('click', () => {
@@ -2564,6 +2584,9 @@ document.getElementById('trafficTabBtn').addEventListener('click', () => {
 
 async function setTrafficPeriod(days) {
   _trafficPeriod = days;
+  _trafficCustomRange = null;
+  show('trafficFrom').value = '';
+  show('trafficTo').value = '';
   [7, 30, 90].forEach(d => {
     const btn = show('trafficBtn' + d);
     btn.className = 'btn btn-sm ' + (d === days ? 'btn-primary' : 'btn-outline-primary');
@@ -2571,17 +2594,47 @@ async function setTrafficPeriod(days) {
   await loadTrafficTab();
 }
 
-async function loadTrafficTab() {
-  const days = _trafficPeriod;
+async function applyTrafficCustomRange() {
+  const start = show('trafficFrom').value;
+  const end   = show('trafficTo').value;
   show('trafficError').classList.add('d-none');
+  if (!start || !end) {
+    show('trafficError').textContent = t('traffic.range_required');
+    show('trafficError').classList.remove('d-none');
+    return;
+  }
+  if (start > end) {
+    show('trafficError').textContent = t('traffic.range_invalid');
+    show('trafficError').classList.remove('d-none');
+    return;
+  }
+  _trafficCustomRange = { start, end };
+  [7, 30, 90].forEach(d => { show('trafficBtn' + d).className = 'btn btn-sm btn-outline-primary'; });
+  await loadTrafficTab();
+}
+
+function _trafficRangeQuery() {
+  const p = new URLSearchParams();
+  if (_trafficCustomRange) {
+    p.set('start', _trafficCustomRange.start);
+    p.set('end', _trafficCustomRange.end);
+  } else {
+    p.set('days', _trafficPeriod);
+  }
+  return p.toString();
+}
+
+async function loadTrafficTab() {
+  show('trafficError').classList.add('d-none');
+  const qs = _trafficRangeQuery();
 
   const [summary, history, topDatasets, topSearches, topApi, topDownloads] = await Promise.allSettled([
-    fetch(API_BASE + 'api/matomo/summary?days=' + days).then(r => r.json()),
-    fetch(API_BASE + 'api/matomo/visits-history?days=' + days).then(r => r.json()),
-    fetch(API_BASE + 'api/matomo/top-datasets?days=' + days + '&limit=20').then(r => r.json()),
-    fetch(API_BASE + 'api/matomo/top-searches?days=' + days + '&limit=20').then(r => r.json()),
-    fetch(API_BASE + 'api/matomo/top-api-calls?days=' + days + '&limit=20').then(r => r.json()),
-    fetch(API_BASE + 'api/matomo/top-downloads?days=' + days + '&limit=20').then(r => r.json()),
+    fetch(API_BASE + 'api/matomo/summary?' + qs).then(r => r.json()),
+    fetch(API_BASE + 'api/matomo/visits-history?' + qs).then(r => r.json()),
+    fetch(API_BASE + 'api/matomo/top-datasets?' + qs + '&limit=20').then(r => r.json()),
+    fetch(API_BASE + 'api/matomo/top-searches?' + qs + '&limit=20').then(r => r.json()),
+    fetch(API_BASE + 'api/matomo/top-api-calls?' + qs + '&limit=20').then(r => r.json()),
+    fetch(API_BASE + 'api/matomo/top-downloads?' + qs + '&limit=20').then(r => r.json()),
   ]);
 
   // Summary cards

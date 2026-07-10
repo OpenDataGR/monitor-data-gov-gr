@@ -2887,12 +2887,30 @@ def _matomo_date_range(days: int):
     return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
 
 
+def _matomo_resolve_range(default_days=30, max_days=365):
+    """Resolves the effective (days, start, end) for a Matomo query — prefers an
+    explicit ?start=&end= (YYYY-MM-DD) range from the Traffic tab's custom date
+    picker over the ?days= preset buttons, so both share the same code path."""
+    start = (freq.args.get("start") or "").strip()
+    end   = (freq.args.get("end") or "").strip()
+    if start and end:
+        try:
+            d_start = datetime.strptime(start, "%Y-%m-%d")
+            d_end   = datetime.strptime(end, "%Y-%m-%d")
+            if d_end >= d_start:
+                return (d_end - d_start).days + 1, start, end
+        except ValueError:
+            pass
+    days = min(int(freq.args.get("days", default_days)), max_days)
+    s, e = _matomo_date_range(days)
+    return days, s, e
+
+
 @app.route("/api/matomo/summary")
 def matomo_summary():
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
-    days = min(int(freq.args.get("days", 30)), 365)
-    start, end = _matomo_date_range(days)
+    days, start, end = _matomo_resolve_range()
     try:
         data = _matomo_get("VisitsSummary.get", {"period": "range", "date": f"{start},{end}"})
         visits    = data.get("nb_visits", 0) or 0
@@ -2903,7 +2921,7 @@ def matomo_summary():
         uniq_approx = False
         if not uniq:
             try:
-                daily = _matomo_get("VisitsSummary.get", {"period": "day", "date": f"last{days}"})
+                daily = _matomo_get("VisitsSummary.get", {"period": "day", "date": f"{start},{end}"})
                 uniq = sum(v.get("nb_uniq_visitors", 0) or 0 for v in daily.values() if isinstance(v, dict))
                 uniq_approx = True
             except Exception:
@@ -2928,6 +2946,8 @@ def matomo_summary():
             "pageviews":       pageviews,
             "downloads":       downloads,
             "period_days":     days,
+            "start":           start,
+            "end":             end,
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
@@ -2937,15 +2957,15 @@ def matomo_summary():
 def matomo_visits_history():
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
-    days = min(int(freq.args.get("days", 30)), 365)
+    days, start, end = _matomo_resolve_range()
     try:
-        data = _matomo_get("VisitsSummary.get", {"period": "day", "date": f"last{days}"})
+        data = _matomo_get("VisitsSummary.get", {"period": "day", "date": f"{start},{end}"})
 
         # nb_downloads in VisitsSummary is often 0; use Actions.getDownloads per day
         dl_by_date: dict = {}
         try:
             dl_raw = _matomo_get("Actions.getDownloads", {
-                "period": "day", "date": f"last{days}", "filter_limit": 500,
+                "period": "day", "date": f"{start},{end}", "filter_limit": 500,
             })
             if isinstance(dl_raw, dict):
                 for date_str, items in dl_raw.items():
@@ -2969,14 +2989,18 @@ def matomo_visits_history():
         return jsonify({"error": str(exc)}), 503
 
 
-def _matomo_flat_pages(method: str, days: int, extra: dict) -> list:
-    """Fetch aggregated page/keyword data without period=range.
+def _matomo_flat_pages(method: str, days: int, extra: dict, start: str = None, end: str = None) -> list:
+    """Fetch aggregated page/keyword data.
 
-    Maps the requested day count to standard periods (week/month) that
-    Matomo always has pre-archived.  For multi-month requests, merges the
-    per-month lists by label and sums visit counts.
+    With an explicit start/end (custom date range from the Traffic tab), queries
+    that exact range directly. Otherwise maps the requested day count to standard
+    periods (week/month) that Matomo always has pre-archived — faster than a
+    range query, but only for the preset Last 7/30/90 days buttons. For
+    multi-month requests, merges the per-month lists by label and sums visits.
     """
-    if days <= 10:
+    if start and end:
+        period, date_str = "range", f"{start},{end}"
+    elif days <= 10:
         period, date_str = "week", "last1"
     elif days <= 35:
         period, date_str = "month", "last1"
@@ -3014,10 +3038,10 @@ def matomo_top_datasets():
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
     limit = min(int(freq.args.get("limit", 20)), 100)
-    days  = min(int(freq.args.get("days", 30)), 365)
+    days, start, end = _matomo_resolve_range()
     try:
         pages = _matomo_flat_pages("Actions.getPageUrls", days,
-                                   {"flat": 1, "filter_limit": 300})
+                                   {"flat": 1, "filter_limit": 300}, start=start, end=end)
         result = []
         for page in pages:
             label = page.get("label", "")
@@ -3068,10 +3092,10 @@ def matomo_top_searches():
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
     limit = min(int(freq.args.get("limit", 20)), 100)
-    days  = min(int(freq.args.get("days", 30)), 365)
+    days, start, end = _matomo_resolve_range()
     try:
         items = _matomo_flat_pages("Actions.getSiteSearchKeywords", days,
-                                   {"filter_limit": limit * 2})
+                                   {"filter_limit": limit * 2}, start=start, end=end)
         return jsonify([
             {
                 "keyword": item.get("label", ""),
@@ -3088,9 +3112,8 @@ def matomo_top_downloads():
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
     limit = min(int(freq.args.get("limit", 20)), 100)
-    days  = min(int(freq.args.get("days", 30)), 365)
+    days, start, end = _matomo_resolve_range()
     try:
-        start, end = _matomo_date_range(days)
         items = _matomo_get("Actions.getDownloads", {
             "period": "range",
             "date": f"{start},{end}",
@@ -3165,10 +3188,10 @@ def matomo_top_api_calls():
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
     limit = min(int(freq.args.get("limit", 20)), 100)
-    days  = min(int(freq.args.get("days", 30)), 365)
+    days, start, end = _matomo_resolve_range()
     try:
         # Total from the "API" event category
-        cats = _matomo_flat_pages("Events.getCategory", days, {"filter_limit": 50})
+        cats = _matomo_flat_pages("Events.getCategory", days, {"filter_limit": 50}, start=start, end=end)
         api_total = next(
             (c.get("nb_events", 0) or c.get("nb_visits", 0) for c in cats if c.get("label") == "API"),
             0,
@@ -3177,7 +3200,7 @@ def matomo_top_api_calls():
         # Per-action breakdown — CKAN actions are always lowercase_with_underscores;
         # filter out non-API event actions (e.g. "Open", "ClickStatTile") that leak in
         _ckan_action = re.compile(r'^[a-z][a-z0-9_]+$')
-        actions = _matomo_flat_pages("Events.getAction", days, {"filter_limit": limit * 2})
+        actions = _matomo_flat_pages("Events.getAction", days, {"filter_limit": limit * 2}, start=start, end=end)
         result = [
             {
                 "path":   a.get("label", ""),
