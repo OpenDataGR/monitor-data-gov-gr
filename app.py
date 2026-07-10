@@ -2235,7 +2235,7 @@ def _search_normalize(s):
     return "".join(ch for ch in s if not unicodedata.combining(ch)).lower()
 
 
-_CONTACT_EXPORT_ROLE_LABELS = {"admin": "Org Administrator", "editor": "Org Editor", "member": "Org Member"}
+_CONTACT_EXPORT_ROLE_LABELS = {"admin": "Org Administrator", "editor": "Org Editor", "member": "Org Member", "user": "User"}
 
 
 def _contact_export_role(m):
@@ -2777,7 +2777,7 @@ def _do_fetch_portal_members():
                     "org_title":    "",
                     "username":     uname,
                     "display_name": ui.get("display_name", uname),
-                    "capacity":     "member",  # no org membership = no assigned role; default to Org Member
+                    "capacity":     "user",  # no org membership = no assigned org role; just a plain portal User
                     "email":        ui.get("email", ""),
                     "state":        ui.get("state", "active"),
                     "sysadmin":     ui.get("sysadmin", False),

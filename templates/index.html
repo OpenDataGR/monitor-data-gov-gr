@@ -4201,7 +4201,7 @@ function _renderOrgContactsPanel() {
     <i class="bi bi-person-plus me-1"></i>${t('contacts.add')}
   </button>`;
 
-  const _ROLE_LBL = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member' };
+  const _ROLE_LBL = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member', user: 'User' };
 
   const memberCards = portalMembers.map(m => {
     const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
@@ -5123,7 +5123,7 @@ function _contactsSortArrow(col) {
 }
 
 
-const ROLE_BADGE_CLS = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary', sysadmin: 'bg-danger' };
+const ROLE_BADGE_CLS = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary', user: 'bg-light text-dark border', sysadmin: 'bg-danger' };
 const STATE_BADGE_CLS = { active: 'bg-success', deleted: 'bg-danger', pending: 'bg-warning text-dark' };
 const CONTACT_TYPE_CLS = {
   'Org Administrator':    'bg-primary',
@@ -5280,7 +5280,7 @@ function filterContactsTab() {
   _pmRows = rows;
   show('contactsTableBody').innerHTML = rows.map((m, i) => {
     const state    = m.state || 'active';
-    const _ROLE_LBL = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member' };
+    const _ROLE_LBL = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member', user: 'User' };
     const roleCls   = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (CONTACT_TYPE_CLS[_ROLE_LBL[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
     const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
     const stateCls = STATE_BADGE_CLS[state]       || 'bg-secondary';
@@ -5374,7 +5374,7 @@ function renderContactsGrouped(rows) {
           <tbody>
             ${g.items.map((m, mi) => {
               const state     = m.state || 'active';
-              const _ROLE_LBL = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member' };
+              const _ROLE_LBL = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member', user: 'User' };
               const roleCls   = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (CONTACT_TYPE_CLS[_ROLE_LBL[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
               const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
               const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
