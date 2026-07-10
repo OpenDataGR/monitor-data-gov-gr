@@ -1018,7 +1018,7 @@
 
 <!-- Contacts Export column-selection modal -->
 <div class="modal fade" id="contactsExportModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
       <div class="modal-header border-bottom">
         <h5 class="modal-title fw-bold">
@@ -1036,7 +1036,7 @@
             <a href="#" class="small" onclick="_setContactsExportCols(false);return false;" data-i18n="contacts.export_select_none">None</a>
           </div>
         </div>
-        <div id="contactsExportColumns" class="d-flex flex-column gap-2"></div>
+        <div id="contactsExportColumns" style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem .75rem"></div>
         <hr class="my-3">
         <div class="form-check">
           <input class="form-check-input" type="checkbox" id="contactsExportAnonymize">
