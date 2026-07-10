@@ -2327,7 +2327,9 @@ def contacts_export():
     if state_filter:
         rows = [m for m in rows if (m.get("state") or "active") == state_filter]
 
-    rows.sort(key=lambda m: (_search_normalize(m.get("org_title", "")), _search_normalize(m.get("display_name", ""))))
+    # Newest-registered first; accounts with no known registration date (no CKAN
+    # match) sort to the very end regardless of direction since "" < any date string.
+    rows.sort(key=lambda m: (m.get("created") or ""), reverse=True)
 
     wb = Workbook()
     ws = wb.active
@@ -2348,6 +2350,10 @@ def contacts_export():
     for col in ws.columns:
         width = max((len(str(cell.value or "")) for cell in col), default=0)
         ws.column_dimensions[col[0].column_letter].width = min(width + 2, 55)
+
+    if rows:
+        ws.auto_filter.ref = ws.dimensions
+        ws.freeze_panes = "A2"
 
     buf = io.BytesIO()
     wb.save(buf)
