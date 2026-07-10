@@ -4570,6 +4570,18 @@ function renderUserPanel(u) {
   const c = u.contact;
   // find the org this user belongs to (first one) for pre-filling new contact
   const _uOrg = (_portalMembersCache || []).find(m => m.username === u.username && m.org_name);
+
+  // Portal's own name, split from display_name (CKAN has no separate first/last fields)
+  const _portalNameParts = (u.display_name || '').trim().split(/\s+/).filter(Boolean);
+  const _portalFirst = _portalNameParts[0] || '';
+  const _portalLast  = _portalNameParts.slice(1).join(' ');
+
+  // Effective role: same highest-rank-wins logic as the Contacts table, so it
+  // always matches what's shown there rather than just the first org found.
+  const _ROLE_LBL_MAP = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member', user: 'User' };
+  const _bestRole = _dedupeContacts(_portalMembersCache || []).find(m => m.username === u.username);
+  const _portalRoleLabel = u.sysadmin ? 'Sysadmin' : (_bestRole ? (_ROLE_LBL_MAP[_bestRole.capacity] || _bestRole.capacity || '—') : '—');
+  const _portalRoleCls   = u.sysadmin ? ROLE_BADGE_CLS.sysadmin : (_bestRole ? (ROLE_BADGE_CLS[_bestRole.capacity] || 'bg-secondary') : 'bg-secondary');
   const contactHtml = `
     <div class="mt-3 pt-3 border-top">
       <div class="d-flex align-items-center justify-content-between mb-2">
@@ -4588,11 +4600,13 @@ function renderUserPanel(u) {
         </div>
       </div>
       ${c ? `<dl class="row g-1 small mb-0">
+        <dt class="col-5 text-muted fw-normal mb-1">First Name</dt><dd class="col-7 mb-1">${c.first_name ? esc(c.first_name) : '—'}</dd>
+        <dt class="col-5 text-muted fw-normal mb-1">Last Name</dt><dd class="col-7 mb-1">${c.last_name ? esc(c.last_name) : '—'}</dd>
         ${c.email ? `<dt class="col-5 text-muted fw-normal mb-1">Email (file)</dt><dd class="col-7 mb-1"><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></dd>` : ''}
         ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">Position</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
         ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">Tel</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a></dd>` : ''}
         ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">Mobile</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a></dd>` : ''}
-        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Type</dt><dd class="col-7 mb-1">${
+        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Role</dt><dd class="col-7 mb-1">${
           c.contact_type.split(',').map(s => s.trim()).filter(Boolean)
             .map(s => `<span class="badge me-1 mb-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(s)}</span>`).join('')
         }</dd>` : ''}
@@ -4605,6 +4619,12 @@ function renderUserPanel(u) {
       ${u.sysadmin ? '<span class="badge bg-danger">sysadmin</span>' : ''}
     </div>
     <dl class="row g-1 small mb-0">
+      <dt class="col-5 text-muted fw-normal mb-1">First Name</dt>
+      <dd class="col-7 mb-1">${_portalFirst ? esc(_portalFirst) : '—'}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">Last Name</dt>
+      <dd class="col-7 mb-1">${_portalLast ? esc(_portalLast) : '—'}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">Role</dt>
+      <dd class="col-7 mb-1"><span class="badge ${_portalRoleCls}">${esc(_portalRoleLabel)}</span></dd>
       <dt class="col-5 text-muted fw-normal mb-1">Email</dt>
       <dd class="col-7 mb-1">${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</dd>
       <dt class="col-5 text-muted fw-normal mb-1">Registered</dt>
