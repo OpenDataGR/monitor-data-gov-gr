@@ -278,8 +278,18 @@
           </button>
         </li>
         <li class="nav-item">
-          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-stats" id="statsTabBtn" data-i18n-title="tab.statistics" title="Statistics">
-            <i class="bi bi-graph-up"></i><span class="sidebar-label" data-i18n="tab.statistics">Statistics</span>
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-stats" id="statsTabBtn" data-i18n-title="tab.insights" title="Insights">
+            <i class="bi bi-graph-up"></i><span class="sidebar-label" data-i18n="tab.insights">Insights</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-geo-insights" id="geoInsightsTabBtn" data-i18n-title="tab.geo_insights" title="Geospatial Insights">
+            <i class="bi bi-geo-alt"></i><span class="sidebar-label" data-i18n="tab.geo_insights">Geospatial Insights</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-temporal-insights" id="temporalInsightsTabBtn" data-i18n-title="tab.temporal_insights" title="Temporal Insights">
+            <i class="bi bi-clock-history"></i><span class="sidebar-label" data-i18n="tab.temporal_insights">Temporal Insights</span>
           </button>
         </li>
         <li class="nav-item">
@@ -412,7 +422,7 @@
       </div>
     </div>
 
-    <!-- Statistics -->
+    <!-- Insights -->
     <div class="tab-pane fade" id="tab-stats">
       <div class="row g-3">
         <div class="col-12 col-lg-8">
@@ -437,7 +447,11 @@
           </div>
         </div>
       </div>
-      <div class="row g-3 mt-1">
+    </div>
+
+    <!-- Geospatial Insights -->
+    <div class="tab-pane fade" id="tab-geo-insights">
+      <div class="row g-3">
         <div class="col-12">
           <div class="card p-4 h-100">
             <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
@@ -447,6 +461,18 @@
             <div id="geoMapWrap"><div id="geoDatasetsMap" style="height:420px;border-radius:8px"></div></div>
             <div id="geoMapLoading" class="text-center text-muted small py-4"><div class="spinner-border spinner-border-sm me-2"></div><span data-i18n="stats.geo_map_loading">Locating organizations' geospatial datasets…</span></div>
             <div id="geoMapEmpty" class="text-center text-muted small py-4 d-none" data-i18n="stats.geo_map_none">No geospatial dataset locations available.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Temporal Insights -->
+    <div class="tab-pane fade" id="tab-temporal-insights">
+      <div class="row g-3">
+        <div class="col-12">
+          <div class="card p-4 text-center text-muted py-5">
+            <i class="bi bi-clock-history fs-1 mb-3"></i>
+            <div data-i18n="temporal.coming_soon">Coming soon.</div>
           </div>
         </div>
       </div>
@@ -1247,7 +1273,9 @@ const TRANSLATIONS = {
     'stat.uptime': 'Portal Uptime (24h)',
     'tab.overview': 'Overview',
     'tab.health': 'Health',
-    'tab.statistics': 'Statistics',
+    'tab.insights': 'Insights',
+    'tab.geo_insights': 'Geospatial Insights',
+    'tab.temporal_insights': 'Temporal Insights',
     'tab.datasets': 'Dataset Totals',
     'tab.traffic': 'Traffic',
     'tab.quality': 'Quality',
@@ -1506,6 +1534,7 @@ const TRANSLATIONS = {
     'stats.geo_map_none': 'No geospatial dataset locations available.',
     'stats.geo_map_orgs': 'organizations',
     'stats.geo_map_datasets': 'datasets',
+    'temporal.coming_soon': 'Coming soon.',
     'traffic.col_dataset': 'Dataset',
     'traffic.col_visits': 'Visits',
     'traffic.col_query': 'Query',
@@ -1637,7 +1666,9 @@ const TRANSLATIONS = {
     'stat.uptime': 'Διαθεσιμότητα Πύλης (24ω)',
     'tab.overview': 'Επισκόπηση',
     'tab.health': 'Κατάσταση',
-    'tab.statistics': 'Στατιστικά',
+    'tab.insights': 'Αναλύσεις',
+    'tab.geo_insights': 'Γεωχωρικές Αναλύσεις',
+    'tab.temporal_insights': 'Χρονικές Αναλύσεις',
     'tab.datasets': 'Σύνολα Δεδομένων',
     'tab.traffic': 'Επισκεψιμότητα',
     'tab.quality': 'Ποιότητα',
@@ -1896,6 +1927,7 @@ const TRANSLATIONS = {
     'stats.geo_map_none': 'Δεν υπάρχουν διαθέσιμες τοποθεσίες γεωχωρικών συνόλων δεδομένων.',
     'stats.geo_map_orgs': 'φορείς',
     'stats.geo_map_datasets': 'σύνολα δεδομένων',
+    'temporal.coming_soon': 'Σύντομα διαθέσιμο.',
     'traffic.col_dataset': 'Σύνολο Δεδομένων',
     'traffic.col_visits': 'Επισκέψεις',
     'traffic.col_query': 'Αναζήτηση',
@@ -2673,7 +2705,7 @@ async function loadRecentChecks() {
   } catch (_) {}
 }
 
-// ── Statistics tab ───────────────────────────────────────────────────────────
+// ── Insights tab ─────────────────────────────────────────────────────────────
 let _statsLoaded = false;
 
 document.getElementById('statsTabBtn').addEventListener('click', () => {
@@ -2681,13 +2713,21 @@ document.getElementById('statsTabBtn').addEventListener('click', () => {
   _statsLoaded = true;
   loadStatsTab();
   _loadStatsFormatChart();
+});
+
+// ── Geospatial Insights tab ──────────────────────────────────────────────────
+let _geoInsightsLoaded = false;
+
+document.getElementById('geoInsightsTabBtn').addEventListener('click', () => {
+  if (_geoInsightsLoaded) return;
+  _geoInsightsLoaded = true;
   loadGeoDatasetsMap();
 });
 
 // Leaflet measures its container on init; if that happens while the tab-pane
 // is still hidden (display:none), the map ends up sized 0x0 and never
 // self-corrects. Re-measuring once Bootstrap finishes showing the tab fixes it.
-document.getElementById('statsTabBtn').addEventListener('shown.bs.tab', () => {
+document.getElementById('geoInsightsTabBtn').addEventListener('shown.bs.tab', () => {
   if (_geoDatasetsMap) _geoDatasetsMap.invalidateSize();
 });
 
@@ -2790,7 +2830,7 @@ async function _pollDatasetGrowth(attempts = 0) {
   } catch (_) {}
 }
 
-// ── Geospatial dataset locations map (Statistics tab) ───────────────────────
+// ── Geospatial dataset locations map (Geospatial Insights tab) ──────────────
 let _geoDatasetsMap = null;
 let _geoDatasetsMarkers = [];
 
