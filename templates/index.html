@@ -464,16 +464,19 @@
                 <li class="nav-item">
                   <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogTypeSummaryPane" type="button">
                     <i class="bi bi-tag me-1"></i><span data-i18n="catalog.filter_group_type">Type</span>
+                    <span id="catalogTypeTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
                   </button>
                 </li>
                 <li class="nav-item">
                   <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogHvdSummaryPane" type="button">
                     <i class="bi bi-gem me-1"></i><span data-i18n="catalog.filter_group_hvd">HVD</span>
+                    <span id="catalogHvdTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
                   </button>
                 </li>
                 <li class="nav-item">
                   <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogHarvestSummaryPane" type="button">
                     <i class="bi bi-cloud-arrow-down me-1"></i><span data-i18n="catalog.filter_group_harvest">Harvested</span>
+                    <span id="catalogHarvestTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
                   </button>
                 </li>
               </ul>
@@ -2110,7 +2113,7 @@ const CATALOG_PAGE_SIZE = 20;
 // data-service AND HVD AND harvested all at once), so each gets its own
 // row and its own toggleable filter state, rather than the single-
 // selection model Contacts uses for role-or-state.
-function _renderCatalogFilterCards(elId, cards, activeFilter, onclickName) {
+function _renderCatalogFilterCards(elId, cards, activeFilter, onclickName, tabDotId) {
   const el = document.getElementById(elId);
   el.innerHTML = cards.map((c, i) => {
     const active = c.filter === activeFilter;
@@ -2127,6 +2130,14 @@ function _renderCatalogFilterCards(elId, cards, activeFilter, onclickName) {
       </div>
     </div>`;
   }).join('');
+
+  // Small dot on the tab label itself, so a selection is visible even while
+  // looking at a different tab — with the active option's label on hover.
+  if (!tabDotId) return;
+  const dot = document.getElementById(tabDotId);
+  const activeCard = activeFilter ? cards.find(c => c.filter === activeFilter) : null;
+  dot.classList.toggle('d-none', !activeCard);
+  dot.title = activeCard ? activeCard.label : '';
 }
 
 let _catalogTypeFilter = '';   // '' = all, else an exact CKAN package type (e.g. "dataset")
@@ -2144,7 +2155,7 @@ function renderCatalogTypeSummary(typeCounts) {
       bg: "bg-primary bg-opacity-10", text: "text-primary", icon: _CATALOG_TYPE_ICON[ty.name] || 'bi-tag',
     })),
   ];
-  _renderCatalogFilterCards('catalogTypeSummary', _catalogTypeSummaryCards, _catalogTypeFilter, 'setCatalogTypeFilter');
+  _renderCatalogFilterCards('catalogTypeSummary', _catalogTypeSummaryCards, _catalogTypeFilter, 'setCatalogTypeFilter', 'catalogTypeTabDot');
 }
 
 function setCatalogTypeFilter(idx) {
@@ -2167,7 +2178,7 @@ function renderCatalogHvdSummary(hvdCount, nonHvdCount) {
       title: "High-Value Dataset — Commission Implementing Regulation (EU) 2023/138" },
     { filter: '0', label: t('catalog.filter_hvd_non'),  value: nonHvdCount,            bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-gem" },
   ];
-  _renderCatalogFilterCards('catalogHvdSummary', _catalogHvdSummaryCards, _catalogHvdFilter, 'setCatalogHvdFilter');
+  _renderCatalogFilterCards('catalogHvdSummary', _catalogHvdSummaryCards, _catalogHvdFilter, 'setCatalogHvdFilter', 'catalogHvdTabDot');
 }
 
 function setCatalogHvdFilter(idx) {
@@ -2189,7 +2200,7 @@ function renderCatalogHarvestSummary(harvestedCount, manualCount) {
     { filter: '1', label: t('catalog.filter_harvest_harvested'), value: harvestedCount,               bg: "bg-info bg-opacity-10",      text: "text-info",      icon: "bi-cloud-arrow-down" },
     { filter: '0', label: t('catalog.filter_harvest_manual'),    value: manualCount,                  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-pencil-square" },
   ];
-  _renderCatalogFilterCards('catalogHarvestSummary', _catalogHarvestSummaryCards, _catalogHarvestedFilter, 'setCatalogHarvestFilter');
+  _renderCatalogFilterCards('catalogHarvestSummary', _catalogHarvestSummaryCards, _catalogHarvestedFilter, 'setCatalogHarvestFilter', 'catalogHarvestTabDot');
 }
 
 function setCatalogHarvestFilter(idx) {
