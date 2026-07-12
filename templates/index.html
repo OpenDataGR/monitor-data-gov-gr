@@ -1217,6 +1217,7 @@ const TRANSLATIONS = {
     'contacts.role_admin': 'Admin',
     'contacts.role_editor': 'Editor',
     'contacts.role_member': 'Member',
+    'contacts.role_user': 'User',
     'contacts.role_sysadmin': 'Sysadmin',
     'contacts.total': 'Total',
     'contacts.loading_portal': 'Loading portal members…',
@@ -1590,6 +1591,7 @@ const TRANSLATIONS = {
     'contacts.role_admin': 'Διαχειριστής',
     'contacts.role_editor': 'Συντάκτης',
     'contacts.role_member': 'Μέλος',
+    'contacts.role_user': 'Χρήστης',
     'contacts.role_sysadmin': 'Sysadmin',
     'contacts.total': 'Σύνολο',
     'contacts.loading_portal': 'Φόρτωση μελών πύλης…',
@@ -5354,7 +5356,7 @@ function renderContactsSummary() {
     return;
   }
   const rows = _dedupeContacts(_portalMembersCache);
-  const roleCounts  = { admin: 0, editor: 0, member: 0, sysadmin: 0 };
+  const roleCounts  = { admin: 0, editor: 0, member: 0, user: 0, sysadmin: 0 };
   const stateCounts = { active: 0, deleted: 0, pending: 0 };
   for (const m of rows) {
     if (m.sysadmin) roleCounts.sysadmin++;
@@ -5368,14 +5370,15 @@ function renderContactsSummary() {
     { filter: { type: 'role', value: 'admin' },    label: t('contacts.role_admin'),    value: roleCounts.admin,    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-shield-check" },
     { filter: { type: 'role', value: 'editor' },   label: t('contacts.role_editor'),   value: roleCounts.editor,   bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-pencil-square" },
     { filter: { type: 'role', value: 'member' },   label: t('contacts.role_member'),   value: roleCounts.member,   bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person" },
+    { filter: { type: 'role', value: 'user' },     label: t('contacts.role_user'),     value: roleCounts.user,    bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person-badge" },
     { filter: { type: 'role', value: 'sysadmin' }, label: t('contacts.role_sysadmin'), value: roleCounts.sysadmin, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-shield-lock" },
     { filter: { type: 'state', value: 'active' },  label: t('contacts.state_active'),  value: stateCounts.active,  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-check-circle" },
     { filter: { type: 'state', value: 'pending' }, label: t('contacts.state_pending'), value: stateCounts.pending, bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-hourglass-split" },
     { filter: { type: 'state', value: 'deleted' }, label: t('contacts.state_deleted'), value: stateCounts.deleted, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-x-circle" },
   ];
 
-  _renderContactsFilterGroup('contactsRoleSummary',  [0, 1, 2, 3, 4], 'contactsRoleTabDot');
-  _renderContactsFilterGroup('contactsStateSummary', [0, 5, 6, 7],    'contactsStateTabDot');
+  _renderContactsFilterGroup('contactsRoleSummary',  [0, 1, 2, 3, 4, 5], 'contactsRoleTabDot');
+  _renderContactsFilterGroup('contactsStateSummary', [0, 6, 7, 8],       'contactsStateTabDot');
 }
 
 function setContactsFilter(idx) {
