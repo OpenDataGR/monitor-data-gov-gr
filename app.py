@@ -1604,7 +1604,10 @@ _OPEN_LICENSE_MARKERS = (
 _hvd_vocab_cache: dict = {}
 _hvd_vocab_lock = threading.Lock()
 
-_hvd_check_cache: dict = {"result": None, "running": False, "started_at": None, "error": None}
+_hvd_check_cache: dict = {
+    "result": None, "running": False, "started_at": None, "error": None,
+    "total": 0, "completed": 0, "cancel_requested": False,
+}
 
 
 def _get_vocab_graph(url: str):
@@ -1755,10 +1758,13 @@ def _list_hvd_dataset_names() -> list:
 
 
 def _do_run_hvd_check() -> None:
+    cancelled = False
     try:
         names = _list_hvd_dataset_names()
+        _hvd_check_cache["total"] = len(names)
         rows = []
-        with ThreadPoolExecutor(max_workers=15) as pool:
+        pool = ThreadPoolExecutor(max_workers=15)
+        try:
             futures = {pool.submit(_hvd_check_one, name): name for name in names}
             for fut in as_completed(futures):
                 name = futures[fut]
@@ -1766,11 +1772,21 @@ def _do_run_hvd_check() -> None:
                     rows.append(fut.result())
                 except Exception as exc:
                     rows.append({"name": name, "error": str(exc)})
+                _hvd_check_cache["completed"] = len(rows)
+                if _hvd_check_cache["cancel_requested"]:
+                    cancelled = True
+                    break
+        finally:
+            # Drop any not-yet-started work immediately; already-running
+            # requests in other threads finish on their own (Python can't
+            # forcibly kill a thread mid-request) but their results are
+            # simply not collected -- don't block the cancel on them.
+            pool.shutdown(wait=False, cancel_futures=True)
 
         checked = [r for r in rows if "error" not in r]
         failed  = [r for r in rows if "error" in r]
         summary = {
-            "total":                len(rows),
+            "total":                len(names),
             "checked":              len(checked),
             "failed_to_fetch":      len(failed),
             "conforms":             sum(1 for r in checked if r["conforms"]),
@@ -1787,13 +1803,15 @@ def _do_run_hvd_check() -> None:
         _hvd_check_cache["result"] = {
             "summary":     summary,
             "datasets":    flagged,
+            "partial":     cancelled,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
         _hvd_check_cache["error"] = None
     except Exception as exc:
         _hvd_check_cache["error"] = str(exc)
     finally:
-        _hvd_check_cache["running"] = False
+        _hvd_check_cache["running"]          = False
+        _hvd_check_cache["cancel_requested"] = False
 
 
 @app.route("/api/quality/hvd-check", methods=["POST"])
@@ -1803,10 +1821,24 @@ def start_hvd_check():
         return err
     if _hvd_check_cache["running"]:
         return jsonify({"started": False, "already_running": True})
-    _hvd_check_cache["running"]    = True
-    _hvd_check_cache["started_at"] = datetime.now(timezone.utc).isoformat()
+    _hvd_check_cache["running"]          = True
+    _hvd_check_cache["started_at"]       = datetime.now(timezone.utc).isoformat()
+    _hvd_check_cache["cancel_requested"] = False
+    _hvd_check_cache["total"]            = 0
+    _hvd_check_cache["completed"]        = 0
     threading.Thread(target=_do_run_hvd_check, daemon=True).start()
     return jsonify({"started": True})
+
+
+@app.route("/api/quality/hvd-check/cancel", methods=["POST"])
+def cancel_hvd_check():
+    err = _require_admin()
+    if err:
+        return err
+    if not _hvd_check_cache["running"]:
+        return jsonify({"cancelled": False, "reason": "not_running"})
+    _hvd_check_cache["cancel_requested"] = True
+    return jsonify({"cancelled": True})
 
 
 @app.route("/api/quality/hvd-check")
@@ -1816,6 +1848,9 @@ def get_hvd_check():
         "started_at": _hvd_check_cache["started_at"],
         "error":      _hvd_check_cache["error"],
         "result":     _hvd_check_cache["result"],
+        "total":      _hvd_check_cache["total"],
+        "completed":  _hvd_check_cache["completed"],
+        "cancelling": _hvd_check_cache["cancel_requested"],
     })
 
 
