@@ -5315,12 +5315,18 @@ function _dedupeContacts(rows) {
   return [...seen.values()];
 }
 
-let _contactsActiveFilter = null;   // { type: 'role'|'state', value } or null = show all
+// Role and State are independent, combinable facets (same reasoning as the
+// Dataset Catalog's Type/HVD/Harvested tabs) — a contact can be filtered by
+// role AND state at once, so each dimension gets its own filter value rather
+// than the old single _contactsActiveFilter that could only hold one.
+let _contactsRoleFilter  = null;   // e.g. 'admin', or null = every role
+let _contactsStateFilter = null;   // e.g. 'active', or null = every state
 let _contactsSummaryCards = [];
 
 function _contactsFilterIsActive(f) {
-  if (!f) return !_contactsActiveFilter;
-  return !!_contactsActiveFilter && f.type === _contactsActiveFilter.type && f.value === _contactsActiveFilter.value;
+  if (f.type === 'role')  return _contactsRoleFilter  === f.value;
+  if (f.type === 'state') return _contactsStateFilter === f.value;
+  return false;
 }
 
 // Renders a subset of _contactsSummaryCards (by original index, so
@@ -5345,7 +5351,10 @@ function _renderContactsFilterGroup(elId, indices, tabDotId) {
   }).join('');
   if (!tabDotId) return;
   const dot = document.getElementById(tabDotId);
-  const hasActive = indices.some(idx => _contactsSummaryCards[idx].filter && _contactsFilterIsActive(_contactsSummaryCards[idx].filter));
+  const hasActive = indices.some(idx => {
+    const f = _contactsSummaryCards[idx].filter;
+    return f.value !== null && _contactsFilterIsActive(f);
+  });
   dot.classList.toggle('d-none', !hasActive);
 }
 
@@ -5365,28 +5374,35 @@ function renderContactsSummary() {
     stateCounts[st] = (stateCounts[st] || 0) + 1;
   }
 
+  // Each dimension keeps its own "Total/All" card (same count, but a
+  // separate filter object) since clearing the Role filter and clearing the
+  // State filter are now two independent actions, not one shared "show all".
   _contactsSummaryCards = [
-    { filter: null, label: t('contacts.total'), value: rows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+    { filter: { type: 'role', value: null },       label: t('contacts.total'), value: rows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
     { filter: { type: 'role', value: 'admin' },    label: t('contacts.role_admin'),    value: roleCounts.admin,    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-shield-check" },
     { filter: { type: 'role', value: 'editor' },   label: t('contacts.role_editor'),   value: roleCounts.editor,   bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-pencil-square" },
     { filter: { type: 'role', value: 'member' },   label: t('contacts.role_member'),   value: roleCounts.member,   bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person" },
     { filter: { type: 'role', value: 'user' },     label: t('contacts.role_user'),     value: roleCounts.user,    bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person-badge" },
     { filter: { type: 'role', value: 'sysadmin' }, label: t('contacts.role_sysadmin'), value: roleCounts.sysadmin, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-shield-lock" },
+    { filter: { type: 'state', value: null },      label: t('contacts.total'), value: rows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
     { filter: { type: 'state', value: 'active' },  label: t('contacts.state_active'),  value: stateCounts.active,  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-check-circle" },
     { filter: { type: 'state', value: 'pending' }, label: t('contacts.state_pending'), value: stateCounts.pending, bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-hourglass-split" },
     { filter: { type: 'state', value: 'deleted' }, label: t('contacts.state_deleted'), value: stateCounts.deleted, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-x-circle" },
   ];
 
   _renderContactsFilterGroup('contactsRoleSummary',  [0, 1, 2, 3, 4, 5], 'contactsRoleTabDot');
-  _renderContactsFilterGroup('contactsStateSummary', [0, 6, 7, 8],       'contactsStateTabDot');
+  _renderContactsFilterGroup('contactsStateSummary', [6, 7, 8, 9],       'contactsStateTabDot');
 }
 
 function setContactsFilter(idx) {
   const card = _contactsSummaryCards[idx];
   if (!card) return;
   const f = card.filter;
-  const isSame = f && _contactsActiveFilter && f.type === _contactsActiveFilter.type && f.value === _contactsActiveFilter.value;
-  _contactsActiveFilter = (!f || isSame) ? null : f;
+  if (f.type === 'role') {
+    _contactsRoleFilter = (_contactsRoleFilter === f.value) ? null : f.value;
+  } else if (f.type === 'state') {
+    _contactsStateFilter = (_contactsStateFilter === f.value) ? null : f.value;
+  }
   renderContactsSummary();
   filterContactsTab();
 }
@@ -5409,14 +5425,13 @@ function filterContactsTab() {
 
   rows = _dedupeContacts(rows);
 
-  if (_contactsActiveFilter) {
-    if (_contactsActiveFilter.type === 'role') {
-      rows = rows.filter(m => _contactsActiveFilter.value === 'sysadmin'
-        ? m.sysadmin
-        : (!m.sysadmin && m.capacity === _contactsActiveFilter.value));
-    } else if (_contactsActiveFilter.type === 'state') {
-      rows = rows.filter(m => (m.state || 'active') === _contactsActiveFilter.value);
-    }
+  if (_contactsRoleFilter) {
+    rows = rows.filter(m => _contactsRoleFilter === 'sysadmin'
+      ? m.sysadmin
+      : (!m.sysadmin && m.capacity === _contactsRoleFilter));
+  }
+  if (_contactsStateFilter) {
+    rows = rows.filter(m => (m.state || 'active') === _contactsStateFilter);
   }
 
   rows = [...rows].sort((a, b) => {
@@ -6250,9 +6265,12 @@ function _contactsExportFilterLabel() {
   const parts = [];
   const search = (show('contactsSearch').value || '').trim();
   if (search) parts.push(`"${search}"`);
-  if (_contactsActiveFilter) {
-    const card = _contactsSummaryCards.find(c => c.filter
-      && c.filter.type === _contactsActiveFilter.type && c.filter.value === _contactsActiveFilter.value);
+  if (_contactsRoleFilter) {
+    const card = _contactsSummaryCards.find(c => c.filter.type === 'role' && c.filter.value === _contactsRoleFilter);
+    if (card) parts.push(card.label);
+  }
+  if (_contactsStateFilter) {
+    const card = _contactsSummaryCards.find(c => c.filter.type === 'state' && c.filter.value === _contactsStateFilter);
     if (card) parts.push(card.label);
   }
   return parts.length ? parts.join(' + ') : t('contacts.export_filter_none');
@@ -6292,10 +6310,8 @@ function submitContactsExport() {
   const search = (show('contactsSearch').value || '').trim();
   const params = new URLSearchParams();
   if (search) params.set('search', search);
-  if (_contactsActiveFilter) {
-    if (_contactsActiveFilter.type === 'role') params.set('role', _contactsActiveFilter.value);
-    else if (_contactsActiveFilter.type === 'state') params.set('state', _contactsActiveFilter.value);
-  }
+  if (_contactsRoleFilter) params.set('role', _contactsRoleFilter);
+  if (_contactsStateFilter) params.set('state', _contactsStateFilter);
   selected.forEach(key => params.append('columns', key));
   if (show('contactsExportAnonymize').checked) params.set('anonymize', '1');
   window.location = API_BASE + 'api/contacts/export?' + params.toString();
