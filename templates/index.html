@@ -2585,13 +2585,22 @@ document.getElementById('trafficTabBtn').addEventListener('click', () => {
 async function setTrafficPeriod(days) {
   _trafficPeriod = days;
   _trafficCustomRange = null;
-  show('trafficFrom').value = '';
-  show('trafficTo').value = '';
   [7, 30, 90].forEach(d => {
     const btn = show('trafficBtn' + d);
     btn.className = 'btn btn-sm ' + (d === days ? 'btn-primary' : 'btn-outline-primary');
   });
   await loadTrafficTab();
+}
+
+// Mirrors the server's _matomo_date_range(days): "last N days" inclusive of
+// today, so From = today - (N-1) and To = today.
+function _fillTrafficDatesForPeriod(days) {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - (days - 1));
+  const toISODate = d => d.toISOString().slice(0, 10);
+  show('trafficFrom').value = toISODate(start);
+  show('trafficTo').value   = toISODate(end);
 }
 
 async function applyTrafficCustomRange() {
@@ -2626,6 +2635,7 @@ function _trafficRangeQuery() {
 
 async function loadTrafficTab() {
   show('trafficError').classList.add('d-none');
+  if (!_trafficCustomRange) _fillTrafficDatesForPeriod(_trafficPeriod);
   const qs = _trafficRangeQuery();
 
   const [summary, history, topDatasets, topSearches, topApi, topDownloads] = await Promise.allSettled([
