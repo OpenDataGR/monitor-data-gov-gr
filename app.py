@@ -1137,6 +1137,19 @@ def _is_hvd(pkg: dict) -> bool:
     return bool(val)
 
 
+def _is_geospatial(pkg: dict) -> bool:
+    """True if the CKAN package is classified as geospatial data (DCAT-AP
+    dataset-type authority table) -- data.gov.gr stores this as a list of
+    authority-table URIs in the `dcat_type` field, one of which ends in
+    GEOSPATIAL for spatial datasets (e.g. GIS layers, WMS/WFS services)."""
+    val = pkg.get("dcat_type")
+    if isinstance(val, list):
+        return any("GEOSPATIAL" in v for v in val if isinstance(v, str))
+    if isinstance(val, str):
+        return "GEOSPATIAL" in val
+    return False
+
+
 def _harvest_source(pkg: dict):
     """The harvest source title if this package was imported by a CKAN
     harvester, else None if it was created directly on the portal. Harvested
@@ -1169,6 +1182,7 @@ def datasets_search():
     since    = (freq.args.get("since") or "").strip()
     hvd_filter = (freq.args.get("hvd") or "").strip()  # "1" = HVD only, "0" = non-HVD only, "" = all
     harvested_filter = (freq.args.get("harvested") or "").strip()  # "1" = harvested only, "0" = manual only, "" = all
+    geo_filter = (freq.args.get("geo") or "").strip()  # "1" = geospatial only, "0" = non-geospatial only, "" = all
     sort_key = (freq.args.get("sort") or "").strip()
     rows     = min(max(int(freq.args.get("rows", 20) or 20), 1), 100)
     start    = max(int(freq.args.get("start", 0) or 0), 0)
@@ -1202,6 +1216,7 @@ def datasets_search():
     type_fq      = f'type:"{ds_type}"'          if ds_type                else None
     hvd_fq       = '-hvd_category:"[]"'        if hvd_filter == "1"       else 'hvd_category:"[]"'          if hvd_filter == "0"       else None
     harvested_fq = "harvest_source_id:[* TO *]" if harvested_filter == "1" else "-harvest_source_id:[* TO *]" if harvested_filter == "0" else None
+    geo_fq       = "dcat_type:*GEOSPATIAL*"     if geo_filter == "1"       else "-dcat_type:*GEOSPATIAL*"     if geo_filter == "0"       else None
 
     fq_parts = list(shared_fq_parts)
     if type_fq:
@@ -1210,6 +1225,8 @@ def datasets_search():
         fq_parts.append(hvd_fq)
     if harvested_fq:
         fq_parts.append(harvested_fq)
+    if geo_fq:
+        fq_parts.append(geo_fq)
     if fq_parts:
         params["fq"] = " AND ".join(fq_parts)
 
@@ -1234,20 +1251,22 @@ def datasets_search():
             "num_resources":     len(p.get("resources") or []),
             "metadata_modified": p.get("metadata_modified"),
             "is_hvd":            _is_hvd(p),
+            "is_geospatial":     _is_geospatial(p),
             "harvest_source":    _harvest_source(p),
         } for p in result.get("results", [])]
 
-        # Summary-card counts for the Type, HVD, and Harvested rows. Each is
-        # scoped to the shared filters + the OTHER rows' current selections,
-        # but not its own split, so all card counts stay visible and
-        # consistent no matter which cards are currently active. Only
-        # computed on a fresh search (start=0), not on infinite-scroll
+        # Summary-card counts for the Type, HVD, Harvested, and Geospatial
+        # rows. Each is scoped to the shared filters + the OTHER rows'
+        # current selections, but not its own split, so all card counts stay
+        # visible and consistent no matter which cards are currently active.
+        # Only computed on a fresh search (start=0), not on infinite-scroll
         # pagination calls, since it can't have changed since the last page.
         type_counts = None
         hvd_count = non_hvd_count = harvested_count = manual_count = None
+        geo_count = non_geo_count = None
         if start == 0:
             try:
-                type_scope = shared_fq_parts + ([hvd_fq] if hvd_fq else []) + ([harvested_fq] if harvested_fq else [])
+                type_scope = shared_fq_parts + ([hvd_fq] if hvd_fq else []) + ([harvested_fq] if harvested_fq else []) + ([geo_fq] if geo_fq else [])
                 type_params = {"rows": 0, "facet": "true", "facet.field": '["type"]', "facet.limit": 20}
                 if q:
                     type_params["q"] = q
@@ -1262,15 +1281,20 @@ def datasets_search():
                     key=lambda x: -x["count"],
                 )
 
-                hvd_scope = shared_fq_parts + ([type_fq] if type_fq else []) + ([harvested_fq] if harvested_fq else [])
+                hvd_scope = shared_fq_parts + ([type_fq] if type_fq else []) + ([harvested_fq] if harvested_fq else []) + ([geo_fq] if geo_fq else [])
                 hvd_scope_total = _package_count(q, hvd_scope)
                 hvd_count = _package_count(q, hvd_scope + ['-hvd_category:"[]"'])
                 non_hvd_count = hvd_scope_total - hvd_count
 
-                harvest_scope = shared_fq_parts + ([type_fq] if type_fq else []) + ([hvd_fq] if hvd_fq else [])
+                harvest_scope = shared_fq_parts + ([type_fq] if type_fq else []) + ([hvd_fq] if hvd_fq else []) + ([geo_fq] if geo_fq else [])
                 harvest_scope_total = _package_count(q, harvest_scope)
                 harvested_count = _package_count(q, harvest_scope + ["harvest_source_id:[* TO *]"])
                 manual_count = harvest_scope_total - harvested_count
+
+                geo_scope = shared_fq_parts + ([type_fq] if type_fq else []) + ([hvd_fq] if hvd_fq else []) + ([harvested_fq] if harvested_fq else [])
+                geo_scope_total = _package_count(q, geo_scope)
+                geo_count = _package_count(q, geo_scope + ["dcat_type:*GEOSPATIAL*"])
+                non_geo_count = geo_scope_total - geo_count
             except Exception:
                 pass  # summary cards just won't show counts this time
 
@@ -1282,6 +1306,8 @@ def datasets_search():
             "non_hvd_count":   non_hvd_count,
             "harvested_count": harvested_count,
             "manual_count":    manual_count,
+            "geo_count":       geo_count,
+            "non_geo_count":   non_geo_count,
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
@@ -1368,6 +1394,7 @@ def dataset_detail(name):
             "landing_pages":     landing_pages,
             "service_format":    service_format,
             "is_hvd":            _is_hvd(p),
+            "is_geospatial":     _is_geospatial(p),
             "harvest_source":    _harvest_source(p),
         })
     except Exception as exc:
