@@ -5364,27 +5364,43 @@ function renderContactsSummary() {
     document.getElementById('contactsStateSummary').innerHTML = '';
     return;
   }
-  const rows = _dedupeContacts(_portalMembersCache);
+  const allRows = _dedupeContacts(_portalMembersCache);
+
+  // Each dimension's counts are scoped to the OTHER dimension's current
+  // selection (but not its own), same as the Dataset Catalog's Type/HVD/
+  // Harvested tabs — so picking "Admin" updates what State's numbers mean
+  // ("state breakdown among admins") instead of staying frozen at the
+  // unfiltered total.
+  const roleScopeRows = _contactsStateFilter
+    ? allRows.filter(m => (m.state || 'active') === _contactsStateFilter)
+    : allRows;
+  const stateScopeRows = _contactsRoleFilter
+    ? allRows.filter(m => _contactsRoleFilter === 'sysadmin' ? m.sysadmin : (!m.sysadmin && m.capacity === _contactsRoleFilter))
+    : allRows;
+
   const roleCounts  = { admin: 0, editor: 0, member: 0, user: 0, sysadmin: 0 };
-  const stateCounts = { active: 0, deleted: 0, pending: 0 };
-  for (const m of rows) {
+  for (const m of roleScopeRows) {
     if (m.sysadmin) roleCounts.sysadmin++;
     else if (m.capacity in roleCounts) roleCounts[m.capacity]++;
+  }
+  const stateCounts = { active: 0, deleted: 0, pending: 0 };
+  for (const m of stateScopeRows) {
     const st = m.state || 'active';
     stateCounts[st] = (stateCounts[st] || 0) + 1;
   }
 
-  // Each dimension keeps its own "Total/All" card (same count, but a
-  // separate filter object) since clearing the Role filter and clearing the
-  // State filter are now two independent actions, not one shared "show all".
+  // Each dimension keeps its own "Total/All" card (a separate filter object,
+  // and now also its own count — the size of ITS OWN scope, i.e. everyone
+  // matching the other dimension's filter) since clearing the Role filter
+  // and clearing the State filter are two independent actions.
   _contactsSummaryCards = [
-    { filter: { type: 'role', value: null },       label: t('contacts.total'), value: rows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+    { filter: { type: 'role', value: null },       label: t('contacts.total'), value: roleScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
     { filter: { type: 'role', value: 'admin' },    label: t('contacts.role_admin'),    value: roleCounts.admin,    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-shield-check" },
     { filter: { type: 'role', value: 'editor' },   label: t('contacts.role_editor'),   value: roleCounts.editor,   bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-pencil-square" },
     { filter: { type: 'role', value: 'member' },   label: t('contacts.role_member'),   value: roleCounts.member,   bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person" },
     { filter: { type: 'role', value: 'user' },     label: t('contacts.role_user'),     value: roleCounts.user,    bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person-badge" },
     { filter: { type: 'role', value: 'sysadmin' }, label: t('contacts.role_sysadmin'), value: roleCounts.sysadmin, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-shield-lock" },
-    { filter: { type: 'state', value: null },      label: t('contacts.total'), value: rows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+    { filter: { type: 'state', value: null },      label: t('contacts.total'), value: stateScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
     { filter: { type: 'state', value: 'active' },  label: t('contacts.state_active'),  value: stateCounts.active,  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-check-circle" },
     { filter: { type: 'state', value: 'pending' }, label: t('contacts.state_pending'), value: stateCounts.pending, bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-hourglass-split" },
     { filter: { type: 'state', value: 'deleted' }, label: t('contacts.state_deleted'), value: stateCounts.deleted, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-x-circle" },
