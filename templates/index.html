@@ -460,9 +460,34 @@
               </div>
             </div>
             <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
-              <div id="catalogTypeSummary" class="row g-2 mb-2"></div>
-              <div id="catalogHvdSummary" class="row g-2 mb-2"></div>
-              <div id="catalogHarvestSummary" class="row g-2"></div>
+              <ul class="nav nav-underline small mb-2">
+                <li class="nav-item">
+                  <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogTypeSummaryPane" type="button">
+                    <i class="bi bi-tag me-1"></i><span data-i18n="catalog.filter_group_type">Type</span>
+                  </button>
+                </li>
+                <li class="nav-item">
+                  <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogHvdSummaryPane" type="button">
+                    <i class="bi bi-gem me-1"></i><span data-i18n="catalog.filter_group_hvd">HVD</span>
+                  </button>
+                </li>
+                <li class="nav-item">
+                  <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogHarvestSummaryPane" type="button">
+                    <i class="bi bi-cloud-arrow-down me-1"></i><span data-i18n="catalog.filter_group_harvest">Harvested</span>
+                  </button>
+                </li>
+              </ul>
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="catalogTypeSummaryPane">
+                  <div id="catalogTypeSummary" class="row g-2"></div>
+                </div>
+                <div class="tab-pane fade" id="catalogHvdSummaryPane">
+                  <div id="catalogHvdSummary" class="row g-2"></div>
+                </div>
+                <div class="tab-pane fade" id="catalogHarvestSummaryPane">
+                  <div id="catalogHarvestSummary" class="row g-2"></div>
+                </div>
+              </div>
             </div>
             <div id="catalogResults"><p class="text-muted text-center py-4" data-i18n="catalog.hint">Search for datasets by title or keyword, or leave blank to browse the most recently updated.</p></div>
           </div>
@@ -1410,6 +1435,9 @@ const TRANSLATIONS = {
     'catalog.filter_harvest_manual': 'Manual',
     'catalog.harvested_tooltip': 'Imported automatically by a harvester, not created directly on the portal',
     'catalog.hvd_tooltip': 'High-Value Dataset — Commission Implementing Regulation (EU) 2023/138',
+    'catalog.filter_group_type': 'Type',
+    'catalog.filter_group_hvd': 'HVD',
+    'catalog.filter_group_harvest': 'Harvested',
     'catalog.results_for': 'results for',
     'catalog.total_datasets': 'datasets total',
     'catalog.none': 'No datasets match your search.',
@@ -1778,6 +1806,9 @@ const TRANSLATIONS = {
     'catalog.filter_harvest_harvested': 'Συλλεγμένα',
     'catalog.filter_harvest_manual': 'Χειροκίνητα',
     'catalog.harvested_tooltip': 'Εισήχθη αυτόματα μέσω συλλέκτη δεδομένων (harvester), όχι απευθείας στην πύλη',
+    'catalog.filter_group_type': 'Τύπος',
+    'catalog.filter_group_hvd': 'HVD',
+    'catalog.filter_group_harvest': 'Συλλεγμένα',
     'catalog.results_for': 'αποτελέσματα για',
     'catalog.total_datasets': 'σύνολα δεδομένων συνολικά',
     'catalog.none': 'Δεν βρέθηκαν σύνολα δεδομένων με αυτά τα κριτήρια.',
