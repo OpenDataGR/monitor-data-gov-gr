@@ -696,13 +696,13 @@
               </button>
             </div>
             <p class="text-muted small" data-i18n="quality.hvd_desc">Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) &mdash; not just whether it carries the hvd_category tag.</p>
-            <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
-              <input type="text" id="hvdSingleDatasetInput" class="form-control form-control-sm" style="width:280px"
-                     placeholder="Dataset slug or portal URL" data-i18n-ph="quality.hvd_check_one_placeholder"
-                     onkeydown="if(event.key==='Enter')checkHvdSingleDataset();">
-              <button class="btn btn-outline-primary btn-sm" onclick="checkHvdSingleDataset()">
-                <i class="bi bi-search me-1"></i><span data-i18n="quality.hvd_check_one_btn">Check One Dataset</span>
-              </button>
+            <div class="position-relative mb-3" style="width:340px;max-width:100%">
+              <input type="text" id="hvdDatasetSearchInput" class="form-control form-control-sm"
+                     placeholder="Search datasets by title…" data-i18n-ph="quality.hvd_check_one_placeholder"
+                     autocomplete="off" oninput="_hvdDatasetSearchDebounced()"
+                     onblur="setTimeout(() => show('hvdDatasetSearchResults').classList.add('d-none'), 150)"
+                     onfocus="if(show('hvdDatasetSearchResults').innerHTML)show('hvdDatasetSearchResults').classList.remove('d-none')">
+              <div id="hvdDatasetSearchResults" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index:1000;max-height:280px;overflow-y:auto"></div>
             </div>
             <div id="hvdSingleResult"></div>
             <div id="hvdCheckResults">
@@ -1435,8 +1435,8 @@ const TRANSLATIONS = {
     'quality.hvd_col_legal': 'Legal citation',
     'quality.hvd_col_api': 'API access',
     'quality.hvd_col_license': 'License',
-    'quality.hvd_check_one_placeholder': 'Dataset slug or portal URL',
-    'quality.hvd_check_one_btn': 'Check One Dataset',
+    'quality.hvd_check_one_placeholder': 'Search datasets by title…',
+    'quality.hvd_search_none': 'No matching datasets.',
     'quality.hvd_conforms': 'Fully conforms',
     'quality.hvd_legal_ok': 'Legal citation linked',
     'quality.hvd_api_ok': 'Has API access',
@@ -1854,8 +1854,8 @@ const TRANSLATIONS = {
     'quality.hvd_col_legal': 'Νομική αναφορά',
     'quality.hvd_col_api': 'Πρόσβαση API',
     'quality.hvd_col_license': 'Άδεια χρήσης',
-    'quality.hvd_check_one_placeholder': 'Αναγνωριστικό ή URL συνόλου δεδομένων',
-    'quality.hvd_check_one_btn': 'Έλεγχος Ενός Συνόλου Δεδομένων',
+    'quality.hvd_check_one_placeholder': 'Αναζήτηση συνόλων δεδομένων με τίτλο…',
+    'quality.hvd_search_none': 'Δεν βρέθηκαν σύνολα δεδομένων.',
     'quality.hvd_conforms': 'Πλήρης συμμόρφωση',
     'quality.hvd_legal_ok': 'Συνδεδεμένη νομική αναφορά',
     'quality.hvd_api_ok': 'Διαθέτει πρόσβαση API',
@@ -3392,10 +3392,44 @@ async function checkDatasets() {
 }
 
 // ── HVD compliance check (SHACL) ─────────────────────────────────────────────
-async function checkHvdSingleDataset() {
-  const input = show('hvdSingleDatasetInput');
-  const name  = input.value.trim();
-  const el    = show('hvdSingleResult');
+let _hvdDatasetSearchTimer = null;
+function _hvdDatasetSearchDebounced() {
+  clearTimeout(_hvdDatasetSearchTimer);
+  _hvdDatasetSearchTimer = setTimeout(_hvdDatasetSearchRun, 300);
+}
+
+let _hvdSearchResults = [];
+
+async function _hvdDatasetSearchRun() {
+  const q   = show('hvdDatasetSearchInput').value.trim();
+  const box = show('hvdDatasetSearchResults');
+  if (!q) { box.classList.add('d-none'); box.innerHTML = ''; return; }
+  try {
+    const data = await fetch(`${API_BASE}api/datasets/search?q=${encodeURIComponent(q)}&rows=10`).then(r => r.json());
+    _hvdSearchResults = data.datasets || [];
+    box.innerHTML = _hvdSearchResults.length
+      ? _hvdSearchResults.map((d, i) => `
+          <button type="button" class="list-group-item list-group-item-action small" onmousedown="event.preventDefault();_hvdSelectDataset(${i})">
+            <div class="fw-semibold">${esc(d.title)}</div>
+            <div class="text-muted" style="font-size:.75rem">${esc(d.org_title)}</div>
+          </button>`).join('')
+      : `<div class="list-group-item small text-muted">${t('quality.hvd_search_none')}</div>`;
+    box.classList.remove('d-none');
+  } catch (e) {
+    box.classList.add('d-none');
+  }
+}
+
+function _hvdSelectDataset(idx) {
+  const d = _hvdSearchResults[idx];
+  if (!d) return;
+  show('hvdDatasetSearchInput').value = d.title;
+  show('hvdDatasetSearchResults').classList.add('d-none');
+  checkHvdSingleDataset(d.name);
+}
+
+async function checkHvdSingleDataset(name) {
+  const el = show('hvdSingleResult');
   if (!name) return;
   el.innerHTML = `<div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}</div>`;
   try {
