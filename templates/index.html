@@ -1534,6 +1534,7 @@ const TRANSLATIONS = {
     'stats.geo_map_none': 'No geospatial dataset locations available.',
     'stats.geo_map_orgs': 'organizations',
     'stats.geo_map_datasets': 'datasets',
+    'stats.geo_map_click_hint': 'Click for organization details',
     'temporal.coming_soon': 'Coming soon.',
     'traffic.col_dataset': 'Dataset',
     'traffic.col_visits': 'Visits',
@@ -1927,6 +1928,7 @@ const TRANSLATIONS = {
     'stats.geo_map_none': 'Δεν υπάρχουν διαθέσιμες τοποθεσίες γεωχωρικών συνόλων δεδομένων.',
     'stats.geo_map_orgs': 'φορείς',
     'stats.geo_map_datasets': 'σύνολα δεδομένων',
+    'stats.geo_map_click_hint': 'Κλικ για πληροφορίες φορέα',
     'temporal.coming_soon': 'Σύντομα διαθέσιμο.',
     'traffic.col_dataset': 'Σύνολο Δεδομένων',
     'traffic.col_visits': 'Επισκέψεις',
@@ -2854,7 +2856,9 @@ function _renderGeoDatasetsMap(locations) {
     const radius = 6 + Math.sqrt(loc.count / maxCount) * 34;
     const marker = L.circleMarker([loc.lat, loc.lon], {
       radius, color: '#198754', fillColor: '#198754', fillOpacity: 0.35, weight: 1.5,
-    }).bindTooltip(`<strong>${esc(loc.org_title)}</strong><br>${fmt(loc.count)} ${t('stats.geo_map_datasets')}`);
+    })
+      .bindTooltip(`<strong>${esc(loc.org_title)}</strong><br>${fmt(loc.count)} ${t('stats.geo_map_datasets')}<br><span class="text-muted">${esc(t('stats.geo_map_click_hint'))}</span>`)
+      .on('click', () => openOrgPanel(loc.org_name));
     marker.addTo(_geoDatasetsMap);
     _geoDatasetsMarkers.push(marker);
   }
