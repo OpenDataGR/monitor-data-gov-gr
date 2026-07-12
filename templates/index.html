@@ -718,7 +718,30 @@
                 </button>
               </div>
             </div>
-            <div id="contactsSummary" class="row g-2 mb-3"></div>
+            <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+              <ul class="nav nav-underline small mb-2">
+                <li class="nav-item">
+                  <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#contactsRoleSummaryPane" type="button">
+                    <i class="bi bi-shield-check me-1"></i><span data-i18n="contacts.filter_group_role">Role</span>
+                    <span id="contactsRoleTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                  </button>
+                </li>
+                <li class="nav-item">
+                  <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#contactsStateSummaryPane" type="button">
+                    <i class="bi bi-check-circle me-1"></i><span data-i18n="contacts.filter_group_state">State</span>
+                    <span id="contactsStateTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                  </button>
+                </li>
+              </ul>
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="contactsRoleSummaryPane">
+                  <div id="contactsRoleSummary" class="row g-2"></div>
+                </div>
+                <div class="tab-pane fade" id="contactsStateSummaryPane">
+                  <div id="contactsStateSummary" class="row g-2"></div>
+                </div>
+              </div>
+            </div>
             <div id="contactsFlatView">
               <div style="max-height:65vh;overflow-y:auto">
               <table class="table table-hover align-middle mb-0" id="contactsTable">
@@ -1212,6 +1235,8 @@ const TRANSLATIONS = {
     'contacts.state_active':  'Active',
     'contacts.state_pending': 'Pending',
     'contacts.state_deleted': 'Deleted',
+    'contacts.filter_group_role': 'Role',
+    'contacts.filter_group_state': 'State',
     'traffic.today_title': "Today's Traffic",
     'traffic.today': 'Today',
     'traffic.visits': 'Visits',
@@ -1583,6 +1608,8 @@ const TRANSLATIONS = {
     'contacts.state_active':  'Ενεργοί',
     'contacts.state_pending': 'Σε εκκρεμότητα',
     'contacts.state_deleted': 'Διαγραμμένοι',
+    'contacts.filter_group_role': 'Ρόλος',
+    'contacts.filter_group_state': 'Κατάσταση',
     'traffic.today_title': 'Σημερινή Επισκεψιμότητα',
     'traffic.today': 'Σήμερα',
     'traffic.visits': 'Επισκέψεις',
@@ -5285,8 +5312,43 @@ function _dedupeContacts(rows) {
 let _contactsActiveFilter = null;   // { type: 'role'|'state', value } or null = show all
 let _contactsSummaryCards = [];
 
+function _contactsFilterIsActive(f) {
+  if (!f) return !_contactsActiveFilter;
+  return !!_contactsActiveFilter && f.type === _contactsActiveFilter.type && f.value === _contactsActiveFilter.value;
+}
+
+// Renders a subset of _contactsSummaryCards (by original index, so
+// setContactsFilter(idx) keeps working unmodified) into one tab's row, plus
+// a dot on that tab's label if any card in it is the active filter — same
+// pattern as the Dataset Catalog's filter-card tabs.
+function _renderContactsFilterGroup(elId, indices, tabDotId) {
+  document.getElementById(elId).innerHTML = indices.map(idx => {
+    const c = _contactsSummaryCards[idx];
+    const active = _contactsFilterIsActive(c.filter);
+    const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
+    return `
+    <div class="col-6 col-sm-4 col-lg-2">
+      <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}" style="border:${active ? 2 : 1}px solid ${borderColor};cursor:pointer" onclick="setContactsFilter(${idx})">
+        <i class="bi ${c.icon} fs-5 ${c.text}"></i>
+        <div>
+          <div class="fw-bold fs-6 lh-1 ${c.text}">${c.value}</div>
+          <div class="text-muted" style="font-size:.7rem">${c.label}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  if (!tabDotId) return;
+  const dot = document.getElementById(tabDotId);
+  const hasActive = indices.some(idx => _contactsSummaryCards[idx].filter && _contactsFilterIsActive(_contactsSummaryCards[idx].filter));
+  dot.classList.toggle('d-none', !hasActive);
+}
+
 function renderContactsSummary() {
-  if (!_portalMembersCache) { show('contactsSummary').innerHTML = ''; return; }
+  if (!_portalMembersCache) {
+    document.getElementById('contactsRoleSummary').innerHTML = '';
+    document.getElementById('contactsStateSummary').innerHTML = '';
+    return;
+  }
   const rows = _dedupeContacts(_portalMembersCache);
   const roleCounts  = { admin: 0, editor: 0, member: 0, sysadmin: 0 };
   const stateCounts = { active: 0, deleted: 0, pending: 0 };
@@ -5308,25 +5370,8 @@ function renderContactsSummary() {
     { filter: { type: 'state', value: 'deleted' }, label: t('contacts.state_deleted'), value: stateCounts.deleted, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-x-circle" },
   ];
 
-  const isActive = (f) => {
-    if (!f) return !_contactsActiveFilter;
-    return !!_contactsActiveFilter && f.type === _contactsActiveFilter.type && f.value === _contactsActiveFilter.value;
-  };
-
-  show('contactsSummary').innerHTML = _contactsSummaryCards.map((c, i) => {
-    const active = isActive(c.filter);
-    const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
-    return `
-    <div class="col-6 col-sm-4 col-lg">
-      <div class="rounded-3 p-3 d-flex align-items-center gap-3 ${c.bg}" style="border:${active ? 2 : 1}px solid ${borderColor};cursor:pointer" onclick="setContactsFilter(${i})">
-        <i class="bi ${c.icon} fs-4 ${c.text}"></i>
-        <div>
-          <div class="fw-bold fs-5 lh-1 ${c.text}">${c.value}</div>
-          <div class="text-muted" style="font-size:.75rem">${c.label}</div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
+  _renderContactsFilterGroup('contactsRoleSummary',  [0, 1, 2, 3, 4], 'contactsRoleTabDot');
+  _renderContactsFilterGroup('contactsStateSummary', [0, 5, 6, 7],    'contactsStateTabDot');
 }
 
 function setContactsFilter(idx) {
