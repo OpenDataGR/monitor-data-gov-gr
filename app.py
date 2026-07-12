@@ -19,7 +19,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, User, PasswordResetToken
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, User, PasswordResetToken
 import config
 
 app = Flask(__name__)
@@ -813,6 +813,7 @@ def _background_loop():
 
     last_orgs_refresh           = time.time()
     last_dataset_growth_refresh = time.time()
+    last_geo_datasets_refresh   = time.time()
     while True:
         time.sleep(config.CHECK_INTERVAL_SECONDS)
         try:
@@ -832,6 +833,13 @@ def _background_loop():
             except Exception as exc:
                 print(f"[dataset-growth] refresh error: {exc}")
             last_dataset_growth_refresh = time.time()
+        if time.time() - last_geo_datasets_refresh >= _GEO_DATASETS_REFRESH_INTERVAL:
+            try:
+                _geo_datasets_cache["enriching"] = True
+                _do_refresh_geo_datasets()
+            except Exception as exc:
+                print(f"[geo-datasets] refresh error: {exc}")
+            last_geo_datasets_refresh = time.time()
 
 
 _singleton_lock_file = None  # kept open for the process lifetime; closing it releases the lock
@@ -1078,6 +1086,128 @@ def stats_dataset_growth():
         "weeks":      _dataset_growth_cache["weeks"] or [],
         "fetched_at": _dataset_growth_cache["fetched_at"],
         "enriching":  _dataset_growth_cache["enriching"],
+    })
+
+
+_geo_datasets_cache: dict = {"locations": None, "fetched_at": None, "enriching": False}
+_GEO_DATASETS_REFRESH_INTERVAL = 24 * 3600  # organizations' locations barely change; once a day is plenty
+
+with app.app_context():
+    _geo_row = GeoDatasetsCache.query.get(1)
+    if _geo_row:
+        _geo_datasets_cache["locations"]  = _geo_row.data()
+        _geo_datasets_cache["fetched_at"] = _geo_row.fetched_at.isoformat()
+
+
+def _save_geo_datasets_cache(locations: list) -> None:
+    with app.app_context():
+        row = GeoDatasetsCache.query.get(1)
+        if not row:
+            row = GeoDatasetsCache(id=1, data_json="[]")
+            db.session.add(row)
+        row.data_json  = json.dumps(locations)
+        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
+
+def _pkg_centroid(pkg: dict):
+    """(lat, lon) from a package's spatial_coverage — its centroid point if
+    present, else the center of its bounding box; None if neither parses."""
+    for sc in pkg.get("spatial_coverage") or []:
+        for key in ("centroid", "bbox"):
+            raw = sc.get(key)
+            if not raw:
+                continue
+            try:
+                geom = json.loads(raw)
+                if geom.get("type") == "Point":
+                    lon, lat = geom["coordinates"]
+                    return float(lat), float(lon)
+                if geom.get("type") == "Polygon":
+                    ring = geom["coordinates"][0]
+                    lons = [float(c[0]) for c in ring]
+                    lats = [float(c[1]) for c in ring]
+                    return (min(lats) + max(lats)) / 2, (min(lons) + max(lons)) / 2
+            except Exception:
+                continue
+    return None
+
+
+def _geo_org_location(org_name: str):
+    """A representative (lat, lon) for one organization's geospatial datasets —
+    the centroid of the first matching package that actually carries one."""
+    r = requests.get(
+        f"{config.API_BASE}/package_search",
+        params={"rows": 5, "fq": f"organization:{org_name} AND dcat_type:*GEOSPATIAL*"},
+        headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
+    )
+    r.raise_for_status()
+    data = r.json()
+    if not data.get("success"):
+        return None
+    for pkg in data["result"]["results"]:
+        loc = _pkg_centroid(pkg)
+        if loc:
+            return loc
+    return None
+
+
+def _do_refresh_geo_datasets() -> None:
+    """Rebuild the per-organization geospatial-dataset location list: one
+    facet query for counts, then one representative-package lookup per
+    organization (parallelized) for a lat/lon to plot it at."""
+    try:
+        r = requests.get(
+            f"{config.API_BASE}/package_search",
+            params={"rows": 0, "fq": "dcat_type:*GEOSPATIAL*", "facet": "true",
+                    "facet.field": '["organization"]', "facet.limit": 1000},
+            headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            return
+        items = ((data["result"].get("search_facets") or {}).get("organization") or {}).get("items") or []
+        items = [i for i in items if i.get("name") and i.get("count")]
+
+        locations = []
+        with ThreadPoolExecutor(max_workers=15) as pool:
+            futures = {pool.submit(_geo_org_location, i["name"]): i for i in items}
+            for fut in as_completed(futures):
+                item = futures[fut]
+                try:
+                    loc = fut.result()
+                except Exception:
+                    loc = None
+                if not loc:
+                    continue
+                locations.append({
+                    "org_name":  item["name"],
+                    "org_title": item.get("display_name") or item["name"],
+                    "lat":       loc[0],
+                    "lon":       loc[1],
+                    "count":     item["count"],
+                })
+
+        locations.sort(key=lambda l: -l["count"])
+        _geo_datasets_cache["locations"]  = locations
+        _geo_datasets_cache["fetched_at"] = datetime.now(timezone.utc).isoformat()
+        _save_geo_datasets_cache(locations)
+    except Exception as exc:
+        print(f"[geo-datasets] error: {exc}")
+    finally:
+        _geo_datasets_cache["enriching"] = False
+
+
+@app.route("/api/datasets/geo-locations")
+def datasets_geo_locations():
+    if _geo_datasets_cache["locations"] is None and not _geo_datasets_cache["enriching"]:
+        _geo_datasets_cache["enriching"] = True
+        threading.Thread(target=_do_refresh_geo_datasets, daemon=True).start()
+    return jsonify({
+        "locations":  _geo_datasets_cache["locations"] or [],
+        "fetched_at": _geo_datasets_cache["fetched_at"],
+        "enriching":  _geo_datasets_cache["enriching"],
     })
 
 

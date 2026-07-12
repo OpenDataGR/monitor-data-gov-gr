@@ -77,6 +77,20 @@ class OrgsCache(db.Model):
         return json.loads(self.data_json)
 
 
+class GeoDatasetsCache(db.Model):
+    """Persists the last computed per-organization geospatial-dataset locations
+    (see app._do_refresh_geo_datasets) so a fresh process/restart can serve the
+    map immediately instead of re-querying CKAN for every organization."""
+    __tablename__ = "geo_datasets_cache"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    data_json  = db.Column(db.Text, nullable=False)
+    fetched_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def data(self):
+        return json.loads(self.data_json)
+
+
 class User(db.Model):
     __tablename__ = "users"
 
