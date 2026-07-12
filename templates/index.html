@@ -697,7 +697,44 @@
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
               </div>
             </div>
-            <div id="commsSummary" class="row g-2 mb-3"></div>
+            <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+              <div class="d-flex justify-content-between align-items-center">
+                <ul class="nav nav-underline small mb-2">
+                  <li class="nav-item">
+                    <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#commsCaseSummaryPane" type="button">
+                      <i class="bi bi-folder2-open me-1"></i><span data-i18n="comms.filter_group_case">Case</span>
+                      <span id="commsCaseTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                  <li class="nav-item">
+                    <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#commsStaleSummaryPane" type="button">
+                      <i class="bi bi-hourglass-split me-1"></i><span data-i18n="comms.filter_group_stale">Follow-up</span>
+                      <span id="commsStaleTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                  <li class="nav-item">
+                    <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#commsStatusSummaryPane" type="button">
+                      <i class="bi bi-envelope me-1"></i><span data-i18n="comms.filter_group_status">Status</span>
+                      <span id="commsStatusTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                </ul>
+                <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1 mb-2 flex-shrink-0" onclick="clearCommsFilters()">
+                  <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">Clear filters</span>
+                </button>
+              </div>
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="commsCaseSummaryPane">
+                  <div id="commsCaseSummary" class="row g-2"></div>
+                </div>
+                <div class="tab-pane fade" id="commsStaleSummaryPane">
+                  <div id="commsStaleSummary" class="row g-2"></div>
+                </div>
+                <div class="tab-pane fade" id="commsStatusSummaryPane">
+                  <div id="commsStatusSummary" class="row g-2"></div>
+                </div>
+              </div>
+            </div>
             <div id="commsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
           </div>
         </div>
@@ -1357,6 +1394,10 @@ const TRANSLATIONS = {
     'comms.open_cases': 'Open Cases',
     'comms.closed_cases': 'Closed Cases',
     'comms.stale_cases': 'Needs Follow-up',
+    'comms.not_stale_cases': 'On Track',
+    'comms.filter_group_case': 'Case',
+    'comms.filter_group_stale': 'Follow-up',
+    'comms.filter_group_status': 'Status',
     'comms.case_stale': 'No Response',
     'comms.case_stale_hint': 'The last logged attempt got no response, or the case has had no activity for 14+ days.',
     'comms.case_opened': 'Opened',
@@ -1738,6 +1779,10 @@ const TRANSLATIONS = {
     'comms.open_cases': 'Ανοιχτές Υποθέσεις',
     'comms.closed_cases': 'Κλειστές Υποθέσεις',
     'comms.stale_cases': 'Χρήζει Παρακολούθησης',
+    'comms.not_stale_cases': 'Εντάξει',
+    'comms.filter_group_case': 'Υπόθεση',
+    'comms.filter_group_stale': 'Παρακολούθηση',
+    'comms.filter_group_status': 'Κατάσταση',
     'comms.case_stale': 'Χωρίς Απάντηση',
     'comms.case_stale_hint': 'Η τελευταία προσπάθεια έμεινε αναπάντητη, ή δεν υπάρχει δραστηριότητα εδώ και 14+ ημέρες.',
     'comms.case_opened': 'Άνοιξε',
@@ -3591,7 +3636,13 @@ function _refreshCommSubjectDatalist() {
   list.innerHTML = subjects.map(s => `<option value="${esc(s)}">`).join('');
 }
 
-let _commsActiveFilter = null;   // { type: 'case_status'|'stale'|'status', value } or null = show all
+// Independently combinable, same as the Dataset Catalog's Type/HVD/Harvested
+// tabs and the Contacts tab's Role/State split: each dimension can be
+// filtered on its own and they AND together, instead of the old single
+// mutually-exclusive _commsActiveFilter.
+let _commsCaseStatusFilter = null;  // null | 'Open' | 'Closed'
+let _commsStaleFilter      = null;  // null | '1' (stale) | '0' (not stale)
+let _commsStatusFilter     = null;  // null | 'Initial Contact' | 'Intermediate Contact' | 'Positive Response' | 'Negative Response'
 let _commsSummaryCards = [];
 
 const CARD_BORDER_COLOR = {
@@ -3600,51 +3651,100 @@ const CARD_BORDER_COLOR = {
 };
 
 function renderCommsSummary() {
-  const counts = { "Initial Contact": 0, "Intermediate Contact": 0, "Positive Response": 0, "Negative Response": 0, "No Response": 0 };
-  for (const c of _commsData) if (c.status in counts) counts[c.status]++;
-  const total = _commsData.length;
-  const openCases   = _casesData.filter(c => c.status === 'Open').length;
-  const closedCases = _casesData.filter(c => c.status === 'Closed').length;
-  const staleCases  = _casesData.filter(c => c.is_stale).length;
+  // Cases with a communications entry matching the current Status filter
+  // (null = no restriction) — used to scope the Case/Follow-up tabs by the
+  // Status tab's selection, same cross-scoping the Catalog/Contacts tabs do.
+  const statusScopeCaseIds = _commsStatusFilter
+    ? new Set(_commsData.filter(c => c.status === _commsStatusFilter).map(c => c.case_id))
+    : null;
+  const matchesStatusScope = (c) => !statusScopeCaseIds || statusScopeCaseIds.has(c.id);
+  const matchesStale       = (c) => !_commsStaleFilter || (_commsStaleFilter === '1' ? !!c.is_stale : !c.is_stale);
+  const matchesCaseStatus  = (c) => !_commsCaseStatusFilter || c.status === _commsCaseStatusFilter;
+
+  const caseScopeForCaseStatus = _casesData.filter(c => matchesStale(c) && matchesStatusScope(c));
+  const caseScopeForStale      = _casesData.filter(c => matchesCaseStatus(c) && matchesStatusScope(c));
+  const openCases      = caseScopeForCaseStatus.filter(c => c.status === 'Open').length;
+  const closedCases    = caseScopeForCaseStatus.filter(c => c.status === 'Closed').length;
+  const staleCases     = caseScopeForStale.filter(c => c.is_stale).length;
+  const notStaleCases  = caseScopeForStale.filter(c => !c.is_stale).length;
+
+  // Entry Status counts are scoped by the case-level filters — each comms
+  // entry already carries its case's status/staleness (case_status/case_is_stale).
+  const entryScopeRows = _commsData.filter(c =>
+    (!_commsCaseStatusFilter || c.case_status === _commsCaseStatusFilter) &&
+    (!_commsStaleFilter || (_commsStaleFilter === '1' ? !!c.case_is_stale : !c.case_is_stale))
+  );
+  const statusCounts = { "Initial Contact": 0, "Intermediate Contact": 0, "Positive Response": 0, "Negative Response": 0 };
+  for (const c of entryScopeRows) if (c.status in statusCounts) statusCounts[c.status]++;
 
   _commsSummaryCards = [
-    { filter: null, label: t('comms.total'), value: total, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
-    { filter: { type: 'case_status', value: 'Open' },   label: t('comms.open_cases'),   value: openCases,   bg: "bg-warning bg-opacity-10", text: "text-warning",   icon: "bi-folder2-open" },
-    { filter: { type: 'case_status', value: 'Closed' }, label: t('comms.closed_cases'), value: closedCases, bg: "bg-success bg-opacity-10", text: "text-success",   icon: "bi-folder-check" },
-    { filter: { type: 'stale' },                        label: t('comms.stale_cases'),  value: staleCases,  bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-hourglass-split" },
-    { filter: { type: 'status', value: 'Initial Contact' },      label: t('comms.initial_contact'),      value: counts["Initial Contact"],      bg: "bg-primary bg-opacity-10", text: "text-primary", icon: "bi-envelope" },
-    { filter: { type: 'status', value: 'Intermediate Contact' }, label: t('comms.intermediate_contact'), value: counts["Intermediate Contact"], bg: "bg-info bg-opacity-10",    text: "text-info",    icon: "bi-reply" },
-    { filter: { type: 'status', value: 'Positive Response' },    label: t('comms.positive_response'),    value: counts["Positive Response"],    bg: "bg-success bg-opacity-10", text: "text-success", icon: "bi-hand-thumbs-up" },
-    { filter: { type: 'status', value: 'Negative Response' },    label: t('comms.negative_response'),    value: counts["Negative Response"],    bg: "bg-danger bg-opacity-10",   text: "text-danger",  icon: "bi-hand-thumbs-down" },
+    { filter: { dim: 'case_status', value: null },       label: t('comms.total'),        value: caseScopeForCaseStatus.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
+    { filter: { dim: 'case_status', value: 'Open' },      label: t('comms.open_cases'),   value: openCases,   bg: "bg-warning bg-opacity-10", text: "text-warning",   icon: "bi-folder2-open" },
+    { filter: { dim: 'case_status', value: 'Closed' },    label: t('comms.closed_cases'), value: closedCases, bg: "bg-success bg-opacity-10", text: "text-success",   icon: "bi-folder-check" },
+
+    { filter: { dim: 'stale', value: null }, label: t('comms.total'),          value: caseScopeForStale.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
+    { filter: { dim: 'stale', value: '1' },  label: t('comms.stale_cases'),     value: staleCases,    bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-hourglass-split" },
+    { filter: { dim: 'stale', value: '0' },  label: t('comms.not_stale_cases'), value: notStaleCases, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-hourglass-split" },
+
+    { filter: { dim: 'status', value: null },                     label: t('comms.total'),                value: entryScopeRows.length,           bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
+    { filter: { dim: 'status', value: 'Initial Contact' },        label: t('comms.initial_contact'),      value: statusCounts["Initial Contact"],      bg: "bg-primary bg-opacity-10", text: "text-primary", icon: "bi-envelope" },
+    { filter: { dim: 'status', value: 'Intermediate Contact' },   label: t('comms.intermediate_contact'), value: statusCounts["Intermediate Contact"], bg: "bg-info bg-opacity-10",    text: "text-info",    icon: "bi-reply" },
+    { filter: { dim: 'status', value: 'Positive Response' },      label: t('comms.positive_response'),    value: statusCounts["Positive Response"],    bg: "bg-success bg-opacity-10", text: "text-success", icon: "bi-hand-thumbs-up" },
+    { filter: { dim: 'status', value: 'Negative Response' },      label: t('comms.negative_response'),    value: statusCounts["Negative Response"],    bg: "bg-danger bg-opacity-10",   text: "text-danger",  icon: "bi-hand-thumbs-down" },
   ];
 
-  const isActive = (f) => {
-    if (!f) return !_commsActiveFilter;
-    return !!_commsActiveFilter && f.type === _commsActiveFilter.type && f.value === _commsActiveFilter.value;
-  };
+  _renderCommsFilterGroup('commsCaseSummary',   [0, 1, 2],       'commsCaseTabDot');
+  _renderCommsFilterGroup('commsStaleSummary',  [3, 4, 5],       'commsStaleTabDot');
+  _renderCommsFilterGroup('commsStatusSummary', [6, 7, 8, 9, 10],'commsStatusTabDot');
+}
 
-  show('commsSummary').innerHTML = _commsSummaryCards.map((c, i) => {
-    const active = isActive(c.filter);
+function _commsFilterIsActive(f) {
+  if (f.dim === 'case_status') return _commsCaseStatusFilter === f.value;
+  if (f.dim === 'stale')       return _commsStaleFilter === f.value;
+  if (f.dim === 'status')      return _commsStatusFilter === f.value;
+  return false;
+}
+
+function _renderCommsFilterGroup(elId, indices, tabDotId) {
+  document.getElementById(elId).innerHTML = indices.map(idx => {
+    const c = _commsSummaryCards[idx];
+    const active = _commsFilterIsActive(c.filter);
     const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
     return `
-    <div class="col-6 col-sm-4 col-lg">
-      <div class="rounded-3 p-3 d-flex align-items-center gap-3 ${c.bg}" style="border:${active ? 2 : 1}px solid ${borderColor};cursor:pointer" onclick="setCommsFilter(${i})">
-        <i class="bi ${c.icon} fs-4 ${c.text}"></i>
+    <div class="col-6 col-sm-4 col-lg-2">
+      <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}" style="border:${active ? 2 : 1}px solid ${borderColor};cursor:pointer" onclick="setCommsFilter(${idx})">
+        <i class="bi ${c.icon} fs-5 ${c.text}"></i>
         <div>
-          <div class="fw-bold fs-5 lh-1 ${c.text}">${c.value}</div>
-          <div class="text-muted" style="font-size:.75rem">${c.label}</div>
+          <div class="fw-bold fs-6 lh-1 ${c.text}">${c.value}</div>
+          <div class="text-muted" style="font-size:.7rem">${c.label}</div>
         </div>
       </div>
     </div>`;
   }).join('');
+  if (!tabDotId) return;
+  const dot = document.getElementById(tabDotId);
+  const hasActive = indices.some(idx => {
+    const f = _commsSummaryCards[idx].filter;
+    return f.value !== null && _commsFilterIsActive(f);
+  });
+  dot.classList.toggle('d-none', !hasActive);
 }
 
 function setCommsFilter(idx) {
   const card = _commsSummaryCards[idx];
   if (!card) return;
   const f = card.filter;
-  const isSame = f && _commsActiveFilter && f.type === _commsActiveFilter.type && f.value === _commsActiveFilter.value;
-  _commsActiveFilter = (!f || isSame) ? null : f;
+  if (f.dim === 'case_status') _commsCaseStatusFilter = (_commsCaseStatusFilter === f.value) ? null : f.value;
+  else if (f.dim === 'stale')  _commsStaleFilter      = (_commsStaleFilter === f.value) ? null : f.value;
+  else if (f.dim === 'status') _commsStatusFilter     = (_commsStatusFilter === f.value) ? null : f.value;
+  renderCommsSummary();
+  filterComms();
+}
+
+function clearCommsFilters() {
+  _commsCaseStatusFilter = null;
+  _commsStaleFilter = null;
+  _commsStatusFilter = null;
   renderCommsSummary();
   filterComms();
 }
@@ -3670,11 +3770,9 @@ function filterComms() {
   const filtered = _commsData.filter(c => {
     const matchQ = !q || _ns(c.org_title).includes(q) || _ns(c.subject).includes(q) || _ns(c.notes || '').includes(q);
     let matchFilter = true;
-    if (_commsActiveFilter) {
-      if (_commsActiveFilter.type === 'case_status') matchFilter = c.case_status === _commsActiveFilter.value;
-      else if (_commsActiveFilter.type === 'stale')   matchFilter = !!c.case_is_stale;
-      else if (_commsActiveFilter.type === 'status')  matchFilter = c.status === _commsActiveFilter.value;
-    }
+    if (_commsCaseStatusFilter) matchFilter = matchFilter && c.case_status === _commsCaseStatusFilter;
+    if (_commsStaleFilter)      matchFilter = matchFilter && (_commsStaleFilter === '1' ? !!c.case_is_stale : !c.case_is_stale);
+    if (_commsStatusFilter)     matchFilter = matchFilter && c.status === _commsStatusFilter;
     return matchQ && matchFilter;
   });
   if (_commsViewMode === 'grouped') renderCommsGrouped(filtered);
@@ -4334,11 +4432,9 @@ async function deleteComm(id) {
 function downloadCommsExcel() {
   const q = document.getElementById('commsSearch').value;
   const params = new URLSearchParams();
-  if (_commsActiveFilter) {
-    if (_commsActiveFilter.type === 'case_status') params.set('case_status', _commsActiveFilter.value);
-    else if (_commsActiveFilter.type === 'stale')  params.set('stale', '1');
-    else if (_commsActiveFilter.type === 'status') params.set('status', _commsActiveFilter.value);
-  }
+  if (_commsCaseStatusFilter) params.set('case_status', _commsCaseStatusFilter);
+  if (_commsStaleFilter)      params.set('stale', _commsStaleFilter);
+  if (_commsStatusFilter)     params.set('status', _commsStatusFilter);
   if (q) params.set('q', q);
   window.location.href = `${API_BASE}api/communications/export?${params}`;
 }

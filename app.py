@@ -1821,7 +1821,7 @@ def communications_export():
 
     status_filter      = (freq.args.get("status") or "").strip()
     case_status_filter = (freq.args.get("case_status") or "").strip()
-    stale_filter       = (freq.args.get("stale") or "").strip() == "1"
+    stale_filter        = (freq.args.get("stale") or "").strip()  # "1" = stale only, "0" = not-stale only, "" = all
     q = (freq.args.get("q") or "").strip().lower()
 
     rows = Communication.query.order_by(
@@ -1832,8 +1832,10 @@ def communications_export():
         rows = [r for r in rows if r.status == status_filter]
     if case_status_filter:
         rows = [r for r in rows if r.case and r.case.status == case_status_filter]
-    if stale_filter:
+    if stale_filter == "1":
         rows = [r for r in rows if r.case and r.case.is_stale]
+    elif stale_filter == "0":
+        rows = [r for r in rows if not (r.case and r.case.is_stale)]
     if q:
         rows = [r for r in rows if any(
             q in (v or "").lower()
