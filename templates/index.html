@@ -464,32 +464,37 @@
               </div>
             </div>
             <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
-              <ul class="nav nav-underline small mb-2">
-                <li class="nav-item">
-                  <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogTypeSummaryPane" type="button">
-                    <i class="bi bi-tag me-1"></i><span data-i18n="catalog.filter_group_type">Type</span>
-                    <span id="catalogTypeTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
-                  </button>
-                </li>
-                <li class="nav-item">
-                  <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogHvdSummaryPane" type="button">
-                    <i class="bi bi-gem me-1"></i><span data-i18n="catalog.filter_group_hvd">HVD</span>
-                    <span id="catalogHvdTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
-                  </button>
-                </li>
-                <li class="nav-item">
-                  <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogHarvestSummaryPane" type="button">
-                    <i class="bi bi-cloud-arrow-down me-1"></i><span data-i18n="catalog.filter_group_harvest">Harvested</span>
-                    <span id="catalogHarvestTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
-                  </button>
-                </li>
-                <li class="nav-item">
-                  <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogGeoSummaryPane" type="button">
-                    <i class="bi bi-geo-alt me-1"></i><span data-i18n="catalog.filter_group_geo">Geospatial</span>
-                    <span id="catalogGeoTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
-                  </button>
-                </li>
-              </ul>
+              <div class="d-flex justify-content-between align-items-center">
+                <ul class="nav nav-underline small mb-2">
+                  <li class="nav-item">
+                    <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogTypeSummaryPane" type="button">
+                      <i class="bi bi-tag me-1"></i><span data-i18n="catalog.filter_group_type">Type</span>
+                      <span id="catalogTypeTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                  <li class="nav-item">
+                    <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogHvdSummaryPane" type="button">
+                      <i class="bi bi-gem me-1"></i><span data-i18n="catalog.filter_group_hvd">HVD</span>
+                      <span id="catalogHvdTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                  <li class="nav-item">
+                    <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogHarvestSummaryPane" type="button">
+                      <i class="bi bi-cloud-arrow-down me-1"></i><span data-i18n="catalog.filter_group_harvest">Harvested</span>
+                      <span id="catalogHarvestTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                  <li class="nav-item">
+                    <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#catalogGeoSummaryPane" type="button">
+                      <i class="bi bi-geo-alt me-1"></i><span data-i18n="catalog.filter_group_geo">Geospatial</span>
+                      <span id="catalogGeoTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                </ul>
+                <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1 mb-2 flex-shrink-0" onclick="clearCatalogFilters()">
+                  <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">Clear filters</span>
+                </button>
+              </div>
               <div class="tab-content">
                 <div class="tab-pane fade show active" id="catalogTypeSummaryPane">
                   <div id="catalogTypeSummary" class="row g-2"></div>
@@ -732,20 +737,25 @@
               </div>
             </div>
             <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
-              <ul class="nav nav-underline small mb-2">
-                <li class="nav-item">
-                  <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#contactsRoleSummaryPane" type="button">
-                    <i class="bi bi-shield-check me-1"></i><span data-i18n="contacts.filter_group_role">Role</span>
-                    <span id="contactsRoleTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
-                  </button>
-                </li>
-                <li class="nav-item">
-                  <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#contactsStateSummaryPane" type="button">
-                    <i class="bi bi-check-circle me-1"></i><span data-i18n="contacts.filter_group_state">State</span>
-                    <span id="contactsStateTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
-                  </button>
-                </li>
-              </ul>
+              <div class="d-flex justify-content-between align-items-center">
+                <ul class="nav nav-underline small mb-2">
+                  <li class="nav-item">
+                    <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#contactsRoleSummaryPane" type="button">
+                      <i class="bi bi-shield-check me-1"></i><span data-i18n="contacts.filter_group_role">Role</span>
+                      <span id="contactsRoleTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                  <li class="nav-item">
+                    <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#contactsStateSummaryPane" type="button">
+                      <i class="bi bi-check-circle me-1"></i><span data-i18n="contacts.filter_group_state">State</span>
+                      <span id="contactsStateTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                </ul>
+                <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1 mb-2 flex-shrink-0" onclick="clearContactsFilters()">
+                  <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">Clear filters</span>
+                </button>
+              </div>
               <div class="tab-content">
                 <div class="tab-pane fade show active" id="contactsRoleSummaryPane">
                   <div id="contactsRoleSummary" class="row g-2"></div>
@@ -1486,6 +1496,7 @@ const TRANSLATIONS = {
     'catalog.filter_group_hvd': 'HVD',
     'catalog.filter_group_harvest': 'Harvested',
     'catalog.filter_group_geo': 'Geospatial',
+    'filters.clear': 'Clear filters',
     'catalog.results_for': 'results for',
     'catalog.total_datasets': 'datasets total',
     'catalog.none': 'No datasets match your search.',
@@ -1866,6 +1877,7 @@ const TRANSLATIONS = {
     'catalog.filter_group_hvd': 'HVD',
     'catalog.filter_group_harvest': 'Συλλεγμένα',
     'catalog.filter_group_geo': 'Γεωχωρικά',
+    'filters.clear': 'Καθαρισμός φίλτρων',
     'catalog.results_for': 'αποτελέσματα για',
     'catalog.total_datasets': 'σύνολα δεδομένων συνολικά',
     'catalog.none': 'Δεν βρέθηκαν σύνολα δεδομένων με αυτά τα κριτήρια.',
@@ -2284,6 +2296,15 @@ function setCatalogGeoFilter(idx) {
   const card = _catalogGeoSummaryCards[idx];
   if (!card) return;
   _catalogGeoFilter = card.filter === _catalogGeoFilter ? '' : card.filter;
+  _catalogStart = 0;
+  loadCatalog();
+}
+
+function clearCatalogFilters() {
+  _catalogTypeFilter = '';
+  _catalogHvdFilter = '';
+  _catalogHarvestedFilter = '';
+  _catalogGeoFilter = '';
   _catalogStart = 0;
   loadCatalog();
 }
@@ -5466,6 +5487,13 @@ function setContactsFilter(idx) {
   } else if (f.type === 'state') {
     _contactsStateFilter = (_contactsStateFilter === f.value) ? null : f.value;
   }
+  renderContactsSummary();
+  filterContactsTab();
+}
+
+function clearContactsFilters() {
+  _contactsRoleFilter = null;
+  _contactsStateFilter = null;
   renderContactsSummary();
   filterContactsTab();
 }
