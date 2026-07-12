@@ -696,10 +696,19 @@
               </button>
             </div>
             <p class="text-muted small" data-i18n="quality.hvd_desc">Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) &mdash; not just whether it carries the hvd_category tag.</p>
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+              <input type="text" id="hvdSingleDatasetInput" class="form-control form-control-sm" style="width:280px"
+                     placeholder="Dataset slug or portal URL" data-i18n-ph="quality.hvd_check_one_placeholder"
+                     onkeydown="if(event.key==='Enter')checkHvdSingleDataset();">
+              <button class="btn btn-outline-primary btn-sm" onclick="checkHvdSingleDataset()">
+                <i class="bi bi-search me-1"></i><span data-i18n="quality.hvd_check_one_btn">Check One Dataset</span>
+              </button>
+            </div>
+            <div id="hvdSingleResult"></div>
             <div id="hvdCheckResults">
               <div class="text-center py-5 text-muted">
                 <i class="bi bi-patch-question fs-2 d-block mb-2"></i>
-                <span data-i18n="quality.hvd_hint">Click Run HVD Check to validate all HVD-tagged datasets. This checks every dataset currently tagged as an EU High-Value Dataset and can take about a minute.</span>
+                <span data-i18n="quality.hvd_hint">Click Run HVD Check to validate all HVD-tagged datasets. This checks every dataset currently tagged as an EU High-Value Dataset and can take several minutes.</span>
               </div>
             </div>
           </div>
@@ -1426,6 +1435,11 @@ const TRANSLATIONS = {
     'quality.hvd_col_legal': 'Legal citation',
     'quality.hvd_col_api': 'API access',
     'quality.hvd_col_license': 'License',
+    'quality.hvd_check_one_placeholder': 'Dataset slug or portal URL',
+    'quality.hvd_check_one_btn': 'Check One Dataset',
+    'quality.hvd_conforms': 'Fully conforms',
+    'quality.hvd_legal_ok': 'Legal citation linked',
+    'quality.hvd_api_ok': 'Has API access',
     'orgs.title': 'Organizations & Dataset Counts',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'All Public Sector',
@@ -1840,6 +1854,11 @@ const TRANSLATIONS = {
     'quality.hvd_col_legal': 'Νομική αναφορά',
     'quality.hvd_col_api': 'Πρόσβαση API',
     'quality.hvd_col_license': 'Άδεια χρήσης',
+    'quality.hvd_check_one_placeholder': 'Αναγνωριστικό ή URL συνόλου δεδομένων',
+    'quality.hvd_check_one_btn': 'Έλεγχος Ενός Συνόλου Δεδομένων',
+    'quality.hvd_conforms': 'Πλήρης συμμόρφωση',
+    'quality.hvd_legal_ok': 'Συνδεδεμένη νομική αναφορά',
+    'quality.hvd_api_ok': 'Διαθέτει πρόσβαση API',
     'orgs.title': 'Οργανισμοί & Αριθμός Συνόλων Δεδομένων',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'Όλος ο Δημόσιος Τομέας',
@@ -3373,6 +3392,57 @@ async function checkDatasets() {
 }
 
 // ── HVD compliance check (SHACL) ─────────────────────────────────────────────
+async function checkHvdSingleDataset() {
+  const input = show('hvdSingleDatasetInput');
+  const name  = input.value.trim();
+  const el    = show('hvdSingleResult');
+  if (!name) return;
+  el.innerHTML = `<div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}</div>`;
+  try {
+    const data = await fetch(`${API_BASE}api/quality/hvd-check-one?name=${encodeURIComponent(name)}`).then(r => r.json());
+    if (data.error) {
+      el.innerHTML = `<div class="alert alert-warning mb-0">${esc(data.error)}</div>`;
+      return;
+    }
+    el.innerHTML = _renderHvdSingleResult(data);
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
+  }
+}
+
+function _renderHvdSingleResult(d) {
+  const conformsBadge = d.conforms
+    ? `<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>${t('quality.hvd_conforms')}</span>`
+    : `<span class="badge bg-danger">${fmt(d.violation_count)} ${t('quality.hvd_col_violations').toLowerCase()}</span>`;
+  const licenseBadge = d.license_status === 'missing'
+    ? `<span class="badge bg-danger">${t('quality.hvd_license_missing')}</span>`
+    : d.license_status === 'non_open'
+    ? `<span class="badge bg-warning text-dark">${t('quality.hvd_license_non_open')}</span>`
+    : `<span class="badge bg-success">${t('quality.hvd_license_open')}</span>`;
+  const detailsHtml = d.details.length
+    ? `<details class="mt-2"><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')} (${d.details.length})</summary>
+        <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}">${esc(v.message)}</li>`).join('')}</ul>
+      </details>`
+    : '';
+  return `
+    <div class="border rounded-3 p-3 mb-3">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+        <a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="fw-semibold text-decoration-none">${esc(d.title)}</a>
+        ${conformsBadge}
+      </div>
+      <div class="d-flex flex-wrap gap-3 small">
+        <span>${d.legal_citation_issue
+          ? `<i class="bi bi-file-earmark-text text-warning me-1"></i>${t('quality.hvd_legal_issue')}`
+          : `<i class="bi bi-check2 text-success me-1"></i>${t('quality.hvd_legal_ok')}`}</span>
+        <span>${d.no_api_access
+          ? `<i class="bi bi-hdd-network text-warning me-1"></i>${t('quality.hvd_no_api')}`
+          : `<i class="bi bi-check2 text-success me-1"></i>${t('quality.hvd_api_ok')}`}</span>
+        <span>${licenseBadge}</span>
+      </div>
+      ${detailsHtml}
+    </div>`;
+}
+
 async function runHvdCheck() {
   const btn = show('hvdCheckBtn');
   const el  = show('hvdCheckResults');

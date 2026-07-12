@@ -1660,6 +1660,7 @@ def _classify_shacl_results(results_graph: "rdflib.Graph"):
         msg   = results_graph.value(r, _SH_NS.resultMessage)
         path  = results_graph.value(r, _SH_NS.resultPath)
         shape = results_graph.value(r, _SH_NS.sourceShape)
+        comp  = results_graph.value(r, _SH_NS.sourceConstraintComponent)
         path_s  = str(path) if path is not None else ""
         shape_s = str(shape) if shape is not None else ""
         entry = {
@@ -1669,12 +1670,29 @@ def _classify_shacl_results(results_graph: "rdflib.Graph"):
         }
         if sev == _SH_NS.Violation:
             violations.append(entry)
-            if "applicableLegislation" in path_s:
+            # DataServiceShape carries its own, separate applicableLegislation
+            # requirement (the accompanying API must independently cite the
+            # regulation) -- a real violation, but a different one from "this
+            # dataset cites legislation as free text instead of a linked
+            # resource". Only DatasetShape/DistributionShape violations on
+            # this path mean the dataset's OWN citation is malformed;
+            # confirmed against a real dataset with a properly-linked
+            # eli:LegalResource citation that was wrongly flagged before this
+            # fix, solely because its accompanying DataService lacked one.
+            if "applicableLegislation" in path_s and ("DatasetShape" in shape_s or "DistributionShape" in shape_s):
                 legal_citation_issue = True
             # The MinCount("has an accessService, or is served by one") check
             # uses a compound SHACL property-path as resultPath (not a plain
-            # URI), so it's matched by its stable shape name instead.
-            if shape_s.endswith("DatasetShape/API"):
+            # URI), so it's matched by its stable shape name instead. That
+            # same shape also carries a separate NodeKind(IRI) constraint,
+            # which fires when an accessService *is* present but expressed as
+            # a blank node rather than its own IRI (common in practice --
+            # e.g. an API described inline instead of minted its own stable
+            # URI). That's a real but distinct metadata gap, not "no API
+            # access" -- only the MinCount failure means one is genuinely
+            # absent, confirmed against a real dataset that has an inline
+            # (blank-node) API and was wrongly flagged before this fix.
+            if shape_s.endswith("DatasetShape/API") and comp == _SH_NS.MinCountConstraintComponent:
                 no_api_access = True
         else:
             warnings.append(entry)
@@ -1799,6 +1817,21 @@ def get_hvd_check():
         "error":      _hvd_check_cache["error"],
         "result":     _hvd_check_cache["result"],
     })
+
+
+@app.route("/api/quality/hvd-check-one")
+def hvd_check_one_route():
+    name = (freq.args.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Missing dataset name"}), 400
+    # Accept a full dataset URL pasted from the portal, not just the bare slug.
+    name = name.rstrip("/").rsplit("/", 1)[-1]
+    try:
+        return jsonify(_hvd_check_one(name))
+    except requests.exceptions.HTTPError as exc:
+        return jsonify({"error": f"Could not fetch dataset '{name}': {exc}"}), 502
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
 
 
 @app.route("/api/trigger-check", methods=["POST"])
