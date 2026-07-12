@@ -685,6 +685,25 @@
             </div>
           </div>
         </div>
+        <div class="col-12">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <h6 class="fw-semibold mb-0">
+                <i class="bi bi-patch-check me-2 text-primary"></i><span data-i18n="quality.hvd_title">HVD Compliance Check (SHACL)</span>
+              </h6>
+              <button id="hvdCheckBtn" class="btn btn-primary btn-sm" onclick="runHvdCheck()">
+                <i class="bi bi-play me-1"></i><span data-i18n="quality.hvd_run">Run HVD Check</span>
+              </button>
+            </div>
+            <p class="text-muted small" data-i18n="quality.hvd_desc">Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) &mdash; not just whether it carries the hvd_category tag.</p>
+            <div id="hvdCheckResults">
+              <div class="text-center py-5 text-muted">
+                <i class="bi bi-patch-question fs-2 d-block mb-2"></i>
+                <span data-i18n="quality.hvd_hint">Click Run HVD Check to validate all HVD-tagged datasets. This checks every dataset currently tagged as an EU High-Value Dataset and can take about a minute.</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1387,6 +1406,26 @@ const TRANSLATIONS = {
     'quality.accessibility': 'Sample Dataset Accessibility',
     'quality.check': 'Check',
     'quality.hint2': 'Click Check to test dataset accessibility',
+    'quality.hvd_title': 'HVD Compliance Check (SHACL)',
+    'quality.hvd_run': 'Run HVD Check',
+    'quality.hvd_desc': "Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) — not just whether it carries the hvd_category tag.",
+    'quality.hvd_hint': 'Click Run HVD Check to validate all HVD-tagged datasets. This checks every dataset currently tagged as an EU High-Value Dataset and can take several minutes.',
+    'quality.hvd_running': 'Validating HVD-tagged datasets against the official SHACL shapes… this can take several minutes. Feel free to switch tabs — it keeps running in the background.',
+    'quality.hvd_still_running': 'Still running after a long wait — it may still finish in the background. Try clicking Run HVD Check again in a bit to check the latest status.',
+    'quality.hvd_checked': 'Checked',
+    'quality.hvd_non_conforming': 'Non-conforming',
+    'quality.hvd_legal_issue': 'Legal citation not linked',
+    'quality.hvd_no_api': 'No API access',
+    'quality.hvd_license_missing': 'License missing',
+    'quality.hvd_license_non_open': 'License not confirmed open',
+    'quality.hvd_license_open': 'Open license',
+    'quality.hvd_failed_note': '{n} dataset(s) could not be fetched and were skipped.',
+    'quality.hvd_all_clean': 'No issues found across all checked HVD-tagged datasets.',
+    'quality.hvd_details': 'Raw SHACL details',
+    'quality.hvd_col_violations': 'Violations',
+    'quality.hvd_col_legal': 'Legal citation',
+    'quality.hvd_col_api': 'API access',
+    'quality.hvd_col_license': 'License',
     'orgs.title': 'Organizations & Dataset Counts',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'All Public Sector',
@@ -1781,6 +1820,26 @@ const TRANSLATIONS = {
     'quality.accessibility': 'Προσβασιμότητα Δείγματος Δεδομένων',
     'quality.check': 'Έλεγχος',
     'quality.hint2': 'Κάντε κλικ στο «Έλεγχος» για έλεγχο προσβασιμότητας',
+    'quality.hvd_title': 'Έλεγχος Συμμόρφωσης HVD (SHACL)',
+    'quality.hvd_run': 'Εκτέλεση Ελέγχου HVD',
+    'quality.hvd_desc': 'Επικυρώνει τα πραγματικά μεταδεδομένα DCAT-AP κάθε συνόλου δεδομένων με ετικέτα HVD βάσει των επίσημων μορφών SHACL DCAT-AP-HVD της ΕΕ (Κανονισμός (ΕΕ) 2023/138) — όχι απλώς αν φέρει την ετικέτα hvd_category.',
+    'quality.hvd_hint': 'Κάντε κλικ στο «Εκτέλεση Ελέγχου HVD» για επαλήθευση όλων των συνόλων δεδομένων με ετικέτα HVD. Ελέγχει κάθε σύνολο δεδομένων που φέρει σήμερα ετικέτα HVD της ΕΕ και μπορεί να διαρκέσει αρκετά λεπτά.',
+    'quality.hvd_running': 'Επικύρωση συνόλων δεδομένων HVD βάσει των επίσημων μορφών SHACL… μπορεί να διαρκέσει αρκετά λεπτά. Μπορείτε να αλλάξετε καρτέλα — η διαδικασία συνεχίζεται στο παρασκήνιο.',
+    'quality.hvd_still_running': 'Εξακολουθεί να εκτελείται μετά από μεγάλη αναμονή — ενδέχεται να ολοκληρωθεί στο παρασκήνιο. Δοκιμάστε ξανά το «Εκτέλεση Ελέγχου HVD» σε λίγο για την πιο πρόσφατη κατάσταση.',
+    'quality.hvd_checked': 'Ελέγχθηκαν',
+    'quality.hvd_non_conforming': 'Μη συμμορφούμενα',
+    'quality.hvd_legal_issue': 'Μη συνδεδεμένη νομική αναφορά',
+    'quality.hvd_no_api': 'Χωρίς πρόσβαση API',
+    'quality.hvd_license_missing': 'Λείπει άδεια χρήσης',
+    'quality.hvd_license_non_open': 'Μη επιβεβαιωμένη ανοιχτή άδεια',
+    'quality.hvd_license_open': 'Ανοιχτή άδεια',
+    'quality.hvd_failed_note': '{n} σύνολο(-α) δεδομένων δεν ήταν δυνατό να ανακτηθούν και παραλείφθηκαν.',
+    'quality.hvd_all_clean': 'Δεν βρέθηκαν προβλήματα σε όλα τα ελεγμένα σύνολα δεδομένων HVD.',
+    'quality.hvd_details': 'Αναλυτικά στοιχεία SHACL',
+    'quality.hvd_col_violations': 'Παραβιάσεις',
+    'quality.hvd_col_legal': 'Νομική αναφορά',
+    'quality.hvd_col_api': 'Πρόσβαση API',
+    'quality.hvd_col_license': 'Άδεια χρήσης',
     'orgs.title': 'Οργανισμοί & Αριθμός Συνόλων Δεδομένων',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'Όλος ο Δημόσιος Τομέας',
@@ -3311,6 +3370,112 @@ async function checkDatasets() {
   } finally {
     showSpinner(false);
   }
+}
+
+// ── HVD compliance check (SHACL) ─────────────────────────────────────────────
+async function runHvdCheck() {
+  const btn = show('hvdCheckBtn');
+  const el  = show('hvdCheckResults');
+  try {
+    const resp = await fetch(API_BASE + 'api/quality/hvd-check', { method: 'POST' }).then(r => r.json());
+    if (resp.error) {
+      el.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-key me-2"></i>${esc(resp.error)}</div>`;
+      return;
+    }
+    if (!resp.started && !resp.already_running) return;  // e.g. non-admin: silently ignored by the backend gate
+    btn.disabled = true;
+    el.innerHTML = `<div class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>${esc(t('quality.hvd_running'))}</div>`;
+    _pollHvdCheck();
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
+  }
+}
+
+async function _pollHvdCheck(attempts = 0) {
+  // Checking ~1,100 datasets one by one (rate-limited to be a considerate API
+  // citizen) can genuinely take several minutes -- give up only after ~20 min.
+  // The backend run isn't tied to this poll loop: if the tab is closed or
+  // this gives up, the check keeps running server-side and the result is
+  // still there next time "Run HVD Check" is clicked.
+  if (attempts > 240) {
+    show('hvdCheckBtn').disabled = false;
+    show('hvdCheckResults').innerHTML =
+      `<div class="alert alert-warning mb-0">${esc(t('quality.hvd_still_running'))}</div>`;
+    return;
+  }
+  await new Promise(r => setTimeout(r, 5000));
+  try {
+    const data = await fetch(API_BASE + 'api/quality/hvd-check').then(r => r.json());
+    if (data.running) { _pollHvdCheck(attempts + 1); return; }
+    show('hvdCheckBtn').disabled = false;
+    if (data.error) {
+      show('hvdCheckResults').innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(data.error)}</div>`;
+      return;
+    }
+    if (data.result) _renderHvdCheck(data.result);
+  } catch (e) {
+    show('hvdCheckBtn').disabled = false;
+  }
+}
+
+function _renderHvdCheck(result) {
+  const s = result.summary;
+  const cards = [
+    { value: s.checked,              label: t('quality.hvd_checked'),        bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' },
+    { value: s.checked - s.conforms, label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10',    text: 'text-danger',    icon: 'bi-x-octagon' },
+    { value: s.legal_citation_issue, label: t('quality.hvd_legal_issue'),    bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-file-earmark-text' },
+    { value: s.no_api_access,        label: t('quality.hvd_no_api'),         bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-hdd-network' },
+    { value: s.license_missing,      label: t('quality.hvd_license_missing'),bg: 'bg-danger bg-opacity-10',    text: 'text-danger',    icon: 'bi-file-earmark-x' },
+    { value: s.license_non_open,     label: t('quality.hvd_license_non_open'),bg: 'bg-warning bg-opacity-10',  text: 'text-warning',   icon: 'bi-file-earmark-lock' },
+  ];
+  const cardsHtml = `<div class="row g-2 mb-3">${cards.map(c => `
+    <div class="col-6 col-sm-4 col-lg-2">
+      <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}">
+        <i class="bi ${c.icon} fs-5 ${c.text}"></i>
+        <div>
+          <div class="fw-bold fs-6 lh-1 ${c.text}">${fmt(c.value)}</div>
+          <div class="text-muted" style="font-size:.7rem">${c.label}</div>
+        </div>
+      </div>
+    </div>`).join('')}</div>`;
+
+  const failedNote = s.failed_to_fetch
+    ? `<p class="text-muted small mb-2">${t('quality.hvd_failed_note').replace('{n}', fmt(s.failed_to_fetch))}</p>` : '';
+
+  if (!result.datasets.length) {
+    show('hvdCheckResults').innerHTML = cardsHtml + failedNote +
+      `<p class="text-success small mb-0"><i class="bi bi-check-circle me-1"></i>${t('quality.hvd_all_clean')}</p>`;
+    return;
+  }
+
+  const rows = result.datasets.map(d => `
+    <tr>
+      <td><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
+      <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
+      <td>${d.legal_citation_issue ? `<i class="bi bi-file-earmark-text text-warning" title="${esc(t('quality.hvd_legal_issue'))}"></i>` : ''}</td>
+      <td>${d.no_api_access ? `<i class="bi bi-hdd-network text-warning" title="${esc(t('quality.hvd_no_api'))}"></i>` : ''}</td>
+      <td>${d.license_status === 'missing' ? `<span class="badge bg-danger">${t('quality.hvd_license_missing')}</span>`
+          : d.license_status === 'non_open' ? `<span class="badge bg-warning text-dark">${t('quality.hvd_license_non_open')}</span>`
+          : `<span class="badge bg-success">${t('quality.hvd_license_open')}</span>`}</td>
+      <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
+        <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}">${esc(v.message)}</li>`).join('')}</ul>
+      </details></td>
+    </tr>`).join('');
+
+  show('hvdCheckResults').innerHTML = cardsHtml + failedNote + `
+    <div style="max-height:60vh;overflow-y:auto">
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr>
+          <th>${t('quality.col_dataset')}</th>
+          <th>${t('quality.hvd_col_violations')}</th>
+          <th>${t('quality.hvd_col_legal')}</th>
+          <th>${t('quality.hvd_col_api')}</th>
+          <th>${t('quality.hvd_col_license')}</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 // ── Organizations tab ────────────────────────────────────────────────────────

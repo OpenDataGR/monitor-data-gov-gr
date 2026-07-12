@@ -20,6 +20,8 @@ from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, User, PasswordResetToken
+import rdflib
+import pyshacl
 import config
 
 app = Flask(__name__)
@@ -1569,6 +1571,233 @@ def quality_check():
         "critical":     len(critical),
         "healthy":      len(critical) == 0,
         "issues":       issues,
+    })
+
+
+# ── HVD compliance check (DCAT-AP-HVD SHACL) ─────────────────────────────────
+# Whether a dataset is tagged hvd_category doesn't prove it actually meets
+# Regulation (EU) 2023/138's requirements -- that's a self/harvester-declared
+# CKAN field. This validates each HVD-tagged dataset's real DCAT-AP RDF export
+# against the EU's own SHACL shapes (vendored from SEMICeu's DCAT-AP repo, the
+# 3.0.0-hvd release) for a genuine, EU-sanctioned structural compliance check.
+_HVD_SHAPES_TTL = (Path(__file__).parent / "shacl" / "dcat-ap-hvd.shapes.ttl").read_text(encoding="utf-8")
+
+_DCATAP_NS = rdflib.Namespace("http://data.europa.eu/r5r/")
+_DCAT_NS   = rdflib.Namespace("http://www.w3.org/ns/dcat#")
+_DCT_NS    = rdflib.Namespace("http://purl.org/dc/terms/")
+_SH_NS     = rdflib.Namespace("http://www.w3.org/ns/shacl#")
+
+_OPEN_LICENSE_MARKERS = (
+    "creativecommons.org/licenses/by",
+    "publications.europa.eu/resource/authority/licence/cc_by",
+    "publications.europa.eu/resource/authority/licence/cc0",
+    "creativecommons.org/publicdomain/zero",
+    "opendefinition.org/licenses/cc-by",
+    "opendefinition.org/licenses/odc-by",
+    "opendatacommons.org/licenses/by",
+)
+
+# Concept/service URI -> its parsed RDF graph (or None if unfetchable), kept
+# for the process lifetime. HVD category codes repeat across hundreds of
+# datasets, so after the first few checks this cache turns most lookups into
+# a dict hit instead of a fresh HTTP request.
+_hvd_vocab_cache: dict = {}
+_hvd_vocab_lock = threading.Lock()
+
+_hvd_check_cache: dict = {"result": None, "running": False, "started_at": None, "error": None}
+
+
+def _get_vocab_graph(url: str):
+    with _hvd_vocab_lock:
+        if url in _hvd_vocab_cache:
+            return _hvd_vocab_cache[url]
+    g = None
+    try:
+        r = requests.get(url, timeout=config.REQUEST_TIMEOUT, headers={"Accept": "application/rdf+xml"})
+        r.raise_for_status()
+        g = rdflib.Graph()
+        g.parse(data=r.text, format="xml")
+    except Exception:
+        g = None
+    with _hvd_vocab_lock:
+        _hvd_vocab_cache[url] = g
+    return g
+
+
+def _augment_with_vocab(graph: "rdflib.Graph") -> None:
+    """Merge in the actual RDF for every hvdCategory/accessService URI this
+    dataset references. Without this, SHACL validates those terms' *typing*
+    blind: a dataset's own RDF export only references e.g. its HVD category
+    by URI, so a legitimate EU category code fails skos:Concept/skos:inScheme
+    checks simply because its definition triples live in a separate document
+    (confirmed by testing: this exact fix made real category-code violations
+    disappear while leaving genuine gaps intact)."""
+    refs = set(graph.objects(None, _DCATAP_NS.hvdCategory)) | set(graph.objects(None, _DCAT_NS.accessService))
+    for ref in refs:
+        if not isinstance(ref, rdflib.URIRef):
+            continue
+        vocab_graph = _get_vocab_graph(str(ref))
+        if vocab_graph is not None:
+            graph += vocab_graph
+
+
+def _license_status(graph: "rdflib.Graph") -> str:
+    licenses = list(graph.objects(None, _DCT_NS.license))
+    if not licenses:
+        return "missing"
+    for lic in licenses:
+        if any(marker in str(lic).lower() for marker in _OPEN_LICENSE_MARKERS):
+            return "open"
+    return "non_open"
+
+
+def _classify_shacl_results(results_graph: "rdflib.Graph"):
+    violations, warnings = [], []
+    legal_citation_issue = False
+    no_api_access = False
+    for r in results_graph.subjects(rdflib.RDF.type, _SH_NS.ValidationResult):
+        sev   = results_graph.value(r, _SH_NS.resultSeverity)
+        msg   = results_graph.value(r, _SH_NS.resultMessage)
+        path  = results_graph.value(r, _SH_NS.resultPath)
+        shape = results_graph.value(r, _SH_NS.sourceShape)
+        path_s  = str(path) if path is not None else ""
+        shape_s = str(shape) if shape is not None else ""
+        entry = {
+            "severity": "violation" if sev == _SH_NS.Violation else "warning",
+            "path":     path_s or None,
+            "message":  str(msg) if msg else "",
+        }
+        if sev == _SH_NS.Violation:
+            violations.append(entry)
+            if "applicableLegislation" in path_s:
+                legal_citation_issue = True
+            # The MinCount("has an accessService, or is served by one") check
+            # uses a compound SHACL property-path as resultPath (not a plain
+            # URI), so it's matched by its stable shape name instead.
+            if shape_s.endswith("DatasetShape/API"):
+                no_api_access = True
+        else:
+            warnings.append(entry)
+    return violations, warnings, legal_citation_issue, no_api_access
+
+
+def _hvd_check_one(name: str) -> dict:
+    url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
+    r = requests.get(url, timeout=config.REQUEST_TIMEOUT, headers={"Accept": "application/rdf+xml"})
+    r.raise_for_status()
+    graph = rdflib.Graph()
+    graph.parse(data=r.text, format="xml")
+    _augment_with_vocab(graph)
+
+    conforms, results_graph, _ = pyshacl.validate(
+        graph, shacl_graph=_HVD_SHAPES_TTL, shacl_graph_format="turtle",
+        advanced=True, inference="rdfs", debug=False,
+    )
+    violations, warnings, legal_citation_issue, no_api_access = _classify_shacl_results(results_graph)
+
+    title = None
+    for t in graph.objects(None, _DCT_NS.title):
+        title = str(t)
+        break
+
+    return {
+        "name":                 name,
+        "title":                title or name,
+        "conforms":             conforms,
+        "violation_count":      len(violations),
+        "warning_count":        len(warnings),
+        "legal_citation_issue": legal_citation_issue,
+        "no_api_access":        no_api_access,
+        "license_status":       _license_status(graph),
+        "details":              violations + warnings,
+    }
+
+
+def _list_hvd_dataset_names() -> list:
+    names = []
+    start, batch = 0, 100
+    while True:
+        r = requests.get(
+            f"{config.API_BASE}/package_search",
+            params={"rows": batch, "start": start, "fq": '-hvd_category:"[]"', "fl": "name"},
+            headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            break
+        results = data["result"]["results"]
+        if not results:
+            break
+        names.extend(p["name"] for p in results if p.get("name"))
+        start += batch
+        if start >= data["result"]["count"]:
+            break
+    return names
+
+
+def _do_run_hvd_check() -> None:
+    try:
+        names = _list_hvd_dataset_names()
+        rows = []
+        with ThreadPoolExecutor(max_workers=15) as pool:
+            futures = {pool.submit(_hvd_check_one, name): name for name in names}
+            for fut in as_completed(futures):
+                name = futures[fut]
+                try:
+                    rows.append(fut.result())
+                except Exception as exc:
+                    rows.append({"name": name, "error": str(exc)})
+
+        checked = [r for r in rows if "error" not in r]
+        failed  = [r for r in rows if "error" in r]
+        summary = {
+            "total":                len(rows),
+            "checked":              len(checked),
+            "failed_to_fetch":      len(failed),
+            "conforms":             sum(1 for r in checked if r["conforms"]),
+            "legal_citation_issue": sum(1 for r in checked if r["legal_citation_issue"]),
+            "no_api_access":        sum(1 for r in checked if r["no_api_access"]),
+            "license_missing":      sum(1 for r in checked if r["license_status"] == "missing"),
+            "license_non_open":     sum(1 for r in checked if r["license_status"] == "non_open"),
+        }
+        flagged = [
+            r for r in checked
+            if r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] != "open" or not r["conforms"]
+        ]
+        flagged.sort(key=lambda r: -r["violation_count"])
+        _hvd_check_cache["result"] = {
+            "summary":     summary,
+            "datasets":    flagged,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _hvd_check_cache["error"] = None
+    except Exception as exc:
+        _hvd_check_cache["error"] = str(exc)
+    finally:
+        _hvd_check_cache["running"] = False
+
+
+@app.route("/api/quality/hvd-check", methods=["POST"])
+def start_hvd_check():
+    err = _require_admin()
+    if err:
+        return err
+    if _hvd_check_cache["running"]:
+        return jsonify({"started": False, "already_running": True})
+    _hvd_check_cache["running"]    = True
+    _hvd_check_cache["started_at"] = datetime.now(timezone.utc).isoformat()
+    threading.Thread(target=_do_run_hvd_check, daemon=True).start()
+    return jsonify({"started": True})
+
+
+@app.route("/api/quality/hvd-check")
+def get_hvd_check():
+    return jsonify({
+        "running":    _hvd_check_cache["running"],
+        "started_at": _hvd_check_cache["started_at"],
+        "error":      _hvd_check_cache["error"],
+        "result":     _hvd_check_cache["result"],
     })
 
 
