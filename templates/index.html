@@ -1459,6 +1459,7 @@ const TRANSLATIONS = {
     'quality.hvd_publisher_mismatch_hint': 'The dataset\'s publisher name doesn\'t match its organization ({org}) — likely a contact person\'s name entered by mistake instead of the organization.',
     'quality.hvd_publisher_ok': 'Publisher matches organization',
     'quality.hvd_col_publisher': 'Publisher',
+    'quality.hvd_filter_no_match': 'No datasets match the selected filters.',
     'orgs.title': 'Organizations & Dataset Counts',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'All Public Sector',
@@ -1878,6 +1879,7 @@ const TRANSLATIONS = {
     'quality.hvd_publisher_mismatch_hint': 'Το όνομα εκδότη του συνόλου δεδομένων δεν ταιριάζει με τον οργανισμό του ({org}) — πιθανώς καταχωρήθηκε εκ παραδρομής το όνομα ενός υπαλλήλου αντί του οργανισμού.',
     'quality.hvd_publisher_ok': 'Ο εκδότης ταιριάζει με τον οργανισμό',
     'quality.hvd_col_publisher': 'Εκδότης',
+    'quality.hvd_filter_no_match': 'Κανένα σύνολο δεδομένων δεν ταιριάζει με τα επιλεγμένα φίλτρα.',
     'orgs.title': 'Οργανισμοί & Αριθμός Συνόλων Δεδομένων',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'Όλος ο Δημόσιος Τομέας',
@@ -3441,6 +3443,74 @@ let _hvdSortCol = 'violation_count';
 let _hvdSortDir = 'desc';
 let _hvdExpandedOrgs = new Set();
 let _hvdGroupsCache = [];  // [[orgTitle, datasets[]], ...] from the most recent table render
+let _hvdActiveFilters = new Set();  // summary-card filter keys currently toggled on
+let _hvdSummaryCards = [];
+
+// Each card key maps to a predicate over a flagged dataset row. Independent,
+// combinable facets (a dataset can be non-conforming AND have no API access
+// at once) -- same reasoning as the Dataset Catalog's Type/HVD/Harvested
+// filter cards -- so toggling one narrows the table without resetting the
+// others; all active predicates must match (AND).
+const HVD_FILTER_PREDICATES = {
+  non_conforming:       d => !d.conforms,
+  legal_citation_issue: d => d.legal_citation_issue,
+  no_api_access:        d => d.no_api_access,
+  license_missing:      d => d.license_status === 'missing',
+  license_non_open:     d => d.license_status === 'non_open',
+  publisher_mismatch:   d => d.publisher_mismatch,
+};
+
+function _renderHvdSummaryCards() {
+  const s = _hvdLastResult.summary;
+  _hvdSummaryCards = [
+    { key: null,                   value: s.checked,              label: t('quality.hvd_checked'),          bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' },
+    { key: 'non_conforming',       value: s.checked - s.conforms, label: t('quality.hvd_non_conforming'),   bg: 'bg-danger bg-opacity-10',    text: 'text-danger',    icon: 'bi-x-octagon' },
+    { key: 'legal_citation_issue', value: s.legal_citation_issue, label: t('quality.hvd_legal_issue'),      bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-file-earmark-text' },
+    { key: 'no_api_access',        value: s.no_api_access,        label: t('quality.hvd_no_api'),           bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-hdd-network' },
+    { key: 'license_missing',      value: s.license_missing,      label: t('quality.hvd_license_missing'),  bg: 'bg-danger bg-opacity-10',    text: 'text-danger',    icon: 'bi-file-earmark-x' },
+    { key: 'license_non_open',     value: s.license_non_open,     label: t('quality.hvd_license_non_open'), bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-file-earmark-lock' },
+    { key: 'publisher_mismatch',   value: s.publisher_mismatch,   label: t('quality.hvd_publisher_mismatch'),bg: 'bg-warning bg-opacity-10',  text: 'text-warning',   icon: 'bi-person-badge' },
+  ];
+  const el = document.getElementById('hvdSummaryCards');
+  if (!el) return;
+  el.innerHTML = _hvdSummaryCards.map(c => {
+    const clickable = c.key !== null;
+    const active = clickable && _hvdActiveFilters.has(c.key);
+    const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
+    return `
+    <div class="col-6 col-sm-4 col-lg-2">
+      <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}"
+           style="border:${active ? 2 : 1}px solid ${borderColor};${clickable ? 'cursor:pointer' : ''}"
+           ${clickable ? `onclick="toggleHvdCardFilter('${c.key}')"` : ''}>
+        <i class="bi ${c.icon} fs-5 ${c.text}"></i>
+        <div>
+          <div class="fw-bold fs-6 lh-1 ${c.text}">${fmt(c.value)}</div>
+          <div class="text-muted" style="font-size:.7rem">${c.label}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleHvdCardFilter(key) {
+  if (_hvdActiveFilters.has(key)) {
+    _hvdActiveFilters.delete(key);
+  } else {
+    _hvdActiveFilters.add(key);
+    // license_missing/license_non_open are two values of the same field --
+    // a dataset can never match both, so selecting one clears the other.
+    if (key === 'license_missing')  _hvdActiveFilters.delete('license_non_open');
+    if (key === 'license_non_open') _hvdActiveFilters.delete('license_missing');
+  }
+  _renderHvdSummaryCards();
+  _renderHvdTable();
+}
+
+function clearHvdCardFilters() {
+  _hvdActiveFilters.clear();
+  _renderHvdSummaryCards();
+  _renderHvdTable();
+}
 
 function _showHvdProgress(completed, total) {
   show('hvdProgressWrap').classList.remove('d-none');
@@ -3543,31 +3613,20 @@ async function _pollHvdCheck(attempts = 0) {
 
 function _renderHvdCheck(result) {
   _hvdLastResult = result;
+  _hvdActiveFilters = new Set();
   const s = result.summary;
   show('hvdLastRunAt').textContent = result.finished_at
     ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
   const partialNote = result.partial
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
-  const cards = [
-    { value: s.checked,              label: t('quality.hvd_checked'),        bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' },
-    { value: s.checked - s.conforms, label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10',    text: 'text-danger',    icon: 'bi-x-octagon' },
-    { value: s.legal_citation_issue, label: t('quality.hvd_legal_issue'),    bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-file-earmark-text' },
-    { value: s.no_api_access,        label: t('quality.hvd_no_api'),         bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-hdd-network' },
-    { value: s.license_missing,      label: t('quality.hvd_license_missing'),bg: 'bg-danger bg-opacity-10',    text: 'text-danger',    icon: 'bi-file-earmark-x' },
-    { value: s.license_non_open,     label: t('quality.hvd_license_non_open'),bg: 'bg-warning bg-opacity-10',  text: 'text-warning',   icon: 'bi-file-earmark-lock' },
-    { value: s.publisher_mismatch,   label: t('quality.hvd_publisher_mismatch'),bg: 'bg-warning bg-opacity-10',text: 'text-warning',   icon: 'bi-person-badge' },
-  ];
-  const cardsHtml = `<div class="row g-2 mb-3">${cards.map(c => `
-    <div class="col-6 col-sm-4 col-lg-2">
-      <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}">
-        <i class="bi ${c.icon} fs-5 ${c.text}"></i>
-        <div>
-          <div class="fw-bold fs-6 lh-1 ${c.text}">${fmt(c.value)}</div>
-          <div class="text-muted" style="font-size:.7rem">${c.label}</div>
-        </div>
-      </div>
-    </div>`).join('')}</div>`;
+  const cardsHtml = `
+    <div class="d-flex align-items-center justify-content-end mb-1">
+      <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1" onclick="clearHvdCardFilters()">
+        <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">${t('filters.clear')}</span>
+      </button>
+    </div>
+    <div id="hvdSummaryCards" class="row g-2 mb-3"></div>`;
 
   const failedNote = s.failed_to_fetch
     ? `<p class="text-muted small mb-2">${t('quality.hvd_failed_note').replace('{n}', fmt(s.failed_to_fetch))}</p>` : '';
@@ -3578,11 +3637,13 @@ function _renderHvdCheck(result) {
   if (!result.datasets.length) {
     show('hvdCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote +
       `<p class="text-success small mb-0"><i class="bi bi-check-circle me-1"></i>${t('quality.hvd_all_clean')}</p>`;
+    _renderHvdSummaryCards();
     return;
   }
 
   _hvdExpandedOrgs = new Set();
   show('hvdCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote + `<div id="hvdTableWrap"></div>`;
+  _renderHvdSummaryCards();
   _renderHvdTable();
 }
 
@@ -3628,8 +3689,16 @@ function toggleHvdOrg(idx) {
 function _renderHvdTable() {
   const wrap = show('hvdTableWrap');
   if (!wrap) return;
-  const datasets = _hvdLastResult?.datasets || [];
-  if (!datasets.length) { wrap.innerHTML = ''; return; }
+  const all = _hvdLastResult?.datasets || [];
+  if (!all.length) { wrap.innerHTML = ''; return; }
+
+  const datasets = _hvdActiveFilters.size
+    ? all.filter(d => [..._hvdActiveFilters].every(key => HVD_FILTER_PREDICATES[key](d)))
+    : all;
+  if (!datasets.length) {
+    wrap.innerHTML = `<p class="text-muted small mb-0 mt-2">${esc(t('quality.hvd_filter_no_match'))}</p>`;
+    return;
+  }
 
   const groups = new Map();
   for (const d of datasets) {
