@@ -769,7 +769,7 @@
                 <button id="commsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="expandAllComms()" data-i18n-title="comms.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="commsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="collapseAllComms()" data-i18n-title="comms.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
                 <input type="search" id="commsSearch" class="form-control form-control-sm" placeholder="Search…" data-i18n-ph="comms.search" style="width:180px" oninput="filterComms()">
-                <button class="btn btn-success btn-sm" onclick="downloadCommsExcel()" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="comms.excel">Excel</span></button>
+                <button class="btn btn-success btn-sm" onclick="downloadCommsExcel()" data-i18n-title="comms.download_excel_title" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="comms.excel">Excel</span></button>
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
               </div>
             </div>
@@ -900,7 +900,7 @@
             <div id="contactsGroupedView" class="d-none"></div>
             <div id="pmUnmatchedSection" class="d-none mt-4">
               <div class="d-flex align-items-center gap-2 mb-2 px-1">
-                <h6 class="mb-0 text-muted fw-semibold small text-uppercase ls-1">Contacts without portal account</h6>
+                <h6 class="mb-0 text-muted fw-semibold small text-uppercase ls-1" data-i18n="contacts.unmatched_heading">Contacts without portal account</h6>
                 <span id="pmUnmatchedCount" class="badge bg-secondary rounded-pill"></span>
               </div>
               <div class="table-responsive">
@@ -916,7 +916,7 @@
                       <th data-i18n="contacts.col_role">Type</th>
                       <th data-i18n="contacts.col_state">State</th>
                       <th style="width:150px" data-i18n="contacts.email">Email</th>
-                      <th style="width:90px">Tel</th>
+                      <th style="width:90px" data-i18n="contacts.col_tel">Tel</th>
                       <th style="width:4rem"></th>
                     </tr>
                   </thead>
@@ -979,7 +979,7 @@
             </div>
             <div id="commOrgSelected" class="mt-1 d-none">
               <span class="badge bg-secondary" id="commOrgBadge"></span>
-              <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted" id="commOrgClearBtn" onclick="_commOrgClear()" title="Clear">&times;</button>
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-muted" id="commOrgClearBtn" onclick="_commOrgClear()" data-i18n-title="common.clear" title="Clear">&times;</button>
               <span class="text-muted small d-none" id="commOrgLockedHint" data-i18n="comm_modal.org_locked">(fixed to this case's organization)</span>
             </div>
           </div>
@@ -1075,11 +1075,11 @@
         <input type="hidden" id="pmEditContactId">
         <input type="hidden" id="pmEditUsername">
         <div class="mb-2" id="pmEditOrgRow">
-          <label class="form-label small mb-1">Organizations <span class="text-danger">*</span></label>
+          <label class="form-label small mb-1" data-i18n="contacts.organizations">Organizations</label> <span class="text-danger">*</span>
           <div id="pmEditOrgTags" class="d-flex flex-wrap gap-1 mb-1"></div>
           <div class="position-relative">
             <input type="text" class="form-control form-control-sm" id="pmEditOrgSearch"
-                   placeholder="Add organization…" autocomplete="off"
+                   placeholder="Add organization…" data-i18n-ph="contacts.add_org_placeholder" autocomplete="off"
                    oninput="_pmOrgSearch(this.value)" onfocus="_pmOrgSearch(this.value)"
                    onblur="setTimeout(()=>document.getElementById('pmEditOrgDropdown').classList.add('d-none'),150)">
             <ul class="list-group shadow-sm position-absolute w-100 d-none"
@@ -1087,56 +1087,56 @@
           </div>
         </div>
         <div class="mb-2">
-          <label class="form-label small mb-1">Email</label>
+          <label class="form-label small mb-1" data-i18n="contacts.email">Email</label>
           <input type="email" class="form-control form-control-sm" id="pmEditEmail"
                  onblur="_pmCheckEmailDuplicate()">
           <div id="pmEditEmailHint" class="d-none mt-1 p-2 rounded border border-warning-subtle bg-warning-subtle small">
             <span id="pmEditEmailHintMsg"></span>
             <div class="mt-1">
-              <button type="button" class="btn btn-warning btn-sm py-0 px-2 me-1" onclick="_pmFillFromExisting()">Fill from existing</button>
-              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="document.getElementById('pmEditEmailHint').classList.add('d-none')">Ignore</button>
+              <button type="button" class="btn btn-warning btn-sm py-0 px-2 me-1" onclick="_pmFillFromExisting()" data-i18n="contacts.fill_from_existing">Fill from existing</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="document.getElementById('pmEditEmailHint').classList.add('d-none')" data-i18n="contacts.ignore">Ignore</button>
             </div>
           </div>
         </div>
         <div class="row g-2 mb-2">
           <div class="col-6">
-            <label class="form-label small mb-1">First name</label>
+            <label class="form-label small mb-1" data-i18n="contacts.first_name">First name</label>
             <input type="text" class="form-control form-control-sm" id="pmEditFirstName">
           </div>
           <div class="col-6">
-            <label class="form-label small mb-1">Last name</label>
+            <label class="form-label small mb-1" data-i18n="contacts.last_name">Last name</label>
             <input type="text" class="form-control form-control-sm" id="pmEditLastName">
           </div>
         </div>
         <div class="mb-2">
-          <label class="form-label small mb-1">Position / Title</label>
+          <label class="form-label small mb-1" data-i18n="contacts.position">Position / Title</label>
           <input type="text" class="form-control form-control-sm" id="pmEditPosition">
         </div>
         <div class="mb-2">
-          <label class="form-label small mb-1">Contact type</label>
+          <label class="form-label small mb-1" data-i18n="contacts.type">Contact type</label>
           <select class="form-select form-select-sm" id="pmEditContactType" multiple size="5">
-            <option value="Org Administrator">Org Administrator</option>
-            <option value="Org Editor">Org Editor</option>
-            <option value="Org Member">Org Member</option>
-            <option value="Data Governance Officer">Data Governance Officer</option>
-            <option value="Data Steward">Data Steward</option>
+            <option value="Org Administrator" data-i18n="contacts.type_org_administrator">Org Administrator</option>
+            <option value="Org Editor" data-i18n="contacts.type_org_editor">Org Editor</option>
+            <option value="Org Member" data-i18n="contacts.type_org_member">Org Member</option>
+            <option value="Data Governance Officer" data-i18n="contacts.type_data_officer">Data Governance Officer</option>
+            <option value="Data Steward" data-i18n="contacts.type_data_steward">Data Steward</option>
           </select>
         </div>
         <div class="row g-2">
           <div class="col-6">
-            <label class="form-label small mb-1">Tel</label>
+            <label class="form-label small mb-1" data-i18n="contacts.tel">Tel</label>
             <input type="text" class="form-control form-control-sm" id="pmEditTel">
           </div>
           <div class="col-6">
-            <label class="form-label small mb-1">Mobile</label>
+            <label class="form-label small mb-1" data-i18n="contacts.mobile">Mobile</label>
             <input type="text" class="form-control form-control-sm" id="pmEditMobile">
           </div>
         </div>
       </div>
       <div class="modal-footer border-top">
         <span id="pmEditStatus" class="text-muted small me-auto"></span>
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm" onclick="savePmContact()">Save</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" data-i18n="contacts.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="savePmContact()" data-i18n="contacts.save">Save</button>
       </div>
     </div>
   </div>
@@ -1368,6 +1368,20 @@ const TRANSLATIONS = {
     'contacts.col_tel': 'Tel / Mobile',
     'contacts.tab_hint': 'Open this tab to load contacts.',
     'contacts.no_results': 'No contacts match the current filter.',
+    'contacts.unmatched_heading': 'Contacts without portal account',
+    'contacts.has_portal_account': 'Has portal account',
+    'contacts.has_contact_file': 'Has contact file entry',
+    'contacts.edit_contact_info': 'Edit contact info',
+    'contacts.delete_contact_record': 'Delete contact record',
+    'contacts.email_from_file': 'Email from contacts file: {email}',
+    'contacts.view_contacts': 'View contacts',
+    'contacts.importing': 'Importing…',
+    'contacts.import_result': 'Imported {n} contact(s), skipped {skipped}.',
+    'contacts.import_errors_prefix': '\nErrors:\n',
+    'contacts.import_fixed_org_codes': ' (fixed {n} org code(s))',
+    'contacts.import_fixed_contact_types': ' (fixed {n} contact type(s))',
+    'contacts.import_fixed_tel_mobile': ' (fixed {n} tel→mobile)',
+    'contacts.import_failed': 'Import failed: {msg}',
     'contacts.portal_loading': 'Loading portal users…',
     'contacts.all_orgs':    'All organizations',
     'contacts.state_all':   'All states',
@@ -1520,6 +1534,8 @@ const TRANSLATIONS = {
     'comms.case_col': 'Case',
     'comms.search': 'Search…',
     'comms.excel': 'Excel',
+    'comms.download_excel_title': 'Download current view as Excel',
+    'comms.add_comm_for_org': 'Add new communication for this organization',
     'comms.add': 'Add',
     'comms.none': 'No communications recorded yet — click Add to start.',
     'comms.col_date': 'Date',
@@ -1700,6 +1716,50 @@ const TRANSLATIONS = {
     'footer.changelog_none': 'No changelog entries available.',
     'loading': 'Loading…',
     'error': 'Error:',
+    'common.edit': 'Edit',
+    'common.delete': 'Delete',
+    'common.add': 'Add',
+    'common.cancel': 'Cancel',
+    'common.save': 'Save',
+    'common.clear': 'Clear',
+    'common.view': 'View',
+    'common.remove': 'Remove',
+    'common.save_failed': 'Save failed.',
+    'common.network_error': 'Network error: {msg}',
+    'common.saving': 'Saving…',
+    'contacts.select_org_required': 'Please select at least one organization.',
+    'userPanel.no_datasets': 'No datasets found.',
+    'userPanel.no_activity': 'No activity found.',
+    'userPanel.no_recent_datasets': 'No recent datasets found.',
+    'userPanel.no_members': 'No members found.',
+    'contacts.organizations': 'Organizations',
+    'contacts.add_org_placeholder': 'Add organization…',
+    'contacts.fill_from_existing': 'Fill from existing',
+    'contacts.ignore': 'Ignore',
+    'userPanel.contact_file': 'Contact File',
+    'userPanel.email_file': 'Email (file)',
+    'userPanel.no_contact_record': 'No contact record linked.',
+    'userPanel.add_contact_record': 'Add contact record',
+    'userPanel.registered': 'Registered',
+    'userPanel.last_active': 'Last active',
+    'userPanel.datasets': 'Datasets',
+    'userPanel.edits': 'Edits',
+    'userPanel.recent_activity': 'Recent Activity',
+    'userPanel.about': 'About',
+    'userPanel.no_organization': 'No organization',
+    'userPanel.failed_load_user': 'Failed to load user: {msg}',
+    'userPanel.failed_load_datasets': 'Failed to load datasets: {msg}',
+    'userPanel.failed_load_activity': 'Failed to load activity: {msg}',
+    'userPanel.private': 'Private',
+    'userPanel.resources_count': '{n} resources',
+    'userPanel.act_new_package': 'Created dataset',
+    'userPanel.act_changed_package': 'Updated dataset',
+    'userPanel.act_deleted_package': 'Deleted dataset',
+    'userPanel.act_new_resource': 'Added resource',
+    'userPanel.act_changed_resource': 'Updated resource',
+    'userPanel.act_deleted_resource': 'Deleted resource',
+    'userPanel.act_new_user': 'Joined portal',
+    'userPanel.act_changed_user': 'Updated profile',
     'date.never': '—',
     'date.just_now': 'just now',
     'date.m_ago': 'm ago',
@@ -1763,14 +1823,14 @@ const TRANSLATIONS = {
     'contacts.export_col_created_at': 'Ημερομηνία Εγγραφής',
     'contacts.export_filter_label': 'Εξαγωγή',
     'contacts.export_filter_none': 'όλων των μελών πύλης',
-    'contacts.col_username': 'Username',
+    'contacts.col_username': 'Όνομα Χρήστη',
     'contacts.col_role': 'Ρόλος',
     'contacts.col_state': 'Κατάσταση',
     'contacts.role_admin': 'Διαχειριστής',
     'contacts.role_editor': 'Συντάκτης',
     'contacts.role_member': 'Μέλος',
     'contacts.role_user': 'Χρήστης',
-    'contacts.role_sysadmin': 'Sysadmin',
+    'contacts.role_sysadmin': 'Διαχειριστής Συστήματος',
     'contacts.total': 'Σύνολο',
     'contacts.loading_portal': 'Φόρτωση μελών πύλης…',
     'contacts.no_token': 'Δεν έχει ρυθμιστεί API token.',
@@ -1786,6 +1846,20 @@ const TRANSLATIONS = {
     'contacts.col_tel': 'Τηλ / Κινητό',
     'contacts.tab_hint': 'Ανοίξτε αυτή την καρτέλα για φόρτωση επαφών.',
     'contacts.no_results': 'Δεν βρέθηκαν επαφές με τα τρέχοντα κριτήρια.',
+    'contacts.unmatched_heading': 'Επαφές χωρίς λογαριασμό πύλης',
+    'contacts.has_portal_account': 'Έχει λογαριασμό πύλης',
+    'contacts.has_contact_file': 'Έχει εγγραφή στο αρχείο επαφών',
+    'contacts.edit_contact_info': 'Επεξεργασία στοιχείων επαφής',
+    'contacts.delete_contact_record': 'Διαγραφή εγγραφής επαφής',
+    'contacts.email_from_file': 'Email από το αρχείο επαφών: {email}',
+    'contacts.view_contacts': 'Προβολή επαφών',
+    'contacts.importing': 'Εισαγωγή…',
+    'contacts.import_result': 'Εισήχθησαν {n} επαφή(-ές), παραλείφθηκαν {skipped}.',
+    'contacts.import_errors_prefix': '\nΣφάλματα:\n',
+    'contacts.import_fixed_org_codes': ' (διορθώθηκαν {n} κωδικός(-οί) οργανισμού)',
+    'contacts.import_fixed_contact_types': ' (διορθώθηκαν {n} τύπος(-οι) επαφής)',
+    'contacts.import_fixed_tel_mobile': ' (διορθώθηκαν {n} τηλέφωνο→κινητό)',
+    'contacts.import_failed': 'Η εισαγωγή απέτυχε: {msg}',
     'contacts.portal_loading': 'Φόρτωση χρηστών πύλης…',
     'contacts.all_orgs':    'Όλοι οι φορείς',
     'contacts.state_all':   'Όλες οι καταστάσεις',
@@ -1938,6 +2012,8 @@ const TRANSLATIONS = {
     'comms.case_col': 'Υπόθεση',
     'comms.search': 'Αναζήτηση…',
     'comms.excel': 'Excel',
+    'comms.download_excel_title': 'Λήψη της τρέχουσας προβολής ως Excel',
+    'comms.add_comm_for_org': 'Προσθήκη νέας επικοινωνίας για αυτόν τον οργανισμό',
     'comms.add': 'Προσθήκη',
     'comms.none': 'Δεν έχουν καταγραφεί επικοινωνίες — κάντε κλικ στο «Προσθήκη».',
     'comms.col_date': 'Ημερομηνία',
@@ -2118,6 +2194,50 @@ const TRANSLATIONS = {
     'footer.changelog_none': 'Δεν υπάρχουν διαθέσιμες καταχωρήσεις ιστορικού αλλαγών.',
     'loading': 'Φόρτωση…',
     'error': 'Σφάλμα:',
+    'common.edit': 'Επεξεργασία',
+    'common.delete': 'Διαγραφή',
+    'common.add': 'Προσθήκη',
+    'common.cancel': 'Ακύρωση',
+    'common.save': 'Αποθήκευση',
+    'common.clear': 'Εκκαθάριση',
+    'common.view': 'Προβολή',
+    'common.remove': 'Αφαίρεση',
+    'common.save_failed': 'Η αποθήκευση απέτυχε.',
+    'common.network_error': 'Σφάλμα δικτύου: {msg}',
+    'common.saving': 'Αποθήκευση…',
+    'contacts.select_org_required': 'Επιλέξτε τουλάχιστον έναν οργανισμό.',
+    'userPanel.no_datasets': 'Δεν βρέθηκαν σύνολα δεδομένων.',
+    'userPanel.no_activity': 'Δεν βρέθηκε δραστηριότητα.',
+    'userPanel.no_recent_datasets': 'Δεν βρέθηκαν πρόσφατα σύνολα δεδομένων.',
+    'userPanel.no_members': 'Δεν βρέθηκαν μέλη.',
+    'contacts.organizations': 'Οργανισμοί',
+    'contacts.add_org_placeholder': 'Προσθήκη οργανισμού…',
+    'contacts.fill_from_existing': 'Συμπλήρωση από υπάρχουσα',
+    'contacts.ignore': 'Παράβλεψη',
+    'userPanel.contact_file': 'Αρχείο Επαφής',
+    'userPanel.email_file': 'Email (αρχείο)',
+    'userPanel.no_contact_record': 'Δεν υπάρχει συνδεδεμένη εγγραφή επαφής.',
+    'userPanel.add_contact_record': 'Προσθήκη εγγραφής επαφής',
+    'userPanel.registered': 'Εγγραφή',
+    'userPanel.last_active': 'Τελευταία ενεργός',
+    'userPanel.datasets': 'Σύνολα Δεδομένων',
+    'userPanel.edits': 'Επεξεργασίες',
+    'userPanel.recent_activity': 'Πρόσφατη Δραστηριότητα',
+    'userPanel.about': 'Σχετικά',
+    'userPanel.no_organization': 'Χωρίς οργανισμό',
+    'userPanel.failed_load_user': 'Αποτυχία φόρτωσης χρήστη: {msg}',
+    'userPanel.failed_load_datasets': 'Αποτυχία φόρτωσης συνόλων δεδομένων: {msg}',
+    'userPanel.failed_load_activity': 'Αποτυχία φόρτωσης δραστηριότητας: {msg}',
+    'userPanel.private': 'Ιδιωτικό',
+    'userPanel.resources_count': '{n} πόροι',
+    'userPanel.act_new_package': 'Δημιουργήθηκε σύνολο δεδομένων',
+    'userPanel.act_changed_package': 'Ενημερώθηκε σύνολο δεδομένων',
+    'userPanel.act_deleted_package': 'Διαγράφηκε σύνολο δεδομένων',
+    'userPanel.act_new_resource': 'Προστέθηκε πόρος',
+    'userPanel.act_changed_resource': 'Ενημερώθηκε πόρος',
+    'userPanel.act_deleted_resource': 'Διαγράφηκε πόρος',
+    'userPanel.act_new_user': 'Εγγραφή στην πύλη',
+    'userPanel.act_changed_user': 'Ενημέρωση προφίλ',
     'date.never': '—',
     'date.just_now': 'μόλις τώρα',
     'date.m_ago': ' λεπτά πριν',
@@ -4000,7 +4120,7 @@ async function _loadPublicOrgsForPortal() {
 
 function _portalContactCell(orgName, orgTitle) {
   const cnt = _contactSummary[orgName] || 0;
-  return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + orgName + '\',\'' + esc(orgTitle) + '\',\'' + orgName + '\')" title="View contacts">'
+  return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + orgName + '\',\'' + esc(orgTitle) + '\',\'' + orgName + '\')" title="' + esc(t('contacts.view_contacts')) + '">'
     + '<i class="bi bi-people"></i>'
     + (cnt ? '<span class="badge bg-primary rounded-pill ms-1">' + cnt + '</span>' : '')
     + '</button>';
@@ -4089,7 +4209,7 @@ function renderAllOrgsTable(orgs) {
                 : `<span class="badge bg-secondary">${t('orgs.not_registered')}</span>`}
             </td>
             <td class="text-end fw-bold small">${o.ckan ? fmt(o.ckan.package_count) : '—'}</td>
-            <td class="text-center"><button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsByIdx(${i})" title="View contacts"><i class="bi bi-people"></i>${_contactSummary[o.label] ? '<span class="badge bg-primary rounded-pill ms-1">' + _contactSummary[o.label] + '</span>' : ''}</button></td>
+            <td class="text-center"><button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsByIdx(${i})" title="${t('contacts.view_contacts')}"><i class="bi bi-people"></i>${_contactSummary[o.label] ? '<span class="badge bg-primary rounded-pill ms-1">' + _contactSummary[o.label] + '</span>' : ''}</button></td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -4437,8 +4557,8 @@ function renderCommsTable(rows) {
             <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
             <td class="text-end text-nowrap">
               ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-              <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
-              <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
+              <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
             </td>
           </tr>`).join('')}
       </tbody>
@@ -4486,7 +4606,7 @@ function renderCommsGrouped(data) {
             <span class="text-muted small ms-auto">${latest.contact_date}</span>
             <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-2" data-org="${safeAttr}" data-orgcode="${esc(comms[0].org_name || '')}"
                     onclick="event.stopPropagation();openCommModal(null,this.dataset.org,this.dataset.orgcode)"
-                    title="Add new communication for this organization">
+                    title="${t('comms.add_comm_for_org')}">
               <i class="bi bi-plus"></i>
             </button>
           </div>
@@ -4501,8 +4621,8 @@ function renderCommsGrouped(data) {
           <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
           <td class="text-end text-nowrap">
             ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-            <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
           </td>
         </tr>`).join('')}`;
   }).join('');
@@ -4583,8 +4703,8 @@ function renderCommsCases(data) {
           <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
           <td class="text-end text-nowrap">
             ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-            <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
           </td>
         </tr>`).join('')}`;
   }).join('');
@@ -4692,8 +4812,8 @@ function renderCommsTimeline(rows) {
             </div>
             <div class="text-end text-nowrap">
               ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-              <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
-              <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="Delete"><i class="bi bi-trash"></i></button>
+              <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
             </div>
           </div>
           <div class="small mt-1">${esc(c.subject)}</div>
@@ -4972,7 +5092,7 @@ async function saveComm() {
     const url  = id ? `${API_BASE}api/communications/${id}?d=${_b64enc(body)}` : `${API_BASE}api/communications?d=${_b64enc(body)}`;
     const resp = await fetch(url, { method: id ? 'PATCH' : 'POST', cache: 'no-store' });
     const json   = await resp.json();
-    if (!resp.ok) { err.textContent = json.error || 'Save failed.'; err.classList.remove('d-none'); return; }
+    if (!resp.ok) { err.textContent = json.error || t('common.save_failed'); err.classList.remove('d-none'); return; }
 
     if (id) {
       _commsData = _commsData.map(c => c.id === parseInt(id) ? json : c);
@@ -4986,7 +5106,7 @@ async function saveComm() {
     filterComms();
     _refreshCommSubjectDatalist();
   } catch (e) {
-    err.textContent = 'Network error: ' + e.message;
+    err.textContent = t('common.network_error').replace('{msg}', e.message);
     err.classList.remove('d-none');
   } finally {
     btn.disabled = false;
@@ -5080,11 +5200,9 @@ function _renderOrgContactsPanel() {
     <i class="bi bi-person-plus me-1"></i>${t('contacts.add')}
   </button>`;
 
-  const _ROLE_LBL = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member', user: 'User' };
-
   const memberCards = portalMembers.map(m => {
-    const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
-    const roleCls   = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (CONTACT_TYPE_CLS[_ROLE_LBL[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
+    const roleLabel = _portalRoleLabel(m);
+    const roleCls   = _portalRoleClass(m);
     const hasFile   = !!m.contact_id;
     const displayName = esc(_pmDisplayName(m));
     return `
@@ -5105,8 +5223,8 @@ function _renderOrgContactsPanel() {
           </div>
           <div class="d-flex gap-1 flex-shrink-0">
             ${hasFile
-              ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditByUsername('${esc(m.username)}')" title="Edit"><i class="bi bi-pencil"></i></button>
-                 <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')" title="Delete"><i class="bi bi-trash"></i></button>`
+              ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditByUsername('${esc(m.username)}')" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+                 <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>`
               : `<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openPmEditNewForUser('${esc(m.username)}','${esc(m.email)}','${esc(ckanName || orgCode)}','${esc(orgLabel)}','${esc(m.capacity||'')}')" title="Add contact file"><i class="bi bi-person-plus me-1"></i>Add</button>`}
           </div>
         </div>
@@ -5133,8 +5251,8 @@ function _renderOrgContactsPanel() {
             ${c.mobile ? `<div class="small"><i class="bi bi-phone me-1 text-muted"></i><a href="tel:${esc(c.mobile)}">${esc(c.mobile)}</a></div>` : ''}
           </div>
           <div class="d-flex gap-1 flex-shrink-0">
-            <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditForUnmatched(${c.id})" title="Edit"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${c.id}, null)" title="Delete"><i class="bi bi-trash"></i></button>
+            <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditForUnmatched(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${c.id}, null)" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
           </div>
         </div>
       </div>
@@ -5184,37 +5302,37 @@ async function importContactsExcel(input) {
   fd.append('file', file);
   const btn = input.closest('label, button');
   const origHtml = btn ? btn.innerHTML : '';
-  if (btn) { btn.style.pointerEvents = 'none'; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importing…'; }
+  if (btn) { btn.style.pointerEvents = 'none'; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + esc(t('contacts.importing')); }
   try {
     const resp = await fetch(API_BASE + 'api/contacts/import', { method: 'POST', body: fd });
     const json = await resp.json();
     if (!resp.ok) throw new Error(json.error || resp.status);
-    let msg = `Imported ${json.imported} contact(s), skipped ${json.skipped}.`;
-    if (json.errors && json.errors.length) msg += '\nErrors:\n' + json.errors.join('\n');
+    let msg = t('contacts.import_result').replace('{n}', json.imported).replace('{skipped}', json.skipped);
+    if (json.errors && json.errors.length) msg += t('contacts.import_errors_prefix') + json.errors.join('\n');
     // Repair org_codes in case the HRMS cache was empty during import
     try {
       const fix = await fetch(API_BASE + 'api/contacts/fix-org-codes', {method:'POST'});
       const fixJson = await fix.json();
-      if (fixJson.fixed) msg += ' (fixed ' + fixJson.fixed + ' org code(s))';
+      if (fixJson.fixed) msg += t('contacts.import_fixed_org_codes').replace('{n}', fixJson.fixed);
     } catch (_) {}
     // Normalize contact types (Greek role names → canonical English values)
     try {
       const fixT = await fetch(API_BASE + 'api/contacts/fix-contact-types', {method:'POST'});
       const fixTJson = await fixT.json();
-      if (fixTJson.fixed) msg += ' (fixed ' + fixTJson.fixed + ' contact type(s))';
+      if (fixTJson.fixed) msg += t('contacts.import_fixed_contact_types').replace('{n}', fixTJson.fixed);
     } catch (_) {}
     // Move 69x numbers from tel to mobile
     try {
       const fixM = await fetch(API_BASE + 'api/contacts/fix-tel-mobile', {method:'POST'});
       const fixMJson = await fixM.json();
-      if (fixMJson.fixed) msg += ' (fixed ' + fixMJson.fixed + ' tel→mobile)';
+      if (fixMJson.fixed) msg += t('contacts.import_fixed_tel_mobile').replace('{n}', fixMJson.fixed);
     } catch (_) {}
     alert(msg);
     _allContacts = null; _allUnified = null;  // invalidate contacts tab cache
     _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
     if (_orgsViewMode === 'all') filterOrgs();
   } catch (e) {
-    alert('Import failed: ' + e.message);
+    alert(t('contacts.import_failed').replace('{msg}', e.message));
   } finally {
     if (btn) { btn.style.pointerEvents = ''; btn.innerHTML = origHtml; }
   }
@@ -5420,7 +5538,7 @@ function openUserPanel(username) {
     .then(data => renderUserPanel(data))
     .catch(err => {
       document.getElementById('userPanelBody').innerHTML =
-        `<div class="alert alert-danger mb-0">Failed to load user: ${err}</div>`;
+        `<div class="alert alert-danger mb-0">${t('userPanel.failed_load_user').replace('{msg}', err)}</div>`;
     });
 }
 
@@ -5436,7 +5554,7 @@ function renderUserPanel(u) {
   const _fileName = u.contact ? `${u.contact.first_name || ''} ${u.contact.last_name || ''}`.trim() : '';
   document.getElementById('userPanelName').textContent = _fileName || u.display_name || u.username;
   document.getElementById('userPanelUsername').innerHTML =
-    `@${esc(u.username)}&ensp;<a href="https://data.gov.gr/user/${encodeURIComponent(u.username)}" target="_blank" rel="noopener" class="text-muted" title="View on data.gov.gr"><i class="bi bi-box-arrow-up-right"></i></a>`;
+    `@${esc(u.username)}&ensp;<a href="https://data.gov.gr/user/${encodeURIComponent(u.username)}" target="_blank" rel="noopener" class="text-muted" title="${t('catalog.view_on_portal')}"><i class="bi bi-box-arrow-up-right"></i></a>`;
 
   const orgs = (_portalMembersCache || [])
     .filter(m => m.username === u.username && m.org_name)
@@ -5445,7 +5563,7 @@ function renderUserPanel(u) {
 
   const orgHtml = orgs.length
     ? `<div>${orgs.join('')}</div>`
-    : '<span class="text-muted small">No organization</span>';
+    : `<span class="text-muted small">${t('userPanel.no_organization')}</span>`;
 
   const c = u.contact;
   // find the org this user belongs to (first one) for pre-filling new contact
@@ -5458,66 +5576,65 @@ function renderUserPanel(u) {
 
   // Effective role: same highest-rank-wins logic as the Contacts table, so it
   // always matches what's shown there rather than just the first org found.
-  const _ROLE_LBL_MAP = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member', user: 'User' };
   const _bestRole = _dedupeContacts(_portalMembersCache || []).find(m => m.username === u.username);
-  const _portalRoleLabel = u.sysadmin ? 'Sysadmin' : (_bestRole ? (_ROLE_LBL_MAP[_bestRole.capacity] || _bestRole.capacity || '—') : '—');
+  const _uPortalRoleLabel = u.sysadmin ? t('contacts.role_sysadmin') : _portalRoleLabel({ capacity: _bestRole?.capacity });
   const _portalRoleCls   = u.sysadmin ? ROLE_BADGE_CLS.sysadmin : (_bestRole ? (ROLE_BADGE_CLS[_bestRole.capacity] || 'bg-secondary') : 'bg-secondary');
   const contactHtml = `
     <div class="mt-3 pt-3 border-top">
       <div class="d-flex align-items-center justify-content-between mb-2">
-        <div class="fw-semibold small text-uppercase text-muted">Contact File</div>
+        <div class="fw-semibold small text-uppercase text-muted">${t('userPanel.contact_file')}</div>
         <div class="d-flex gap-1">
           ${c ? `
-          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit"
+          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('common.edit')}"
             onclick="openPmEditByUsername('${esc(u.username)}')"><i class="bi bi-pencil"></i></button>
-          <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete"
+          <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('common.delete')}"
             onclick="deletePmContactRecord(${c.id},'${esc(u.username)}')"><i class="bi bi-trash"></i></button>
           ` : `
-          <button class="btn btn-outline-primary btn-sm py-0 px-2" title="Add contact record"
+          <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('userPanel.add_contact_record')}"
             onclick="openPmEditNewForUser('${esc(u.username)}','${esc(u.email)}','${esc(_uOrg ? _uOrg.org_name : '')}','${esc(_uOrg ? (_uOrg.org_title||_uOrg.org_name) : '')}','${esc(_uOrg ? (_uOrg.capacity||'') : '')}')">
-            <i class="bi bi-person-plus me-1"></i>Add</button>
+            <i class="bi bi-person-plus me-1"></i>${t('common.add')}</button>
           `}
         </div>
       </div>
       ${c ? `<dl class="row g-1 small mb-0">
-        <dt class="col-5 text-muted fw-normal mb-1">First Name</dt><dd class="col-7 mb-1">${c.first_name ? esc(c.first_name) : '—'}</dd>
-        <dt class="col-5 text-muted fw-normal mb-1">Last Name</dt><dd class="col-7 mb-1">${c.last_name ? esc(c.last_name) : '—'}</dd>
-        ${c.email ? `<dt class="col-5 text-muted fw-normal mb-1">Email (file)</dt><dd class="col-7 mb-1"><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></dd>` : ''}
-        ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">Position</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
-        ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">Tel</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a></dd>` : ''}
-        ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">Mobile</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a></dd>` : ''}
-        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">Role</dt><dd class="col-7 mb-1">${
+        <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.first_name')}</dt><dd class="col-7 mb-1">${c.first_name ? esc(c.first_name) : '—'}</dd>
+        <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.last_name')}</dt><dd class="col-7 mb-1">${c.last_name ? esc(c.last_name) : '—'}</dd>
+        ${c.email ? `<dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.email_file')}</dt><dd class="col-7 mb-1"><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></dd>` : ''}
+        ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.position')}</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
+        ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.tel')}</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a></dd>` : ''}
+        ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.mobile')}</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a></dd>` : ''}
+        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.col_role')}</dt><dd class="col-7 mb-1">${
           c.contact_type.split(',').map(s => s.trim()).filter(Boolean)
-            .map(s => `<span class="badge me-1 mb-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(s)}</span>`).join('')
+            .map(s => `<span class="badge me-1 mb-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(_CONTACT_TYPE_I18N_KEY[s] ? t(_CONTACT_TYPE_I18N_KEY[s]) : s)}</span>`).join('')
         }</dd>` : ''}
-      </dl>` : '<p class="text-muted small mb-0">No contact record linked.</p>'}
+      </dl>` : `<p class="text-muted small mb-0">${t('userPanel.no_contact_record')}</p>`}
     </div>`;
 
   document.getElementById('userPanelBody').innerHTML = `
     <div class="d-flex align-items-center gap-2 mb-3">
-      <span class="badge bg-${stateCls}">${esc(u.state)}</span>
-      ${u.sysadmin ? '<span class="badge bg-danger">sysadmin</span>' : ''}
+      <span class="badge bg-${stateCls}">${esc(_contactStateLabel(u.state))}</span>
+      ${u.sysadmin ? `<span class="badge bg-danger">${t('contacts.role_sysadmin')}</span>` : ''}
     </div>
     <dl class="row g-1 small mb-0">
-      <dt class="col-5 text-muted fw-normal mb-1">First Name</dt>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.first_name')}</dt>
       <dd class="col-7 mb-1">${_portalFirst ? esc(_portalFirst) : '—'}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">Last Name</dt>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.last_name')}</dt>
       <dd class="col-7 mb-1">${_portalLast ? esc(_portalLast) : '—'}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">Role</dt>
-      <dd class="col-7 mb-1"><span class="badge ${_portalRoleCls}">${esc(_portalRoleLabel)}</span></dd>
-      <dt class="col-5 text-muted fw-normal mb-1">Email</dt>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.col_role')}</dt>
+      <dd class="col-7 mb-1"><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></dd>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.email')}</dt>
       <dd class="col-7 mb-1">${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">Registered</dt>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.registered')}</dt>
       <dd class="col-7 mb-1">${fmt(u.created)}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">Last active</dt>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.last_active')}</dt>
       <dd class="col-7 mb-1">${fmt(u.last_active)}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">Datasets</dt>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.datasets')}</dt>
       <dd class="col-7 mb-1">
         ${u.num_packages > 0
           ? `<a href="#" class="fw-semibold text-decoration-none" onclick="loadUserDatasets('${esc(u.username)}');return false;">${u.num_packages} <i class="bi bi-chevron-down small"></i></a>`
           : '0'}
       </dd>
-      <dt class="col-5 text-muted fw-normal mb-1">Edits</dt>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.edits')}</dt>
       <dd class="col-7 mb-1">
         ${u.num_edits > 0
           ? `<a href="#" class="fw-semibold text-decoration-none" onclick="loadUserActivity('${esc(u.username)}');return false;">${u.num_edits} <i class="bi bi-chevron-down small"></i></a>`
@@ -5525,23 +5642,23 @@ function renderUserPanel(u) {
       </dd>
     </dl>
     <div id="userPanelActivitySection" class="d-none mt-3 pt-3 border-top">
-      <div class="fw-semibold small text-uppercase text-muted mb-2">Recent Activity</div>
+      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.recent_activity')}</div>
       <div id="userPanelActivityList">
         <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>
       </div>
     </div>
     <div id="userPanelDatasetsSection" class="d-none mt-3 pt-3 border-top">
-      <div class="fw-semibold small text-uppercase text-muted mb-2">Datasets</div>
+      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.datasets')}</div>
       <div id="userPanelDatasetsList">
         <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>
       </div>
     </div>
     <div class="mt-3 pt-3 border-top">
-      <div class="fw-semibold small text-uppercase text-muted mb-2">Organizations</div>
+      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('contacts.organizations')}</div>
       ${orgHtml}
     </div>
     ${contactHtml}
-    ${u.about ? `<div class="mt-3 pt-3 border-top"><div class="fw-semibold small text-uppercase text-muted mb-2">About</div><p class="small text-muted mb-0">${esc(u.about)}</p></div>` : ''}
+    ${u.about ? `<div class="mt-3 pt-3 border-top"><div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.about')}</div><p class="small text-muted mb-0">${esc(u.about)}</p></div>` : ''}
   `;
 }
 
@@ -5567,7 +5684,7 @@ async function loadUserDatasets(username) {
     if (data.error) throw new Error(data.error);
     const ds = data.datasets || [];
     if (!ds.length) {
-      list.innerHTML = '<p class="text-muted small mb-0">No datasets found.</p>';
+      list.innerHTML = `<p class="text-muted small mb-0">${t('userPanel.no_datasets')}</p>`;
       return;
     }
     list.innerHTML = ds.map(d => `
@@ -5575,16 +5692,16 @@ async function loadUserDatasets(username) {
         <div class="d-flex align-items-center gap-2">
           <a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;"
              class="small fw-semibold text-decoration-none flex-grow-1" style="word-break:break-word">${esc(d.title)}</a>
-          ${d.private ? '<span class="badge bg-warning text-dark text-nowrap" style="font-size:.65rem"><i class="bi bi-lock-fill me-1"></i>Private</span>' : ''}
+          ${d.private ? `<span class="badge bg-warning text-dark text-nowrap" style="font-size:.65rem"><i class="bi bi-lock-fill me-1"></i>${t('userPanel.private')}</span>` : ''}
         </div>
         <div class="d-flex gap-2 mt-1 text-muted" style="font-size:.72rem">
           ${d.org ? `<span><i class="bi bi-building me-1"></i>${esc(d.org)}</span>` : ''}
-          <span><i class="bi bi-files me-1"></i>${d.num_resources} resources</span>
+          <span><i class="bi bi-files me-1"></i>${t('userPanel.resources_count').replace('{n}', d.num_resources)}</span>
           ${d.modified ? `<span>${relativeDate(d.modified)}</span>` : ''}
         </div>
       </div>`).join('');
   } catch (e) {
-    list.innerHTML = `<p class="text-danger small mb-0">Failed to load datasets: ${esc(e.message)}</p>`;
+    list.innerHTML = `<p class="text-danger small mb-0">${t('userPanel.failed_load_datasets').replace('{msg}', esc(e.message))}</p>`;
   }
 }
 
@@ -5606,21 +5723,21 @@ async function loadUserActivity(username) {
     if (data.error) throw new Error(data.error);
     const acts = data.activities || [];
     if (!acts.length) {
-      list.innerHTML = '<p class="text-muted small mb-0">No activity found.</p>';
+      list.innerHTML = `<p class="text-muted small mb-0">${t('userPanel.no_activity')}</p>`;
       return;
     }
-    const typeLabel = t => {
+    const typeLabel = at => {
       const map = {
-        'new package':      'Created dataset',
-        'changed package':  'Updated dataset',
-        'deleted package':  'Deleted dataset',
-        'new resource':     'Added resource',
-        'changed resource': 'Updated resource',
-        'deleted resource': 'Deleted resource',
-        'new user':         'Joined portal',
-        'changed user':     'Updated profile',
+        'new package':      'userPanel.act_new_package',
+        'changed package':  'userPanel.act_changed_package',
+        'deleted package':  'userPanel.act_deleted_package',
+        'new resource':     'userPanel.act_new_resource',
+        'changed resource': 'userPanel.act_changed_resource',
+        'deleted resource': 'userPanel.act_deleted_resource',
+        'new user':         'userPanel.act_new_user',
+        'changed user':     'userPanel.act_changed_user',
       };
-      return map[t] || t;
+      return map[at] ? t(map[at]) : at;
     };
     list.innerHTML = acts.map(a => `
       <div class="py-2 border-bottom">
@@ -5632,11 +5749,11 @@ async function loadUserActivity(username) {
         <div class="d-flex align-items-center gap-2">
           <a href="#" onclick="openDatasetPanel('${esc(a.package_name)}');return false;"
               class="text-muted text-decoration-none flex-grow-1" style="font-size:.8rem;word-break:break-word">${esc(a.package_title || a.package_name)}</a>
-          ${a.private ? '<span class="badge bg-warning text-dark text-nowrap" style="font-size:.62rem"><i class="bi bi-lock-fill me-1"></i>Private</span>' : ''}
+          ${a.private ? `<span class="badge bg-warning text-dark text-nowrap" style="font-size:.62rem"><i class="bi bi-lock-fill me-1"></i>${t('userPanel.private')}</span>` : ''}
         </div>` : ''}
       </div>`).join('');
   } catch (e) {
-    list.innerHTML = `<p class="text-danger small mb-0">Failed to load activity: ${esc(e.message)}</p>`;
+    list.innerHTML = `<p class="text-danger small mb-0">${t('userPanel.failed_load_activity').replace('{msg}', esc(e.message))}</p>`;
   }
 }
 
@@ -5677,7 +5794,7 @@ function renderOrgPanel(data) {
              <div class="text-muted mt-1" style="font-size:.72rem">${relativeDate(d.metadata_modified)}</div>
            </div>`).join('')}
        </div>`
-    : '<p class="text-muted small mt-3">No recent datasets found.</p>';
+    : `<p class="text-muted small mt-3">${t('userPanel.no_recent_datasets')}</p>`;
 
   const ROLE_BADGE  = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary' };
   const STATE_BADGE = { active: 'bg-success', deleted: 'bg-danger', pending: 'bg-warning text-dark' };
@@ -5734,7 +5851,7 @@ function renderOrgPanel(data) {
              </div>`;
            }).join('')}
          </div>`
-      : '<p class="text-muted small">No members found.</p>'
+      : `<p class="text-muted small">${t('userPanel.no_members')}</p>`
     }`;
 
   document.getElementById('orgDetailBody').innerHTML = `
@@ -6045,6 +6162,38 @@ const CONTACT_TYPE_CLS = {
   'Data Steward':         'bg-warning text-dark',
 };
 
+// Portal capacity ('admin'/'editor'/'member'/'user') -> the English label used
+// only as a CONTACT_TYPE_CLS lookup key (that object's keys are fixed English
+// strings, unrelated to the current UI language) -- kept separate from the
+// actual translated text shown to the user, via _portalRoleLabel() below.
+const _PORTAL_ROLE_LOOKUP_KEY = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member', user: 'User' };
+const _PORTAL_ROLE_I18N_KEY   = { admin: 'contacts.type_org_administrator', editor: 'contacts.type_org_editor', member: 'contacts.type_org_member', user: 'contacts.role_user' };
+
+// The contacts-file "contact type" is stored as fixed English strings (see
+// CONTACT_TYPE_CLS above) -- this maps each one to its translated display text.
+const _CONTACT_TYPE_I18N_KEY = {
+  'Org Administrator':       'contacts.type_org_administrator',
+  'Org Editor':               'contacts.type_org_editor',
+  'Org Member':               'contacts.type_org_member',
+  'Data Governance Officer': 'contacts.type_data_officer',
+  'Data Steward':             'contacts.type_data_steward',
+};
+
+function _portalRoleLabel(m) {
+  if (m.sysadmin) return t('contacts.role_sysadmin');
+  const key = _PORTAL_ROLE_I18N_KEY[m.capacity];
+  return key ? t(key) : (m.capacity || '—');
+}
+function _portalRoleClass(m) {
+  if (m.sysadmin) return ROLE_BADGE_CLS.sysadmin;
+  return CONTACT_TYPE_CLS[_PORTAL_ROLE_LOOKUP_KEY[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary';
+}
+
+const _CONTACT_STATE_I18N_KEY = { active: 'contacts.state_active', pending: 'contacts.state_pending', deleted: 'contacts.state_deleted' };
+function _contactStateLabel(state) {
+  return t(_CONTACT_STATE_I18N_KEY[state] || 'contacts.state_active');
+}
+
 function _dedupeContacts(rows) {
   // Keep highest role per username (sysadmin > admin > editor > member)
   const _roleRank = { admin: 3, editor: 2, member: 1 };
@@ -6227,7 +6376,7 @@ function filterContactsTab() {
     th('type',  t('contacts.col_role'))  +
     th('state', t('contacts.col_state')) +
     th('email', t('contacts.email'), 'width:150px') +
-    `<th style="width:90px">Tel</th>` +
+    `<th style="width:90px">${t('contacts.col_tel')}</th>` +
     `<th style="width:2.5rem"></th>`;
 
   const flatDiv    = show('contactsFlatView');
@@ -6250,9 +6399,8 @@ function filterContactsTab() {
   _pmRows = rows;
   show('contactsTableBody').innerHTML = rows.map((m, i) => {
     const state    = m.state || 'active';
-    const _ROLE_LBL = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member', user: 'User' };
-    const roleCls   = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (CONTACT_TYPE_CLS[_ROLE_LBL[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
-    const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
+    const roleCls   = _portalRoleClass(m);
+    const roleLabel = _portalRoleLabel(m);
     const stateCls = STATE_BADGE_CLS[state]       || 'bg-secondary';
     const posLine = m.contact_position
       ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
@@ -6266,8 +6414,8 @@ function filterContactsTab() {
         ).join('') +
         (userOrgs.length > MAX_ORGS ? `<span class="text-muted small">+${userOrgs.length - MAX_ORGS}</span>` : '');
     const presenceBadges =
-      `<span class="badge rounded-pill me-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="Has portal account"><i class="bi bi-globe2 me-1"></i>Portal</span>` +
-      (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="Has contact file entry"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
+      `<span class="badge rounded-pill me-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('contacts.has_portal_account'))}"><i class="bi bi-globe2 me-1"></i>Portal</span>` +
+      (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="${esc(t('contacts.has_contact_file'))}"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
     return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
       <td class="text-muted small">${i + 1}</td>
       <td style="max-width:200px">
@@ -6276,11 +6424,11 @@ function filterContactsTab() {
       </td>
       <td style="max-width:180px">${orgsHtml}</td>
       <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
-      <td><span class="badge ${stateCls}">${esc(state)}</span></td>
+      <td><span class="badge ${stateCls}">${esc(_contactStateLabel(state))}</span></td>
       <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
         ${m.email ? `<a href="mailto:${esc(m.email)}" class="d-block text-truncate" title="${esc(m.email)}">${esc(m.email)}</a>` : ''}
         ${m.contact_email && m.contact_email !== m.email
-          ? `<div class="text-muted text-truncate" style="font-size:.75em" title="Email from contacts file: ${esc(m.contact_email)}"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>`
+          ? `<div class="text-muted text-truncate" style="font-size:.75em" title="${esc(t('contacts.email_from_file').replace('{email}', m.contact_email))}"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>`
           : ''}
       </td>
       <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
@@ -6288,9 +6436,9 @@ function filterContactsTab() {
       </td>
       <td onclick="event.stopPropagation()">
         <div class="d-flex gap-1">
-          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit contact info"
+          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('contacts.edit_contact_info'))}"
             onclick="openPmEdit(${i})"><i class="bi bi-pencil"></i></button>
-          ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete contact record"
+          ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('contacts.delete_contact_record'))}"
             onclick="deletePmContactRecord(${m.contact_id}, '${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
         </div>
       </td>
@@ -6344,22 +6492,21 @@ function renderContactsGrouped(rows) {
           <tbody>
             ${g.items.map((m, mi) => {
               const state     = m.state || 'active';
-              const _ROLE_LBL = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member', user: 'User' };
-              const roleCls   = m.sysadmin ? ROLE_BADGE_CLS.sysadmin : (CONTACT_TYPE_CLS[_ROLE_LBL[m.capacity]] || ROLE_BADGE_CLS[m.capacity] || 'bg-secondary');
-              const roleLabel = m.sysadmin ? 'sysadmin' : (_ROLE_LBL[m.capacity] || m.capacity || '—');
+              const roleCls   = _portalRoleClass(m);
+              const roleLabel = _portalRoleLabel(m);
               const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
               const posLine   = m.contact_position
                 ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
               const presenceBadges =
-                `<span class="badge rounded-pill me-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="Has portal account"><i class="bi bi-globe2 me-1"></i>Portal</span>` +
-                (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="Has contact file entry"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
+                `<span class="badge rounded-pill me-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('contacts.has_portal_account'))}"><i class="bi bi-globe2 me-1"></i>Portal</span>` +
+                (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="${esc(t('contacts.has_contact_file'))}"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
               return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
                 <td style="max-width:200px">
                   <span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${presenceBadges}
                   ${posLine}
                 </td>
                 <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
-                <td><span class="badge ${stateCls}">${esc(state)}</span></td>
+                <td><span class="badge ${stateCls}">${esc(_contactStateLabel(state))}</span></td>
                 <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
                   ${m.email ? `<a class="d-block text-truncate" href="mailto:${esc(m.email)}" title="${esc(m.email)}">${esc(m.email)}</a>` : ''}
                   ${m.contact_email && m.contact_email !== m.email ? `<div class="text-muted text-truncate" style="font-size:.75em" title="${esc(m.contact_email)}"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>` : ''}
@@ -6369,8 +6516,8 @@ function renderContactsGrouped(rows) {
                 </td>
                 <td onclick="event.stopPropagation()">
                   <div class="d-flex gap-1">
-                    <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit" onclick="openPmEditByUsername('${esc(m.username)}')"><i class="bi bi-pencil"></i></button>
-                    ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
+                    <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('common.edit'))}" onclick="openPmEditByUsername('${esc(m.username)}')"><i class="bi bi-pencil"></i></button>
+                    ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('common.delete'))}" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
                   </div>
                 </td>
               </tr>`;
@@ -6569,7 +6716,7 @@ function _pmOrgRenderTags() {
     `${esc(o.label || o.code)}` +
     (!o.locked
       ? `<button type="button" class="btn-close btn-close-white" style="font-size:.55em;margin-left:.25em"` +
-        ` onclick="_pmOrgRemove('${esc(o.code)}')" title="Remove"></button>`
+        ` onclick="_pmOrgRemove('${esc(o.code)}')" title="${t('common.remove')}"></button>`
       : '') +
     `</span>`
   ).join('');
@@ -6923,7 +7070,7 @@ function openPmEdit(idx) {
 async function savePmContact() {
   const contactId = show('pmEditContactId').value;
   if (!_pmEditOrgs.length) {
-    show('pmEditStatus').textContent = 'Please select at least one organization.';
+    show('pmEditStatus').textContent = t('contacts.select_org_required');
     document.getElementById('pmEditOrgSearch').focus();
     return;
   }
@@ -6940,7 +7087,7 @@ async function savePmContact() {
     tel:          show('pmEditTel').value.trim(),
     mobile:       show('pmEditMobile').value.trim(),
   };
-  show('pmEditStatus').textContent = 'Saving…';
+  show('pmEditStatus').textContent = t('common.saving');
   const resp = await fetch(API_BASE + 'api/contacts/save', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
