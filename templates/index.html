@@ -293,7 +293,7 @@
           </button>
         </li>
         <li class="nav-item">
-          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-quality" data-i18n-title="tab.quality" title="Quality">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-quality" id="qualityTabBtn" data-i18n-title="tab.quality" title="Quality">
             <i class="bi bi-shield-check"></i><span class="sidebar-label" data-i18n="tab.quality">Quality</span>
           </button>
         </li>
@@ -1401,6 +1401,7 @@ const TRANSLATIONS = {
     'quality.hvd_hint': 'Click Run HVD Check to validate all HVD-tagged datasets. This checks every dataset currently tagged as an EU High-Value Dataset and can take several minutes.',
     'quality.hvd_running': 'Validating HVD-tagged datasets against the official SHACL shapes… this can take several minutes. Feel free to switch tabs — it keeps running in the background.',
     'quality.hvd_still_running': 'Still running after a long wait — it may still finish in the background. Try clicking Run HVD Check again in a bit to check the latest status.',
+    'quality.hvd_last_checked': 'Showing the last completed check, from',
     'quality.hvd_checked': 'Checked',
     'quality.hvd_non_conforming': 'Non-conforming',
     'quality.hvd_legal_issue': 'Legal citation not linked',
@@ -1808,6 +1809,7 @@ const TRANSLATIONS = {
     'quality.hvd_hint': 'Κάντε κλικ στο «Εκτέλεση Ελέγχου HVD» για επαλήθευση όλων των συνόλων δεδομένων με ετικέτα HVD. Ελέγχει κάθε σύνολο δεδομένων που φέρει σήμερα ετικέτα HVD της ΕΕ και μπορεί να διαρκέσει αρκετά λεπτά.',
     'quality.hvd_running': 'Επικύρωση συνόλων δεδομένων HVD βάσει των επίσημων μορφών SHACL… μπορεί να διαρκέσει αρκετά λεπτά. Μπορείτε να αλλάξετε καρτέλα — η διαδικασία συνεχίζεται στο παρασκήνιο.',
     'quality.hvd_still_running': 'Εξακολουθεί να εκτελείται μετά από μεγάλη αναμονή — ενδέχεται να ολοκληρωθεί στο παρασκήνιο. Δοκιμάστε ξανά το «Εκτέλεση Ελέγχου HVD» σε λίγο για την πιο πρόσφατη κατάσταση.',
+    'quality.hvd_last_checked': 'Εμφανίζεται ο τελευταίος ολοκληρωμένος έλεγχος, από',
     'quality.hvd_checked': 'Ελέγχθηκαν',
     'quality.hvd_non_conforming': 'Μη συμμορφούμενα',
     'quality.hvd_legal_issue': 'Μη συνδεδεμένη νομική αναφορά',
@@ -3462,6 +3464,9 @@ async function _pollHvdCheck(attempts = 0) {
 
 function _renderHvdCheck(result) {
   const s = result.summary;
+  const lastCheckedNote = result.finished_at
+    ? `<p class="text-muted small mb-2"><i class="bi bi-clock-history me-1"></i>${t('quality.hvd_last_checked')} ${esc(relativeDate(result.finished_at))}</p>`
+    : '';
   const partialNote = result.partial
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
@@ -3488,7 +3493,7 @@ function _renderHvdCheck(result) {
     ? `<p class="text-muted small mb-2">${t('quality.hvd_failed_note').replace('{n}', fmt(s.failed_to_fetch))}</p>` : '';
 
   if (!result.datasets.length) {
-    show('hvdCheckResults').innerHTML = partialNote + cardsHtml + failedNote +
+    show('hvdCheckResults').innerHTML = lastCheckedNote + partialNote + cardsHtml + failedNote +
       `<p class="text-success small mb-0"><i class="bi bi-check-circle me-1"></i>${t('quality.hvd_all_clean')}</p>`;
     return;
   }
@@ -3507,7 +3512,7 @@ function _renderHvdCheck(result) {
       </details></td>
     </tr>`).join('');
 
-  show('hvdCheckResults').innerHTML = partialNote + cardsHtml + failedNote + `
+  show('hvdCheckResults').innerHTML = lastCheckedNote + partialNote + cardsHtml + failedNote + `
     <div style="max-height:60vh;overflow-y:auto">
       <table class="table table-hover align-middle mb-0">
         <thead><tr>
@@ -3521,6 +3526,31 @@ function _renderHvdCheck(result) {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+}
+
+let _qualityTabLoaded = false;
+document.getElementById('qualityTabBtn').addEventListener('click', () => {
+  if (_qualityTabLoaded) return;
+  _qualityTabLoaded = true;
+  _loadQualityTab();
+});
+
+// Shows whatever's already there (a stored result from a previous run, or a
+// check someone else left running) without triggering a new one -- "Run HVD
+// Check" is the only thing that ever starts a fresh check.
+async function _loadQualityTab() {
+  try {
+    const data = await fetch(API_BASE + 'api/quality/hvd-check').then(r => r.json());
+    if (data.running) {
+      show('hvdCheckBtn').disabled = true;
+      show('hvdCancelBtn').classList.remove('d-none');
+      _showHvdProgress(data.completed, data.total);
+      show('hvdCheckResults').innerHTML = `<div class="text-center py-4 text-muted">${esc(t('quality.hvd_running'))}</div>`;
+      _pollHvdCheck();
+      return;
+    }
+    if (data.result) _renderHvdCheck(data.result);
+  } catch (e) { /* leave the default "click Run HVD Check" hint in place */ }
 }
 
 // ── Organizations tab ────────────────────────────────────────────────────────

@@ -19,7 +19,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, User, PasswordResetToken
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, User, PasswordResetToken
 import rdflib
 import pyshacl
 import config
@@ -1579,6 +1579,24 @@ _hvd_check_cache: dict = {
     "total": 0, "completed": 0, "cancel_requested": False,
 }
 
+with app.app_context():
+    # Warm from the DB so a fresh process/restart can show the last completed
+    # run immediately instead of looking like nothing has ever been checked.
+    _hvd_check_row = HvdCheckCache.query.get(1)
+    if _hvd_check_row:
+        _hvd_check_cache["result"] = _hvd_check_row.data()
+
+
+def _save_hvd_check_cache(result: dict) -> None:
+    with app.app_context():
+        row = HvdCheckCache.query.get(1)
+        if not row:
+            row = HvdCheckCache(id=1, data_json="{}")
+            db.session.add(row)
+        row.data_json  = json.dumps(result)
+        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
 
 def _get_vocab_graph(url: str):
     with _hvd_vocab_lock:
@@ -1777,6 +1795,7 @@ def _do_run_hvd_check() -> None:
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
         _hvd_check_cache["error"] = None
+        _save_hvd_check_cache(_hvd_check_cache["result"])
     except Exception as exc:
         _hvd_check_cache["error"] = str(exc)
     finally:

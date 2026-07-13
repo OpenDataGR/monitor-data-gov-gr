@@ -91,6 +91,20 @@ class GeoDatasetsCache(db.Model):
         return json.loads(self.data_json)
 
 
+class HvdCheckCache(db.Model):
+    """Persists the last completed HVD SHACL compliance check result (see
+    app._do_run_hvd_check) so it survives a process restart and doesn't need
+    re-running (~1,105 datasets, several minutes) just to view it again."""
+    __tablename__ = "hvd_check_cache"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    data_json  = db.Column(db.Text, nullable=False)
+    fetched_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def data(self):
+        return json.loads(self.data_json)
+
+
 class User(db.Model):
     __tablename__ = "users"
 
