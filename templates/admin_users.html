@@ -118,6 +118,15 @@
               <div id="testEmailResult" class="mt-2 small d-none"></div>
             </div>
 
+            <div class="card p-4 mb-4">
+              <h6 class="fw-semibold mb-1"><i class="bi bi-patch-check me-2"></i>HVD Compliance Check Cache</h6>
+              <p class="text-muted small mb-3">Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.</p>
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearHvdCache()">
+                <i class="bi bi-trash me-1"></i>Clear HVD Check Cache
+              </button>
+              <div id="hvdClearResult" class="mt-2 small d-none"></div>
+            </div>
+
             <div class="card p-4 border-danger">
               <h6 class="fw-semibold mb-1 text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Danger Zone</h6>
               <p class="text-muted small mb-3">Permanently delete all historical health checks and portal snapshots, then start a fresh check.</p>
@@ -370,6 +379,24 @@
       }
       resultEl.classList.remove('d-none');
       return false;
+    }
+
+    async function clearHvdCache() {
+      if (!confirm('Clear the HVD check cache? The next run will re-fetch and re-validate every HVD-tagged dataset from scratch.')) return;
+      const resultEl = document.getElementById('hvdClearResult');
+      resultEl.classList.add('d-none');
+      try {
+        const resp = await fetch('../api/quality/hvd-check/clear', {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to clear cache');
+        if (data.cleared === false) throw new Error(data.reason === 'running' ? 'A check is currently running — cancel it first.' : 'Failed to clear cache');
+        resultEl.className = 'mt-2 small alert alert-success';
+        resultEl.textContent = 'Cache cleared.';
+      } catch (e) {
+        resultEl.className = 'mt-2 small alert alert-danger';
+        resultEl.textContent = e.message;
+      }
+      resultEl.classList.remove('d-none');
     }
 
     function _b64enc(obj) {

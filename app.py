@@ -1987,6 +1987,24 @@ def get_hvd_check():
     })
 
 
+@app.route("/api/quality/hvd-check/clear", methods=["POST"])
+def clear_hvd_check_cache():
+    err = _require_admin()
+    if err:
+        return err
+    if _hvd_check_cache["running"]:
+        return jsonify({"cleared": False, "reason": "running"})
+    HvdDatasetCheckCache.query.delete()
+    HvdCheckCache.query.delete()
+    db.session.commit()
+    _hvd_check_cache["result"]     = None
+    _hvd_check_cache["error"]      = None
+    _hvd_check_cache["started_at"] = None
+    _hvd_check_cache["total"]      = 0
+    _hvd_check_cache["completed"]  = 0
+    return jsonify({"cleared": True})
+
+
 @app.route("/api/trigger-check", methods=["POST"])
 def trigger_check():
     threading.Thread(target=run_health_checks, daemon=True).start()
