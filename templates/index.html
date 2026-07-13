@@ -1449,6 +1449,7 @@ const TRANSLATIONS = {
     'quality.hvd_col_legal': 'Legal citation',
     'quality.hvd_col_api': 'API access',
     'quality.hvd_col_license': 'License',
+    'quality.hvd_unknown_org': 'Unknown organization',
     'quality.hvd_check_one_placeholder': 'Search datasets by title…',
     'quality.hvd_search_none': 'No matching datasets.',
     'quality.hvd_conforms': 'Fully conforms',
@@ -1863,6 +1864,7 @@ const TRANSLATIONS = {
     'quality.hvd_col_legal': 'Νομική αναφορά',
     'quality.hvd_col_api': 'Πρόσβαση API',
     'quality.hvd_col_license': 'Άδεια χρήσης',
+    'quality.hvd_unknown_org': 'Άγνωστος φορέας',
     'quality.hvd_check_one_placeholder': 'Αναζήτηση συνόλων δεδομένων με τίτλο…',
     'quality.hvd_search_none': 'Δεν βρέθηκαν σύνολα δεδομένων.',
     'quality.hvd_conforms': 'Πλήρης συμμόρφωση',
@@ -3424,6 +3426,10 @@ function _renderHvdSingleResult(d) {
 }
 
 let _hvdLastResult = null;  // set by _renderHvdCheck() -- used to warn before an unnecessary re-run
+let _hvdSortCol = 'violation_count';
+let _hvdSortDir = 'desc';
+let _hvdExpandedOrgs = new Set();
+let _hvdGroupsCache = [];  // [[orgTitle, datasets[]], ...] from the most recent table render
 
 function _showHvdProgress(completed, total) {
   show('hvdProgressWrap').classList.remove('d-none');
@@ -3563,32 +3569,112 @@ function _renderHvdCheck(result) {
     return;
   }
 
-  const rows = result.datasets.map(d => `
-    <tr>
-      <td><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
-      <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
-      <td>${d.legal_citation_issue ? `<i class="bi bi-file-earmark-text text-warning" title="${esc(t('quality.hvd_legal_issue'))}"></i>` : ''}</td>
-      <td>${d.no_api_access ? `<i class="bi bi-hdd-network text-warning" title="${esc(t('quality.hvd_no_api'))}"></i>` : ''}</td>
-      <td>${d.license_status === 'missing' ? `<span class="badge bg-danger">${t('quality.hvd_license_missing')}</span>`
-          : d.license_status === 'non_open' ? `<span class="badge bg-warning text-dark">${t('quality.hvd_license_non_open')}</span>`
-          : `<span class="badge bg-success">${t('quality.hvd_license_open')}</span>`}</td>
-      <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
-        <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}">${esc(v.message)}</li>`).join('')}</ul>
-      </details></td>
-    </tr>`).join('');
+  _hvdExpandedOrgs = new Set();
+  show('hvdCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote + `<div id="hvdTableWrap"></div>`;
+  _renderHvdTable();
+}
 
-  show('hvdCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote + `
+function _hvdCompare(a, b, col) {
+  switch (col) {
+    case 'title':      return a.title.localeCompare(b.title);
+    case 'legal_citation_issue':
+    case 'no_api_access':
+      return (a[col] ? 1 : 0) - (b[col] ? 1 : 0);
+    case 'license_status': {
+      const rank = { missing: 2, non_open: 1, open: 0 };
+      return (rank[a.license_status] ?? 0) - (rank[b.license_status] ?? 0);
+    }
+    default: return a.violation_count - b.violation_count;
+  }
+}
+
+function sortHvdTable(col) {
+  if (_hvdSortCol === col) {
+    _hvdSortDir = _hvdSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _hvdSortCol = col;
+    _hvdSortDir = col === 'title' ? 'asc' : 'desc';
+  }
+  _renderHvdTable();
+}
+
+function hvdSortArrow(col) {
+  if (_hvdSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
+  return _hvdSortDir === 'asc' ? ' ↑' : ' ↓';
+}
+
+function toggleHvdOrg(idx) {
+  const entry = _hvdGroupsCache[idx];
+  if (!entry) return;
+  const [orgTitle] = entry;
+  if (_hvdExpandedOrgs.has(orgTitle)) _hvdExpandedOrgs.delete(orgTitle);
+  else _hvdExpandedOrgs.add(orgTitle);
+  _renderHvdTable();
+}
+
+function _renderHvdTable() {
+  const wrap = show('hvdTableWrap');
+  if (!wrap) return;
+  const datasets = _hvdLastResult?.datasets || [];
+  if (!datasets.length) { wrap.innerHTML = ''; return; }
+
+  const groups = new Map();
+  for (const d of datasets) {
+    const key = d.org_title || t('quality.hvd_unknown_org');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(d);
+  }
+
+  const dir = _hvdSortDir === 'asc' ? 1 : -1;
+  for (const list of groups.values()) {
+    list.sort((a, b) => dir * _hvdCompare(a, b, _hvdSortCol));
+  }
+
+  // Groups with the most flagged datasets first, alphabetical among ties.
+  _hvdGroupsCache = [...groups.entries()].sort(
+    ([an, al], [bn, bl]) => bl.length - al.length || an.localeCompare(bn)
+  );
+
+  const bodyRows = _hvdGroupsCache.map(([orgTitle, list], idx) => {
+    const isExpanded = _hvdExpandedOrgs.has(orgTitle);
+    const groupRow = `
+      <tr class="table-light" style="cursor:pointer" onclick="toggleHvdOrg(${idx})">
+        <td colspan="6">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+            <span class="fw-semibold">${esc(orgTitle)}</span>
+            <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${list.length}</span>
+          </div>
+        </td>
+      </tr>`;
+    const datasetRows = list.map(d => `
+      <tr style="${isExpanded ? '' : 'display:none'}">
+        <td class="ps-4"><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
+        <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
+        <td>${d.legal_citation_issue ? `<i class="bi bi-file-earmark-text text-warning" title="${esc(t('quality.hvd_legal_issue'))}"></i>` : ''}</td>
+        <td>${d.no_api_access ? `<i class="bi bi-hdd-network text-warning" title="${esc(t('quality.hvd_no_api'))}"></i>` : ''}</td>
+        <td>${d.license_status === 'missing' ? `<span class="badge bg-danger">${t('quality.hvd_license_missing')}</span>`
+            : d.license_status === 'non_open' ? `<span class="badge bg-warning text-dark">${t('quality.hvd_license_non_open')}</span>`
+            : `<span class="badge bg-success">${t('quality.hvd_license_open')}</span>`}</td>
+        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
+          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}">${esc(v.message)}</li>`).join('')}</ul>
+        </details></td>
+      </tr>`).join('');
+    return groupRow + datasetRows;
+  }).join('');
+
+  wrap.innerHTML = `
     <div style="max-height:60vh;overflow-y:auto">
       <table class="table table-hover align-middle mb-0">
         <thead><tr>
-          <th>${t('quality.col_dataset')}</th>
-          <th>${t('quality.hvd_col_violations')}</th>
-          <th>${t('quality.hvd_col_legal')}</th>
-          <th>${t('quality.hvd_col_api')}</th>
-          <th>${t('quality.hvd_col_license')}</th>
+          <th style="cursor:pointer" onclick="sortHvdTable('title')">${t('quality.col_dataset')}${hvdSortArrow('title')}</th>
+          <th style="cursor:pointer" onclick="sortHvdTable('violation_count')">${t('quality.hvd_col_violations')}${hvdSortArrow('violation_count')}</th>
+          <th style="cursor:pointer" onclick="sortHvdTable('legal_citation_issue')">${t('quality.hvd_col_legal')}${hvdSortArrow('legal_citation_issue')}</th>
+          <th style="cursor:pointer" onclick="sortHvdTable('no_api_access')">${t('quality.hvd_col_api')}${hvdSortArrow('no_api_access')}</th>
+          <th style="cursor:pointer" onclick="sortHvdTable('license_status')">${t('quality.hvd_col_license')}${hvdSortArrow('license_status')}</th>
           <th></th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody>${bodyRows}</tbody>
       </table>
     </div>`;
 }

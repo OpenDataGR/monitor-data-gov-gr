@@ -1572,6 +1572,7 @@ _DCATAP_NS = rdflib.Namespace("http://data.europa.eu/r5r/")
 _DCAT_NS   = rdflib.Namespace("http://www.w3.org/ns/dcat#")
 _DCT_NS    = rdflib.Namespace("http://purl.org/dc/terms/")
 _SH_NS     = rdflib.Namespace("http://www.w3.org/ns/shacl#")
+_FOAF_NS   = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
 
 _OPEN_LICENSE_MARKERS = (
     "creativecommons.org/licenses/by",
@@ -1735,9 +1736,17 @@ def _hvd_check_one(name: str) -> dict:
         title = str(t)
         break
 
+    org_title = None
+    for publisher in graph.objects(None, _DCT_NS.publisher):
+        org_name = graph.value(publisher, _FOAF_NS.name)
+        if org_name:
+            org_title = str(org_name)
+            break
+
     return {
         "name":                 name,
         "title":                title or name,
+        "org_title":            org_title or "",
         "conforms":             conforms,
         "violation_count":      len(violations),
         "warning_count":        len(warnings),
