@@ -1987,41 +1987,6 @@ def get_hvd_check():
     })
 
 
-def _ckan_org_title(name: str) -> str:
-    """CKAN's own organization title for a dataset -- reliable, unlike the
-    dataset's own dct:publisher RDF field (see _list_hvd_datasets)."""
-    try:
-        r = requests.get(
-            f"{config.API_BASE}/package_show", params={"id": name},
-            headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
-        )
-        r.raise_for_status()
-        data = r.json()
-        if not data.get("success"):
-            return ""
-        return (data["result"].get("organization") or {}).get("title") or ""
-    except Exception:
-        return ""
-
-
-@app.route("/api/quality/hvd-check-one")
-def hvd_check_one_route():
-    name = (freq.args.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "Missing dataset name"}), 400
-    # Accept a full dataset URL pasted from the portal, not just the bare slug.
-    name = name.rstrip("/").rsplit("/", 1)[-1]
-    try:
-        result = _hvd_check_one(name)
-        result["org_title"] = _ckan_org_title(name)
-        result["publisher_mismatch"] = _publisher_mismatch(result.get("publisher_name", ""), result["org_title"])
-        return jsonify(result)
-    except requests.exceptions.HTTPError as exc:
-        return jsonify({"error": f"Could not fetch dataset '{name}': {exc}"}), 502
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 502
-
-
 @app.route("/api/trigger-check", methods=["POST"])
 def trigger_check():
     threading.Thread(target=run_health_checks, daemon=True).start()

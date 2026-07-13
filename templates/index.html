@@ -674,15 +674,11 @@
               </div>
             </div>
             <p class="text-muted small" data-i18n="quality.hvd_desc">Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) &mdash; not just whether it carries the hvd_category tag.</p>
-            <div class="position-relative mb-3" style="width:340px;max-width:100%">
-              <input type="text" id="hvdDatasetSearchInput" class="form-control form-control-sm"
-                     placeholder="Search datasets by title…" data-i18n-ph="quality.hvd_check_one_placeholder"
-                     autocomplete="off" oninput="_hvdDatasetSearchDebounced()"
-                     onblur="setTimeout(() => show('hvdDatasetSearchResults').classList.add('d-none'), 150)"
-                     onfocus="if(show('hvdDatasetSearchResults').innerHTML)show('hvdDatasetSearchResults').classList.remove('d-none')">
-              <div id="hvdDatasetSearchResults" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index:1000;max-height:280px;overflow-y:auto"></div>
+            <div class="mb-3" style="width:340px;max-width:100%">
+              <input type="text" id="hvdResultsSearchInput" class="form-control form-control-sm"
+                     placeholder="Search results by title…" data-i18n-ph="quality.hvd_results_search_placeholder"
+                     autocomplete="off" oninput="_renderHvdTable()">
             </div>
-            <div id="hvdSingleResult"></div>
             <div id="hvdProgressWrap" class="mb-3 d-none">
               <div class="d-flex justify-content-between small text-muted mb-1">
                 <span id="hvdProgressLabel"></span>
@@ -1450,14 +1446,9 @@ const TRANSLATIONS = {
     'quality.hvd_col_api': 'API access',
     'quality.hvd_col_license': 'License',
     'quality.hvd_unknown_org': 'Unknown organization',
-    'quality.hvd_check_one_placeholder': 'Search datasets by title…',
-    'quality.hvd_search_none': 'No matching datasets.',
-    'quality.hvd_conforms': 'Fully conforms',
-    'quality.hvd_legal_ok': 'Legal citation linked',
-    'quality.hvd_api_ok': 'Has API access',
+    'quality.hvd_results_search_placeholder': 'Search results by title…',
     'quality.hvd_publisher_mismatch': 'Publisher looks wrong',
     'quality.hvd_publisher_mismatch_hint': 'The dataset\'s publisher name doesn\'t match its organization ({org}) — likely a contact person\'s name entered by mistake instead of the organization.',
-    'quality.hvd_publisher_ok': 'Publisher matches organization',
     'quality.hvd_col_publisher': 'Publisher',
     'quality.hvd_filter_no_match': 'No datasets match the selected filters.',
     'quality.hvd_filter_group_compliance': 'Compliance',
@@ -1872,14 +1863,9 @@ const TRANSLATIONS = {
     'quality.hvd_col_api': 'Πρόσβαση API',
     'quality.hvd_col_license': 'Άδεια χρήσης',
     'quality.hvd_unknown_org': 'Άγνωστος φορέας',
-    'quality.hvd_check_one_placeholder': 'Αναζήτηση συνόλων δεδομένων με τίτλο…',
-    'quality.hvd_search_none': 'Δεν βρέθηκαν σύνολα δεδομένων.',
-    'quality.hvd_conforms': 'Πλήρης συμμόρφωση',
-    'quality.hvd_legal_ok': 'Συνδεδεμένη νομική αναφορά',
-    'quality.hvd_api_ok': 'Διαθέτει πρόσβαση API',
+    'quality.hvd_results_search_placeholder': 'Αναζήτηση αποτελεσμάτων με τίτλο…',
     'quality.hvd_publisher_mismatch': 'Ύποπτος εκδότης',
     'quality.hvd_publisher_mismatch_hint': 'Το όνομα εκδότη του συνόλου δεδομένων δεν ταιριάζει με τον οργανισμό του ({org}) — πιθανώς καταχωρήθηκε εκ παραδρομής το όνομα ενός υπαλλήλου αντί του οργανισμού.',
-    'quality.hvd_publisher_ok': 'Ο εκδότης ταιριάζει με τον οργανισμό',
     'quality.hvd_col_publisher': 'Εκδότης',
     'quality.hvd_filter_no_match': 'Κανένα σύνολο δεδομένων δεν ταιριάζει με τα επιλεγμένα φίλτρα.',
     'quality.hvd_filter_group_compliance': 'Συμμόρφωση',
@@ -3354,94 +3340,6 @@ function renderTrafficTopDownloads(downloads) {
 }
 
 // ── HVD compliance check (SHACL) ─────────────────────────────────────────────
-let _hvdDatasetSearchTimer = null;
-function _hvdDatasetSearchDebounced() {
-  clearTimeout(_hvdDatasetSearchTimer);
-  _hvdDatasetSearchTimer = setTimeout(_hvdDatasetSearchRun, 300);
-}
-
-let _hvdSearchResults = [];
-
-async function _hvdDatasetSearchRun() {
-  const q   = show('hvdDatasetSearchInput').value.trim();
-  const box = show('hvdDatasetSearchResults');
-  if (!q) { box.classList.add('d-none'); box.innerHTML = ''; return; }
-  try {
-    const data = await fetch(`${API_BASE}api/datasets/search?q=${encodeURIComponent(q)}&rows=10`).then(r => r.json());
-    _hvdSearchResults = data.datasets || [];
-    box.innerHTML = _hvdSearchResults.length
-      ? _hvdSearchResults.map((d, i) => `
-          <button type="button" class="list-group-item list-group-item-action small" onmousedown="event.preventDefault();_hvdSelectDataset(${i})">
-            <div class="fw-semibold">${esc(d.title)}</div>
-            <div class="text-muted" style="font-size:.75rem">${esc(d.org_title)}</div>
-          </button>`).join('')
-      : `<div class="list-group-item small text-muted">${t('quality.hvd_search_none')}</div>`;
-    box.classList.remove('d-none');
-  } catch (e) {
-    box.classList.add('d-none');
-  }
-}
-
-function _hvdSelectDataset(idx) {
-  const d = _hvdSearchResults[idx];
-  if (!d) return;
-  show('hvdDatasetSearchInput').value = d.title;
-  show('hvdDatasetSearchResults').classList.add('d-none');
-  checkHvdSingleDataset(d.name);
-}
-
-async function checkHvdSingleDataset(name) {
-  const el = show('hvdSingleResult');
-  if (!name) return;
-  el.innerHTML = `<div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}</div>`;
-  try {
-    const data = await fetch(`${API_BASE}api/quality/hvd-check-one?name=${encodeURIComponent(name)}`).then(r => r.json());
-    if (data.error) {
-      el.innerHTML = `<div class="alert alert-warning mb-0">${esc(data.error)}</div>`;
-      return;
-    }
-    el.innerHTML = _renderHvdSingleResult(data);
-  } catch (e) {
-    el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
-  }
-}
-
-function _renderHvdSingleResult(d) {
-  const conformsBadge = d.conforms
-    ? `<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>${t('quality.hvd_conforms')}</span>`
-    : `<span class="badge bg-danger">${fmt(d.violation_count)} ${t('quality.hvd_col_violations').toLowerCase()}</span>`;
-  const licenseBadge = d.license_status === 'missing'
-    ? `<span class="badge bg-danger">${t('quality.hvd_license_missing')}</span>`
-    : d.license_status === 'non_open'
-    ? `<span class="badge bg-warning text-dark">${t('quality.hvd_license_non_open')}</span>`
-    : `<span class="badge bg-success">${t('quality.hvd_license_open')}</span>`;
-  const detailsHtml = d.details.length
-    ? `<details class="mt-2"><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')} (${d.details.length})</summary>
-        <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}">${esc(v.message)}</li>`).join('')}</ul>
-      </details>`
-    : '';
-  return `
-    <div class="border rounded-3 p-3 mb-3">
-      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-        <a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="fw-semibold text-decoration-none">${esc(d.title)}</a>
-        ${conformsBadge}
-      </div>
-      <div class="d-flex flex-wrap gap-3 small">
-        <span>${d.legal_citation_issue
-          ? `<i class="bi bi-file-earmark-text text-warning me-1"></i>${t('quality.hvd_legal_issue')}`
-          : `<i class="bi bi-check2 text-success me-1"></i>${t('quality.hvd_legal_ok')}`}</span>
-        <span>${d.no_api_access
-          ? `<i class="bi bi-hdd-network text-warning me-1"></i>${t('quality.hvd_no_api')}`
-          : `<i class="bi bi-check2 text-success me-1"></i>${t('quality.hvd_api_ok')}`}</span>
-        <span>${licenseBadge}</span>
-        <span>${d.publisher_mismatch
-          ? `<i class="bi bi-person-badge text-warning me-1"></i>${t('quality.hvd_publisher_mismatch')}`
-          : `<i class="bi bi-check2 text-success me-1"></i>${t('quality.hvd_publisher_ok')}`}</span>
-      </div>
-      ${detailsHtml}
-    </div>`;
-}
-
 let _hvdLastResult = null;  // set by _renderHvdCheck() -- used to warn before an unnecessary re-run
 let _hvdSortCol = 'violation_count';
 let _hvdSortDir = 'desc';
@@ -3632,6 +3530,7 @@ async function _pollHvdCheck(attempts = 0) {
 function _renderHvdCheck(result) {
   _hvdLastResult = result;
   _hvdActiveFilters = new Set();
+  show('hvdResultsSearchInput').value = '';
   const s = result.summary;
   show('hvdLastRunAt').textContent = result.finished_at
     ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
@@ -3733,9 +3632,13 @@ function _renderHvdTable() {
   const all = _hvdLastResult?.datasets || [];
   if (!all.length) { wrap.innerHTML = ''; return; }
 
-  const datasets = _hvdActiveFilters.size
+  let datasets = _hvdActiveFilters.size
     ? all.filter(d => [..._hvdActiveFilters].every(key => HVD_FILTER_PREDICATES[key](d)))
     : all;
+
+  const q = _ns(show('hvdResultsSearchInput')?.value || '').trim();
+  if (q) datasets = datasets.filter(d => _ns(d.title).includes(q) || _ns(d.org_title || '').includes(q));
+
   if (!datasets.length) {
     wrap.innerHTML = `<p class="text-muted small mb-0 mt-2">${esc(t('quality.hvd_filter_no_match'))}</p>`;
     return;
