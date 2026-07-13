@@ -19,7 +19,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, User, PasswordResetToken
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdDatasetCheckCache, User, PasswordResetToken
 import rdflib
 import pyshacl
 import config
@@ -1739,13 +1739,16 @@ def _hvd_check_one(name: str) -> dict:
     }
 
 
-def _list_hvd_dataset_names() -> list:
-    names = []
+def _list_hvd_datasets() -> list:
+    """[{"name":..., "metadata_modified":...}, ...] for every currently
+    HVD-tagged dataset -- one bulk paginated call, used both to know what to
+    check and to detect which ones actually changed since the last check."""
+    items = []
     start, batch = 0, 100
     while True:
         r = requests.get(
             f"{config.API_BASE}/package_search",
-            params={"rows": batch, "start": start, "fq": '-hvd_category:"[]"', "fl": "name"},
+            params={"rows": batch, "start": start, "fq": '-hvd_category:"[]"', "fl": "name,metadata_modified"},
             headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
         )
         r.raise_for_status()
@@ -1755,28 +1758,51 @@ def _list_hvd_dataset_names() -> list:
         results = data["result"]["results"]
         if not results:
             break
-        names.extend(p["name"] for p in results if p.get("name"))
+        items.extend(
+            {"name": p["name"], "metadata_modified": p.get("metadata_modified")}
+            for p in results if p.get("name")
+        )
         start += batch
         if start >= data["result"]["count"]:
             break
-    return names
+    return items
 
 
 def _do_run_hvd_check() -> None:
     cancelled = False
     try:
-        names = _list_hvd_dataset_names()
-        _hvd_check_cache["total"] = len(names)
-        rows = []
+        datasets = _list_hvd_datasets()
+        _hvd_check_cache["total"] = len(datasets)
+
+        with app.app_context():
+            cached_rows = {row.name: row for row in HvdDatasetCheckCache.query.all()}
+
+        # A dataset is reused as-is only if we have a previously *successful*
+        # result AND CKAN's metadata_modified hasn't changed since then --
+        # otherwise (new, previously failed, or actually modified) it's
+        # re-fetched and re-validated for real.
+        to_fetch, rows = [], []
+        for d in datasets:
+            row = cached_rows.get(d["name"])
+            if row and row.result_json and row.metadata_modified == d["metadata_modified"]:
+                rows.append(row.result())
+            else:
+                to_fetch.append(d)
+        _hvd_check_cache["completed"] = len(rows)
+
+        newly_checked = []  # (name, metadata_modified, result-or-None-if-failed)
         pool = ThreadPoolExecutor(max_workers=15)
         try:
-            futures = {pool.submit(_hvd_check_one, name): name for name in names}
+            futures = {pool.submit(_hvd_check_one, d["name"]): d for d in to_fetch}
             for fut in as_completed(futures):
-                name = futures[fut]
+                d = futures[fut]
                 try:
-                    rows.append(fut.result())
+                    result = fut.result()
+                    rows.append(result)
+                    newly_checked.append((d["name"], d["metadata_modified"], result))
                 except Exception as exc:
-                    rows.append({"name": name, "error": str(exc)})
+                    rows.append({"name": d["name"], "error": str(exc)})
+                    newly_checked.append((d["name"], d["metadata_modified"], None))
                 _hvd_check_cache["completed"] = len(rows)
                 if _hvd_check_cache["cancel_requested"]:
                     cancelled = True
@@ -1788,12 +1814,30 @@ def _do_run_hvd_check() -> None:
             # simply not collected -- don't block the cancel on them.
             pool.shutdown(wait=False, cancel_futures=True)
 
+        if newly_checked:
+            with app.app_context():
+                for name, mtime, result in newly_checked:
+                    row = HvdDatasetCheckCache.query.get(name)
+                    if not row:
+                        row = HvdDatasetCheckCache(name=name)
+                        db.session.add(row)
+                    row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    if result is not None:
+                        # Only overwrite on success -- a transient fetch
+                        # failure shouldn't erase a known-good cached result;
+                        # leaving metadata_modified stale means it's simply
+                        # retried again next run instead of wrongly reused.
+                        row.metadata_modified = mtime
+                        row.result_json = json.dumps(result)
+                db.session.commit()
+
         checked = [r for r in rows if "error" not in r]
         failed  = [r for r in rows if "error" in r]
         summary = {
-            "total":                len(names),
+            "total":                len(datasets),
             "checked":              len(checked),
             "failed_to_fetch":      len(failed),
+            "reused_from_cache":    len(datasets) - len(to_fetch),
             "conforms":             sum(1 for r in checked if r["conforms"]),
             "legal_citation_issue": sum(1 for r in checked if r["legal_citation_issue"]),
             "no_api_access":        sum(1 for r in checked if r["no_api_access"]),

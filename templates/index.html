@@ -1411,6 +1411,7 @@ const TRANSLATIONS = {
     'quality.hvd_license_non_open': 'License not confirmed open',
     'quality.hvd_license_open': 'Open license',
     'quality.hvd_failed_note': '{n} dataset(s) could not be fetched and were skipped.',
+    'quality.hvd_cache_note': '{n} of {total} datasets were unchanged since the last check and served from cache.',
     'quality.hvd_all_clean': 'No issues found across all checked HVD-tagged datasets.',
     'quality.hvd_cancel': 'Cancel',
     'quality.hvd_cancelling': 'Cancelling…',
@@ -1819,6 +1820,7 @@ const TRANSLATIONS = {
     'quality.hvd_license_non_open': 'Μη επιβεβαιωμένη ανοιχτή άδεια',
     'quality.hvd_license_open': 'Ανοιχτή άδεια',
     'quality.hvd_failed_note': '{n} σύνολο(-α) δεδομένων δεν ήταν δυνατό να ανακτηθούν και παραλείφθηκαν.',
+    'quality.hvd_cache_note': '{n} από {total} σύνολα δεδομένων ήταν αμετάβλητα από τον τελευταίο έλεγχο και προήλθαν από την cache.',
     'quality.hvd_all_clean': 'Δεν βρέθηκαν προβλήματα σε όλα τα ελεγμένα σύνολα δεδομένων HVD.',
     'quality.hvd_cancel': 'Ακύρωση',
     'quality.hvd_cancelling': 'Ακύρωση…',
@@ -3491,9 +3493,12 @@ function _renderHvdCheck(result) {
 
   const failedNote = s.failed_to_fetch
     ? `<p class="text-muted small mb-2">${t('quality.hvd_failed_note').replace('{n}', fmt(s.failed_to_fetch))}</p>` : '';
+  const cacheNote = s.reused_from_cache
+    ? `<p class="text-muted small mb-2"><i class="bi bi-lightning-charge me-1"></i>${t('quality.hvd_cache_note').replace('{n}', fmt(s.reused_from_cache)).replace('{total}', fmt(s.total))}</p>`
+    : '';
 
   if (!result.datasets.length) {
-    show('hvdCheckResults').innerHTML = partialNote + cardsHtml + failedNote +
+    show('hvdCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote +
       `<p class="text-success small mb-0"><i class="bi bi-check-circle me-1"></i>${t('quality.hvd_all_clean')}</p>`;
     return;
   }
@@ -3512,7 +3517,7 @@ function _renderHvdCheck(result) {
       </details></td>
     </tr>`).join('');
 
-  show('hvdCheckResults').innerHTML = partialNote + cardsHtml + failedNote + `
+  show('hvdCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote + `
     <div style="max-height:60vh;overflow-y:auto">
       <table class="table table-hover align-middle mb-0">
         <thead><tr>

@@ -105,6 +105,23 @@ class HvdCheckCache(db.Model):
         return json.loads(self.data_json)
 
 
+class HvdDatasetCheckCache(db.Model):
+    """Per-dataset cache for the HVD SHACL check, keyed by CKAN's own
+    metadata_modified timestamp. A run only re-fetches and re-validates a
+    dataset's RDF when it's new, previously failed, or its metadata_modified
+    has actually changed since the last successful check -- everything else
+    is served from here instead of hitting data.gov.gr again."""
+    __tablename__ = "hvd_dataset_check_cache"
+
+    name              = db.Column(db.String(300), primary_key=True)
+    metadata_modified = db.Column(db.String(64))
+    result_json       = db.Column(db.Text)  # last successful _hvd_check_one() result; None if never succeeded
+    checked_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def result(self):
+        return json.loads(self.result_json) if self.result_json else None
+
+
 class User(db.Model):
     __tablename__ = "users"
 
