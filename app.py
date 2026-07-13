@@ -1605,6 +1605,12 @@ _HVD_CHECK_CONCURRENCY = 5
 # live user request -- a slow-but-working response shouldn't get counted as
 # a failure just because it took longer than a page load would tolerate.
 _HVD_CHECK_TIMEOUT = 30
+# Bump whenever _hvd_check_one()'s result schema/logic changes (a new field,
+# a fixed classifier, etc.) -- metadata_modified alone can't detect "the code
+# that produced this cached result is now stale", only "the dataset changed".
+# A version bump forces every cached row to be treated as a miss once, so the
+# next run re-populates everything with the new/fixed shape.
+_HVD_CHECK_VERSION = 2
 
 with app.app_context():
     # Warm from the DB so a fresh process/restart can show the last completed
@@ -1796,14 +1802,17 @@ def _do_run_hvd_check() -> None:
             cached_rows = {row.name: row for row in HvdDatasetCheckCache.query.all()}
 
         # A dataset is reused as-is only if we have a previously *successful*
-        # result AND CKAN's metadata_modified hasn't changed since then --
-        # otherwise (new, previously failed, or actually modified) it's
-        # re-fetched and re-validated for real.
+        # result, from the current check version, AND CKAN's metadata_modified
+        # hasn't changed since then -- otherwise (new, previously failed,
+        # actually modified, or cached under an older schema/logic version)
+        # it's re-fetched and re-validated for real.
         to_fetch, rows = [], []
         for d in datasets:
             row = cached_rows.get(d["name"])
-            if row and row.result_json and row.metadata_modified == d["metadata_modified"]:
-                rows.append(row.result())
+            cached = row.result() if (row and row.result_json) else None
+            if (cached and isinstance(cached, dict) and cached.get("_cache_version") == _HVD_CHECK_VERSION
+                    and row.metadata_modified == d["metadata_modified"]):
+                rows.append(cached["result"])
             else:
                 to_fetch.append(d)
         _hvd_check_cache["completed"] = len(rows)
@@ -1846,7 +1855,7 @@ def _do_run_hvd_check() -> None:
                         # leaving metadata_modified stale means it's simply
                         # retried again next run instead of wrongly reused.
                         row.metadata_modified = mtime
-                        row.result_json = json.dumps(result)
+                        row.result_json = json.dumps({"_cache_version": _HVD_CHECK_VERSION, "result": result})
                 db.session.commit()
 
         checked = [r for r in rows if "error" not in r]
