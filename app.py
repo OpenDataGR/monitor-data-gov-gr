@@ -1637,7 +1637,8 @@ def _get_vocab_graph(url: str):
             return _hvd_vocab_cache[url]
     g = None
     try:
-        r = requests.get(url, timeout=_HVD_CHECK_TIMEOUT, headers={"Accept": "application/rdf+xml"})
+        r = requests.get(url, timeout=_HVD_CHECK_TIMEOUT,
+                          headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
         r.raise_for_status()
         g = rdflib.Graph()
         g.parse(data=r.text, format="xml")
@@ -1762,7 +1763,8 @@ def _classify_shacl_results(results_graph: "rdflib.Graph"):
 
 def _hvd_check_one(name: str) -> dict:
     url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
-    r = requests.get(url, timeout=_HVD_CHECK_TIMEOUT, headers={"Accept": "application/rdf+xml"})
+    r = requests.get(url, timeout=_HVD_CHECK_TIMEOUT,
+                      headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
     r.raise_for_status()
     graph = rdflib.Graph()
     graph.parse(data=r.text, format="xml")
