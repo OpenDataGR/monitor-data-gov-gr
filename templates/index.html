@@ -2226,6 +2226,32 @@ function _applyTabRestrictions() {
 }
 _applyTabRestrictions();
 
+// ── Deep-linkable tabs — a URL like #contacts opens directly to that tab ────
+function _tabKeyFromHash(hash) {
+  return (hash || '').replace(/^#/, '');
+}
+
+function _activateTabByKey(key) {
+  if (!key) return false;
+  if (ALLOWED_TABS && !ALLOWED_TABS.includes(key)) return false;
+  const btn = document.querySelector(`#mainTabs .nav-link[data-bs-target="#tab-${key}"]`);
+  if (!btn || btn.closest('li.nav-item')?.classList.contains('d-none')) return false;
+  btn.click();  // a real click (not just Tab.show()) so each tab's lazy-load listener still fires
+  return true;
+}
+
+document.getElementById('mainTabs').addEventListener('shown.bs.tab', (e) => {
+  const key = e.target.dataset.bsTarget?.replace('#tab-', '');
+  // replaceState (not location.hash=) so switching tabs doesn't clutter browser history --
+  // the address bar still updates and stays copyable/bookmarkable.
+  if (key) history.replaceState(null, '', '#' + key);
+});
+
+window.addEventListener('hashchange', () => _activateTabByKey(_tabKeyFromHash(location.hash)));
+
+// Honor a hash already in the URL on first load (a bookmarked or shared link).
+_activateTabByKey(_tabKeyFromHash(location.hash));
+
 // ── Tiny helpers ─────────────────────────────────────────────────────────────
 const fmt  = n  => n == null ? '—' : Number(n).toLocaleString('el-GR');
 const show = id => document.getElementById(id);
