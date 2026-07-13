@@ -3707,20 +3707,18 @@ function _renderHvdTable() {
   }).join('');
 
   wrap.innerHTML = `
-    <div style="max-height:60vh;overflow-y:auto">
-      <table class="table table-hover align-middle mb-0">
-        <thead><tr>
-          <th style="cursor:pointer" onclick="sortHvdTable('title')">${t('quality.col_dataset')}${hvdSortArrow('title')}</th>
-          <th style="cursor:pointer" onclick="sortHvdTable('violation_count')">${t('quality.hvd_col_violations')}${hvdSortArrow('violation_count')}</th>
-          <th style="cursor:pointer" onclick="sortHvdTable('legal_citation_issue')">${t('quality.hvd_col_legal')}${hvdSortArrow('legal_citation_issue')}</th>
-          <th style="cursor:pointer" onclick="sortHvdTable('no_api_access')">${t('quality.hvd_col_api')}${hvdSortArrow('no_api_access')}</th>
-          <th style="cursor:pointer" onclick="sortHvdTable('license_status')">${t('quality.hvd_col_license')}${hvdSortArrow('license_status')}</th>
-          <th style="cursor:pointer" onclick="sortHvdTable('publisher_mismatch')">${t('quality.hvd_col_publisher')}${hvdSortArrow('publisher_mismatch')}</th>
-          <th></th>
-        </tr></thead>
-        <tbody>${bodyRows}</tbody>
-      </table>
-    </div>`;
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        <th style="cursor:pointer" onclick="sortHvdTable('title')">${t('quality.col_dataset')}${hvdSortArrow('title')}</th>
+        <th style="cursor:pointer" onclick="sortHvdTable('violation_count')">${t('quality.hvd_col_violations')}${hvdSortArrow('violation_count')}</th>
+        <th style="cursor:pointer" onclick="sortHvdTable('legal_citation_issue')">${t('quality.hvd_col_legal')}${hvdSortArrow('legal_citation_issue')}</th>
+        <th style="cursor:pointer" onclick="sortHvdTable('no_api_access')">${t('quality.hvd_col_api')}${hvdSortArrow('no_api_access')}</th>
+        <th style="cursor:pointer" onclick="sortHvdTable('license_status')">${t('quality.hvd_col_license')}${hvdSortArrow('license_status')}</th>
+        <th style="cursor:pointer" onclick="sortHvdTable('publisher_mismatch')">${t('quality.hvd_col_publisher')}${hvdSortArrow('publisher_mismatch')}</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table>`;
 }
 
 let _qualityTabLoaded = false;
