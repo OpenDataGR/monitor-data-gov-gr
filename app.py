@@ -25,6 +25,11 @@ import pyshacl
 import config
 
 app = Flask(__name__)
+
+
+@app.context_processor
+def _inject_current_year():
+    return {"current_year": datetime.now(timezone.utc).year}
 _db_url = config.DATABASE_URL or f"sqlite:///{Path(__file__).parent / 'instance' / 'dashboard.db'}"
 if _db_url.startswith("postgres://"):  # normalize legacy Heroku-style prefix
     _db_url = _db_url.replace("postgres://", "postgresql://", 1)
