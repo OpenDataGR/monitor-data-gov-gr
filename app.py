@@ -1610,7 +1610,7 @@ _HVD_CHECK_TIMEOUT = 30
 # that produced this cached result is now stale", only "the dataset changed".
 # A version bump forces every cached row to be treated as a miss once, so the
 # next run re-populates everything with the new/fixed shape.
-_HVD_CHECK_VERSION = 3
+_HVD_CHECK_VERSION = 4
 
 with app.app_context():
     # Warm from the DB so a fresh process/restart can show the last completed
@@ -1713,6 +1713,88 @@ def _publisher_mismatch(publisher_name: str, org_title: str) -> bool:
     return pub_tokens.isdisjoint(org_tokens)
 
 
+# Plain-language label for each RDF property the HVD shapes actually check,
+# keyed by the property's local name -- used to translate a raw pySHACL
+# result (which otherwise dumps SHACL jargon like "Node Kind" or a full
+# property-path expression) into a sentence a non-technical reader can act
+# on, without having to hand-write a mapping for every literal message text.
+_HVD_PATH_LABELS = {
+    "applicableLegislation": "the applicable EU legislation citation",
+    "hvdCategory":           "the HVD category classification",
+    "servesDataset":         "the link back to the dataset this API serves",
+    "endpointURL":           "the API's endpoint URL",
+    "endpointDescription":   "the API's endpoint documentation",
+    "contactPoint":          "the dataset's contact point",
+    "page":                  "the documentation/reference page",
+    "rights":                "the rights statement",
+    "license":               "the license",
+    "conformsTo":            "the standard/specification it conforms to",
+    "distribution":          "at least one distribution (downloadable file/API)",
+    "inSeries":               "the dataset series it belongs to",
+    "hasEmail":               "the contact point's email address",
+    "hasURL":                 "the contact point's web address",
+    "inScheme":               "the vocabulary/scheme reference",
+    "accessService":          "the linked API (access service)",
+    "accessURL":              "the API's access URL",
+}
+
+# The license-vocabulary-match warning has no resultPath (it's a Node-level
+# `sh:or` over several equivalence predicates), so it's recognised by these
+# predicate names appearing together in pySHACL's generated message instead.
+_LICENSE_VOCAB_MARKERS = ("skos:exactMatch", "owl:sameAs", "skos:broadMatch")
+
+
+def _friendly_shacl_message(path_s: str, comp, raw_msg: str) -> str:
+    if "applicableLegislation" in path_s:
+        if comp == _SH_NS.ClassConstraintComponent:
+            return ("The cited legislation isn't linked to a recognized EU legal "
+                     "resource (ELI) — likely plain text instead of the official reference.")
+        return "The applicable HVD legislation isn't cited as a properly linked legal resource."
+
+    if "accessService" in path_s or "accessService" in raw_msg:
+        if comp == _SH_NS.MinCountConstraintComponent:
+            return "No API (data access service) is linked to this dataset, as HVD rules require."
+        if comp == _SH_NS.ClassConstraintComponent:
+            return "An API is linked, but it isn't described as a proper dcat:DataService."
+        if comp == _SH_NS.NodeKindConstraintComponent:
+            return "An API is linked, but only inline — it has no stable web address of its own."
+
+    if any(marker in raw_msg for marker in _LICENSE_VOCAB_MARKERS):
+        return "The dataset's license couldn't be matched to a known open-license entry in the EU's vocabulary."
+
+    local = path_s.rsplit("#", 1)[-1].rsplit("/", 1)[-1] if path_s else ""
+    label = _HVD_PATH_LABELS.get(local)
+    if label:
+        if comp == _SH_NS.MinCountConstraintComponent:
+            return f"Missing {label}."
+        if comp == _SH_NS.NodeKindConstraintComponent:
+            return f"{label[0].upper()}{label[1:]} isn't a properly linked resource (a plain value instead of a URI)."
+        if comp == _SH_NS.ClassConstraintComponent:
+            return f"{label[0].upper()}{label[1:]} doesn't reference the expected type of resource."
+        if comp == _SH_NS.DatatypeConstraintComponent:
+            return f"{label[0].upper()}{label[1:]} has the wrong data type."
+        return f"Issue with {label}."
+
+    return raw_msg or "Unrecognized SHACL validation issue."
+
+
+def _dedupe_hvd_details(entries: list) -> list:
+    """Collapses identical (severity, friendly message) entries -- the same
+    underlying gap is often reported once per RDF node it's missing from
+    (e.g. once for the dataset, once for its distribution), which would
+    otherwise show as several literally-identical bullet points."""
+    deduped, index = [], {}
+    for e in entries:
+        key = (e["severity"], e["message"])
+        if key in index:
+            index[key]["count"] += 1
+        else:
+            entry = dict(e, count=1)
+            index[key] = entry
+            deduped.append(entry)
+    return deduped
+
+
 def _classify_shacl_results(results_graph: "rdflib.Graph"):
     violations, warnings = [], []
     legal_citation_issue = False
@@ -1725,10 +1807,12 @@ def _classify_shacl_results(results_graph: "rdflib.Graph"):
         comp  = results_graph.value(r, _SH_NS.sourceConstraintComponent)
         path_s  = str(path) if path is not None else ""
         shape_s = str(shape) if shape is not None else ""
+        raw_msg = str(msg) if msg else ""
         entry = {
-            "severity": "violation" if sev == _SH_NS.Violation else "warning",
-            "path":     path_s or None,
-            "message":  str(msg) if msg else "",
+            "severity":    "violation" if sev == _SH_NS.Violation else "warning",
+            "path":        path_s or None,
+            "message":     _friendly_shacl_message(path_s, comp, raw_msg),
+            "raw_message": raw_msg,
         }
         if sev == _SH_NS.Violation:
             violations.append(entry)
@@ -1798,7 +1882,7 @@ def _hvd_check_one(name: str) -> dict:
         "legal_citation_issue": legal_citation_issue,
         "no_api_access":        no_api_access,
         "license_status":       _license_status(graph),
-        "details":              violations + warnings,
+        "details":              _dedupe_hvd_details(violations + warnings),
     }
 
 

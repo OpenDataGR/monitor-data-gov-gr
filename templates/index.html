@@ -1440,7 +1440,7 @@ const TRANSLATIONS = {
     'quality.hvd_cancel': 'Cancel',
     'quality.hvd_cancelling': 'Cancelling…',
     'quality.hvd_partial_note': 'Cancelled early — results reflect only the {n} of {total} datasets checked before cancelling.',
-    'quality.hvd_details': 'Raw SHACL details',
+    'quality.hvd_details': 'Issues found',
     'quality.hvd_col_violations': 'Violations',
     'quality.hvd_col_legal': 'Legal citation',
     'quality.hvd_col_api': 'API access',
@@ -1857,7 +1857,7 @@ const TRANSLATIONS = {
     'quality.hvd_cancel': 'Ακύρωση',
     'quality.hvd_cancelling': 'Ακύρωση…',
     'quality.hvd_partial_note': 'Ακυρώθηκε νωρίτερα — τα αποτελέσματα αντικατοπτρίζουν μόνο τα {n} από τα {total} σύνολα δεδομένων που ελέγχθηκαν πριν την ακύρωση.',
-    'quality.hvd_details': 'Αναλυτικά στοιχεία SHACL',
+    'quality.hvd_details': 'Ευρήματα',
     'quality.hvd_col_violations': 'Παραβιάσεις',
     'quality.hvd_col_legal': 'Νομική αναφορά',
     'quality.hvd_col_api': 'Πρόσβαση API',
@@ -3686,7 +3686,7 @@ function _renderHvdTable() {
             ? `<i class="bi bi-person-badge text-warning" title="${esc(t('quality.hvd_publisher_mismatch_hint').replace('{org}', d.org_title || ''))}"></i>`
             : ''}</td>
         <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
-          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}">${esc(v.message)}</li>`).join('')}</ul>
+          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
         </details></td>
       </tr>`).join('');
     return groupRow + datasetRows;
