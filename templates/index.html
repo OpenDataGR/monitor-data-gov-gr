@@ -1460,6 +1460,8 @@ const TRANSLATIONS = {
     'quality.hvd_publisher_ok': 'Publisher matches organization',
     'quality.hvd_col_publisher': 'Publisher',
     'quality.hvd_filter_no_match': 'No datasets match the selected filters.',
+    'quality.hvd_filter_group_compliance': 'Compliance',
+    'quality.hvd_filter_group_metadata': 'Metadata',
     'orgs.title': 'Organizations & Dataset Counts',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'All Public Sector',
@@ -1880,6 +1882,8 @@ const TRANSLATIONS = {
     'quality.hvd_publisher_ok': 'Ο εκδότης ταιριάζει με τον οργανισμό',
     'quality.hvd_col_publisher': 'Εκδότης',
     'quality.hvd_filter_no_match': 'Κανένα σύνολο δεδομένων δεν ταιριάζει με τα επιλεγμένα φίλτρα.',
+    'quality.hvd_filter_group_compliance': 'Συμμόρφωση',
+    'quality.hvd_filter_group_metadata': 'Μεταδεδομένα',
     'orgs.title': 'Οργανισμοί & Αριθμός Συνόλων Δεδομένων',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'Όλος ο Δημόσιος Τομέας',
@@ -3460,20 +3464,32 @@ const HVD_FILTER_PREDICATES = {
   publisher_mismatch:   d => d.publisher_mismatch,
 };
 
+// Compliance = SHACL-shape-driven checks (structural conformance, legal
+// citation, API access). Metadata = checks the SHACL shapes themselves can't
+// express (license openness, publisher name vs. the real CKAN organization)
+// -- same "each gets its own tab, all combine (AND)" reasoning as the
+// Dataset Catalog's Type/HVD/Harvested/Geo tabs.
 function _renderHvdSummaryCards() {
   const s = _hvdLastResult.summary;
+  const checkedCard = { key: null, value: s.checked, label: t('quality.hvd_checked'), bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' };
   _hvdSummaryCards = [
-    { key: null,                   value: s.checked,              label: t('quality.hvd_checked'),          bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' },
-    { key: 'non_conforming',       value: s.checked - s.conforms, label: t('quality.hvd_non_conforming'),   bg: 'bg-danger bg-opacity-10',    text: 'text-danger',    icon: 'bi-x-octagon' },
-    { key: 'legal_citation_issue', value: s.legal_citation_issue, label: t('quality.hvd_legal_issue'),      bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-file-earmark-text' },
-    { key: 'no_api_access',        value: s.no_api_access,        label: t('quality.hvd_no_api'),           bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-hdd-network' },
-    { key: 'license_missing',      value: s.license_missing,      label: t('quality.hvd_license_missing'),  bg: 'bg-danger bg-opacity-10',    text: 'text-danger',    icon: 'bi-file-earmark-x' },
-    { key: 'license_non_open',     value: s.license_non_open,     label: t('quality.hvd_license_non_open'), bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-file-earmark-lock' },
-    { key: 'publisher_mismatch',   value: s.publisher_mismatch,   label: t('quality.hvd_publisher_mismatch'),bg: 'bg-warning bg-opacity-10',  text: 'text-warning',   icon: 'bi-person-badge' },
+    { ...checkedCard, group: 'compliance' },
+    { key: 'non_conforming',       group: 'compliance', value: s.checked - s.conforms, label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
+    { key: 'legal_citation_issue', group: 'compliance', value: s.legal_citation_issue, label: t('quality.hvd_legal_issue'),    bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
+    { key: 'no_api_access',        group: 'compliance', value: s.no_api_access,        label: t('quality.hvd_no_api'),         bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-hdd-network' },
+    { ...checkedCard, group: 'metadata' },
+    { key: 'license_missing',    group: 'metadata', value: s.license_missing,    label: t('quality.hvd_license_missing'),   bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-file-earmark-x' },
+    { key: 'license_non_open',   group: 'metadata', value: s.license_non_open,   label: t('quality.hvd_license_non_open'),  bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-lock' },
+    { key: 'publisher_mismatch', group: 'metadata', value: s.publisher_mismatch,label: t('quality.hvd_publisher_mismatch'),bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-person-badge' },
   ];
-  const el = document.getElementById('hvdSummaryCards');
+  _renderHvdCardGroup('hvdComplianceSummary', _hvdSummaryCards.filter(c => c.group === 'compliance'), 'hvdComplianceTabDot');
+  _renderHvdCardGroup('hvdMetadataSummary',   _hvdSummaryCards.filter(c => c.group === 'metadata'),   'hvdMetadataTabDot');
+}
+
+function _renderHvdCardGroup(elId, cards, tabDotId) {
+  const el = document.getElementById(elId);
   if (!el) return;
-  el.innerHTML = _hvdSummaryCards.map(c => {
+  el.innerHTML = cards.map(c => {
     const clickable = c.key !== null;
     const active = clickable && _hvdActiveFilters.has(c.key);
     const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
@@ -3490,6 +3506,8 @@ function _renderHvdSummaryCards() {
       </div>
     </div>`;
   }).join('');
+  const dot = document.getElementById(tabDotId);
+  if (dot) dot.classList.toggle('d-none', !cards.some(c => c.key !== null && _hvdActiveFilters.has(c.key)));
 }
 
 function toggleHvdCardFilter(key) {
@@ -3621,12 +3639,35 @@ function _renderHvdCheck(result) {
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
   const cardsHtml = `
-    <div class="d-flex align-items-center justify-content-end mb-1">
-      <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1" onclick="clearHvdCardFilters()">
-        <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">${t('filters.clear')}</span>
-      </button>
-    </div>
-    <div id="hvdSummaryCards" class="row g-2 mb-3"></div>`;
+    <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+      <div class="d-flex justify-content-between align-items-center">
+        <ul class="nav nav-underline small mb-2">
+          <li class="nav-item">
+            <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#hvdComplianceSummaryPane" type="button">
+              <i class="bi bi-x-octagon me-1"></i><span data-i18n="quality.hvd_filter_group_compliance">${t('quality.hvd_filter_group_compliance')}</span>
+              <span id="hvdComplianceTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#hvdMetadataSummaryPane" type="button">
+              <i class="bi bi-file-earmark-lock me-1"></i><span data-i18n="quality.hvd_filter_group_metadata">${t('quality.hvd_filter_group_metadata')}</span>
+              <span id="hvdMetadataTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+            </button>
+          </li>
+        </ul>
+        <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1 mb-2 flex-shrink-0" onclick="clearHvdCardFilters()">
+          <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">${t('filters.clear')}</span>
+        </button>
+      </div>
+      <div class="tab-content">
+        <div class="tab-pane fade show active" id="hvdComplianceSummaryPane">
+          <div id="hvdComplianceSummary" class="row g-2"></div>
+        </div>
+        <div class="tab-pane fade" id="hvdMetadataSummaryPane">
+          <div id="hvdMetadataSummary" class="row g-2"></div>
+        </div>
+      </div>
+    </div>`;
 
   const failedNote = s.failed_to_fetch
     ? `<p class="text-muted small mb-2">${t('quality.hvd_failed_note').replace('{n}', fmt(s.failed_to_fetch))}</p>` : '';
