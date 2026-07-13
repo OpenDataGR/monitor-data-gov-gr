@@ -671,8 +671,10 @@
                 <button id="hvdCancelBtn" class="btn btn-outline-danger btn-sm d-none" onclick="cancelHvdCheck()">
                   <i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">Cancel</span>
                 </button>
+                <button id="hvdExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllHvd()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
+                <button id="hvdCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllHvd()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
                 <button id="hvdExportBtn" class="btn btn-outline-secondary btn-sm d-none" onclick="downloadHvdExcel()">
-                  <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="quality.hvd_export">Export Excel</span>
+                  <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span>
                 </button>
               </div>
             </div>
@@ -705,8 +707,8 @@
     <!-- HVD re-run confirmation modal -->
     <div class="modal fade" id="hvdRerunModal" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-warning">
-          <div class="modal-header bg-warning border-0">
+        <div class="modal-content border-info">
+          <div class="modal-header bg-info text-dark border-0">
             <h5 class="modal-title fw-bold"><i class="bi bi-info-circle-fill me-2"></i><span data-i18n="quality.hvd_rerun_title">Run HVD Check Again?</span></h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
@@ -717,8 +719,29 @@
           </div>
           <div class="modal-footer border-top">
             <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="quality.hvd_rerun_cancel">Cancel</button>
-            <button type="button" class="btn btn-warning btn-sm" onclick="_confirmHvdRerun()">
+            <button type="button" class="btn btn-info btn-sm" onclick="_confirmHvdRerun()">
               <i class="bi bi-play me-1"></i><span data-i18n="quality.hvd_rerun_confirm_btn">Run Anyway</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generic destructive-action confirmation modal, shared by every "delete this record" -->
+    <div class="modal fade" id="dangerConfirmModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-danger">
+          <div class="modal-header bg-danger text-white border-0">
+            <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i><span id="dangerConfirmTitle" data-i18n="common.confirm_delete_title">Confirm Delete</span></h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body pt-4">
+            <p class="mb-0" id="dangerConfirmBody"></p>
+          </div>
+          <div class="modal-footer border-top">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="_confirmDangerAction()">
+              <i class="bi bi-trash me-1"></i><span data-i18n="common.delete">Delete</span>
             </button>
           </div>
         </div>
@@ -740,7 +763,7 @@
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span id="orgsFetchedAt" class="text-muted small"></span>
-                <input type="search" id="orgSearch" class="form-control form-control-sm" placeholder="Search…" data-i18n-ph="orgs.search" style="width:200px" oninput="filterOrgs()">
+                <input type="search" id="orgSearch" class="form-control form-control-sm" placeholder="Search organizations…" data-i18n-ph="orgs.search" style="width:200px" oninput="filterOrgs()">
                 <button id="orgsRefreshBtn" class="btn btn-outline-primary btn-sm" onclick="loadOrgs(true)"><i class="bi bi-arrow-repeat me-1"></i><span data-i18n="orgs.refresh">Refresh</span></button>
               </div>
             </div>
@@ -768,8 +791,8 @@
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <button id="commsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="expandAllComms()" data-i18n-title="comms.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="commsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="collapseAllComms()" data-i18n-title="comms.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
-                <input type="search" id="commsSearch" class="form-control form-control-sm" placeholder="Search…" data-i18n-ph="comms.search" style="width:180px" oninput="filterComms()">
-                <button class="btn btn-success btn-sm" onclick="downloadCommsExcel()" data-i18n-title="comms.download_excel_title" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="comms.excel">Excel</span></button>
+                <input type="search" id="commsSearch" class="form-control form-control-sm" placeholder="Search communications…" data-i18n-ph="comms.search" style="width:180px" oninput="filterComms()">
+                <button class="btn btn-outline-secondary btn-sm" onclick="downloadCommsExcel()" data-i18n-title="comms.download_excel_title" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span></button>
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
               </div>
             </div>
@@ -837,15 +860,17 @@
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span id="contactsFetchedAt" class="text-muted small"></span>
                 <input type="search" id="contactsSearch" class="form-control form-control-sm" style="width:180px"
-                  placeholder="Search…" data-i18n-ph="contacts.search_ph" oninput="filterContactsTab()">
+                  placeholder="Search contacts…" data-i18n-ph="contacts.search_ph" oninput="filterContactsTab()">
+                <button id="contactsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllContacts()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
+                <button id="contactsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllContacts()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
                 <button class="btn btn-outline-secondary btn-sm" id="contactsReloadBtn" onclick="loadContactsTab(true)">
                   <i class="bi bi-arrow-repeat me-1"></i><span data-i18n="contacts.reload">Reload</span>
                 </button>
                 <button class="btn btn-outline-primary btn-sm" onclick="openPmEditNew()">
-                  <i class="bi bi-person-plus me-1"></i>Add contact
+                  <i class="bi bi-person-plus me-1"></i><span data-i18n="contacts.add_contact">Add contact</span>
                 </button>
                 <button class="btn btn-outline-secondary btn-sm" onclick="openContactsExportModal()">
-                  <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="contacts.export">Export</span>
+                  <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span>
                 </button>
               </div>
             </div>
@@ -991,7 +1016,7 @@
             <div id="commContactInfo" class="mt-1 small d-none"></div>
             <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-decoration-none"
                     onclick="_openAddContactForComm()">
-              <i class="bi bi-person-plus me-1"></i>Add contact for this organization
+              <i class="bi bi-person-plus me-1"></i><span data-i18n="comms.add_contact_for_org">Add contact for this organization</span>
             </button>
           </div>
           <div class="col-12">
@@ -1323,7 +1348,6 @@ const TRANSLATIONS = {
     'contacts.view_all': 'All',
     'contacts.view_by_org': 'By Organization',
     'contacts.reload': 'Reload',
-    'contacts.export': 'Export',
     'contacts.export_modal_title': 'Export Contacts',
     'contacts.export_modal_hint': 'Choose which columns to include.',
     'contacts.export_select_all': 'All',
@@ -1360,8 +1384,8 @@ const TRANSLATIONS = {
     'contacts.all_sources': 'All sources',
     'contacts.source_db': 'File',
     'contacts.source_portal': 'Portal',
-    'contacts.search_ph': 'Search…',
-    'contacts.export': 'Export Excel',
+    'contacts.search_ph': 'Search contacts…',
+    'contacts.add_contact': 'Add contact',
     'contacts.import': 'Import Excel',
     'contacts.col_org': 'Organization',
     'contacts.col_name': 'Name',
@@ -1434,7 +1458,6 @@ const TRANSLATIONS = {
     'stats.latest_snapshot': 'Latest Snapshot',
     'quality.hvd_title': 'HVD Compliance Check (SHACL)',
     'quality.hvd_run': 'Run HVD Check',
-    'quality.hvd_export': 'Export Excel',
     'quality.hvd_desc': "Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) — not just whether it carries the hvd_category tag.",
     'quality.hvd_hint': 'Click Run HVD Check to validate all HVD-tagged datasets. This checks every dataset currently tagged as an EU High-Value Dataset and can take several minutes.',
     'quality.hvd_running': 'Validating HVD-tagged datasets against the official SHACL shapes… this can take several minutes. Feel free to switch tabs — it keeps running in the background.',
@@ -1474,7 +1497,7 @@ const TRANSLATIONS = {
     'orgs.title': 'Organizations & Dataset Counts',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'All Public Sector',
-    'orgs.search': 'Search…',
+    'orgs.search': 'Search organizations…',
     'orgs.search_all': 'Search organizations…',
     'orgs.refresh': 'Refresh',
     'orgs.col_num': '#',
@@ -1503,8 +1526,6 @@ const TRANSLATIONS = {
     'comms.view_by_org': 'By Organization',
     'comms.view_cases': 'Cases',
     'comms.view_timeline': 'Timeline',
-    'comms.expand_all': 'Expand all',
-    'comms.collapse_all': 'Collapse all',
     'comms.initial_contact': 'Initial Contact',
     'comms.intermediate_contact': 'Intermediate Contact',
     'comms.positive_response': 'Positive Response',
@@ -1532,10 +1553,10 @@ const TRANSLATIONS = {
     'comms.case_close': 'Close Case',
     'comms.case_reopen': 'Reopen Case',
     'comms.case_col': 'Case',
-    'comms.search': 'Search…',
-    'comms.excel': 'Excel',
+    'comms.search': 'Search communications…',
     'comms.download_excel_title': 'Download current view as Excel',
     'comms.add_comm_for_org': 'Add new communication for this organization',
+    'comms.add_contact_for_org': 'Add contact for this organization',
     'comms.add': 'Add',
     'comms.none': 'No communications recorded yet — click Add to start.',
     'comms.col_date': 'Date',
@@ -1724,6 +1745,10 @@ const TRANSLATIONS = {
     'common.clear': 'Clear',
     'common.view': 'View',
     'common.remove': 'Remove',
+    'common.export_excel': 'Export Excel',
+    'common.expand_all': 'Expand all',
+    'common.collapse_all': 'Collapse all',
+    'common.confirm_delete_title': 'Confirm Delete',
     'common.save_failed': 'Save failed.',
     'common.network_error': 'Network error: {msg}',
     'common.saving': 'Saving…',
@@ -1801,7 +1826,6 @@ const TRANSLATIONS = {
     'contacts.view_all': 'Όλα',
     'contacts.view_by_org': 'Ανά Οργανισμό',
     'contacts.reload': 'Ανανέωση',
-    'contacts.export': 'Εξαγωγή',
     'contacts.export_modal_title': 'Εξαγωγή Επαφών',
     'contacts.export_modal_hint': 'Επιλέξτε ποιες στήλες θα συμπεριληφθούν.',
     'contacts.export_select_all': 'Όλα',
@@ -1838,8 +1862,8 @@ const TRANSLATIONS = {
     'contacts.all_sources': 'Όλες οι πηγές',
     'contacts.source_db': 'Αρχείο',
     'contacts.source_portal': 'Πύλη',
-    'contacts.search_ph': 'Αναζήτηση…',
-    'contacts.export': 'Εξαγωγή Excel',
+    'contacts.search_ph': 'Αναζήτηση επαφών…',
+    'contacts.add_contact': 'Προσθήκη επαφής',
     'contacts.import': 'Εισαγωγή Excel',
     'contacts.col_org': 'Οργανισμός',
     'contacts.col_name': 'Όνομα',
@@ -1912,7 +1936,6 @@ const TRANSLATIONS = {
     'stats.latest_snapshot': 'Τελευταίο Στιγμιότυπο',
     'quality.hvd_title': 'Έλεγχος Συμμόρφωσης HVD (SHACL)',
     'quality.hvd_run': 'Εκτέλεση Ελέγχου HVD',
-    'quality.hvd_export': 'Εξαγωγή Excel',
     'quality.hvd_desc': 'Επικυρώνει τα πραγματικά μεταδεδομένα DCAT-AP κάθε συνόλου δεδομένων με ετικέτα HVD βάσει των επίσημων μορφών SHACL DCAT-AP-HVD της ΕΕ (Κανονισμός (ΕΕ) 2023/138) — όχι απλώς αν φέρει την ετικέτα hvd_category.',
     'quality.hvd_hint': 'Κάντε κλικ στο «Εκτέλεση Ελέγχου HVD» για επαλήθευση όλων των συνόλων δεδομένων με ετικέτα HVD. Ελέγχει κάθε σύνολο δεδομένων που φέρει σήμερα ετικέτα HVD της ΕΕ και μπορεί να διαρκέσει αρκετά λεπτά.',
     'quality.hvd_running': 'Επικύρωση συνόλων δεδομένων HVD βάσει των επίσημων μορφών SHACL… μπορεί να διαρκέσει αρκετά λεπτά. Μπορείτε να αλλάξετε καρτέλα — η διαδικασία συνεχίζεται στο παρασκήνιο.',
@@ -1952,7 +1975,7 @@ const TRANSLATIONS = {
     'orgs.title': 'Οργανισμοί & Αριθμός Συνόλων Δεδομένων',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'Όλος ο Δημόσιος Τομέας',
-    'orgs.search': 'Αναζήτηση…',
+    'orgs.search': 'Αναζήτηση οργανισμών…',
     'orgs.search_all': 'Αναζήτηση οργανισμών…',
     'orgs.refresh': 'Ανανέωση',
     'orgs.col_num': '#',
@@ -1981,8 +2004,6 @@ const TRANSLATIONS = {
     'comms.view_by_org': 'Ανά Οργανισμό',
     'comms.view_cases': 'Υποθέσεις',
     'comms.view_timeline': 'Χρονολόγιο',
-    'comms.expand_all': 'Ανάπτυξη όλων',
-    'comms.collapse_all': 'Σύμπτυξη όλων',
     'comms.initial_contact': 'Αρχική Επικοινωνία',
     'comms.intermediate_contact': 'Ενδιάμεση Επικοινωνία',
     'comms.positive_response': 'Θετική Απάντηση',
@@ -2010,10 +2031,10 @@ const TRANSLATIONS = {
     'comms.case_close': 'Κλείσιμο Υπόθεσης',
     'comms.case_reopen': 'Επανάνοιγμα Υπόθεσης',
     'comms.case_col': 'Υπόθεση',
-    'comms.search': 'Αναζήτηση…',
-    'comms.excel': 'Excel',
+    'comms.search': 'Αναζήτηση επικοινωνιών…',
     'comms.download_excel_title': 'Λήψη της τρέχουσας προβολής ως Excel',
     'comms.add_comm_for_org': 'Προσθήκη νέας επικοινωνίας για αυτόν τον οργανισμό',
+    'comms.add_contact_for_org': 'Προσθήκη επαφής για αυτόν τον οργανισμό',
     'comms.add': 'Προσθήκη',
     'comms.none': 'Δεν έχουν καταγραφεί επικοινωνίες — κάντε κλικ στο «Προσθήκη».',
     'comms.col_date': 'Ημερομηνία',
@@ -2202,6 +2223,10 @@ const TRANSLATIONS = {
     'common.clear': 'Εκκαθάριση',
     'common.view': 'Προβολή',
     'common.remove': 'Αφαίρεση',
+    'common.export_excel': 'Εξαγωγή Excel',
+    'common.expand_all': 'Ανάπτυξη όλων',
+    'common.collapse_all': 'Σύμπτυξη όλων',
+    'common.confirm_delete_title': 'Επιβεβαίωση Διαγραφής',
     'common.save_failed': 'Η αποθήκευση απέτυχε.',
     'common.network_error': 'Σφάλμα δικτύου: {msg}',
     'common.saving': 'Αποθήκευση…',
@@ -2270,6 +2295,27 @@ function setLang(lang) {
   if (typeof _trafficLoaded !== 'undefined' && _trafficLoaded) { loadTrafficTab(); }
   if (typeof _portalMembersCache !== 'undefined' && _portalMembersCache) { renderContactsSummary(); filterContactsTab(); }
   if (typeof _catalogLoaded !== 'undefined' && _catalogLoaded) { loadCatalog(); }
+}
+
+// ── Shared destructive-action confirmation modal ────────────────────────────
+// One modal (#dangerConfirmModal), reused by every "delete this record"
+// action instead of each tab rolling its own plain confirm() -- gives
+// destructive actions real danger-colored styling consistently.
+let _dangerConfirmModal    = null;
+let _dangerConfirmCallback = null;
+
+function confirmDangerAction(message, onConfirm) {
+  document.getElementById('dangerConfirmBody').textContent = message;
+  _dangerConfirmCallback = onConfirm;
+  if (!_dangerConfirmModal) _dangerConfirmModal = new bootstrap.Modal(document.getElementById('dangerConfirmModal'));
+  _dangerConfirmModal.show();
+}
+
+function _confirmDangerAction() {
+  if (_dangerConfirmModal) _dangerConfirmModal.hide();
+  const cb = _dangerConfirmCallback;
+  _dangerConfirmCallback = null;
+  if (cb) cb();
 }
 
 // ── Sidebar navigation ───────────────────────────────────────────────────────
@@ -2518,15 +2564,28 @@ const CATALOG_PAGE_SIZE = 20;
 // data-service AND HVD AND harvested all at once), so each gets its own
 // row and its own toggleable filter state, rather than the single-
 // selection model Contacts uses for role-or-state.
-function _renderCatalogFilterCards(elId, cards, activeFilter, onclickName, tabDotId) {
+// Shared renderer for the small clickable/informational summary-card rows
+// used across the Dataset Catalog, Communications, Contacts, and HVD Quality
+// tabs -- same markup and "border+background highlight when active" idiom
+// everywhere. Each entry in `cards` must carry: value, label, bg, text, icon,
+// and the two fields that vary per tab: `active` (bool, already resolved by
+// the caller against whatever filter model that tab uses) and `onclick` (a
+// literal JS call as a string, or falsy for a non-clickable informational
+// card, e.g. HVD's "Checked" total). `dotInfo` is `{label?}` to show a dot on
+// the tab label (with an optional hover label) or falsy to hide it -- callers
+// decide when that applies since "is the default/no-filter card selected"
+// means different things per tab.
+function _renderFilterCardsGrid(elId, cards, tabDotId, dotInfo) {
   const el = document.getElementById(elId);
-  el.innerHTML = cards.map((c, i) => {
-    const active = c.filter === activeFilter;
-    const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
+  if (!el) return;
+  el.innerHTML = cards.map(c => {
+    const clickable = !!c.onclick;
+    const borderColor = c.active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
     return `
     <div class="col-6 col-sm-4 col-lg-2">
-      <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}" style="border:${active ? 2 : 1}px solid ${borderColor};cursor:pointer" onclick="${onclickName}(${i})"
-           ${c.title ? `title="${esc(c.title)}"` : ''}>
+      <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}"
+           style="border:${c.active ? 2 : 1}px solid ${borderColor};${clickable ? 'cursor:pointer' : ''}"
+           ${clickable ? `onclick="${c.onclick}"` : ''}${c.title ? ` title="${esc(c.title)}"` : ''}>
         <i class="bi ${c.icon} fs-5 ${c.text}"></i>
         <div>
           <div class="fw-bold fs-6 lh-1 ${c.text}">${fmt(c.value)}</div>
@@ -2540,9 +2599,15 @@ function _renderCatalogFilterCards(elId, cards, activeFilter, onclickName, tabDo
   // looking at a different tab — with the active option's label on hover.
   if (!tabDotId) return;
   const dot = document.getElementById(tabDotId);
+  if (!dot) return;
+  dot.classList.toggle('d-none', !dotInfo);
+  dot.title = (dotInfo && dotInfo.label) || '';
+}
+
+function _renderCatalogFilterCards(elId, cards, activeFilter, onclickName, tabDotId) {
+  const prepared = cards.map((c, i) => ({ ...c, active: c.filter === activeFilter, onclick: `${onclickName}(${i})` }));
   const activeCard = activeFilter ? cards.find(c => c.filter === activeFilter) : null;
-  dot.classList.toggle('d-none', !activeCard);
-  dot.title = activeCard ? activeCard.label : '';
+  _renderFilterCardsGrid(elId, prepared, tabDotId, activeCard ? { label: activeCard.label } : null);
 }
 
 let _catalogTypeFilter = '';   // '' = all, else an exact CKAN package type (e.g. "dataset")
@@ -3510,27 +3575,12 @@ function _renderHvdSummaryCards() {
 }
 
 function _renderHvdCardGroup(elId, cards, tabDotId) {
-  const el = document.getElementById(elId);
-  if (!el) return;
-  el.innerHTML = cards.map(c => {
+  const prepared = cards.map(c => {
     const clickable = c.key !== null;
-    const active = clickable && _hvdActiveFilters.has(c.key);
-    const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
-    return `
-    <div class="col-6 col-sm-4 col-lg-2">
-      <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}"
-           style="border:${active ? 2 : 1}px solid ${borderColor};${clickable ? 'cursor:pointer' : ''}"
-           ${clickable ? `onclick="toggleHvdCardFilter('${c.key}')"` : ''}>
-        <i class="bi ${c.icon} fs-5 ${c.text}"></i>
-        <div>
-          <div class="fw-bold fs-6 lh-1 ${c.text}">${fmt(c.value)}</div>
-          <div class="text-muted" style="font-size:.7rem">${c.label}</div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  const dot = document.getElementById(tabDotId);
-  if (dot) dot.classList.toggle('d-none', !cards.some(c => c.key !== null && _hvdActiveFilters.has(c.key)));
+    return { ...c, active: clickable && _hvdActiveFilters.has(c.key), onclick: clickable ? `toggleHvdCardFilter('${c.key}')` : null };
+  });
+  const hasActive = cards.some(c => c.key !== null && _hvdActiveFilters.has(c.key));
+  _renderFilterCardsGrid(elId, prepared, tabDotId, hasActive ? {} : null);
 }
 
 function toggleHvdCardFilter(key) {
@@ -3668,6 +3718,8 @@ function _renderHvdCheck(result) {
   show('hvdLastRunAt').textContent = result.finished_at
     ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
   show('hvdExportBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  show('hvdExpandAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  show('hvdCollapseAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
   const partialNote = result.partial
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
@@ -3757,6 +3809,16 @@ function toggleHvdOrg(idx) {
   const [orgTitle] = entry;
   if (_hvdExpandedOrgs.has(orgTitle)) _hvdExpandedOrgs.delete(orgTitle);
   else _hvdExpandedOrgs.add(orgTitle);
+  _renderHvdTable();
+}
+
+function expandAllHvd() {
+  _hvdGroupsCache.forEach(([orgTitle]) => _hvdExpandedOrgs.add(orgTitle));
+  _renderHvdTable();
+}
+
+function collapseAllHvd() {
+  _hvdExpandedOrgs.clear();
   _renderHvdTable();
 }
 
@@ -4404,28 +4466,15 @@ function _commsFilterIsActive(f) {
 }
 
 function _renderCommsFilterGroup(elId, indices, tabDotId) {
-  document.getElementById(elId).innerHTML = indices.map(idx => {
+  const prepared = indices.map(idx => {
     const c = _commsSummaryCards[idx];
-    const active = _commsFilterIsActive(c.filter);
-    const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
-    return `
-    <div class="col-6 col-sm-4 col-lg-2">
-      <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}" style="border:${active ? 2 : 1}px solid ${borderColor};cursor:pointer" onclick="setCommsFilter(${idx})">
-        <i class="bi ${c.icon} fs-5 ${c.text}"></i>
-        <div>
-          <div class="fw-bold fs-6 lh-1 ${c.text}">${c.value}</div>
-          <div class="text-muted" style="font-size:.7rem">${c.label}</div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  if (!tabDotId) return;
-  const dot = document.getElementById(tabDotId);
+    return { ...c, active: _commsFilterIsActive(c.filter), onclick: `setCommsFilter(${idx})` };
+  });
   const hasActive = indices.some(idx => {
     const f = _commsSummaryCards[idx].filter;
     return f.value !== null && _commsFilterIsActive(f);
   });
-  dot.classList.toggle('d-none', !hasActive);
+  _renderFilterCardsGrid(elId, prepared, tabDotId, hasActive ? {} : null);
 }
 
 function setCommsFilter(idx) {
@@ -4556,9 +4605,11 @@ function renderCommsTable(rows) {
             <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
             <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
             <td class="text-end text-nowrap">
-              ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-              <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-              <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+              <div class="d-flex gap-1 justify-content-end">
+                ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+              </div>
             </td>
           </tr>`).join('')}
       </tbody>
@@ -4601,7 +4652,7 @@ function renderCommsGrouped(data) {
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
             <span class="fw-semibold">${orgTitle}</span>
-            <span class="badge bg-primary rounded-pill" style="font-size:.7rem">${comms.length} ${comms.length === 1 ? t('comms.entry') : t('comms.entries')}</span>
+            <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${comms.length} ${comms.length === 1 ? t('comms.entry') : t('comms.entries')}</span>
             <span class="badge ${STATUS_BADGE[latest.status] || 'bg-secondary'}" style="font-size:.7rem">${statusLabel[latest.status] || latest.status}</span>
             <span class="text-muted small ms-auto">${latest.contact_date}</span>
             <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-2" data-org="${safeAttr}" data-orgcode="${esc(comms[0].org_name || '')}"
@@ -4620,9 +4671,11 @@ function renderCommsGrouped(data) {
           <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
           <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
           <td class="text-end text-nowrap">
-            ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-            <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+            <div class="d-flex gap-1 justify-content-end">
+              ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
+              <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+            </div>
           </td>
         </tr>`).join('')}`;
   }).join('');
@@ -4682,7 +4735,7 @@ function renderCommsCases(data) {
             ${cs.is_stale ? `<span class="badge bg-secondary" style="font-size:.7rem" title="${t('comms.case_stale_hint')}"><i class="bi bi-hourglass-split me-1"></i>${t('comms.case_stale')}</span>` : ''}
             <span class="fw-semibold">${esc(cs.org_title)}</span>
             <span class="text-muted small">— ${esc(cs.subject)}</span>
-            <span class="badge bg-primary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
+            <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
             <span class="text-muted small ms-auto">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}${isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')}</span>
             <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('comms.case_add_entry')}"
                     onclick="event.stopPropagation();openFollowupForCase(${caseId})">
@@ -4702,9 +4755,11 @@ function renderCommsCases(data) {
           <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
           <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
           <td class="text-end text-nowrap">
-            ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-            <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+            <div class="d-flex gap-1 justify-content-end">
+              ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
+              <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+            </div>
           </td>
         </tr>`).join('')}`;
   }).join('');
@@ -4811,9 +4866,11 @@ function renderCommsTimeline(rows) {
               ${caseBadgeHtml(c, 'ms-1')}
             </div>
             <div class="text-end text-nowrap">
-              ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-2 me-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-              <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-              <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+              <div class="d-flex gap-1 justify-content-end">
+                ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+              </div>
             </div>
           </div>
           <div class="small mt-1">${esc(c.subject)}</div>
@@ -5113,18 +5170,19 @@ async function saveComm() {
   }
 }
 
-async function deleteComm(id) {
-  if (!confirm(t('comm_modal.delete_confirm'))) return;
-  try {
-    await fetch(`${API_BASE}api/communications/${id}/delete`, { method: 'DELETE', cache: 'no-store' });
-    _commsData = _commsData.filter(c => c.id !== id);
-    const casesResp = await fetch(API_BASE + 'api/cases').then(r => r.json());
-    _casesData = Array.isArray(casesResp) ? casesResp : _casesData;
-    renderCommsSummary();
-    filterComms();
-  } catch (e) {
-    alert(t('comm_modal.delete_failed') + ' ' + e.message);
-  }
+function deleteComm(id) {
+  confirmDangerAction(t('comm_modal.delete_confirm'), async () => {
+    try {
+      await fetch(`${API_BASE}api/communications/${id}/delete`, { method: 'DELETE', cache: 'no-store' });
+      _commsData = _commsData.filter(c => c.id !== id);
+      const casesResp = await fetch(API_BASE + 'api/cases').then(r => r.json());
+      _casesData = Array.isArray(casesResp) ? casesResp : _casesData;
+      renderCommsSummary();
+      filterComms();
+    } catch (e) {
+      alert(t('comm_modal.delete_failed') + ' ' + e.message);
+    }
+  });
 }
 
 function downloadCommsExcel() {
@@ -5225,7 +5283,7 @@ function _renderOrgContactsPanel() {
             ${hasFile
               ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditByUsername('${esc(m.username)}')" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
                  <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>`
-              : `<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openPmEditNewForUser('${esc(m.username)}','${esc(m.email)}','${esc(ckanName || orgCode)}','${esc(orgLabel)}','${esc(m.capacity||'')}')" title="Add contact file"><i class="bi bi-person-plus me-1"></i>Add</button>`}
+              : `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="openPmEditNewForUser('${esc(m.username)}','${esc(m.email)}','${esc(ckanName || orgCode)}','${esc(orgLabel)}','${esc(m.capacity||'')}')" title="${t('userPanel.add_contact_record')}"><i class="bi bi-person-plus me-1"></i>${t('common.add')}</button>`}
           </div>
         </div>
       </div>
@@ -6225,28 +6283,15 @@ function _contactsFilterIsActive(f) {
 // a dot on that tab's label if any card in it is the active filter — same
 // pattern as the Dataset Catalog's filter-card tabs.
 function _renderContactsFilterGroup(elId, indices, tabDotId) {
-  document.getElementById(elId).innerHTML = indices.map(idx => {
+  const prepared = indices.map(idx => {
     const c = _contactsSummaryCards[idx];
-    const active = _contactsFilterIsActive(c.filter);
-    const borderColor = active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
-    return `
-    <div class="col-6 col-sm-4 col-lg-2">
-      <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}" style="border:${active ? 2 : 1}px solid ${borderColor};cursor:pointer" onclick="setContactsFilter(${idx})">
-        <i class="bi ${c.icon} fs-5 ${c.text}"></i>
-        <div>
-          <div class="fw-bold fs-6 lh-1 ${c.text}">${c.value}</div>
-          <div class="text-muted" style="font-size:.7rem">${c.label}</div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  if (!tabDotId) return;
-  const dot = document.getElementById(tabDotId);
+    return { ...c, active: _contactsFilterIsActive(c.filter), onclick: `setContactsFilter(${idx})` };
+  });
   const hasActive = indices.some(idx => {
     const f = _contactsSummaryCards[idx].filter;
     return f.value !== null && _contactsFilterIsActive(f);
   });
-  dot.classList.toggle('d-none', !hasActive);
+  _renderFilterCardsGrid(elId, prepared, tabDotId, hasActive ? {} : null);
 }
 
 function renderContactsSummary() {
@@ -6453,6 +6498,27 @@ function setContactsView(mode) {
   _contactsViewMode = mode;
   show('contactsViewFlatBtn').className    = 'btn btn-sm ' + (mode === 'flat'    ? 'btn-primary' : 'btn-outline-primary');
   show('contactsViewGroupedBtn').className = 'btn btn-sm ' + (mode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
+  show('contactsExpandAllBtn').classList.toggle('d-none', mode !== 'grouped');
+  show('contactsCollapseAllBtn').classList.toggle('d-none', mode !== 'grouped');
+  filterContactsTab();
+}
+
+let _contactsExpandedOrgs = new Set();
+let _contactsGroupSlugs   = [];  // slugs from the most recent renderContactsGrouped(), for Expand/Collapse All
+
+function toggleContactsOrg(slug) {
+  if (_contactsExpandedOrgs.has(slug)) _contactsExpandedOrgs.delete(slug);
+  else _contactsExpandedOrgs.add(slug);
+  filterContactsTab();
+}
+
+function expandAllContacts() {
+  _contactsGroupSlugs.forEach(slug => _contactsExpandedOrgs.add(slug));
+  filterContactsTab();
+}
+
+function collapseAllContacts() {
+  _contactsExpandedOrgs.clear();
   filterContactsTab();
 }
 
@@ -6465,29 +6531,32 @@ function renderContactsGrouped(rows) {
     groups.get(orgName).items.push(m);
   });
   const sorted = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, 'el'));
+  _contactsGroupSlugs = sorted.map(g => g.slug);
   const el = show('contactsGroupedView');
   if (!sorted.length) {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('contacts.no_results')}</p>`;
     return;
   }
   el.innerHTML = sorted.map(g => {
-    const gId    = 'cg_' + g.slug.replace(/\W/g, '_');
-    const isNone = g.slug === '__none__';
+    const gId        = 'cg_' + g.slug.replace(/\W/g, '_');
+    const isNone     = g.slug === '__none__';
+    const isExpanded = _contactsExpandedOrgs.has(g.slug);
     return `
     <div class="border rounded mb-2" ${isNone ? 'style="border-color:#fd7e14!important"' : ''}>
       <div class="d-flex align-items-center justify-content-between px-3 py-2"
-           style="cursor:pointer;background:${isNone ? '#fff3e0' : '#f8f9fa'}" onclick="document.getElementById('${gId}').classList.toggle('d-none')">
+           style="cursor:pointer;background:${isNone ? '#fff3e0' : '#f8f9fa'}" onclick="toggleContactsOrg('${esc(g.slug)}')">
         <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
           <i class="bi bi-${isNone ? 'person-slash text-warning' : 'building text-primary'}"></i>
           <span class="fw-semibold small ${isNone ? 'text-warning-emphasis' : ''}">${esc(g.label)}</span>
-          <span class="badge ${isNone ? 'bg-warning text-dark' : 'bg-primary'} rounded-pill">${g.items.length}</span>
+          <span class="badge ${isNone ? 'bg-warning text-dark' : 'bg-secondary'} rounded-pill">${g.items.length}</span>
         </div>
         ${g.slug !== '__none__' ? `<button class="btn btn-outline-primary btn-sm py-0 px-2" title="${esc(g.label)}"
           onclick="event.stopPropagation();openOrgPanel('${esc(g.slug)}')">
           <i class="bi bi-box-arrow-up-right"></i>
         </button>` : ''}
       </div>
-      <div id="${gId}" class="d-none px-3">
+      <div id="${gId}" class="${isExpanded ? '' : 'd-none'} px-3">
         <table class="table table-hover table-sm align-middle mb-0">
           <tbody>
             ${g.items.map((m, mi) => {
@@ -6791,31 +6860,32 @@ function _setOrgLocked(locked) {
   show('commOrgLockedHint').classList.toggle('d-none', !locked);
 }
 
-async function deletePmContactRecord(contactId, username) {
-  if (!confirm(t('contacts.delete_confirm'))) return;
-  try {
-    await fetch(`${API_BASE}api/contacts/remove?d=${_b64enc({id: contactId})}`, { method: 'DELETE', cache: 'no-store' });
-    if (username && _portalMembersCache) {
-      _portalMembersCache.forEach(m => {
-        if (m.username === username) {
-          m.contact_id = null; m.contact_name = ''; m.contact_first_name = '';
-          m.contact_last_name = ''; m.contact_position = ''; m.contact_type = '';
-          m.contact_tel = ''; m.contact_mobile = ''; m.contact_email = '';
-        }
-      });
-      _pmSaveCache(_portalMembersCache, _pmUnmatched);
-    } else {
-      _pmUnmatched = _pmUnmatched.filter(c => c.id !== contactId);
-      _pmSaveCache(_portalMembersCache || [], _pmUnmatched);
-      renderUnmatchedContacts();
+function deletePmContactRecord(contactId, username) {
+  confirmDangerAction(t('contacts.delete_confirm'), async () => {
+    try {
+      await fetch(`${API_BASE}api/contacts/remove?d=${_b64enc({id: contactId})}`, { method: 'DELETE', cache: 'no-store' });
+      if (username && _portalMembersCache) {
+        _portalMembersCache.forEach(m => {
+          if (m.username === username) {
+            m.contact_id = null; m.contact_name = ''; m.contact_first_name = '';
+            m.contact_last_name = ''; m.contact_position = ''; m.contact_type = '';
+            m.contact_tel = ''; m.contact_mobile = ''; m.contact_email = '';
+          }
+        });
+        _pmSaveCache(_portalMembersCache, _pmUnmatched);
+      } else {
+        _pmUnmatched = _pmUnmatched.filter(c => c.id !== contactId);
+        _pmSaveCache(_portalMembersCache || [], _pmUnmatched);
+        renderUnmatchedContacts();
+      }
+      _allContacts = null; _allUnified = null;
+      filterContactsTab();
+      if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel();
+      loadContactSummary();
+    } catch (e) {
+      alert(t('contacts.delete_failed') + ' ' + e.message);
     }
-    _allContacts = null; _allUnified = null;
-    filterContactsTab();
-    if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel();
-    loadContactSummary();
-  } catch (e) {
-    alert(t('contacts.delete_failed') + ' ' + e.message);
-  }
+  });
 }
 
 // Email duplicate check for new contacts
