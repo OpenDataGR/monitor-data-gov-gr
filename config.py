@@ -29,12 +29,5 @@ ENDPOINTS_TO_MONITOR = [
     {"name": "Organizations",    "url": "https://data.gov.gr/organization",              "critical": False},
 ]
 
-SAMPLE_DATASETS = [
-    "mdg_emvolio",
-    "sailing_traffic",
-    "mcp_forest_fires",
-    "internet_traffic",
-]
-
 CHECK_INTERVAL_SECONDS = 300   # 5 minutes
 REQUEST_TIMEOUT = 15

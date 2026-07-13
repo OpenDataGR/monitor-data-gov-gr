@@ -659,34 +659,6 @@
       <div class="row g-3">
         <div class="col-12">
           <div class="card p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <h6 class="fw-semibold mb-0"><i class="bi bi-shield-check me-2 text-primary"></i><span data-i18n="quality.title">Dataset Quality Check</span></h6>
-              <button class="btn btn-primary btn-sm" onclick="runQualityCheck()"><i class="bi bi-play me-1"></i><span data-i18n="quality.run">Run Check</span></button>
-            </div>
-            <div id="qualityResults">
-              <div class="text-center py-5 text-muted">
-                <i class="bi bi-shield-slash fs-2 d-block mb-2"></i>
-                <span data-i18n="quality.hint">Click Run Check to validate sample datasets</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="col-12">
-          <div class="card p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-              <h6 class="fw-semibold mb-0"><i class="bi bi-database me-2 text-primary"></i><span data-i18n="quality.accessibility">Sample Dataset Accessibility</span></h6>
-              <button class="btn btn-outline-primary btn-sm" onclick="checkDatasets()"><i class="bi bi-arrow-repeat me-1"></i><span data-i18n="quality.check">Check</span></button>
-            </div>
-            <div id="datasetCheckResults">
-              <div class="text-center py-4 text-muted">
-                <i class="bi bi-database-x fs-2 d-block mb-2"></i>
-                <span data-i18n="quality.hint2">Click Check to test dataset accessibility</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="col-12">
-          <div class="card p-4">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
               <h6 class="fw-semibold mb-0">
                 <i class="bi bi-patch-check me-2 text-primary"></i><span data-i18n="quality.hvd_title">HVD Compliance Check (SHACL)</span>
@@ -1423,12 +1395,6 @@ const TRANSLATIONS = {
     'health.7d': '7 days',
     'stats.dataset_count': 'Dataset Count Over Time',
     'stats.latest_snapshot': 'Latest Snapshot',
-    'quality.title': 'Dataset Quality Check',
-    'quality.run': 'Run Check',
-    'quality.hint': 'Click Run Check to validate sample datasets',
-    'quality.accessibility': 'Sample Dataset Accessibility',
-    'quality.check': 'Check',
-    'quality.hint2': 'Click Check to test dataset accessibility',
     'quality.hvd_title': 'HVD Compliance Check (SHACL)',
     'quality.hvd_run': 'Run HVD Check',
     'quality.hvd_desc': "Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) — not just whether it carries the hvd_category tag.",
@@ -1621,18 +1587,6 @@ const TRANSLATIONS = {
     'traffic.failed': 'Failed to load',
     'traffic.no_api2': 'No API tracking data found.',
     'quality.col_dataset': 'Dataset',
-    'quality.col_issue': 'Issue',
-    'quality.col_severity': 'Severity',
-    'quality.col_title': 'Title',
-    'quality.col_accessible': 'Accessible',
-    'quality.col_http': 'HTTP',
-    'quality.col_resources': 'Resources',
-    'quality.overall': 'Overall',
-    'quality.checked': 'Checked',
-    'quality.critical': 'Critical',
-    'quality.crit_badge': 'Critical',
-    'quality.warn_badge': 'Warning',
-    'quality.all_passed': 'All sample datasets passed quality checks.',
     'catalog.title': 'Dataset Catalog',
     'catalog.search_ph': 'Search datasets…',
     'catalog.hint': 'Search for datasets by title or keyword, or leave blank to browse the most recently updated.',
@@ -1845,12 +1799,6 @@ const TRANSLATIONS = {
     'health.7d': '7 ημέρες',
     'stats.dataset_count': 'Εξέλιξη Συνόλων Δεδομένων',
     'stats.latest_snapshot': 'Τελευταίο Στιγμιότυπο',
-    'quality.title': 'Ποιοτικός Έλεγχος Δεδομένων',
-    'quality.run': 'Εκτέλεση Ελέγχου',
-    'quality.hint': 'Κάντε κλικ στο «Εκτέλεση Ελέγχου» για επαλήθευση δειγμάτων',
-    'quality.accessibility': 'Προσβασιμότητα Δείγματος Δεδομένων',
-    'quality.check': 'Έλεγχος',
-    'quality.hint2': 'Κάντε κλικ στο «Έλεγχος» για έλεγχο προσβασιμότητας',
     'quality.hvd_title': 'Έλεγχος Συμμόρφωσης HVD (SHACL)',
     'quality.hvd_run': 'Εκτέλεση Ελέγχου HVD',
     'quality.hvd_desc': 'Επικυρώνει τα πραγματικά μεταδεδομένα DCAT-AP κάθε συνόλου δεδομένων με ετικέτα HVD βάσει των επίσημων μορφών SHACL DCAT-AP-HVD της ΕΕ (Κανονισμός (ΕΕ) 2023/138) — όχι απλώς αν φέρει την ετικέτα hvd_category.',
@@ -2043,18 +1991,6 @@ const TRANSLATIONS = {
     'traffic.failed': 'Αποτυχία φόρτωσης',
     'traffic.no_api2': 'Δεν βρέθηκαν δεδομένα API.',
     'quality.col_dataset': 'Σύνολο Δεδομένων',
-    'quality.col_issue': 'Πρόβλημα',
-    'quality.col_severity': 'Σοβαρότητα',
-    'quality.col_title': 'Τίτλος',
-    'quality.col_accessible': 'Προσβάσιμο',
-    'quality.col_http': 'HTTP',
-    'quality.col_resources': 'Πόροι',
-    'quality.overall': 'Συνολικά',
-    'quality.checked': 'Ελέγχθηκαν',
-    'quality.critical': 'Κρίσιμα',
-    'quality.crit_badge': 'Κρίσιμο',
-    'quality.warn_badge': 'Προειδοποίηση',
-    'quality.all_passed': 'Όλα τα δείγματα δεδομένων πέρασαν τους ελέγχους ποιότητας.',
     'catalog.title': 'Κατάλογος Συνόλων Δεδομένων',
     'catalog.search_ph': 'Αναζήτηση συνόλων δεδομένων…',
     'catalog.hint': 'Αναζητήστε σύνολα δεδομένων με τίτλο ή λέξη-κλειδί, ή αφήστε κενό για τα πιο πρόσφατα ενημερωμένα.',
@@ -2195,7 +2131,6 @@ let _uptimeChart = null, _rtChart = null, _statsChart = null;
 let _contactsPanel = null;
 let _panelOrgCode = '', _panelOrgLabel = '', _panelCkanName = null;
 let _displayedPublicOrgs = [], _contactSummary = {};
-let _qualityResults = null;
 
 // Absolute base URL so API calls work regardless of sub-path prefix
 const API_BASE = (() => {
@@ -3349,92 +3284,6 @@ function renderTrafficTopDownloads(downloads) {
         </tbody>
       </table>
     </div>`;
-}
-
-// ── Quality tab ──────────────────────────────────────────────────────────────
-async function runQualityCheck() {
-  showSpinner(true);
-  try {
-    const data = await fetch(API_BASE + 'api/quality/check').then(r => r.json());
-    const el   = show('qualityResults');
-
-    if (data.error) {
-      el.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-key me-2"></i>${data.error}</div>`;
-      return;
-    }
-
-    const overallClass = data.healthy ? 'bg-success' : 'bg-danger';
-    const overallText  = data.healthy ? 'text-success' : 'text-danger';
-    const overallIcon  = data.healthy ? '✓' : '✗';
-
-    const summary = `
-      <div class="row g-2 mb-3">
-        <div class="col-4"><div class="text-center p-3 rounded ${overallClass} bg-opacity-10">
-          <div class="fs-3 fw-bold ${overallText}">${overallIcon}</div><small class="text-muted">${t('quality.overall')}</small>
-        </div></div>
-        <div class="col-4"><div class="text-center p-3 rounded bg-primary bg-opacity-10">
-          <div class="fs-3 fw-bold text-primary">${data.checked}</div><small class="text-muted">${t('quality.checked')}</small>
-        </div></div>
-        <div class="col-4"><div class="text-center p-3 rounded ${data.critical > 0 ? 'bg-danger' : 'bg-success'} bg-opacity-10">
-          <div class="fs-3 fw-bold ${data.critical > 0 ? 'text-danger' : 'text-success'}">${data.critical}</div><small class="text-muted">${t('quality.critical')}</small>
-        </div></div>
-      </div>`;
-
-    const issueRows = data.issues.length
-      ? `<table class="table table-sm mb-0">
-          <thead><tr><th>${t('quality.col_dataset')}</th><th>${t('quality.col_issue')}</th><th>${t('quality.col_severity')}</th></tr></thead>
-          <tbody>${data.issues.map(i => `
-            <tr>
-              <td><code>${i.dataset}</code></td>
-              <td>${i.issue}</td>
-              <td>${i.severity === 'critical'
-                ? `<span class="badge bg-danger">${t('quality.crit_badge')}</span>`
-                : `<span class="badge bg-warning text-dark">${t('quality.warn_badge')}</span>`}</td>
-            </tr>`).join('')}
-          </tbody>
-         </table>`
-      : `<div class="alert alert-success mb-0"><i class="bi bi-check-circle me-2"></i>${t('quality.all_passed')}</div>`;
-
-    el.innerHTML = summary + issueRows;
-  } catch (e) {
-    show('qualityResults').innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${e.message}</div>`;
-  } finally {
-    showSpinner(false);
-  }
-}
-
-async function checkDatasets() {
-  showSpinner(true);
-  try {
-    const data = await fetch(API_BASE + 'api/datasets/check').then(r => r.json());
-    const el   = show('datasetCheckResults');
-
-    if (data.error) {
-      el.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-key me-2"></i>${data.error}</div>`;
-      return;
-    }
-
-    el.innerHTML = `
-      <table class="table table-hover align-middle mb-0">
-        <thead><tr><th>${t('quality.col_dataset')}</th><th>${t('quality.col_title')}</th><th>${t('quality.col_accessible')}</th><th>${t('quality.col_http')}</th><th>${t('quality.col_resources')}</th></tr></thead>
-        <tbody>
-          ${data.map(d => `
-            <tr>
-              <td><a href="https://data.gov.gr/dataset/${d.name}" target="_blank" class="text-decoration-none">
-                <code>${d.name}</code> <i class="bi bi-box-arrow-up-right small text-muted"></i>
-              </a></td>
-              <td class="small">${d.title ?? '—'}</td>
-              <td>${statusBadge(d.accessible)}</td>
-              <td class="mono">${d.status_code ?? '—'}</td>
-              <td class="mono">${d.resource_count != null ? d.resource_count : (d.error ?? '—')}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
-  } catch (e) {
-    show('datasetCheckResults').innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${e.message}</div>`;
-  } finally {
-    showSpinner(false);
-  }
 }
 
 // ── HVD compliance check (SHACL) ─────────────────────────────────────────────

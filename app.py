@@ -1218,36 +1218,6 @@ def datasets_geo_locations():
     })
 
 
-@app.route("/api/datasets/check")
-def datasets_check():
-    results = []
-    for ds in config.SAMPLE_DATASETS:
-        try:
-            r = requests.get(
-                f"{config.API_BASE}/package_show",
-                params={"id": ds},
-                headers=_api_headers(),
-                timeout=config.REQUEST_TIMEOUT,
-            )
-            data = r.json() if r.status_code == 200 else {}
-            success = data.get("success", False)
-            result_obj = data.get("result", {}) if success else {}
-            results.append({
-                "name":           ds,
-                "status_code":    r.status_code,
-                "accessible":     success,
-                "resource_count": sum(
-                    1 for r in result_obj.get("resources", [])
-                    if r.get("name") != "Όλα τα δεδομένα πόρων"
-                ),
-                "title":          result_obj.get("title", ds),
-                "organization":   (result_obj.get("organization") or {}).get("title", ""),
-            })
-        except Exception as exc:
-            results.append({"name": ds, "status_code": None, "accessible": False, "error": str(exc)})
-    return jsonify(results)
-
-
 # Maps a column+direction the frontend can ask for to a CKAN/Solr sort clause.
 # "resources" has no counterpart — CKAN's search index doesn't store a resource
 # count field at all, so that column can't be sorted server-side.
@@ -1536,47 +1506,6 @@ def dataset_detail(name):
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
-
-
-@app.route("/api/quality/check")
-def quality_check():
-    issues = []
-    for ds in config.SAMPLE_DATASETS:
-        try:
-            r = requests.get(
-                f"{config.API_BASE}/package_show",
-                params={"id": ds},
-                headers=_api_headers(),
-                timeout=config.REQUEST_TIMEOUT,
-            )
-            if r.status_code == 404:
-                issues.append({"dataset": ds, "issue": "Dataset not found", "severity": "critical"})
-                continue
-            if r.status_code != 200:
-                issues.append({"dataset": ds, "issue": f"HTTP {r.status_code}", "severity": "critical"})
-                continue
-            data = r.json()
-            if not data.get("success"):
-                issues.append({"dataset": ds, "issue": data.get("error", {}).get("message", "API error"), "severity": "critical"})
-                continue
-            pkg = data["result"]
-            if not pkg.get("resources"):
-                issues.append({"dataset": ds, "issue": "No resources attached", "severity": "warning"})
-            if pkg.get("state") != "active":
-                issues.append({"dataset": ds, "issue": f"State is '{pkg.get('state')}'", "severity": "warning"})
-        except requests.exceptions.Timeout:
-            issues.append({"dataset": ds, "issue": "Timeout", "severity": "critical"})
-        except Exception as exc:
-            issues.append({"dataset": ds, "issue": str(exc), "severity": "critical"})
-
-    critical = [i for i in issues if i["severity"] == "critical"]
-    return jsonify({
-        "checked":      len(config.SAMPLE_DATASETS),
-        "issues_found": len(issues),
-        "critical":     len(critical),
-        "healthy":      len(critical) == 0,
-        "issues":       issues,
-    })
 
 
 # ── HVD compliance check (DCAT-AP-HVD SHACL) ─────────────────────────────────
