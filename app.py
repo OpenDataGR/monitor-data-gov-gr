@@ -821,6 +821,7 @@ def _background_loop():
     last_orgs_refresh           = time.time()
     last_dataset_growth_refresh = time.time()
     last_geo_datasets_refresh   = time.time()
+    last_hvd_check_refresh      = time.time()
     while True:
         time.sleep(config.CHECK_INTERVAL_SECONDS)
         try:
@@ -847,6 +848,21 @@ def _background_loop():
             except Exception as exc:
                 print(f"[geo-datasets] refresh error: {exc}")
             last_geo_datasets_refresh = time.time()
+        if time.time() - last_hvd_check_refresh >= _HVD_CHECK_REFRESH_INTERVAL:
+            # Skip rather than queue behind it if an admin's manual run (or a
+            # previous scheduled one) happens to still be in flight -- avoids
+            # two concurrent full runs hammering the portal at once.
+            if not _hvd_check_cache["running"]:
+                try:
+                    _hvd_check_cache["running"]          = True
+                    _hvd_check_cache["started_at"]       = datetime.now(timezone.utc).isoformat()
+                    _hvd_check_cache["cancel_requested"] = False
+                    _hvd_check_cache["total"]            = 0
+                    _hvd_check_cache["completed"]        = 0
+                    _do_run_hvd_check()
+                except Exception as exc:
+                    print(f"[hvd-check] refresh error: {exc}")
+            last_hvd_check_refresh = time.time()
 
 
 _singleton_lock_file = None  # kept open for the process lifetime; closing it releases the lock
@@ -1578,6 +1594,7 @@ _hvd_check_cache: dict = {
     "result": None, "running": False, "started_at": None, "error": None,
     "total": 0, "completed": 0, "cancel_requested": False,
 }
+_HVD_CHECK_REFRESH_INTERVAL = 24 * 3600  # scheduled nightly re-check, same cadence as the geo-datasets cache
 
 with app.app_context():
     # Warm from the DB so a fresh process/restart can show the last completed
