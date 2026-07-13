@@ -19,7 +19,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdDatasetCheckCache, User, PasswordResetToken
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, User, PasswordResetToken
 import rdflib
 import pyshacl
 import config
@@ -851,14 +851,14 @@ def _background_loop():
         if time.time() - last_hvd_check_refresh >= _HVD_CHECK_REFRESH_INTERVAL:
             # Skip rather than queue behind it if an admin's manual run (or a
             # previous scheduled one) happens to still be in flight -- avoids
-            # two concurrent full runs hammering the portal at once.
-            if not _hvd_check_cache["running"]:
+            # two concurrent full runs hammering the portal at once. Checked
+            # against the DB-backed status, not an in-memory flag, since an
+            # admin's manual run may have been started from either gunicorn
+            # worker process, not necessarily this one.
+            if not _get_hvd_status()["running"]:
                 try:
-                    _hvd_check_cache["running"]          = True
-                    _hvd_check_cache["started_at"]       = datetime.now(timezone.utc).isoformat()
-                    _hvd_check_cache["cancel_requested"] = False
-                    _hvd_check_cache["total"]            = 0
-                    _hvd_check_cache["completed"]        = 0
+                    _set_hvd_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
+                                     cancel_requested=False, total=0, completed=0, error=None)
                     _do_run_hvd_check()
                 except Exception as exc:
                     print(f"[hvd-check] refresh error: {exc}")
@@ -1591,10 +1591,6 @@ _OPEN_LICENSE_MARKERS = (
 _hvd_vocab_cache: dict = {}
 _hvd_vocab_lock = threading.Lock()
 
-_hvd_check_cache: dict = {
-    "result": None, "running": False, "started_at": None, "error": None,
-    "total": 0, "completed": 0, "cancel_requested": False,
-}
 _HVD_CHECK_REFRESH_INTERVAL = 24 * 3600  # scheduled nightly re-check, same cadence as the geo-datasets cache
 # Lower than the other CKAN-facing pools (e.g. 15 for the geo-datasets refresh)
 # since a full run can be 1,000+ requests rather than ~55 -- keep the burst
@@ -1612,14 +1608,6 @@ _HVD_CHECK_TIMEOUT = 30
 # next run re-populates everything with the new/fixed shape.
 _HVD_CHECK_VERSION = 4
 
-with app.app_context():
-    # Warm from the DB so a fresh process/restart can show the last completed
-    # run immediately instead of looking like nothing has ever been checked.
-    _hvd_check_row = HvdCheckCache.query.get(1)
-    if _hvd_check_row:
-        _hvd_check_cache["result"] = _hvd_check_row.data()
-
-
 def _save_hvd_check_cache(result: dict) -> None:
     with app.app_context():
         row = HvdCheckCache.query.get(1)
@@ -1629,6 +1617,74 @@ def _save_hvd_check_cache(result: dict) -> None:
         row.data_json  = json.dumps(result)
         row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.session.commit()
+
+
+def _load_hvd_check_result():
+    with app.app_context():
+        row = HvdCheckCache.query.get(1)
+        return row.data() if row else None
+
+
+def _hvd_status_row() -> HvdCheckStatus:
+    row = HvdCheckStatus.query.get(1)
+    if not row:
+        row = HvdCheckStatus(id=1, running=False, total=0, completed=0, cancel_requested=False)
+        db.session.add(row)
+        db.session.commit()
+    return row
+
+
+# The running check bumps its progress (and this heartbeat) roughly every
+# time one dataset finishes -- bounded well under a minute even in the worst
+# case (one _HVD_CHECK_TIMEOUT-limited fetch plus SHACL validation). If the
+# worker that started a run dies (e.g. a deploy restart mid-run), nothing
+# ever touches the heartbeat again, so a long silence reliably means
+# "abandoned", not "still working" -- self-heal here rather than leaving
+# every future run blocked looking like one is perpetually in progress.
+_HVD_CHECK_STALE_AFTER = 10 * 60
+
+
+def _get_hvd_status() -> dict:
+    with app.app_context():
+        row = _hvd_status_row()
+        if row.running and row.updated_at:
+            stale = (datetime.now(timezone.utc).replace(tzinfo=None) - row.updated_at).total_seconds() > _HVD_CHECK_STALE_AFTER
+            if stale:
+                row.running          = False
+                row.cancel_requested = False
+                row.error            = "Abandoned run (the worker that started it never finished, likely a restart)."
+                db.session.commit()
+        return {
+            "running":          row.running,
+            "started_at":       row.started_at,
+            "total":            row.total,
+            "completed":        row.completed,
+            "cancel_requested": row.cancel_requested,
+            "error":            row.error,
+        }
+
+
+def _set_hvd_status(**fields) -> None:
+    with app.app_context():
+        row = _hvd_status_row()
+        for key, value in fields.items():
+            setattr(row, key, value)
+        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
+
+def _bump_hvd_progress(completed: int) -> bool:
+    """Updates the shared completed count and heartbeat, and returns whether
+    cancellation has been requested -- in one DB round trip, since this is
+    called once per dataset (~1,105 times a run) from the check loop."""
+    with app.app_context():
+        row = _hvd_status_row()
+        row.completed  = completed
+        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+        return row.cancel_requested
+
+
 
 
 def _get_vocab_graph(url: str):
@@ -1927,7 +1983,7 @@ def _do_run_hvd_check() -> None:
     cancelled = False
     try:
         datasets = _list_hvd_datasets()
-        _hvd_check_cache["total"] = len(datasets)
+        _set_hvd_status(total=len(datasets))
 
         with app.app_context():
             cached_rows = {row.name: row for row in HvdDatasetCheckCache.query.all()}
@@ -1950,7 +2006,7 @@ def _do_run_hvd_check() -> None:
                 rows.append(cached_result)
             else:
                 to_fetch.append(d)
-        _hvd_check_cache["completed"] = len(rows)
+        _bump_hvd_progress(len(rows))
 
         newly_checked = []  # (name, metadata_modified, result-or-None-if-failed)
         pool = ThreadPoolExecutor(max_workers=_HVD_CHECK_CONCURRENCY)
@@ -1968,8 +2024,7 @@ def _do_run_hvd_check() -> None:
                 except Exception as exc:
                     rows.append({"name": d["name"], "error": str(exc)})
                     newly_checked.append((d["name"], d["metadata_modified"], None))
-                _hvd_check_cache["completed"] = len(rows)
-                if _hvd_check_cache["cancel_requested"]:
+                if _bump_hvd_progress(len(rows)):
                     cancelled = True
                     break
         finally:
@@ -2016,19 +2071,18 @@ def _do_run_hvd_check() -> None:
                 or not r["conforms"] or r["publisher_mismatch"]
         ]
         flagged.sort(key=lambda r: -r["violation_count"])
-        _hvd_check_cache["result"] = {
+        result = {
             "summary":     summary,
             "datasets":    flagged,
             "partial":     cancelled,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
-        _hvd_check_cache["error"] = None
-        _save_hvd_check_cache(_hvd_check_cache["result"])
+        _save_hvd_check_cache(result)
+        _set_hvd_status(error=None)
     except Exception as exc:
-        _hvd_check_cache["error"] = str(exc)
+        _set_hvd_status(error=str(exc))
     finally:
-        _hvd_check_cache["running"]          = False
-        _hvd_check_cache["cancel_requested"] = False
+        _set_hvd_status(running=False, cancel_requested=False)
 
 
 @app.route("/api/quality/hvd-check", methods=["POST"])
@@ -2036,13 +2090,10 @@ def start_hvd_check():
     err = _require_admin()
     if err:
         return err
-    if _hvd_check_cache["running"]:
+    if _get_hvd_status()["running"]:
         return jsonify({"started": False, "already_running": True})
-    _hvd_check_cache["running"]          = True
-    _hvd_check_cache["started_at"]       = datetime.now(timezone.utc).isoformat()
-    _hvd_check_cache["cancel_requested"] = False
-    _hvd_check_cache["total"]            = 0
-    _hvd_check_cache["completed"]        = 0
+    _set_hvd_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
+                     cancel_requested=False, total=0, completed=0, error=None)
     threading.Thread(target=_do_run_hvd_check, daemon=True).start()
     return jsonify({"started": True})
 
@@ -2052,22 +2103,23 @@ def cancel_hvd_check():
     err = _require_admin()
     if err:
         return err
-    if not _hvd_check_cache["running"]:
+    if not _get_hvd_status()["running"]:
         return jsonify({"cancelled": False, "reason": "not_running"})
-    _hvd_check_cache["cancel_requested"] = True
+    _set_hvd_status(cancel_requested=True)
     return jsonify({"cancelled": True})
 
 
 @app.route("/api/quality/hvd-check")
 def get_hvd_check():
+    status = _get_hvd_status()
     return jsonify({
-        "running":    _hvd_check_cache["running"],
-        "started_at": _hvd_check_cache["started_at"],
-        "error":      _hvd_check_cache["error"],
-        "result":     _hvd_check_cache["result"],
-        "total":      _hvd_check_cache["total"],
-        "completed":  _hvd_check_cache["completed"],
-        "cancelling": _hvd_check_cache["cancel_requested"],
+        "running":    status["running"],
+        "started_at": status["started_at"],
+        "error":      status["error"],
+        "result":     _load_hvd_check_result(),
+        "total":      status["total"],
+        "completed":  status["completed"],
+        "cancelling": status["cancel_requested"],
     })
 
 
@@ -2076,16 +2128,12 @@ def clear_hvd_check_cache():
     err = _require_admin()
     if err:
         return err
-    if _hvd_check_cache["running"]:
+    if _get_hvd_status()["running"]:
         return jsonify({"cleared": False, "reason": "running"})
     HvdDatasetCheckCache.query.delete()
     HvdCheckCache.query.delete()
     db.session.commit()
-    _hvd_check_cache["result"]     = None
-    _hvd_check_cache["error"]      = None
-    _hvd_check_cache["started_at"] = None
-    _hvd_check_cache["total"]      = 0
-    _hvd_check_cache["completed"]  = 0
+    _set_hvd_status(error=None, started_at=None, total=0, completed=0)
     return jsonify({"cleared": True})
 
 

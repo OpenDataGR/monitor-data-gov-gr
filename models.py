@@ -105,6 +105,26 @@ class HvdCheckCache(db.Model):
         return json.loads(self.data_json)
 
 
+class HvdCheckStatus(db.Model):
+    """Singleton row (id=1) holding the *live* status of an HVD check run
+    in progress -- running/total/completed/cancel_requested/error. Gunicorn
+    runs multiple worker processes, each with its own memory, so an
+    in-memory dict here would let different requests (and different browser
+    refreshes) see different, inconsistent progress depending on which
+    worker happened to handle them. This table is the single shared source
+    of truth every worker reads and writes instead."""
+    __tablename__ = "hvd_check_status"
+
+    id               = db.Column(db.Integer, primary_key=True)
+    running          = db.Column(db.Boolean, nullable=False, default=False)
+    started_at       = db.Column(db.String(64))
+    total            = db.Column(db.Integer, default=0)
+    completed        = db.Column(db.Integer, default=0)
+    cancel_requested = db.Column(db.Boolean, nullable=False, default=False)
+    error            = db.Column(db.Text)
+    updated_at       = db.Column(db.DateTime)  # heartbeat, bumped on every progress update while running
+
+
 class HvdDatasetCheckCache(db.Model):
     """Per-dataset cache for the HVD SHACL check, keyed by CKAN's own
     metadata_modified timestamp. A run only re-fetches and re-validates a
