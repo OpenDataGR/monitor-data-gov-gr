@@ -663,7 +663,8 @@
               <h6 class="fw-semibold mb-0">
                 <i class="bi bi-patch-check me-2 text-primary"></i><span data-i18n="quality.hvd_title">HVD Compliance Check (SHACL)</span>
               </h6>
-              <div class="d-flex align-items-center gap-2">
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span id="hvdLastRunAt" class="text-muted small"></span>
                 <button id="hvdCheckBtn" class="btn btn-primary btn-sm" onclick="runHvdCheck()">
                   <i class="bi bi-play me-1"></i><span data-i18n="quality.hvd_run">Run HVD Check</span>
                 </button>
@@ -1401,7 +1402,7 @@ const TRANSLATIONS = {
     'quality.hvd_hint': 'Click Run HVD Check to validate all HVD-tagged datasets. This checks every dataset currently tagged as an EU High-Value Dataset and can take several minutes.',
     'quality.hvd_running': 'Validating HVD-tagged datasets against the official SHACL shapes… this can take several minutes. Feel free to switch tabs — it keeps running in the background.',
     'quality.hvd_still_running': 'Still running after a long wait — it may still finish in the background. Try clicking Run HVD Check again in a bit to check the latest status.',
-    'quality.hvd_last_checked': 'Showing the last completed check, from',
+    'quality.hvd_last_run': 'Last run',
     'quality.hvd_checked': 'Checked',
     'quality.hvd_non_conforming': 'Non-conforming',
     'quality.hvd_legal_issue': 'Legal citation not linked',
@@ -1809,7 +1810,7 @@ const TRANSLATIONS = {
     'quality.hvd_hint': 'Κάντε κλικ στο «Εκτέλεση Ελέγχου HVD» για επαλήθευση όλων των συνόλων δεδομένων με ετικέτα HVD. Ελέγχει κάθε σύνολο δεδομένων που φέρει σήμερα ετικέτα HVD της ΕΕ και μπορεί να διαρκέσει αρκετά λεπτά.',
     'quality.hvd_running': 'Επικύρωση συνόλων δεδομένων HVD βάσει των επίσημων μορφών SHACL… μπορεί να διαρκέσει αρκετά λεπτά. Μπορείτε να αλλάξετε καρτέλα — η διαδικασία συνεχίζεται στο παρασκήνιο.',
     'quality.hvd_still_running': 'Εξακολουθεί να εκτελείται μετά από μεγάλη αναμονή — ενδέχεται να ολοκληρωθεί στο παρασκήνιο. Δοκιμάστε ξανά το «Εκτέλεση Ελέγχου HVD» σε λίγο για την πιο πρόσφατη κατάσταση.',
-    'quality.hvd_last_checked': 'Εμφανίζεται ο τελευταίος ολοκληρωμένος έλεγχος, από',
+    'quality.hvd_last_run': 'Τελευταία εκτέλεση',
     'quality.hvd_checked': 'Ελέγχθηκαν',
     'quality.hvd_non_conforming': 'Μη συμμορφούμενα',
     'quality.hvd_legal_issue': 'Μη συνδεδεμένη νομική αναφορά',
@@ -3464,9 +3465,8 @@ async function _pollHvdCheck(attempts = 0) {
 
 function _renderHvdCheck(result) {
   const s = result.summary;
-  const lastCheckedNote = result.finished_at
-    ? `<p class="text-muted small mb-2"><i class="bi bi-clock-history me-1"></i>${t('quality.hvd_last_checked')} ${esc(relativeDate(result.finished_at))}</p>`
-    : '';
+  show('hvdLastRunAt').textContent = result.finished_at
+    ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
   const partialNote = result.partial
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
@@ -3493,7 +3493,7 @@ function _renderHvdCheck(result) {
     ? `<p class="text-muted small mb-2">${t('quality.hvd_failed_note').replace('{n}', fmt(s.failed_to_fetch))}</p>` : '';
 
   if (!result.datasets.length) {
-    show('hvdCheckResults').innerHTML = lastCheckedNote + partialNote + cardsHtml + failedNote +
+    show('hvdCheckResults').innerHTML = partialNote + cardsHtml + failedNote +
       `<p class="text-success small mb-0"><i class="bi bi-check-circle me-1"></i>${t('quality.hvd_all_clean')}</p>`;
     return;
   }
@@ -3512,7 +3512,7 @@ function _renderHvdCheck(result) {
       </details></td>
     </tr>`).join('');
 
-  show('hvdCheckResults').innerHTML = lastCheckedNote + partialNote + cardsHtml + failedNote + `
+  show('hvdCheckResults').innerHTML = partialNote + cardsHtml + failedNote + `
     <div style="max-height:60vh;overflow-y:auto">
       <table class="table table-hover align-middle mb-0">
         <thead><tr>
