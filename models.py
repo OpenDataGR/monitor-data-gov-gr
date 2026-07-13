@@ -189,6 +189,65 @@ class DcatApDatasetCheckCache(db.Model):
         return json.loads(self.result_json) if self.result_json else None
 
 
+class GeoDcatCheckCache(db.Model):
+    """Persists the last completed GeoDCAT-AP SHACL compliance check result
+    (see app._do_run_geodcat_check) -- same purpose as DcatApCheckCache, for
+    the check scoped to geospatial-tagged datasets only."""
+    __tablename__ = "geodcat_check_cache"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    data_json  = db.Column(db.Text, nullable=False)
+    fetched_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def data(self):
+        return json.loads(self.data_json)
+
+
+class GeoDcatCheckStatus(db.Model):
+    """Singleton row (id=1) holding the live status of a GeoDCAT-AP check
+    run -- same DB-backed-status reasoning as HvdCheckStatus."""
+    __tablename__ = "geodcat_check_status"
+
+    id               = db.Column(db.Integer, primary_key=True)
+    running          = db.Column(db.Boolean, nullable=False, default=False)
+    started_at       = db.Column(db.String(64))
+    total            = db.Column(db.Integer, default=0)
+    completed        = db.Column(db.Integer, default=0)
+    cancel_requested = db.Column(db.Boolean, nullable=False, default=False)
+    error            = db.Column(db.Text)
+    updated_at       = db.Column(db.DateTime)
+
+
+class GeoDcatDatasetCheckCache(db.Model):
+    """Per-dataset cache for the GeoDCAT-AP check, keyed by CKAN's own
+    metadata_modified timestamp -- same incremental-recheck reasoning as
+    HvdDatasetCheckCache, scoped to geospatial-tagged datasets."""
+    __tablename__ = "geodcat_dataset_check_cache"
+
+    name              = db.Column(db.String(300), primary_key=True)
+    metadata_modified = db.Column(db.String(64))
+    result_json       = db.Column(db.Text)
+    checked_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def result(self):
+        return json.loads(self.result_json) if self.result_json else None
+
+
+class MqaCache(db.Model):
+    """Persists the last fetched data.europa.eu Metadata Quality Assessment
+    (MQA) score for data.gov.gr's catalogue -- a periodic external API pull
+    (see app._do_refresh_mqa), not something computed locally like the SHACL
+    checks above."""
+    __tablename__ = "mqa_cache"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    data_json  = db.Column(db.Text, nullable=False)
+    fetched_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def data(self):
+        return json.loads(self.data_json)
+
+
 class User(db.Model):
     __tablename__ = "users"
 

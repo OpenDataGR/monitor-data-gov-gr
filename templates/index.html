@@ -656,8 +656,30 @@
 
     <!-- Quality -->
     <div class="tab-pane fade" id="tab-quality">
-      <div class="row g-3">
-        <div class="col-12">
+      <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+          <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#qsub-hvd" type="button">
+            <i class="bi bi-patch-check me-1"></i><span data-i18n="quality.tab_hvd">HVD</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#qsub-dcat" type="button">
+            <i class="bi bi-patch-check me-1"></i><span data-i18n="quality.tab_dcat">DCAT-AP</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#qsub-geodcat" type="button">
+            <i class="bi bi-geo-alt me-1"></i><span data-i18n="quality.tab_geodcat">GeoDCAT-AP</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#qsub-mqa" type="button" id="mqaSubTabBtn">
+            <i class="bi bi-speedometer2 me-1"></i><span data-i18n="quality.tab_mqa">MQA Score</span>
+          </button>
+        </li>
+      </ul>
+      <div class="tab-content">
+        <div class="tab-pane fade show active" id="qsub-hvd">
           <div class="card p-4">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
               <h6 class="fw-semibold mb-0">
@@ -701,7 +723,7 @@
             </div>
           </div>
         </div>
-        <div class="col-12">
+        <div class="tab-pane fade" id="qsub-dcat">
           <div class="card p-4">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
               <h6 class="fw-semibold mb-0">
@@ -741,6 +763,72 @@
               <div class="text-center py-5 text-muted">
                 <i class="bi bi-patch-question fs-2 d-block mb-2"></i>
                 <span data-i18n="quality.dcat_hint">Click Run DCAT-AP Check to validate every dataset on the portal. This covers the full catalog (tens of thousands of datasets) and can take a long time on the first run.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tab-pane fade" id="qsub-geodcat">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <h6 class="fw-semibold mb-0">
+                <i class="bi bi-geo-alt me-2 text-primary"></i><span data-i18n="quality.geodcat_title">GeoDCAT-AP Compliance Check (SHACL)</span>
+              </h6>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span id="geodcatLastRunAt" class="text-muted small"></span>
+                <button id="geodcatCheckBtn" class="btn btn-primary btn-sm" onclick="runGeoDcatCheck()">
+                  <i class="bi bi-play me-1"></i><span data-i18n="quality.geodcat_run">Run GeoDCAT-AP Check</span>
+                </button>
+                <button id="geodcatCancelBtn" class="btn btn-outline-danger btn-sm d-none" onclick="cancelGeoDcatCheck()">
+                  <i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">Cancel</span>
+                </button>
+                <button id="geodcatExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllGeoDcat()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
+                <button id="geodcatCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllGeoDcat()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
+                <button id="geodcatExportBtn" class="btn btn-outline-secondary btn-sm d-none" onclick="downloadGeoDcatExcel()">
+                  <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span>
+                </button>
+              </div>
+            </div>
+            <p class="text-muted small" data-i18n="quality.geodcat_desc">Validates every geospatial-tagged dataset's real DCAT-AP RDF metadata against the EU's official GeoDCAT-AP geospatial extension SHACL shapes (SEMICeu GeoDCAT-AP 3.1.0) &mdash; covers the ~12,500 datasets the portal itself classifies as geospatial (GIS layers, WMS/WFS services, etc).</p>
+            <div class="mb-3" style="width:340px;max-width:100%">
+              <input type="text" id="geodcatResultsSearchInput" class="form-control form-control-sm"
+                     placeholder="Search results by title…" data-i18n-ph="quality.hvd_results_search_placeholder"
+                     autocomplete="off" oninput="_renderGeoDcatTable()">
+            </div>
+            <div id="geodcatProgressWrap" class="mb-3 d-none">
+              <div class="d-flex justify-content-between small text-muted mb-1">
+                <span id="geodcatProgressLabel"></span>
+                <span id="geodcatProgressPct"></span>
+              </div>
+              <div class="progress" style="height:8px">
+                <div id="geodcatProgressBar" class="progress-bar" role="progressbar" style="width:0%"></div>
+              </div>
+            </div>
+            <div id="geodcatCheckResults">
+              <div class="text-center py-5 text-muted">
+                <i class="bi bi-patch-question fs-2 d-block mb-2"></i>
+                <span data-i18n="quality.geodcat_hint">Click Run GeoDCAT-AP Check to validate every geospatial-tagged dataset on the portal. This can take a long time on the first run.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tab-pane fade" id="qsub-mqa">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <h6 class="fw-semibold mb-0">
+                <i class="bi bi-speedometer2 me-2 text-primary"></i><span data-i18n="quality.mqa_title">EU Metadata Quality Assessment (MQA)</span>
+              </h6>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span id="mqaLastUpdated" class="text-muted small"></span>
+                <button id="mqaRefreshBtn" class="btn btn-outline-secondary btn-sm" onclick="refreshMqa()">
+                  <i class="bi bi-arrow-clockwise me-1"></i><span data-i18n="quality.mqa_refresh">Refresh Now</span>
+                </button>
+              </div>
+            </div>
+            <p class="text-muted small" data-i18n="quality.mqa_desc">data.europa.eu continuously computes this FAIR+ metadata quality score for data.gov.gr's harvested catalogue &mdash; findability, accessibility, interoperability, reusability and contextuality. This is fetched from their public API and cached here, not recomputed locally.</p>
+            <div id="mqaContent">
+              <div class="text-center py-5 text-muted">
+                <i class="bi bi-speedometer2 fs-2 d-block mb-2"></i>
+                <span data-i18n="quality.mqa_hint">The MQA score hasn't been fetched yet. Click Refresh Now to pull the latest score from data.europa.eu.</span>
               </div>
             </div>
           </div>
@@ -787,6 +875,29 @@
           <div class="modal-footer border-top">
             <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="quality.hvd_rerun_cancel">Cancel</button>
             <button type="button" class="btn btn-info btn-sm" onclick="_confirmHvdRerun()">
+              <i class="bi bi-play me-1"></i><span data-i18n="quality.hvd_rerun_confirm_btn">Run Anyway</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GeoDCAT-AP re-run confirmation modal -->
+    <div class="modal fade" id="geodcatRerunModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-info">
+          <div class="modal-header bg-info text-dark border-0">
+            <h5 class="modal-title fw-bold"><i class="bi bi-info-circle-fill me-2"></i><span data-i18n="quality.geodcat_rerun_title">Run GeoDCAT-AP Check Again?</span></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body pt-4">
+            <p class="fw-semibold mb-1" data-i18n="quality.hvd_rerun_line1">The results shown are already up to date.</p>
+            <p class="text-muted small mb-3" id="geodcatRerunLastRun"></p>
+            <p class="text-muted small mb-0" data-i18n="quality.dcat_rerun_line2">Datasets are checked incrementally, so a new run only re-validates what actually changed on the portal — there's usually no need to run it again unless you know something major has changed on data.gov.gr. A full re-check of the whole catalog can take a long time.</p>
+          </div>
+          <div class="modal-footer border-top">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="quality.hvd_rerun_cancel">Cancel</button>
+            <button type="button" class="btn btn-info btn-sm" onclick="_confirmGeoDcatRerun()">
               <i class="bi bi-play me-1"></i><span data-i18n="quality.hvd_rerun_confirm_btn">Run Anyway</span>
             </button>
           </div>
@@ -1574,6 +1685,27 @@ const TRANSLATIONS = {
     'quality.hvd_filter_no_match': 'No datasets match the selected filters.',
     'quality.hvd_filter_group_compliance': 'Compliance',
     'quality.hvd_filter_group_metadata': 'Metadata',
+    'quality.tab_hvd': 'HVD',
+    'quality.tab_dcat': 'DCAT-AP',
+    'quality.tab_geodcat': 'GeoDCAT-AP',
+    'quality.tab_mqa': 'MQA Score',
+    'quality.geodcat_title': 'GeoDCAT-AP Compliance Check (SHACL)',
+    'quality.geodcat_run': 'Run GeoDCAT-AP Check',
+    'quality.geodcat_desc': "Validates every geospatial-tagged dataset's real DCAT-AP RDF metadata against the EU's official GeoDCAT-AP geospatial extension SHACL shapes (SEMICeu GeoDCAT-AP 3.1.0) — covers the ~12,500 datasets the portal itself classifies as geospatial (GIS layers, WMS/WFS services, etc).",
+    'quality.geodcat_hint': 'Click Run GeoDCAT-AP Check to validate every geospatial-tagged dataset on the portal. This can take a long time on the first run.',
+    'quality.geodcat_running': 'Validating every geospatial-tagged dataset against the official GeoDCAT-AP SHACL shapes… a full first run can take a long time. Feel free to switch tabs — it keeps running in the background.',
+    'quality.geodcat_rerun_title': 'Run GeoDCAT-AP Check Again?',
+    'quality.geodcat_all_clean': 'No issues found across all checked geospatial datasets.',
+    'quality.mqa_title': 'EU Metadata Quality Assessment (MQA)',
+    'quality.mqa_desc': "data.europa.eu continuously computes this FAIR+ metadata quality score for data.gov.gr's harvested catalogue — findability, accessibility, interoperability, reusability and contextuality. This is fetched from their public API and cached here, not recomputed locally.",
+    'quality.mqa_hint': "The MQA score hasn't been fetched yet. Click Refresh Now to pull the latest score from data.europa.eu.",
+    'quality.mqa_refresh': 'Refresh Now',
+    'quality.mqa_refreshing': 'Refreshing…',
+    'quality.mqa_findability': 'Findability',
+    'quality.mqa_accessibility': 'Accessibility',
+    'quality.mqa_interoperability': 'Interoperability',
+    'quality.mqa_reusability': 'Reusability',
+    'quality.mqa_contextuality': 'Contextuality',
     'orgs.title': 'Organizations & Dataset Counts',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'All Public Sector',
@@ -2065,6 +2197,27 @@ const TRANSLATIONS = {
     'quality.hvd_filter_no_match': 'Κανένα σύνολο δεδομένων δεν ταιριάζει με τα επιλεγμένα φίλτρα.',
     'quality.hvd_filter_group_compliance': 'Συμμόρφωση',
     'quality.hvd_filter_group_metadata': 'Μεταδεδομένα',
+    'quality.tab_hvd': 'HVD',
+    'quality.tab_dcat': 'DCAT-AP',
+    'quality.tab_geodcat': 'GeoDCAT-AP',
+    'quality.tab_mqa': 'Βαθμολογία MQA',
+    'quality.geodcat_title': 'Έλεγχος Συμμόρφωσης GeoDCAT-AP (SHACL)',
+    'quality.geodcat_run': 'Εκτέλεση Ελέγχου GeoDCAT-AP',
+    'quality.geodcat_desc': 'Επικυρώνει τα πραγματικά μεταδεδομένα DCAT-AP κάθε γεωχωρικού συνόλου δεδομένων βάσει των επίσημων μορφών SHACL της γεωχωρικής επέκτασης GeoDCAT-AP της ΕΕ (SEMICeu GeoDCAT-AP 3.1.0) — καλύπτει τα ~12.500 σύνολα δεδομένων που η ίδια η πύλη χαρακτηρίζει ως γεωχωρικά (επίπεδα GIS, υπηρεσίες WMS/WFS κ.λπ.).',
+    'quality.geodcat_hint': 'Κάντε κλικ στο «Εκτέλεση Ελέγχου GeoDCAT-AP» για επαλήθευση κάθε γεωχωρικού συνόλου δεδομένων της πύλης. Μπορεί να διαρκέσει πολύ την πρώτη φορά.',
+    'quality.geodcat_running': 'Επικύρωση κάθε γεωχωρικού συνόλου δεδομένων βάσει των επίσημων μορφών SHACL GeoDCAT-AP… μια πρώτη πλήρης εκτέλεση μπορεί να διαρκέσει πολύ. Μπορείτε να αλλάξετε καρτέλα — η διαδικασία συνεχίζεται στο παρασκήνιο.',
+    'quality.geodcat_rerun_title': 'Εκτέλεση Ελέγχου GeoDCAT-AP Ξανά;',
+    'quality.geodcat_all_clean': 'Δεν βρέθηκαν προβλήματα σε όλα τα ελεγμένα γεωχωρικά σύνολα δεδομένων.',
+    'quality.mqa_title': 'Αξιολόγηση Ποιότητας Μεταδεδομένων ΕΕ (MQA)',
+    'quality.mqa_desc': 'Το data.europa.eu υπολογίζει συνεχώς αυτή τη βαθμολογία ποιότητας μεταδεδομένων FAIR+ για τον κατάλογο του data.gov.gr — ευρετότητα, προσβασιμότητα, διαλειτουργικότητα, επαναχρησιμοποίηση και συμφραζόμενα. Ανακτάται από το δημόσιο API τους και αποθηκεύεται εδώ, δεν υπολογίζεται τοπικά.',
+    'quality.mqa_hint': 'Η βαθμολογία MQA δεν έχει ανακτηθεί ακόμα. Κάντε κλικ στο «Ανανέωση Τώρα» για να ανακτήσετε την πιο πρόσφατη βαθμολογία από το data.europa.eu.',
+    'quality.mqa_refresh': 'Ανανέωση Τώρα',
+    'quality.mqa_refreshing': 'Ανανέωση…',
+    'quality.mqa_findability': 'Ευρετότητα',
+    'quality.mqa_accessibility': 'Προσβασιμότητα',
+    'quality.mqa_interoperability': 'Διαλειτουργικότητα',
+    'quality.mqa_reusability': 'Επαναχρησιμοποίηση',
+    'quality.mqa_contextuality': 'Συμφραζόμενα',
     'orgs.title': 'Οργανισμοί & Αριθμός Συνόλων Δεδομένων',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'Όλος ο Δημόσιος Τομέας',
@@ -4345,6 +4498,407 @@ async function _loadDcatTab() {
     }
     if (data.result) _renderDcatCheck(data.result);
   } catch (e) { /* leave the default "click Run DCAT-AP Check" hint in place */ }
+  _loadGeoDcatTab();
+  _loadMqaTab();
+}
+
+// ── GeoDCAT-AP compliance check (geospatial extension SHACL) ────────────────
+// Same architecture/UI pattern as the HVD/DCAT-AP checks above, scoped to
+// only the geospatial-tagged datasets. No vocabulary/structural split here
+// (GeoDCAT-AP's shapes aren't classified that way) -- just violations.
+let _geodcatLastResult = null;
+let _geodcatSortCol = 'violation_count';
+let _geodcatSortDir = 'desc';
+let _geodcatExpandedOrgs = new Set();
+let _geodcatGroupsCache = [];
+let _geodcatActiveFilters = new Set();
+let _geodcatSummaryCards = [];
+
+const GEODCAT_FILTER_PREDICATES = {
+  non_conforming: d => !d.conforms,
+};
+
+function _renderGeoDcatSummaryCards() {
+  const s = _geodcatLastResult.summary;
+  _geodcatSummaryCards = [
+    { key: null, value: s.checked, label: t('quality.hvd_checked'), bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' },
+    { key: 'non_conforming', value: s.checked - s.conforms, label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10', text: 'text-danger', icon: 'bi-x-octagon' },
+  ];
+  const prepared = _geodcatSummaryCards.map(c => {
+    const clickable = c.key !== null;
+    return { ...c, active: clickable && _geodcatActiveFilters.has(c.key), onclick: clickable ? `toggleGeoDcatCardFilter('${c.key}')` : null };
+  });
+  const hasActive = _geodcatSummaryCards.some(c => c.key !== null && _geodcatActiveFilters.has(c.key));
+  _renderFilterCardsGrid('geodcatSummary', prepared, null, hasActive ? {} : null);
+}
+
+function toggleGeoDcatCardFilter(key) {
+  if (_geodcatActiveFilters.has(key)) _geodcatActiveFilters.delete(key);
+  else _geodcatActiveFilters.add(key);
+  _renderGeoDcatSummaryCards();
+  _renderGeoDcatTable();
+}
+
+function clearGeoDcatCardFilters() {
+  _geodcatActiveFilters.clear();
+  _renderGeoDcatSummaryCards();
+  _renderGeoDcatTable();
+}
+
+function _showGeoDcatProgress(completed, total) {
+  show('geodcatProgressWrap').classList.remove('d-none');
+  const pct = total ? Math.round((completed / total) * 100) : 0;
+  show('geodcatProgressBar').style.width = pct + '%';
+  show('geodcatProgressLabel').textContent = `${fmt(completed)} / ${fmt(total)}`;
+  show('geodcatProgressPct').textContent = `${pct}%`;
+}
+
+function _resetGeoDcatControls() {
+  show('geodcatCheckBtn').disabled = false;
+  show('geodcatProgressWrap').classList.add('d-none');
+  const cancelBtn = show('geodcatCancelBtn');
+  cancelBtn.classList.add('d-none');
+  cancelBtn.disabled = false;
+  cancelBtn.innerHTML = `<i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">${t('quality.hvd_cancel')}</span>`;
+}
+
+let _geodcatRerunModal = null;
+
+function runGeoDcatCheck() {
+  if (_geodcatLastResult?.finished_at) {
+    show('geodcatRerunLastRun').textContent = t('quality.hvd_last_run') + ' ' + relativeDate(_geodcatLastResult.finished_at);
+    if (!_geodcatRerunModal) _geodcatRerunModal = new bootstrap.Modal(document.getElementById('geodcatRerunModal'));
+    _geodcatRerunModal.show();
+    return;
+  }
+  _startGeoDcatCheck();
+}
+
+function _confirmGeoDcatRerun() {
+  if (_geodcatRerunModal) _geodcatRerunModal.hide();
+  _startGeoDcatCheck();
+}
+
+async function _startGeoDcatCheck() {
+  const btn = show('geodcatCheckBtn');
+  const el  = show('geodcatCheckResults');
+  try {
+    const resp = await fetch(API_BASE + 'api/quality/geodcat-check', { method: 'POST' }).then(r => r.json());
+    if (resp.error) {
+      el.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-key me-2"></i>${esc(resp.error)}</div>`;
+      return;
+    }
+    if (!resp.started && !resp.already_running) return;
+    btn.disabled = true;
+    show('geodcatCancelBtn').classList.remove('d-none');
+    _showGeoDcatProgress(0, 0);
+    el.innerHTML = `<div class="text-center py-4 text-muted">${esc(t('quality.geodcat_running'))}</div>`;
+    _pollGeoDcatCheck();
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
+  }
+}
+
+function downloadGeoDcatExcel() {
+  const params = new URLSearchParams();
+  if (_geodcatActiveFilters.size) params.set('filters', [..._geodcatActiveFilters].join(','));
+  const q = show('geodcatResultsSearchInput')?.value.trim();
+  if (q) params.set('q', q);
+  window.location.href = `${API_BASE}api/quality/geodcat-check/export?${params}`;
+}
+
+async function cancelGeoDcatCheck() {
+  const btn = show('geodcatCancelBtn');
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${t('quality.hvd_cancelling')}`;
+  try {
+    await fetch(API_BASE + 'api/quality/geodcat-check/cancel', { method: 'POST' });
+  } catch (e) { /* the next poll tick will reflect whatever the server ends up doing */ }
+}
+
+async function _pollGeoDcatCheck(attempts = 0) {
+  // ~12,500 geospatial datasets -- similar order of magnitude to the DCAT-AP
+  // check, so give up polling (not running) on the same long timescale.
+  if (attempts > 1000) {
+    _resetGeoDcatControls();
+    show('geodcatCheckResults').innerHTML =
+      `<div class="alert alert-warning mb-0">${esc(t('quality.dcat_still_running'))}</div>`;
+    return;
+  }
+  await new Promise(r => setTimeout(r, 5000));
+  try {
+    const data = await fetch(API_BASE + 'api/quality/geodcat-check').then(r => r.json());
+    if (data.running) {
+      _showGeoDcatProgress(data.completed, data.total);
+      if (data.cancelling) {
+        const cancelBtn = show('geodcatCancelBtn');
+        cancelBtn.disabled = true;
+        cancelBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${t('quality.hvd_cancelling')}`;
+      }
+      _pollGeoDcatCheck(attempts + 1);
+      return;
+    }
+    _resetGeoDcatControls();
+    if (data.error) {
+      show('geodcatCheckResults').innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(data.error)}</div>`;
+      return;
+    }
+    if (data.result) _renderGeoDcatCheck(data.result);
+  } catch (e) {
+    _resetGeoDcatControls();
+  }
+}
+
+function _renderGeoDcatCheck(result) {
+  _geodcatLastResult = result;
+  _geodcatActiveFilters = new Set();
+  show('geodcatResultsSearchInput').value = '';
+  const s = result.summary;
+  show('geodcatLastRunAt').textContent = result.finished_at
+    ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
+  show('geodcatExportBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  show('geodcatExpandAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  show('geodcatCollapseAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  const partialNote = result.partial
+    ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
+    : '';
+  const cardsHtml = `
+    <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span></span>
+        <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1" onclick="clearGeoDcatCardFilters()">
+          <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">${t('filters.clear')}</span>
+        </button>
+      </div>
+      <div id="geodcatSummary" class="row g-2"></div>
+    </div>`;
+
+  const failedNote = s.failed_to_fetch
+    ? `<p class="text-muted small mb-2">${t('quality.hvd_failed_note').replace('{n}', fmt(s.failed_to_fetch))}</p>` : '';
+  const cacheNote = s.reused_from_cache
+    ? `<p class="text-muted small mb-2"><i class="bi bi-lightning-charge me-1"></i>${t('quality.hvd_cache_note').replace('{n}', fmt(s.reused_from_cache)).replace('{total}', fmt(s.total))}</p>`
+    : '';
+
+  if (!result.datasets.length) {
+    show('geodcatCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote +
+      `<p class="text-success small mb-0"><i class="bi bi-check-circle me-1"></i>${t('quality.geodcat_all_clean')}</p>`;
+    _renderGeoDcatSummaryCards();
+    return;
+  }
+
+  _geodcatExpandedOrgs = new Set();
+  show('geodcatCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote + `<div id="geodcatTableWrap"></div>`;
+  _renderGeoDcatSummaryCards();
+  _renderGeoDcatTable();
+}
+
+function _geodcatCompare(a, b, col) {
+  switch (col) {
+    case 'title': return a.title.localeCompare(b.title);
+    default: return a.violation_count - b.violation_count;
+  }
+}
+
+function sortGeoDcatTable(col) {
+  if (_geodcatSortCol === col) {
+    _geodcatSortDir = _geodcatSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _geodcatSortCol = col;
+    _geodcatSortDir = col === 'title' ? 'asc' : 'desc';
+  }
+  _renderGeoDcatTable();
+}
+
+function geodcatSortArrow(col) {
+  if (_geodcatSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
+  return _geodcatSortDir === 'asc' ? ' ↑' : ' ↓';
+}
+
+function toggleGeoDcatOrg(idx) {
+  const entry = _geodcatGroupsCache[idx];
+  if (!entry) return;
+  const [orgTitle] = entry;
+  if (_geodcatExpandedOrgs.has(orgTitle)) _geodcatExpandedOrgs.delete(orgTitle);
+  else _geodcatExpandedOrgs.add(orgTitle);
+  _renderGeoDcatTable();
+}
+
+function expandAllGeoDcat() {
+  _geodcatGroupsCache.forEach(([orgTitle]) => _geodcatExpandedOrgs.add(orgTitle));
+  _renderGeoDcatTable();
+}
+
+function collapseAllGeoDcat() {
+  _geodcatExpandedOrgs.clear();
+  _renderGeoDcatTable();
+}
+
+function _renderGeoDcatTable() {
+  const wrap = show('geodcatTableWrap');
+  if (!wrap) return;
+  const all = _geodcatLastResult?.datasets || [];
+  if (!all.length) { wrap.innerHTML = ''; return; }
+
+  let datasets = _geodcatActiveFilters.size
+    ? all.filter(d => [..._geodcatActiveFilters].every(key => GEODCAT_FILTER_PREDICATES[key](d)))
+    : all;
+
+  const q = _ns(show('geodcatResultsSearchInput')?.value || '').trim();
+  if (q) datasets = datasets.filter(d => _ns(d.title).includes(q) || _ns(d.org_title || '').includes(q));
+
+  if (!datasets.length) {
+    wrap.innerHTML = `<p class="text-muted small mb-0 mt-2">${esc(t('quality.hvd_filter_no_match'))}</p>`;
+    return;
+  }
+
+  const groups = new Map();
+  for (const d of datasets) {
+    const key = d.org_title || t('quality.hvd_unknown_org');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(d);
+  }
+
+  const dir = _geodcatSortDir === 'asc' ? 1 : -1;
+  for (const list of groups.values()) {
+    list.sort((a, b) => dir * _geodcatCompare(a, b, _geodcatSortCol));
+  }
+
+  _geodcatGroupsCache = [...groups.entries()].sort(
+    ([an, al], [bn, bl]) => bl.length - al.length || an.localeCompare(bn)
+  );
+
+  const bodyRows = _geodcatGroupsCache.map(([orgTitle, list], idx) => {
+    const isExpanded = _geodcatExpandedOrgs.has(orgTitle);
+    const groupRow = `
+      <tr class="table-light" style="cursor:pointer" onclick="toggleGeoDcatOrg(${idx})">
+        <td colspan="3">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+            <span class="fw-semibold">${esc(orgTitle)}</span>
+            <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${list.length}</span>
+          </div>
+        </td>
+      </tr>`;
+    const datasetRows = list.map(d => `
+      <tr style="${isExpanded ? '' : 'display:none'}">
+        <td class="ps-4"><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
+        <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
+        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
+          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
+        </details></td>
+      </tr>`).join('');
+    return groupRow + datasetRows;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        <th style="cursor:pointer" onclick="sortGeoDcatTable('title')">${t('quality.col_dataset')}${geodcatSortArrow('title')}</th>
+        <th style="cursor:pointer" onclick="sortGeoDcatTable('violation_count')">${t('quality.hvd_col_violations')}${geodcatSortArrow('violation_count')}</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table>`;
+}
+
+async function _loadGeoDcatTab() {
+  try {
+    const data = await fetch(API_BASE + 'api/quality/geodcat-check').then(r => r.json());
+    if (data.running) {
+      show('geodcatCheckBtn').disabled = true;
+      show('geodcatCancelBtn').classList.remove('d-none');
+      _showGeoDcatProgress(data.completed, data.total);
+      show('geodcatCheckResults').innerHTML = `<div class="text-center py-4 text-muted">${esc(t('quality.geodcat_running'))}</div>`;
+      _pollGeoDcatCheck();
+      return;
+    }
+    if (data.result) _renderGeoDcatCheck(data.result);
+  } catch (e) { /* leave the default "click Run GeoDCAT-AP Check" hint in place */ }
+}
+
+// ── EU Metadata Quality Assessment (MQA) score ──────────────────────────────
+// Not a check we run ourselves -- just a periodic fetch+cache of data.europa.eu's
+// own already-computed FAIR+ score for data.gov.gr's catalogue. No run/cancel,
+// no progress bar, just a score dashboard + manual refresh.
+const MQA_DIMENSIONS = [
+  { key: 'findability',     label: 'quality.mqa_findability' },
+  { key: 'accessibility',   label: 'quality.mqa_accessibility' },
+  { key: 'interoperability', label: 'quality.mqa_interoperability' },
+  { key: 'reusability',     label: 'quality.mqa_reusability' },
+  { key: 'contextuality',   label: 'quality.mqa_contextuality' },
+];
+
+function _mqaBarColor(pct) {
+  if (pct >= 80) return '#198754';
+  if (pct >= 50) return '#fd7e14';
+  return '#dc3545';
+}
+
+function _renderMqa(cached) {
+  const el = show('mqaContent');
+  if (!cached || !cached.data) {
+    el.innerHTML = `<div class="text-center py-5 text-muted">
+      <i class="bi bi-speedometer2 fs-2 d-block mb-2"></i>
+      <span>${esc(t('quality.mqa_hint'))}</span>
+    </div>`;
+    show('mqaLastUpdated').textContent = '';
+    return;
+  }
+  const data = cached.data;
+  const maxTotal = MQA_DIMENSIONS.reduce((sum, d) => sum + (data[d.key]?.score?.max || 0), 0);
+  const overallPct = maxTotal ? Math.round((data.score / maxTotal) * 100) : 0;
+  show('mqaLastUpdated').textContent = cached.fetched_at
+    ? t('quality.hvd_last_run') + ' ' + relativeDate(cached.fetched_at) : '';
+
+  const rows = MQA_DIMENSIONS.map(d => {
+    const dim = data[d.key];
+    const pct = dim?.score?.percentage ?? 0;
+    const color = _mqaBarColor(pct);
+    return `
+      <div class="mb-3">
+        <div class="d-flex justify-content-between small mb-1">
+          <span class="fw-semibold">${esc(t(d.label))}</span>
+          <span class="text-muted">${fmt(dim?.score?.points ?? 0)} / ${fmt(dim?.score?.max ?? 0)} (${pct}%)</span>
+        </div>
+        <div class="progress" style="height:8px">
+          <div class="progress-bar" role="progressbar" style="width:${pct}%;background-color:${color}"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="text-center mb-4">
+      <div class="display-5 fw-bold">${fmt(data.score)} <span class="fs-5 text-muted">/ ${fmt(maxTotal)}</span></div>
+      <div class="text-muted small">${overallPct}% &mdash; data.gov.gr</div>
+    </div>
+    ${rows}`;
+}
+
+async function _loadMqaTab() {
+  try {
+    const data = await fetch(API_BASE + 'api/quality/mqa').then(r => r.json());
+    _renderMqa(data.result);
+  } catch (e) { /* leave the default hint in place */ }
+}
+
+async function refreshMqa() {
+  const btn = show('mqaRefreshBtn');
+  btn.disabled = true;
+  const originalHtml = btn.innerHTML;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${esc(t('quality.mqa_refreshing'))}`;
+  try {
+    const resp = await fetch(API_BASE + 'api/quality/mqa/refresh', { method: 'POST' }).then(r => r.json());
+    if (resp.refreshed) {
+      _renderMqa(resp.result);
+    } else if (resp.error) {
+      show('mqaContent').innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(resp.error)}</div>`;
+    }
+  } catch (e) {
+    show('mqaContent').innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
 }
 
 // ── Organizations tab ────────────────────────────────────────────────────────

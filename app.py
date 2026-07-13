@@ -19,7 +19,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, User, PasswordResetToken
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken
 import rdflib
 import pyshacl
 import config
@@ -817,12 +817,19 @@ def _background_loop():
         _do_refresh_orgs()
     except Exception as exc:
         print(f"[orgs] initial error: {exc}")
+    if not _load_mqa_cache():
+        try:
+            _do_refresh_mqa()
+        except Exception as exc:
+            print(f"[mqa] initial error: {exc}")
 
     last_orgs_refresh           = time.time()
     last_dataset_growth_refresh = time.time()
     last_geo_datasets_refresh   = time.time()
     last_hvd_check_refresh      = time.time()
     last_dcat_check_refresh     = time.time()
+    last_geodcat_check_refresh  = time.time()
+    last_mqa_refresh            = time.time()
     while True:
         time.sleep(config.CHECK_INTERVAL_SECONDS)
         try:
@@ -875,6 +882,21 @@ def _background_loop():
                                   cancel_requested=False, total=0, completed=0, error=None)
                 threading.Thread(target=_do_run_dcat_check, daemon=True).start()
             last_dcat_check_refresh = time.time()
+        if time.time() - last_geodcat_check_refresh >= _GEODCAT_CHECK_REFRESH_INTERVAL:
+            # Same reasoning as the DCAT-AP check above -- ~12,500 geospatial
+            # datasets is still large enough that a first run can take a
+            # long while, so this runs in its own thread too.
+            if not _get_geodcat_status()["running"]:
+                _set_geodcat_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
+                                     cancel_requested=False, total=0, completed=0, error=None)
+                threading.Thread(target=_do_run_geodcat_check, daemon=True).start()
+            last_geodcat_check_refresh = time.time()
+        if time.time() - last_mqa_refresh >= _MQA_REFRESH_INTERVAL:
+            try:
+                _do_refresh_mqa()
+            except Exception as exc:
+                print(f"[mqa] refresh error: {exc}")
+            last_mqa_refresh = time.time()
 
 
 _singleton_lock_file = None  # kept open for the process lifetime; closing it releases the lock
@@ -1586,6 +1608,8 @@ _DCT_NS    = rdflib.Namespace("http://purl.org/dc/terms/")
 _SH_NS     = rdflib.Namespace("http://www.w3.org/ns/shacl#")
 _FOAF_NS   = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
 _ADMS_NS   = rdflib.Namespace("http://www.w3.org/ns/adms#")
+_VCARD_NS  = rdflib.Namespace("http://www.w3.org/2006/vcard/ns#")
+_SKOS_NS   = rdflib.Namespace("http://www.w3.org/2004/02/skos/core#")
 
 _OPEN_LICENSE_MARKERS = (
     "creativecommons.org/licenses/by",
@@ -2292,7 +2316,11 @@ _DCAT_CHECK_CONCURRENCY = 5   # same conservative pool as the HVD check -- gentl
 _DCAT_CHECK_TIMEOUT = 30
 # Bump whenever _dcat_check_one()'s result schema/logic changes -- see
 # _HVD_CHECK_VERSION's comment, same reasoning.
-_DCAT_CHECK_VERSION = 1
+_DCAT_CHECK_VERSION = 2  # bumped: vocabulary augmentation now dereferences vcard:hasEmail/dct:format
+                          # and follows one more hop to each concept's own skos:ConceptScheme,
+                          # instead of merging whole fetched documents in (which caused false
+                          # positives on unrelated sibling vocabulary entries -- see
+                          # _merge_vocab_node_facts)
 _DCAT_CHECK_STALE_AFTER = 10 * 60
 
 
@@ -2360,18 +2388,35 @@ def _bump_dcat_progress(completed: int) -> bool:
         return row.cancel_requested
 
 
-# Every property the base DCAT-AP + MDR vocabulary shapes check against an
-# EU controlled vocabulary (skos:Concept/skos:inScheme, or a class like
-# dct:LicenseDocument) -- without dereferencing these reference URIs, the
-# definition triples that make that check pass live in a separate document
-# from the dataset's own RDF export, so the shapes validate blind. Same
-# fix as _augment_with_vocab, generalized to every vocabulary this check
-# touches instead of just hvdCategory/accessService.
+# Every property the base DCAT-AP + MDR vocabulary shapes (and GeoDCAT-AP's
+# own, larger shape set) check against an EU controlled vocabulary
+# (skos:Concept/skos:inScheme, or a class like dct:LicenseDocument/vcard:Email)
+# -- without dereferencing these reference URIs, the definition triples that
+# make that check pass live in a separate document from the dataset's own
+# RDF export, so the shapes validate blind. Same fix as _augment_with_vocab,
+# generalized to every vocabulary these checks touch instead of just
+# hvdCategory/accessService.
 _DCAT_VOCAB_PROPS = [
     _DCT_NS.language, _DCAT_NS.theme, _DCT_NS.accrualPeriodicity, _DCT_NS.publisher,
     _DCT_NS.spatial, _ADMS_NS.status, _DCT_NS.license, _DCT_NS.type,
     _DCT_NS.accessRights, _DCATAP_NS.hvdCategory, _DCAT_NS.accessService,
+    _VCARD_NS.hasEmail, _DCT_NS.format,
 ]
+
+
+def _merge_vocab_node_facts(graph: "rdflib.Graph", ref: "rdflib.URIRef") -> None:
+    """Dereference `ref` and merge in only the triples asserting facts about
+    that exact node (its own type/scheme/label) -- not every sibling
+    resource mentioned in the same fetched document (e.g. a whole
+    concept-scheme's member listing), which would otherwise become spurious
+    extra validation targets of their own (confirmed by testing: merging
+    the whole document in produced false-positive violations on unrelated
+    vocabulary entries that were never actually part of the dataset)."""
+    vocab_graph = _get_vocab_graph(str(ref))
+    if vocab_graph is None:
+        return
+    for triple in vocab_graph.triples((ref, None, None)):
+        graph.add(triple)
 
 
 def _augment_with_dcat_vocab(graph: "rdflib.Graph") -> None:
@@ -2381,9 +2426,15 @@ def _augment_with_dcat_vocab(graph: "rdflib.Graph") -> None:
     for ref in refs:
         if not isinstance(ref, rdflib.URIRef):
             continue
-        vocab_graph = _get_vocab_graph(str(ref))
-        if vocab_graph is not None:
-            graph += vocab_graph
+        _merge_vocab_node_facts(graph, ref)
+        # A SKOS concept's own document typically doesn't also assert
+        # "<its scheme> a skos:ConceptScheme" -- that triple lives in the
+        # scheme's own document, one more hop away. Without it, every
+        # dataset using a perfectly valid EU vocabulary term would fail the
+        # "is the scheme a real skos:ConceptScheme" check identically.
+        for scheme in list(graph.objects(ref, _SKOS_NS.inScheme)):
+            if isinstance(scheme, rdflib.URIRef):
+                _merge_vocab_node_facts(graph, scheme)
 
 
 # Plain-language label for each RDF property the DCAT-AP + MDR vocabulary
@@ -2404,6 +2455,9 @@ _DCAT_PATH_LABELS = {
     "mediaType":            "the media type",
     "contactPoint":         "the contact point",
     "distribution":         "at least one distribution (downloadable file/API)",
+    "accessService":        "the linked API (access service)",
+    "hasEmail":             "the contact point's email address",
+    "hasURL":               "the contact point's web address",
 }
 
 
@@ -2740,6 +2794,442 @@ def clear_dcat_check_cache():
     db.session.commit()
     _set_dcat_status(error=None, started_at=None, total=0, completed=0)
     return jsonify({"cleared": True})
+
+
+# ── GeoDCAT-AP compliance check (geospatial extension SHACL) ────────────────
+# Scoped to only the datasets CKAN classifies as geospatial (dcat_type
+# authority code GEOSPATIAL, same _is_geospatial() test the Geospatial
+# Insights tab uses) -- ~12,500 of the ~22,600 total, a standalone shape set
+# (not combined with the base DCAT-AP shapes -- GeoDCAT-AP's own shapes
+# already redeclare dcat:Dataset/Distribution/DataService etc. themselves).
+_GEODCAT_SHAPES_GRAPH = rdflib.Graph()
+_GEODCAT_SHAPES_GRAPH.parse(
+    data=(Path(__file__).parent / "shacl" / "geodcat-ap.shapes.ttl").read_text(encoding="utf-8"), format="turtle")
+
+_GEODCAT_CHECK_REFRESH_INTERVAL = 24 * 3600
+_GEODCAT_CHECK_CONCURRENCY = 5
+_GEODCAT_CHECK_TIMEOUT = 30
+_GEODCAT_CHECK_VERSION = 1
+_GEODCAT_CHECK_STALE_AFTER = 10 * 60
+
+
+def _save_geodcat_check_cache(result: dict) -> None:
+    with app.app_context():
+        row = GeoDcatCheckCache.query.get(1)
+        if not row:
+            row = GeoDcatCheckCache(id=1, data_json="{}")
+            db.session.add(row)
+        row.data_json  = json.dumps(result)
+        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
+
+def _load_geodcat_check_result():
+    with app.app_context():
+        row = GeoDcatCheckCache.query.get(1)
+        return row.data() if row else None
+
+
+def _geodcat_status_row() -> GeoDcatCheckStatus:
+    row = GeoDcatCheckStatus.query.get(1)
+    if not row:
+        row = GeoDcatCheckStatus(id=1, running=False, total=0, completed=0, cancel_requested=False)
+        db.session.add(row)
+        db.session.commit()
+    return row
+
+
+def _get_geodcat_status() -> dict:
+    with app.app_context():
+        row = _geodcat_status_row()
+        if row.running and row.updated_at:
+            stale = (datetime.now(timezone.utc).replace(tzinfo=None) - row.updated_at).total_seconds() > _GEODCAT_CHECK_STALE_AFTER
+            if stale:
+                row.running          = False
+                row.cancel_requested = False
+                row.error            = "Abandoned run (the worker that started it never finished, likely a restart)."
+                db.session.commit()
+        return {
+            "running":          row.running,
+            "started_at":       row.started_at,
+            "total":            row.total,
+            "completed":        row.completed,
+            "cancel_requested": row.cancel_requested,
+            "error":            row.error,
+        }
+
+
+def _set_geodcat_status(**fields) -> None:
+    with app.app_context():
+        row = _geodcat_status_row()
+        for key, value in fields.items():
+            setattr(row, key, value)
+        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
+
+def _bump_geodcat_progress(completed: int) -> bool:
+    with app.app_context():
+        row = _geodcat_status_row()
+        row.completed  = completed
+        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+        return row.cancel_requested
+
+
+def _geodcat_check_one(name: str) -> dict:
+    url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
+    r = requests.get(url, timeout=_GEODCAT_CHECK_TIMEOUT,
+                      headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
+    r.raise_for_status()
+    graph = rdflib.Graph()
+    graph.parse(data=r.text, format="xml")
+    _augment_with_dcat_vocab(graph)
+
+    conforms, results_graph, _ = pyshacl.validate(
+        graph, shacl_graph=_GEODCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
+    )
+    violations, warnings = [], []
+    for res in results_graph.subjects(rdflib.RDF.type, _SH_NS.ValidationResult):
+        sev   = results_graph.value(res, _SH_NS.resultSeverity)
+        msg   = results_graph.value(res, _SH_NS.resultMessage)
+        path  = results_graph.value(res, _SH_NS.resultPath)
+        comp  = results_graph.value(res, _SH_NS.sourceConstraintComponent)
+        path_s  = str(path) if path is not None else ""
+        raw_msg = str(msg) if msg else ""
+        entry = {
+            "severity":    "violation" if sev == _SH_NS.Violation else "warning",
+            "path":        path_s or None,
+            "message":     _friendly_dcat_message(path_s, comp, raw_msg),
+            "raw_message": raw_msg,
+        }
+        (violations if sev == _SH_NS.Violation else warnings).append(entry)
+
+    title = None
+    for t in graph.objects(None, _DCT_NS.title):
+        title = str(t)
+        break
+
+    return {
+        "name":            name,
+        "title":           title or name,
+        "conforms":        conforms,
+        "violation_count": len(violations),
+        "warning_count":   len(warnings),
+        "details":         _dedupe_shacl_details(violations + warnings),
+    }
+
+
+def _list_geo_datasets() -> list:
+    """Same as _list_all_datasets, filtered server-side to datasets CKAN's
+    own dcat_type facet marks as geospatial (GIS layers, WMS/WFS services,
+    etc.) -- the identical test _is_geospatial() applies client-side to a
+    single package, expressed as a Solr fq so we don't have to paginate the
+    entire catalog just to filter it down here."""
+    items = []
+    start, batch = 0, 100
+    while True:
+        r = requests.get(
+            f"{config.API_BASE}/package_search",
+            params={"rows": batch, "start": start, "fq": 'dcat_type:*GEOSPATIAL*',
+                    "fl": "name,metadata_modified,organization"},
+            headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            break
+        results = data["result"]["results"]
+        if not results:
+            break
+        items.extend(
+            {
+                "name":              p["name"],
+                "metadata_modified": p.get("metadata_modified"),
+                "org_title":         (p.get("organization_card") or {}).get("title") or "",
+            }
+            for p in results if p.get("name")
+        )
+        start += batch
+        if start >= data["result"]["count"]:
+            break
+    return items
+
+
+def _do_run_geodcat_check() -> None:
+    cancelled = False
+    try:
+        datasets = _list_geo_datasets()
+        _set_geodcat_status(total=len(datasets))
+
+        with app.app_context():
+            cached_rows = {row.name: row for row in GeoDcatDatasetCheckCache.query.all()}
+
+        to_fetch, rows = [], []
+        for d in datasets:
+            row = cached_rows.get(d["name"])
+            cached = row.result() if (row and row.result_json) else None
+            if (cached and isinstance(cached, dict) and cached.get("_cache_version") == _GEODCAT_CHECK_VERSION
+                    and row.metadata_modified == d["metadata_modified"]):
+                cached_result = cached["result"]
+                cached_result["org_title"] = d.get("org_title", "")
+                rows.append(cached_result)
+            else:
+                to_fetch.append(d)
+        _bump_geodcat_progress(len(rows))
+
+        newly_checked = []
+        pool = ThreadPoolExecutor(max_workers=_GEODCAT_CHECK_CONCURRENCY)
+        try:
+            futures = {pool.submit(_geodcat_check_one, d["name"]): d for d in to_fetch}
+            for fut in as_completed(futures):
+                d = futures[fut]
+                try:
+                    result = fut.result()
+                    result["org_title"] = d.get("org_title", "")
+                    rows.append(result)
+                    newly_checked.append((d["name"], d["metadata_modified"], result))
+                except Exception as exc:
+                    rows.append({"name": d["name"], "error": str(exc)})
+                    newly_checked.append((d["name"], d["metadata_modified"], None))
+                if _bump_geodcat_progress(len(rows)):
+                    cancelled = True
+                    break
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+        if newly_checked:
+            with app.app_context():
+                for name, mtime, result in newly_checked:
+                    row = GeoDcatDatasetCheckCache.query.get(name)
+                    if not row:
+                        row = GeoDcatDatasetCheckCache(name=name)
+                        db.session.add(row)
+                    row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    if result is not None:
+                        row.metadata_modified = mtime
+                        row.result_json = json.dumps({"_cache_version": _GEODCAT_CHECK_VERSION, "result": result})
+                db.session.commit()
+
+        checked = [r for r in rows if "error" not in r]
+        failed  = [r for r in rows if "error" in r]
+        summary = {
+            "total":             len(datasets),
+            "checked":           len(checked),
+            "failed_to_fetch":   len(failed),
+            "reused_from_cache": len(datasets) - len(to_fetch),
+            "conforms":          sum(1 for r in checked if r["conforms"]),
+        }
+        flagged = [r for r in checked if not r["conforms"]]
+        flagged.sort(key=lambda r: -r["violation_count"])
+        result = {
+            "summary":     summary,
+            "datasets":    flagged,
+            "partial":     cancelled,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _save_geodcat_check_cache(result)
+        _set_geodcat_status(error=None)
+    except Exception as exc:
+        _set_geodcat_status(error=str(exc))
+    finally:
+        _set_geodcat_status(running=False, cancel_requested=False)
+
+
+@app.route("/api/quality/geodcat-check", methods=["POST"])
+def start_geodcat_check():
+    err = _require_admin()
+    if err:
+        return err
+    if _get_geodcat_status()["running"]:
+        return jsonify({"started": False, "already_running": True})
+    _set_geodcat_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
+                         cancel_requested=False, total=0, completed=0, error=None)
+    threading.Thread(target=_do_run_geodcat_check, daemon=True).start()
+    return jsonify({"started": True})
+
+
+@app.route("/api/quality/geodcat-check/cancel", methods=["POST"])
+def cancel_geodcat_check():
+    err = _require_admin()
+    if err:
+        return err
+    if not _get_geodcat_status()["running"]:
+        return jsonify({"cancelled": False, "reason": "not_running"})
+    _set_geodcat_status(cancel_requested=True)
+    return jsonify({"cancelled": True})
+
+
+@app.route("/api/quality/geodcat-check")
+def get_geodcat_check():
+    status = _get_geodcat_status()
+    return jsonify({
+        "running":    status["running"],
+        "started_at": status["started_at"],
+        "error":      status["error"],
+        "result":     _load_geodcat_check_result(),
+        "total":      status["total"],
+        "completed":  status["completed"],
+        "cancelling": status["cancel_requested"],
+    })
+
+
+@app.route("/api/quality/geodcat-check/export")
+def geodcat_check_export():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    result = _load_geodcat_check_result()
+    if not result:
+        return jsonify({"error": "No GeoDCAT-AP check results to export yet."}), 404
+
+    datasets = result.get("datasets") or []
+    if (freq.args.get("filters") or "") == "non_conforming":
+        datasets = [d for d in datasets if not d.get("conforms")]
+    q = _search_normalize((freq.args.get("q") or "").strip())
+    if q:
+        datasets = [
+            d for d in datasets
+            if q in _search_normalize(d.get("title", "")) or q in _search_normalize(d.get("org_title", ""))
+        ]
+    datasets = sorted(datasets, key=lambda d: (d.get("org_title") or "", -(d.get("violation_count") or 0)))
+
+    wb = Workbook()
+    summary_ws = wb.active
+    summary_ws.title = "Summary"
+    s = result.get("summary") or {}
+    summary_rows = [
+        ("Total geospatial datasets", s.get("total")),
+        ("Checked",                   s.get("checked")),
+        ("Could not be fetched",      s.get("failed_to_fetch")),
+        ("Reused from cache",         s.get("reused_from_cache")),
+        ("Conforms to SHACL shapes",  s.get("conforms")),
+        ("Run finished at",           result.get("finished_at")),
+        ("Partial run (cancelled early)", "Yes" if result.get("partial") else "No"),
+    ]
+    hdr_font = Font(bold=True, color="FFFFFF")
+    hdr_fill = PatternFill("solid", fgColor="2563EB")
+    for row_idx, (label, value) in enumerate(summary_rows, 1):
+        summary_ws.cell(row_idx, 1, label).font = Font(bold=True)
+        summary_ws.cell(row_idx, 2, value)
+    summary_ws.column_dimensions["A"].width = 32
+    summary_ws.column_dimensions["B"].width = 24
+
+    ws = wb.create_sheet("Flagged Datasets")
+    columns = [
+        ("org_title",       "Organization", lambda d: d.get("org_title") or ""),
+        ("title",           "Dataset",      lambda d: d.get("title") or d.get("name") or ""),
+        ("url",             "URL",          lambda d: f"{config.PORTAL_BASE}/dataset/{d.get('name', '')}"),
+        ("conforms",        "Conforms",     lambda d: "Yes" if d.get("conforms") else "No"),
+        ("violation_count", "Violations",   lambda d: d.get("violation_count") or 0),
+        ("warning_count",   "Warnings",     lambda d: d.get("warning_count") or 0),
+        ("issues",          "Issues",       lambda d: "\n".join(
+            f"[{v.get('severity')}] {v.get('message')}" + (f" (×{v['count']})" if v.get("count", 1) > 1 else "")
+            for v in d.get("details") or []
+        )),
+    ]
+    for col_idx, (_key, header, _getter) in enumerate(columns, 1):
+        cell = ws.cell(1, col_idx, header)
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+    for ri, d in enumerate(datasets, 2):
+        for col_idx, (key, _header, getter) in enumerate(columns, 1):
+            cell = ws.cell(ri, col_idx, getter(d))
+            if key == "issues":
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+    for col in ws.columns:
+        width = max((len(str(cell.value or "").split("\n")[0]) for cell in col), default=0)
+        ws.column_dimensions[col[0].column_letter].width = min(width + 2, 60)
+    if datasets:
+        ws.auto_filter.ref = ws.dimensions
+        ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return send_file(
+        buf, as_attachment=True,
+        download_name=f"geodcat_ap_compliance_{today}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/api/quality/geodcat-check/clear", methods=["POST"])
+def clear_geodcat_check_cache():
+    err = _require_admin()
+    if err:
+        return err
+    if _get_geodcat_status()["running"]:
+        return jsonify({"cleared": False, "reason": "running"})
+    GeoDcatDatasetCheckCache.query.delete()
+    GeoDcatCheckCache.query.delete()
+    db.session.commit()
+    _set_geodcat_status(error=None, started_at=None, total=0, completed=0)
+    return jsonify({"cleared": True})
+
+
+# ── EU Metadata Quality Assessment (MQA) score ──────────────────────────────
+# Not a SHACL check we run ourselves -- data.europa.eu already continuously
+# computes this for every national catalogue it harvests (FAIR+ dimensions:
+# findability, accessibility, interoperability, reusability, contextuality)
+# and publishes it via a small public JSON API. We just fetch and cache it
+# periodically; there's nothing to run/cancel and no admin gate on reading it.
+_MQA_CATALOGUE_ID = "data-gov-gr"
+_MQA_REFRESH_INTERVAL = 24 * 3600  # data.europa.eu recomputes this periodically, not in real time
+_mqa_lock = threading.Lock()
+
+
+def _save_mqa_cache(result: dict) -> None:
+    with app.app_context():
+        row = MqaCache.query.get(1)
+        if not row:
+            row = MqaCache(id=1, data_json="{}")
+            db.session.add(row)
+        row.data_json  = json.dumps(result)
+        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
+
+def _load_mqa_cache():
+    with app.app_context():
+        row = MqaCache.query.get(1)
+        return row.data() if row else None
+
+
+def _do_refresh_mqa() -> dict:
+    with _mqa_lock:
+        r = requests.get(
+            f"https://data.europa.eu/api/mqa/cache/catalogues/{_MQA_CATALOGUE_ID}",
+            headers={"User-Agent": "DataGovGR-Dashboard/1.0"}, timeout=30,
+        )
+        r.raise_for_status()
+        data = r.json()
+        results = ((data or {}).get("result") or {}).get("results") or []
+        if not results:
+            raise ValueError("data.europa.eu returned no MQA results for this catalogue")
+        result = {"data": results[0], "fetched_at": datetime.now(timezone.utc).isoformat()}
+        _save_mqa_cache(result)
+        return result
+
+
+@app.route("/api/quality/mqa")
+def get_mqa():
+    cached = _load_mqa_cache()
+    return jsonify({"result": cached})
+
+
+@app.route("/api/quality/mqa/refresh", methods=["POST"])
+def refresh_mqa():
+    err = _require_admin()
+    if err:
+        return err
+    try:
+        result = _do_refresh_mqa()
+        return jsonify({"refreshed": True, "result": result})
+    except Exception as exc:
+        return jsonify({"refreshed": False, "error": str(exc)}), 502
 
 
 @app.route("/api/trigger-check", methods=["POST"])
