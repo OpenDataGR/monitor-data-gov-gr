@@ -671,6 +671,9 @@
                 <button id="hvdCancelBtn" class="btn btn-outline-danger btn-sm d-none" onclick="cancelHvdCheck()">
                   <i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">Cancel</span>
                 </button>
+                <button id="hvdExportBtn" class="btn btn-outline-secondary btn-sm d-none" onclick="downloadHvdExcel()">
+                  <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="quality.hvd_export">Export Excel</span>
+                </button>
               </div>
             </div>
             <p class="text-muted small" data-i18n="quality.hvd_desc">Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) &mdash; not just whether it carries the hvd_category tag.</p>
@@ -1417,6 +1420,7 @@ const TRANSLATIONS = {
     'stats.latest_snapshot': 'Latest Snapshot',
     'quality.hvd_title': 'HVD Compliance Check (SHACL)',
     'quality.hvd_run': 'Run HVD Check',
+    'quality.hvd_export': 'Export Excel',
     'quality.hvd_desc': "Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) — not just whether it carries the hvd_category tag.",
     'quality.hvd_hint': 'Click Run HVD Check to validate all HVD-tagged datasets. This checks every dataset currently tagged as an EU High-Value Dataset and can take several minutes.',
     'quality.hvd_running': 'Validating HVD-tagged datasets against the official SHACL shapes… this can take several minutes. Feel free to switch tabs — it keeps running in the background.',
@@ -1834,6 +1838,7 @@ const TRANSLATIONS = {
     'stats.latest_snapshot': 'Τελευταίο Στιγμιότυπο',
     'quality.hvd_title': 'Έλεγχος Συμμόρφωσης HVD (SHACL)',
     'quality.hvd_run': 'Εκτέλεση Ελέγχου HVD',
+    'quality.hvd_export': 'Εξαγωγή Excel',
     'quality.hvd_desc': 'Επικυρώνει τα πραγματικά μεταδεδομένα DCAT-AP κάθε συνόλου δεδομένων με ετικέτα HVD βάσει των επίσημων μορφών SHACL DCAT-AP-HVD της ΕΕ (Κανονισμός (ΕΕ) 2023/138) — όχι απλώς αν φέρει την ετικέτα hvd_category.',
     'quality.hvd_hint': 'Κάντε κλικ στο «Εκτέλεση Ελέγχου HVD» για επαλήθευση όλων των συνόλων δεδομένων με ετικέτα HVD. Ελέγχει κάθε σύνολο δεδομένων που φέρει σήμερα ετικέτα HVD της ΕΕ και μπορεί να διαρκέσει αρκετά λεπτά.',
     'quality.hvd_running': 'Επικύρωση συνόλων δεδομένων HVD βάσει των επίσημων μορφών SHACL… μπορεί να διαρκέσει αρκετά λεπτά. Μπορείτε να αλλάξετε καρτέλα — η διαδικασία συνεχίζεται στο παρασκήνιο.',
@@ -3482,6 +3487,14 @@ async function _startHvdCheck() {
   }
 }
 
+function downloadHvdExcel() {
+  const params = new URLSearchParams();
+  if (_hvdActiveFilters.size) params.set('filters', [..._hvdActiveFilters].join(','));
+  const q = show('hvdResultsSearchInput')?.value.trim();
+  if (q) params.set('q', q);
+  window.location.href = `${API_BASE}api/quality/hvd-check/export?${params}`;
+}
+
 async function cancelHvdCheck() {
   const btn = show('hvdCancelBtn');
   btn.disabled = true;
@@ -3534,6 +3547,7 @@ function _renderHvdCheck(result) {
   const s = result.summary;
   show('hvdLastRunAt').textContent = result.finished_at
     ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
+  show('hvdExportBtn').classList.toggle('d-none', !(result.datasets || []).length);
   const partialNote = result.partial
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';

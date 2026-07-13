@@ -2123,6 +2123,118 @@ def get_hvd_check():
     })
 
 
+_HVD_EXPORT_PREDICATES = {
+    "non_conforming":       lambda d: not d.get("conforms"),
+    "legal_citation_issue": lambda d: bool(d.get("legal_citation_issue")),
+    "no_api_access":        lambda d: bool(d.get("no_api_access")),
+    "license_missing":      lambda d: d.get("license_status") == "missing",
+    "license_non_open":     lambda d: d.get("license_status") == "non_open",
+    "publisher_mismatch":   lambda d: bool(d.get("publisher_mismatch")),
+}
+_HVD_LICENSE_STATUS_LABELS = {"missing": "Missing", "non_open": "Not confirmed open", "open": "Open"}
+
+
+@app.route("/api/quality/hvd-check/export")
+def hvd_check_export():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    result = _load_hvd_check_result()
+    if not result:
+        return jsonify({"error": "No HVD check results to export yet."}), 404
+
+    datasets = result.get("datasets") or []
+
+    # Mirrors the on-screen summary-card filters and search box exactly, so
+    # exporting after narrowing the table down produces a file with just
+    # what's currently shown rather than always the full flagged list.
+    filters = [f for f in (freq.args.get("filters") or "").split(",") if f in _HVD_EXPORT_PREDICATES]
+    if filters:
+        datasets = [d for d in datasets if all(_HVD_EXPORT_PREDICATES[f](d) for f in filters)]
+    q = _search_normalize((freq.args.get("q") or "").strip())
+    if q:
+        datasets = [
+            d for d in datasets
+            if q in _search_normalize(d.get("title", "")) or q in _search_normalize(d.get("org_title", ""))
+        ]
+    datasets = sorted(datasets, key=lambda d: (d.get("org_title") or "", -(d.get("violation_count") or 0)))
+
+    wb = Workbook()
+
+    summary_ws = wb.active
+    summary_ws.title = "Summary"
+    s = result.get("summary") or {}
+    summary_rows = [
+        ("Total HVD-tagged datasets", s.get("total")),
+        ("Checked", s.get("checked")),
+        ("Could not be fetched", s.get("failed_to_fetch")),
+        ("Reused from cache", s.get("reused_from_cache")),
+        ("Conforms to SHACL shapes", s.get("conforms")),
+        ("Legal citation issue", s.get("legal_citation_issue")),
+        ("No API access", s.get("no_api_access")),
+        ("License missing", s.get("license_missing")),
+        ("License not confirmed open", s.get("license_non_open")),
+        ("Publisher mismatch", s.get("publisher_mismatch")),
+        ("Run finished at", result.get("finished_at")),
+        ("Partial run (cancelled early)", "Yes" if result.get("partial") else "No"),
+    ]
+    hdr_font = Font(bold=True, color="FFFFFF")
+    hdr_fill = PatternFill("solid", fgColor="2563EB")
+    for row_idx, (label, value) in enumerate(summary_rows, 1):
+        summary_ws.cell(row_idx, 1, label).font = Font(bold=True)
+        summary_ws.cell(row_idx, 2, value)
+    summary_ws.column_dimensions["A"].width = 32
+    summary_ws.column_dimensions["B"].width = 24
+
+    ws = wb.create_sheet("Flagged Datasets")
+    columns = [
+        ("org_title",           "Organization",         lambda d: d.get("org_title") or ""),
+        ("title",               "Dataset",               lambda d: d.get("title") or d.get("name") or ""),
+        ("url",                 "URL",                   lambda d: f"{config.PORTAL_BASE}/dataset/{d.get('name', '')}"),
+        ("conforms",            "Conforms",              lambda d: "Yes" if d.get("conforms") else "No"),
+        ("violation_count",     "Violations",            lambda d: d.get("violation_count") or 0),
+        ("warning_count",       "Warnings",               lambda d: d.get("warning_count") or 0),
+        ("legal_citation_issue","Legal citation issue",  lambda d: "Yes" if d.get("legal_citation_issue") else "No"),
+        ("no_api_access",       "No API access",          lambda d: "Yes" if d.get("no_api_access") else "No"),
+        ("license_status",      "License status",         lambda d: _HVD_LICENSE_STATUS_LABELS.get(d.get("license_status"), d.get("license_status") or "")),
+        ("publisher_mismatch",  "Publisher mismatch",     lambda d: "Yes" if d.get("publisher_mismatch") else "No"),
+        ("issues",              "Issues",                lambda d: "\n".join(
+            f"[{v.get('severity')}] {v.get('message')}" + (f" (×{v['count']})" if v.get("count", 1) > 1 else "")
+            for v in d.get("details") or []
+        )),
+    ]
+    for col_idx, (_key, header, _getter) in enumerate(columns, 1):
+        cell = ws.cell(1, col_idx, header)
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    for ri, d in enumerate(datasets, 2):
+        for col_idx, (key, _header, getter) in enumerate(columns, 1):
+            cell = ws.cell(ri, col_idx, getter(d))
+            if key == "issues":
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    for col in ws.columns:
+        width = max((len(str(cell.value or "").split("\n")[0]) for cell in col), default=0)
+        ws.column_dimensions[col[0].column_letter].width = min(width + 2, 60)
+
+    if datasets:
+        ws.auto_filter.ref = ws.dimensions
+        ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"hvd_compliance_{today}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @app.route("/api/quality/hvd-check/clear", methods=["POST"])
 def clear_hvd_check_cache():
     err = _require_admin()
