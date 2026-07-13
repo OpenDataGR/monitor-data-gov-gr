@@ -1661,6 +1661,9 @@ const TRANSLATIONS = {
     'pw.err_length': 'New password must be at least 8 characters.',
     'pw.err_mismatch': 'New passwords do not match.',
     'pw.err_generic': 'Failed to change password.',
+    'footer.changelog': 'Changelog',
+    'footer.changelog_title': 'Changelog',
+    'footer.changelog_none': 'No changelog entries available.',
     'loading': 'Loading…',
     'error': 'Error:',
     'date.never': '—',
@@ -2065,6 +2068,9 @@ const TRANSLATIONS = {
     'pw.err_length': 'Ο νέος κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες.',
     'pw.err_mismatch': 'Οι νέοι κωδικοί δεν ταιριάζουν.',
     'pw.err_generic': 'Αποτυχία αλλαγής κωδικού.',
+    'footer.changelog': 'Ιστορικό αλλαγών',
+    'footer.changelog_title': 'Ιστορικό αλλαγών',
+    'footer.changelog_none': 'Δεν υπάρχουν διαθέσιμες καταχωρήσεις ιστορικού αλλαγών.',
     'loading': 'Φόρτωση…',
     'error': 'Σφάλμα:',
     'date.never': '—',
@@ -7002,8 +7008,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <footer class="text-center text-muted py-3 mt-4" style="font-size:.8rem; border-top:1px solid #dee2e6;">
   <div>&copy; {{ current_year }} Τμήμα Προτύπων και Τεχνολογικών Εφαρμογών Δεδομένων, Ειδική Γραμματεία Τεχνητής Νοημοσύνης και Διακυβέρνησης Δεδομένων</div>
-  <div>Build: {{ build_date }}{% if git_sha %} &nbsp;·&nbsp; <span class="font-monospace">{{ git_sha }}</span>{% endif %}</div>
+  <div>
+    Build: {{ build_date }}{% if git_sha %} &nbsp;·&nbsp; <span class="font-monospace">{{ git_sha }}</span>{% endif %}
+    &nbsp;·&nbsp;
+    <a href="#" onclick="openChangelog();return false;" class="text-decoration-none" data-i18n="footer.changelog">Changelog</a>
+  </div>
 </footer>
+
+<div class="modal fade" id="changelogModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title fw-semibold"><i class="bi bi-clock-history me-2 text-primary"></i><span data-i18n="footer.changelog_title">Changelog</span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="changelogBody">
+        <div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div><span data-i18n="loading">Loading…</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let _changelogModal = null;
+let _changelogLoaded = false;
+async function openChangelog() {
+  if (!_changelogModal) _changelogModal = new bootstrap.Modal(document.getElementById('changelogModal'));
+  _changelogModal.show();
+  if (_changelogLoaded) return;
+  try {
+    const entries = await fetch(API_BASE + 'api/changelog').then(r => r.json());
+    _changelogLoaded = true;
+    const body = document.getElementById('changelogBody');
+    body.innerHTML = entries.length
+      ? `<ul class="list-unstyled mb-0">${entries.map(e => `
+          <li class="d-flex gap-2 py-2 border-bottom">
+            <span class="text-muted small text-nowrap font-monospace">${esc(e.date)}</span>
+            <span class="flex-grow-1">${esc(e.message)}</span>
+          </li>`).join('')}</ul>`
+      : `<p class="text-muted text-center mb-0" data-i18n="footer.changelog_none">No changelog entries available.</p>`;
+  } catch (e) {
+    document.getElementById('changelogBody').innerHTML =
+      `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
+  }
+}
+</script>
 </body>
 </html>
 

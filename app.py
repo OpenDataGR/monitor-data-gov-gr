@@ -904,6 +904,42 @@ def _git_sha() -> str:
         return ""
 
 
+_changelog_cache: dict = {"data": None, "fetched_at": 0}
+_CHANGELOG_CACHE_TTL = 300  # git log is cheap, but no need to shell out on every footer click
+
+
+def _get_changelog(limit: int = 40) -> list:
+    now = time.time()
+    if _changelog_cache["data"] is not None and now - _changelog_cache["fetched_at"] < _CHANGELOG_CACHE_TTL:
+        return _changelog_cache["data"]
+    try:
+        import subprocess
+        # \x1f (unit separator) as the field delimiter -- safe since commit
+        # subjects routinely contain commas, pipes, colons, etc. but never
+        # this control character.
+        r = subprocess.run(
+            ["git", "log", f"-{limit}", "--no-merges", "--date=short", "--pretty=format:%h\x1f%ad\x1f%s"],
+            capture_output=True, text=True, encoding="utf-8",
+            cwd=Path(__file__).parent, timeout=5,
+        )
+        entries = []
+        if r.returncode == 0:
+            for line in r.stdout.splitlines():
+                parts = line.split("\x1f")
+                if len(parts) == 3:
+                    entries.append({"sha": parts[0], "date": parts[1], "message": parts[2]})
+        _changelog_cache["data"]       = entries
+        _changelog_cache["fetched_at"] = now
+        return entries
+    except Exception:
+        return _changelog_cache["data"] or []
+
+
+@app.route("/api/changelog")
+def changelog():
+    return jsonify(_get_changelog())
+
+
 _BUILD_SHA = _git_sha()
 
 
