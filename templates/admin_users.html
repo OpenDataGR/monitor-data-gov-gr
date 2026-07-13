@@ -127,6 +127,15 @@
               <div id="hvdClearResult" class="mt-2 small d-none"></div>
             </div>
 
+            <div class="card p-4 mb-4">
+              <h6 class="fw-semibold mb-1"><i class="bi bi-patch-check me-2"></i>DCAT-AP Compliance Check Cache</h6>
+              <p class="text-muted small mb-3">Clears the stored DCAT-AP + MDR vocabulary check results and the per-dataset cache (covers every dataset on the portal, not just HVD-tagged ones). The next run from the Quality tab will re-fetch and re-validate every dataset from scratch instead of reusing anything.</p>
+              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#dcatClearModal">
+                <i class="bi bi-trash me-1"></i>Clear DCAT-AP Check Cache
+              </button>
+              <div id="dcatClearResult" class="mt-2 small d-none"></div>
+            </div>
+
             <div class="card p-4 border-danger">
               <h6 class="fw-semibold mb-1 text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Danger Zone</h6>
               <p class="text-muted small mb-3">Permanently delete all historical health checks and portal snapshots, then start a fresh check.</p>
@@ -182,6 +191,28 @@
         <div class="modal-footer border-top">
           <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
           <button type="button" class="btn btn-warning btn-sm" onclick="confirmClearHvdCache()">
+            <i class="bi bi-trash me-1"></i>Clear Cache
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clear DCAT-AP check cache confirmation modal -->
+  <div class="modal fade" id="dcatClearModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-warning">
+        <div class="modal-header bg-warning border-0">
+          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>Clear DCAT-AP Check Cache?</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-4">
+          <p class="fw-semibold mb-1">This deletes the stored results and per-dataset cache.</p>
+          <p class="text-muted small mb-0">The next run will re-fetch and re-validate every dataset on the portal from scratch instead of reusing anything — this covers the full catalog and can take a long time.</p>
+        </div>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-warning btn-sm" onclick="confirmClearDcatCache()">
             <i class="bi bi-trash me-1"></i>Clear Cache
           </button>
         </div>
@@ -409,6 +440,24 @@
       resultEl.classList.add('d-none');
       try {
         const resp = await fetch('../api/quality/hvd-check/clear', {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to clear cache');
+        if (data.cleared === false) throw new Error(data.reason === 'running' ? 'A check is currently running — cancel it first.' : 'Failed to clear cache');
+        resultEl.className = 'mt-2 small alert alert-success';
+        resultEl.textContent = 'Cache cleared.';
+      } catch (e) {
+        resultEl.className = 'mt-2 small alert alert-danger';
+        resultEl.textContent = e.message;
+      }
+      resultEl.classList.remove('d-none');
+    }
+
+    async function confirmClearDcatCache() {
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('dcatClearModal')).hide();
+      const resultEl = document.getElementById('dcatClearResult');
+      resultEl.classList.add('d-none');
+      try {
+        const resp = await fetch('../api/quality/dcat-check/clear', {method: 'POST'});
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || 'Failed to clear cache');
         if (data.cleared === false) throw new Error(data.reason === 'running' ? 'A check is currently running — cancel it first.' : 'Failed to clear cache');

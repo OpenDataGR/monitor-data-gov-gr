@@ -142,6 +142,53 @@ class HvdDatasetCheckCache(db.Model):
         return json.loads(self.result_json) if self.result_json else None
 
 
+class DcatApCheckCache(db.Model):
+    """Persists the last completed DCAT-AP + MDR-vocabulary SHACL compliance
+    check result (see app._do_run_dcat_check) -- same purpose as
+    HvdCheckCache, for the check that covers every dataset on the portal
+    rather than just the HVD-tagged subset."""
+    __tablename__ = "dcat_ap_check_cache"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    data_json  = db.Column(db.Text, nullable=False)
+    fetched_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def data(self):
+        return json.loads(self.data_json)
+
+
+class DcatApCheckStatus(db.Model):
+    """Singleton row (id=1) holding the live status of a DCAT-AP check run --
+    same DB-backed-status reasoning as HvdCheckStatus (shared across gunicorn
+    worker processes)."""
+    __tablename__ = "dcat_ap_check_status"
+
+    id               = db.Column(db.Integer, primary_key=True)
+    running          = db.Column(db.Boolean, nullable=False, default=False)
+    started_at       = db.Column(db.String(64))
+    total            = db.Column(db.Integer, default=0)
+    completed        = db.Column(db.Integer, default=0)
+    cancel_requested = db.Column(db.Boolean, nullable=False, default=False)
+    error            = db.Column(db.Text)
+    updated_at       = db.Column(db.DateTime)
+
+
+class DcatApDatasetCheckCache(db.Model):
+    """Per-dataset cache for the DCAT-AP check, keyed by CKAN's own
+    metadata_modified timestamp -- same incremental-recheck reasoning as
+    HvdDatasetCheckCache, just covering every dataset instead of only the
+    HVD-tagged ones (~22,000+ rows rather than ~1,100)."""
+    __tablename__ = "dcat_ap_dataset_check_cache"
+
+    name              = db.Column(db.String(300), primary_key=True)
+    metadata_modified = db.Column(db.String(64))
+    result_json       = db.Column(db.Text)
+    checked_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def result(self):
+        return json.loads(self.result_json) if self.result_json else None
+
+
 class User(db.Model):
     __tablename__ = "users"
 

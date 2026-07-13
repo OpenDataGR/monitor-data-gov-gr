@@ -701,6 +701,73 @@
             </div>
           </div>
         </div>
+        <div class="col-12">
+          <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <h6 class="fw-semibold mb-0">
+                <i class="bi bi-patch-check me-2 text-primary"></i><span data-i18n="quality.dcat_title">DCAT-AP Compliance Check (SHACL)</span>
+              </h6>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span id="dcatLastRunAt" class="text-muted small"></span>
+                <button id="dcatCheckBtn" class="btn btn-primary btn-sm" onclick="runDcatCheck()">
+                  <i class="bi bi-play me-1"></i><span data-i18n="quality.dcat_run">Run DCAT-AP Check</span>
+                </button>
+                <button id="dcatCancelBtn" class="btn btn-outline-danger btn-sm d-none" onclick="cancelDcatCheck()">
+                  <i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">Cancel</span>
+                </button>
+                <button id="dcatExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllDcat()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
+                <button id="dcatCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllDcat()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
+                <button id="dcatExportBtn" class="btn btn-outline-secondary btn-sm d-none" onclick="downloadDcatExcel()">
+                  <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span>
+                </button>
+              </div>
+            </div>
+            <p class="text-muted small" data-i18n="quality.dcat_desc">Validates every dataset's real DCAT-AP RDF metadata against the EU's baseline DCAT-AP structural shapes and MDR controlled-vocabulary shapes (vendored from SEMICeu's dcat-ap_shacl repo) &mdash; the same rules data.europa.eu itself checks harvested metadata against.</p>
+            <div class="mb-3" style="width:340px;max-width:100%">
+              <input type="text" id="dcatResultsSearchInput" class="form-control form-control-sm"
+                     placeholder="Search results by title…" data-i18n-ph="quality.hvd_results_search_placeholder"
+                     autocomplete="off" oninput="_renderDcatTable()">
+            </div>
+            <div id="dcatProgressWrap" class="mb-3 d-none">
+              <div class="d-flex justify-content-between small text-muted mb-1">
+                <span id="dcatProgressLabel"></span>
+                <span id="dcatProgressPct"></span>
+              </div>
+              <div class="progress" style="height:8px">
+                <div id="dcatProgressBar" class="progress-bar" role="progressbar" style="width:0%"></div>
+              </div>
+            </div>
+            <div id="dcatCheckResults">
+              <div class="text-center py-5 text-muted">
+                <i class="bi bi-patch-question fs-2 d-block mb-2"></i>
+                <span data-i18n="quality.dcat_hint">Click Run DCAT-AP Check to validate every dataset on the portal. This covers the full catalog (tens of thousands of datasets) and can take a long time on the first run.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DCAT-AP re-run confirmation modal -->
+    <div class="modal fade" id="dcatRerunModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-info">
+          <div class="modal-header bg-info text-dark border-0">
+            <h5 class="modal-title fw-bold"><i class="bi bi-info-circle-fill me-2"></i><span data-i18n="quality.dcat_rerun_title">Run DCAT-AP Check Again?</span></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body pt-4">
+            <p class="fw-semibold mb-1" data-i18n="quality.hvd_rerun_line1">The results shown are already up to date.</p>
+            <p class="text-muted small mb-3" id="dcatRerunLastRun"></p>
+            <p class="text-muted small mb-0" data-i18n="quality.dcat_rerun_line2">Datasets are checked incrementally, so a new run only re-validates what actually changed on the portal — there's usually no need to run it again unless you know something major has changed on data.gov.gr. A full re-check of the whole catalog can take a long time.</p>
+          </div>
+          <div class="modal-footer border-top">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="quality.hvd_rerun_cancel">Cancel</button>
+            <button type="button" class="btn btn-info btn-sm" onclick="_confirmDcatRerun()">
+              <i class="bi bi-play me-1"></i><span data-i18n="quality.hvd_rerun_confirm_btn">Run Anyway</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1456,6 +1523,19 @@ const TRANSLATIONS = {
     'health.7d': '7 days',
     'stats.dataset_count': 'Dataset Count Over Time',
     'stats.latest_snapshot': 'Latest Snapshot',
+    'quality.dcat_title': 'DCAT-AP Compliance Check (SHACL)',
+    'quality.dcat_run': 'Run DCAT-AP Check',
+    'quality.dcat_desc': "Validates every dataset's real DCAT-AP RDF metadata against the EU's baseline DCAT-AP structural shapes and MDR controlled-vocabulary shapes (vendored from SEMICeu's dcat-ap_shacl repo) — the same rules data.europa.eu itself checks harvested metadata against.",
+    'quality.dcat_hint': 'Click Run DCAT-AP Check to validate every dataset on the portal. This covers the full catalog (tens of thousands of datasets) and can take a long time on the first run.',
+    'quality.dcat_running': 'Validating every dataset on the portal against the official DCAT-AP + MDR vocabulary SHACL shapes… a full first run can take hours. Feel free to switch tabs — it keeps running in the background.',
+    'quality.dcat_still_running': 'Still running after a long wait — a full first run over the whole catalog can take hours. It will keep going in the background; check back later.',
+    'quality.dcat_rerun_title': 'Run DCAT-AP Check Again?',
+    'quality.dcat_rerun_line2': "Datasets are checked incrementally, so a new run only re-validates what actually changed on the portal — there's usually no need to run it again unless you know something major has changed on data.gov.gr. A full re-check of the whole catalog can take a long time.",
+    'quality.dcat_structural_issue': 'Structural issue',
+    'quality.dcat_vocabulary_issue': 'Vocabulary issue',
+    'quality.dcat_col_structural': 'Structural',
+    'quality.dcat_col_vocabulary': 'Vocabulary',
+    'quality.dcat_all_clean': 'No issues found across all checked datasets.',
     'quality.hvd_title': 'HVD Compliance Check (SHACL)',
     'quality.hvd_run': 'Run HVD Check',
     'quality.hvd_desc': "Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) — not just whether it carries the hvd_category tag.",
@@ -1934,6 +2014,19 @@ const TRANSLATIONS = {
     'health.7d': '7 ημέρες',
     'stats.dataset_count': 'Εξέλιξη Συνόλων Δεδομένων',
     'stats.latest_snapshot': 'Τελευταίο Στιγμιότυπο',
+    'quality.dcat_title': 'Έλεγχος Συμμόρφωσης DCAT-AP (SHACL)',
+    'quality.dcat_run': 'Εκτέλεση Ελέγχου DCAT-AP',
+    'quality.dcat_desc': 'Επικυρώνει τα πραγματικά μεταδεδομένα DCAT-AP κάθε συνόλου δεδομένων βάσει των βασικών δομικών μορφών SHACL DCAT-AP και των μορφών ελεγχόμενου λεξιλογίου MDR της ΕΕ (από το αποθετήριο SEMICeu dcat-ap_shacl) — τους ίδιους κανόνες που ελέγχει το data.europa.eu στα συλλεγμένα μεταδεδομένα.',
+    'quality.dcat_hint': 'Κάντε κλικ στο «Εκτέλεση Ελέγχου DCAT-AP» για επαλήθευση όλων των συνόλων δεδομένων της πύλης. Καλύπτει ολόκληρο τον κατάλογο (δεκάδες χιλιάδες σύνολα δεδομένων) και μπορεί να διαρκέσει πολύ την πρώτη φορά.',
+    'quality.dcat_running': 'Επικύρωση όλων των συνόλων δεδομένων της πύλης βάσει των επίσημων μορφών SHACL DCAT-AP + MDR… μια πρώτη πλήρης εκτέλεση μπορεί να διαρκέσει ώρες. Μπορείτε να αλλάξετε καρτέλα — η διαδικασία συνεχίζεται στο παρασκήνιο.',
+    'quality.dcat_still_running': 'Εξακολουθεί να εκτελείται μετά από μεγάλη αναμονή — μια πρώτη πλήρης εκτέλεση σε όλο τον κατάλογο μπορεί να διαρκέσει ώρες. Θα συνεχίσει στο παρασκήνιο· δοκιμάστε ξανά αργότερα.',
+    'quality.dcat_rerun_title': 'Εκτέλεση Ελέγχου DCAT-AP Ξανά;',
+    'quality.dcat_rerun_line2': 'Ο έλεγχος γίνεται σταδιακά, οπότε μια νέα εκτέλεση επικυρώνει εκ νέου μόνο ό,τι έχει πράγματι αλλάξει στην πύλη — συνήθως δεν χρειάζεται να τον εκτελέσετε ξανά, εκτός αν γνωρίζετε ότι έχει γίνει κάποια σημαντική αλλαγή στο data.gov.gr. Μια πλήρης επανεκτέλεση σε όλο τον κατάλογο μπορεί να διαρκέσει πολύ.',
+    'quality.dcat_structural_issue': 'Δομικό πρόβλημα',
+    'quality.dcat_vocabulary_issue': 'Πρόβλημα λεξιλογίου',
+    'quality.dcat_col_structural': 'Δομή',
+    'quality.dcat_col_vocabulary': 'Λεξιλόγιο',
+    'quality.dcat_all_clean': 'Δεν βρέθηκαν προβλήματα σε όλα τα ελεγμένα σύνολα δεδομένων.',
     'quality.hvd_title': 'Έλεγχος Συμμόρφωσης HVD (SHACL)',
     'quality.hvd_run': 'Εκτέλεση Ελέγχου HVD',
     'quality.hvd_desc': 'Επικυρώνει τα πραγματικά μεταδεδομένα DCAT-AP κάθε συνόλου δεδομένων με ετικέτα HVD βάσει των επίσημων μορφών SHACL DCAT-AP-HVD της ΕΕ (Κανονισμός (ΕΕ) 2023/138) — όχι απλώς αν φέρει την ετικέτα hvd_category.',
@@ -3922,10 +4015,336 @@ async function _loadQualityTab() {
       _showHvdProgress(data.completed, data.total);
       show('hvdCheckResults').innerHTML = `<div class="text-center py-4 text-muted">${esc(t('quality.hvd_running'))}</div>`;
       _pollHvdCheck();
+    } else if (data.result) {
+      _renderHvdCheck(data.result);
+    }
+  } catch (e) { /* leave the default "click Run HVD Check" hint in place */ }
+  _loadDcatTab();
+}
+
+// ── DCAT-AP compliance check (base DCAT-AP + MDR vocabulary SHACL) ──────────
+// Same architecture/UI pattern as the HVD check above, just scoped to every
+// dataset on the portal instead of only the HVD-tagged ones.
+let _dcatLastResult = null;
+let _dcatSortCol = 'violation_count';
+let _dcatSortDir = 'desc';
+let _dcatExpandedOrgs = new Set();
+let _dcatGroupsCache = [];
+let _dcatActiveFilters = new Set();
+let _dcatSummaryCards = [];
+
+const DCAT_FILTER_PREDICATES = {
+  non_conforming:   d => !d.conforms,
+  vocabulary_issue: d => d.vocabulary_issue,
+  structural_issue: d => d.structural_issue,
+};
+
+function _renderDcatSummaryCards() {
+  const s = _dcatLastResult.summary;
+  _dcatSummaryCards = [
+    { key: null, value: s.checked, label: t('quality.hvd_checked'), bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' },
+    { key: 'non_conforming',   value: s.checked - s.conforms,   label: t('quality.hvd_non_conforming'),   bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
+    { key: 'structural_issue', value: s.structural_issue,       label: t('quality.dcat_structural_issue'), bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
+    { key: 'vocabulary_issue', value: s.vocabulary_issue,       label: t('quality.dcat_vocabulary_issue'), bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-tags' },
+  ];
+  const prepared = _dcatSummaryCards.map(c => {
+    const clickable = c.key !== null;
+    return { ...c, active: clickable && _dcatActiveFilters.has(c.key), onclick: clickable ? `toggleDcatCardFilter('${c.key}')` : null };
+  });
+  const hasActive = _dcatSummaryCards.some(c => c.key !== null && _dcatActiveFilters.has(c.key));
+  _renderFilterCardsGrid('dcatSummary', prepared, null, hasActive ? {} : null);
+}
+
+function toggleDcatCardFilter(key) {
+  if (_dcatActiveFilters.has(key)) _dcatActiveFilters.delete(key);
+  else _dcatActiveFilters.add(key);
+  _renderDcatSummaryCards();
+  _renderDcatTable();
+}
+
+function clearDcatCardFilters() {
+  _dcatActiveFilters.clear();
+  _renderDcatSummaryCards();
+  _renderDcatTable();
+}
+
+function _showDcatProgress(completed, total) {
+  show('dcatProgressWrap').classList.remove('d-none');
+  const pct = total ? Math.round((completed / total) * 100) : 0;
+  show('dcatProgressBar').style.width = pct + '%';
+  show('dcatProgressLabel').textContent = `${fmt(completed)} / ${fmt(total)}`;
+  show('dcatProgressPct').textContent = `${pct}%`;
+}
+
+function _resetDcatControls() {
+  show('dcatCheckBtn').disabled = false;
+  show('dcatProgressWrap').classList.add('d-none');
+  const cancelBtn = show('dcatCancelBtn');
+  cancelBtn.classList.add('d-none');
+  cancelBtn.disabled = false;
+  cancelBtn.innerHTML = `<i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">${t('quality.hvd_cancel')}</span>`;
+}
+
+let _dcatRerunModal = null;
+
+function runDcatCheck() {
+  if (_dcatLastResult?.finished_at) {
+    show('dcatRerunLastRun').textContent = t('quality.hvd_last_run') + ' ' + relativeDate(_dcatLastResult.finished_at);
+    if (!_dcatRerunModal) _dcatRerunModal = new bootstrap.Modal(document.getElementById('dcatRerunModal'));
+    _dcatRerunModal.show();
+    return;
+  }
+  _startDcatCheck();
+}
+
+function _confirmDcatRerun() {
+  if (_dcatRerunModal) _dcatRerunModal.hide();
+  _startDcatCheck();
+}
+
+async function _startDcatCheck() {
+  const btn = show('dcatCheckBtn');
+  const el  = show('dcatCheckResults');
+  try {
+    const resp = await fetch(API_BASE + 'api/quality/dcat-check', { method: 'POST' }).then(r => r.json());
+    if (resp.error) {
+      el.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-key me-2"></i>${esc(resp.error)}</div>`;
       return;
     }
-    if (data.result) _renderHvdCheck(data.result);
-  } catch (e) { /* leave the default "click Run HVD Check" hint in place */ }
+    if (!resp.started && !resp.already_running) return;
+    btn.disabled = true;
+    show('dcatCancelBtn').classList.remove('d-none');
+    _showDcatProgress(0, 0);
+    el.innerHTML = `<div class="text-center py-4 text-muted">${esc(t('quality.dcat_running'))}</div>`;
+    _pollDcatCheck();
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
+  }
+}
+
+function downloadDcatExcel() {
+  const params = new URLSearchParams();
+  if (_dcatActiveFilters.size) params.set('filters', [..._dcatActiveFilters].join(','));
+  const q = show('dcatResultsSearchInput')?.value.trim();
+  if (q) params.set('q', q);
+  window.location.href = `${API_BASE}api/quality/dcat-check/export?${params}`;
+}
+
+async function cancelDcatCheck() {
+  const btn = show('dcatCancelBtn');
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${t('quality.hvd_cancelling')}`;
+  try {
+    await fetch(API_BASE + 'api/quality/dcat-check/cancel', { method: 'POST' });
+  } catch (e) { /* the next poll tick will reflect whatever the server ends up doing */ }
+}
+
+async function _pollDcatCheck(attempts = 0) {
+  // Full-catalog run (~22,000+ datasets) can genuinely take hours on a first
+  // pass -- give up polling (not running) only after a much longer wait than
+  // the HVD check's.
+  if (attempts > 1000) {
+    _resetDcatControls();
+    show('dcatCheckResults').innerHTML =
+      `<div class="alert alert-warning mb-0">${esc(t('quality.dcat_still_running'))}</div>`;
+    return;
+  }
+  await new Promise(r => setTimeout(r, 5000));
+  try {
+    const data = await fetch(API_BASE + 'api/quality/dcat-check').then(r => r.json());
+    if (data.running) {
+      _showDcatProgress(data.completed, data.total);
+      if (data.cancelling) {
+        const cancelBtn = show('dcatCancelBtn');
+        cancelBtn.disabled = true;
+        cancelBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${t('quality.hvd_cancelling')}`;
+      }
+      _pollDcatCheck(attempts + 1);
+      return;
+    }
+    _resetDcatControls();
+    if (data.error) {
+      show('dcatCheckResults').innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(data.error)}</div>`;
+      return;
+    }
+    if (data.result) _renderDcatCheck(data.result);
+  } catch (e) {
+    _resetDcatControls();
+  }
+}
+
+function _renderDcatCheck(result) {
+  _dcatLastResult = result;
+  _dcatActiveFilters = new Set();
+  show('dcatResultsSearchInput').value = '';
+  const s = result.summary;
+  show('dcatLastRunAt').textContent = result.finished_at
+    ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
+  show('dcatExportBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  show('dcatExpandAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  show('dcatCollapseAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  const partialNote = result.partial
+    ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
+    : '';
+  const cardsHtml = `
+    <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span></span>
+        <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1" onclick="clearDcatCardFilters()">
+          <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">${t('filters.clear')}</span>
+        </button>
+      </div>
+      <div id="dcatSummary" class="row g-2"></div>
+    </div>`;
+
+  const failedNote = s.failed_to_fetch
+    ? `<p class="text-muted small mb-2">${t('quality.hvd_failed_note').replace('{n}', fmt(s.failed_to_fetch))}</p>` : '';
+  const cacheNote = s.reused_from_cache
+    ? `<p class="text-muted small mb-2"><i class="bi bi-lightning-charge me-1"></i>${t('quality.hvd_cache_note').replace('{n}', fmt(s.reused_from_cache)).replace('{total}', fmt(s.total))}</p>`
+    : '';
+
+  if (!result.datasets.length) {
+    show('dcatCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote +
+      `<p class="text-success small mb-0"><i class="bi bi-check-circle me-1"></i>${t('quality.dcat_all_clean')}</p>`;
+    _renderDcatSummaryCards();
+    return;
+  }
+
+  _dcatExpandedOrgs = new Set();
+  show('dcatCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote + `<div id="dcatTableWrap"></div>`;
+  _renderDcatSummaryCards();
+  _renderDcatTable();
+}
+
+function _dcatCompare(a, b, col) {
+  switch (col) {
+    case 'title': return a.title.localeCompare(b.title);
+    case 'vocabulary_issue':
+    case 'structural_issue':
+      return (a[col] ? 1 : 0) - (b[col] ? 1 : 0);
+    default: return a.violation_count - b.violation_count;
+  }
+}
+
+function sortDcatTable(col) {
+  if (_dcatSortCol === col) {
+    _dcatSortDir = _dcatSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _dcatSortCol = col;
+    _dcatSortDir = col === 'title' ? 'asc' : 'desc';
+  }
+  _renderDcatTable();
+}
+
+function dcatSortArrow(col) {
+  if (_dcatSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
+  return _dcatSortDir === 'asc' ? ' ↑' : ' ↓';
+}
+
+function toggleDcatOrg(idx) {
+  const entry = _dcatGroupsCache[idx];
+  if (!entry) return;
+  const [orgTitle] = entry;
+  if (_dcatExpandedOrgs.has(orgTitle)) _dcatExpandedOrgs.delete(orgTitle);
+  else _dcatExpandedOrgs.add(orgTitle);
+  _renderDcatTable();
+}
+
+function expandAllDcat() {
+  _dcatGroupsCache.forEach(([orgTitle]) => _dcatExpandedOrgs.add(orgTitle));
+  _renderDcatTable();
+}
+
+function collapseAllDcat() {
+  _dcatExpandedOrgs.clear();
+  _renderDcatTable();
+}
+
+function _renderDcatTable() {
+  const wrap = show('dcatTableWrap');
+  if (!wrap) return;
+  const all = _dcatLastResult?.datasets || [];
+  if (!all.length) { wrap.innerHTML = ''; return; }
+
+  let datasets = _dcatActiveFilters.size
+    ? all.filter(d => [..._dcatActiveFilters].every(key => DCAT_FILTER_PREDICATES[key](d)))
+    : all;
+
+  const q = _ns(show('dcatResultsSearchInput')?.value || '').trim();
+  if (q) datasets = datasets.filter(d => _ns(d.title).includes(q) || _ns(d.org_title || '').includes(q));
+
+  if (!datasets.length) {
+    wrap.innerHTML = `<p class="text-muted small mb-0 mt-2">${esc(t('quality.hvd_filter_no_match'))}</p>`;
+    return;
+  }
+
+  const groups = new Map();
+  for (const d of datasets) {
+    const key = d.org_title || t('quality.hvd_unknown_org');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(d);
+  }
+
+  const dir = _dcatSortDir === 'asc' ? 1 : -1;
+  for (const list of groups.values()) {
+    list.sort((a, b) => dir * _dcatCompare(a, b, _dcatSortCol));
+  }
+
+  _dcatGroupsCache = [...groups.entries()].sort(
+    ([an, al], [bn, bl]) => bl.length - al.length || an.localeCompare(bn)
+  );
+
+  const bodyRows = _dcatGroupsCache.map(([orgTitle, list], idx) => {
+    const isExpanded = _dcatExpandedOrgs.has(orgTitle);
+    const groupRow = `
+      <tr class="table-light" style="cursor:pointer" onclick="toggleDcatOrg(${idx})">
+        <td colspan="4">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+            <span class="fw-semibold">${esc(orgTitle)}</span>
+            <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${list.length}</span>
+          </div>
+        </td>
+      </tr>`;
+    const datasetRows = list.map(d => `
+      <tr style="${isExpanded ? '' : 'display:none'}">
+        <td class="ps-4"><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
+        <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
+        <td>${d.structural_issue ? `<i class="bi bi-file-earmark-text text-warning" title="${esc(t('quality.dcat_structural_issue'))}"></i>` : ''}</td>
+        <td>${d.vocabulary_issue ? `<i class="bi bi-tags text-warning" title="${esc(t('quality.dcat_vocabulary_issue'))}"></i>` : ''}</td>
+        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
+          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
+        </details></td>
+      </tr>`).join('');
+    return groupRow + datasetRows;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr>
+        <th style="cursor:pointer" onclick="sortDcatTable('title')">${t('quality.col_dataset')}${dcatSortArrow('title')}</th>
+        <th style="cursor:pointer" onclick="sortDcatTable('violation_count')">${t('quality.hvd_col_violations')}${dcatSortArrow('violation_count')}</th>
+        <th style="cursor:pointer" onclick="sortDcatTable('structural_issue')">${t('quality.dcat_col_structural')}${dcatSortArrow('structural_issue')}</th>
+        <th style="cursor:pointer" onclick="sortDcatTable('vocabulary_issue')">${t('quality.dcat_col_vocabulary')}${dcatSortArrow('vocabulary_issue')}</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table>`;
+}
+
+async function _loadDcatTab() {
+  try {
+    const data = await fetch(API_BASE + 'api/quality/dcat-check').then(r => r.json());
+    if (data.running) {
+      show('dcatCheckBtn').disabled = true;
+      show('dcatCancelBtn').classList.remove('d-none');
+      _showDcatProgress(data.completed, data.total);
+      show('dcatCheckResults').innerHTML = `<div class="text-center py-4 text-muted">${esc(t('quality.dcat_running'))}</div>`;
+      _pollDcatCheck();
+      return;
+    }
+    if (data.result) _renderDcatCheck(data.result);
+  } catch (e) { /* leave the default "click Run DCAT-AP Check" hint in place */ }
 }
 
 // ── Organizations tab ────────────────────────────────────────────────────────

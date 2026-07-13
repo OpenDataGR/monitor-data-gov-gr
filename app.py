@@ -19,7 +19,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, User, PasswordResetToken
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, User, PasswordResetToken
 import rdflib
 import pyshacl
 import config
@@ -822,6 +822,7 @@ def _background_loop():
     last_dataset_growth_refresh = time.time()
     last_geo_datasets_refresh   = time.time()
     last_hvd_check_refresh      = time.time()
+    last_dcat_check_refresh     = time.time()
     while True:
         time.sleep(config.CHECK_INTERVAL_SECONDS)
         try:
@@ -863,6 +864,17 @@ def _background_loop():
                 except Exception as exc:
                     print(f"[hvd-check] refresh error: {exc}")
             last_hvd_check_refresh = time.time()
+        if time.time() - last_dcat_check_refresh >= _DCAT_CHECK_REFRESH_INTERVAL:
+            # Spawned as its own thread rather than run inline like the HVD
+            # check above: a full DCAT-AP run covers ~22,000+ datasets (vs.
+            # ~1,100 HVD-tagged ones) and can take hours on a first run --
+            # running it inline here would block health checks and every
+            # other scheduled refresh in this loop for that whole duration.
+            if not _get_dcat_status()["running"]:
+                _set_dcat_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
+                                  cancel_requested=False, total=0, completed=0, error=None)
+                threading.Thread(target=_do_run_dcat_check, daemon=True).start()
+            last_dcat_check_refresh = time.time()
 
 
 _singleton_lock_file = None  # kept open for the process lifetime; closing it releases the lock
@@ -1573,6 +1585,7 @@ _DCAT_NS   = rdflib.Namespace("http://www.w3.org/ns/dcat#")
 _DCT_NS    = rdflib.Namespace("http://purl.org/dc/terms/")
 _SH_NS     = rdflib.Namespace("http://www.w3.org/ns/shacl#")
 _FOAF_NS   = rdflib.Namespace("http://xmlns.com/foaf/0.1/")
+_ADMS_NS   = rdflib.Namespace("http://www.w3.org/ns/adms#")
 
 _OPEN_LICENSE_MARKERS = (
     "creativecommons.org/licenses/by",
@@ -1800,6 +1813,27 @@ _HVD_PATH_LABELS = {
 _LICENSE_VOCAB_MARKERS = ("skos:exactMatch", "owl:sameAs", "skos:broadMatch")
 
 
+def _generic_property_message(path_s: str, comp, path_labels: dict) -> str | None:
+    """Fallback phrasing shared by every SHACL check: translate a constraint
+    on a known property into a plain sentence based on which kind of
+    constraint failed, using each check's own path->label dictionary. Returns
+    None if the property isn't in path_labels, so the caller can fall back to
+    the raw pySHACL message instead of a generic "Issue with None." string."""
+    local = path_s.rsplit("#", 1)[-1].rsplit("/", 1)[-1] if path_s else ""
+    label = path_labels.get(local)
+    if not label:
+        return None
+    if comp == _SH_NS.MinCountConstraintComponent:
+        return f"Missing {label}."
+    if comp == _SH_NS.NodeKindConstraintComponent:
+        return f"{label[0].upper()}{label[1:]} isn't a properly linked resource (a plain value instead of a URI)."
+    if comp == _SH_NS.ClassConstraintComponent:
+        return f"{label[0].upper()}{label[1:]} doesn't reference the expected type of resource."
+    if comp == _SH_NS.DatatypeConstraintComponent:
+        return f"{label[0].upper()}{label[1:]} has the wrong data type."
+    return f"Issue with {label}."
+
+
 def _friendly_shacl_message(path_s: str, comp, raw_msg: str) -> str:
     if "applicableLegislation" in path_s:
         if comp == _SH_NS.ClassConstraintComponent:
@@ -1818,27 +1852,16 @@ def _friendly_shacl_message(path_s: str, comp, raw_msg: str) -> str:
     if any(marker in raw_msg for marker in _LICENSE_VOCAB_MARKERS):
         return "The dataset's license couldn't be matched to a known open-license entry in the EU's vocabulary."
 
-    local = path_s.rsplit("#", 1)[-1].rsplit("/", 1)[-1] if path_s else ""
-    label = _HVD_PATH_LABELS.get(local)
-    if label:
-        if comp == _SH_NS.MinCountConstraintComponent:
-            return f"Missing {label}."
-        if comp == _SH_NS.NodeKindConstraintComponent:
-            return f"{label[0].upper()}{label[1:]} isn't a properly linked resource (a plain value instead of a URI)."
-        if comp == _SH_NS.ClassConstraintComponent:
-            return f"{label[0].upper()}{label[1:]} doesn't reference the expected type of resource."
-        if comp == _SH_NS.DatatypeConstraintComponent:
-            return f"{label[0].upper()}{label[1:]} has the wrong data type."
-        return f"Issue with {label}."
-
-    return raw_msg or "Unrecognized SHACL validation issue."
+    return _generic_property_message(path_s, comp, _HVD_PATH_LABELS) or raw_msg or "Unrecognized SHACL validation issue."
 
 
-def _dedupe_hvd_details(entries: list) -> list:
+def _dedupe_shacl_details(entries: list) -> list:
     """Collapses identical (severity, friendly message) entries -- the same
     underlying gap is often reported once per RDF node it's missing from
     (e.g. once for the dataset, once for its distribution), which would
-    otherwise show as several literally-identical bullet points."""
+    otherwise show as several literally-identical bullet points. Shared by
+    every SHACL-based check (HVD, DCAT-AP), not HVD-specific despite the
+    entries' shape coming from HVD's classifier originally."""
     deduped, index = [], {}
     for e in entries:
         key = (e["severity"], e["message"])
@@ -1938,7 +1961,7 @@ def _hvd_check_one(name: str) -> dict:
         "legal_citation_issue": legal_citation_issue,
         "no_api_access":        no_api_access,
         "license_status":       _license_status(graph),
-        "details":              _dedupe_hvd_details(violations + warnings),
+        "details":              _dedupe_shacl_details(violations + warnings),
     }
 
 
@@ -2246,6 +2269,476 @@ def clear_hvd_check_cache():
     HvdCheckCache.query.delete()
     db.session.commit()
     _set_hvd_status(error=None, started_at=None, total=0, completed=0)
+    return jsonify({"cleared": True})
+
+
+# ── DCAT-AP compliance check (base DCAT-AP + MDR vocabulary SHACL) ──────────
+# Unlike the HVD check above (only the ~1,100 HVD-tagged datasets against
+# HVD-specific rules), this validates *every* dataset on the portal
+# (~22,600+) against the EU's baseline DCAT-AP structural shapes plus the
+# MDR controlled-vocabulary shapes (both vendored from SEMICeu's
+# dcat-ap_shacl repo) -- the same rules data.europa.eu itself checks
+# harvested metadata against. Same incremental-caching/background-check/
+# DB-backed-status architecture as the HVD check, just scoped to the whole
+# catalog instead of one tag.
+_DCAT_SHAPES_GRAPH = rdflib.Graph()
+_DCAT_SHAPES_GRAPH.parse(
+    data=(Path(__file__).parent / "shacl" / "dcat-ap.shapes.ttl").read_text(encoding="utf-8"), format="turtle")
+_DCAT_SHAPES_GRAPH.parse(
+    data=(Path(__file__).parent / "shacl" / "dcat-ap-mdr-vocabularies.shapes.ttl").read_text(encoding="utf-8"), format="turtle")
+
+_DCAT_CHECK_REFRESH_INTERVAL = 24 * 3600
+_DCAT_CHECK_CONCURRENCY = 5   # same conservative pool as the HVD check -- gentle on data.gov.gr, not maximizing throughput
+_DCAT_CHECK_TIMEOUT = 30
+# Bump whenever _dcat_check_one()'s result schema/logic changes -- see
+# _HVD_CHECK_VERSION's comment, same reasoning.
+_DCAT_CHECK_VERSION = 1
+_DCAT_CHECK_STALE_AFTER = 10 * 60
+
+
+def _save_dcat_check_cache(result: dict) -> None:
+    with app.app_context():
+        row = DcatApCheckCache.query.get(1)
+        if not row:
+            row = DcatApCheckCache(id=1, data_json="{}")
+            db.session.add(row)
+        row.data_json  = json.dumps(result)
+        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
+
+def _load_dcat_check_result():
+    with app.app_context():
+        row = DcatApCheckCache.query.get(1)
+        return row.data() if row else None
+
+
+def _dcat_status_row() -> DcatApCheckStatus:
+    row = DcatApCheckStatus.query.get(1)
+    if not row:
+        row = DcatApCheckStatus(id=1, running=False, total=0, completed=0, cancel_requested=False)
+        db.session.add(row)
+        db.session.commit()
+    return row
+
+
+def _get_dcat_status() -> dict:
+    with app.app_context():
+        row = _dcat_status_row()
+        if row.running and row.updated_at:
+            stale = (datetime.now(timezone.utc).replace(tzinfo=None) - row.updated_at).total_seconds() > _DCAT_CHECK_STALE_AFTER
+            if stale:
+                row.running          = False
+                row.cancel_requested = False
+                row.error            = "Abandoned run (the worker that started it never finished, likely a restart)."
+                db.session.commit()
+        return {
+            "running":          row.running,
+            "started_at":       row.started_at,
+            "total":            row.total,
+            "completed":        row.completed,
+            "cancel_requested": row.cancel_requested,
+            "error":            row.error,
+        }
+
+
+def _set_dcat_status(**fields) -> None:
+    with app.app_context():
+        row = _dcat_status_row()
+        for key, value in fields.items():
+            setattr(row, key, value)
+        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
+
+def _bump_dcat_progress(completed: int) -> bool:
+    with app.app_context():
+        row = _dcat_status_row()
+        row.completed  = completed
+        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+        return row.cancel_requested
+
+
+# Every property the base DCAT-AP + MDR vocabulary shapes check against an
+# EU controlled vocabulary (skos:Concept/skos:inScheme, or a class like
+# dct:LicenseDocument) -- without dereferencing these reference URIs, the
+# definition triples that make that check pass live in a separate document
+# from the dataset's own RDF export, so the shapes validate blind. Same
+# fix as _augment_with_vocab, generalized to every vocabulary this check
+# touches instead of just hvdCategory/accessService.
+_DCAT_VOCAB_PROPS = [
+    _DCT_NS.language, _DCAT_NS.theme, _DCT_NS.accrualPeriodicity, _DCT_NS.publisher,
+    _DCT_NS.spatial, _ADMS_NS.status, _DCT_NS.license, _DCT_NS.type,
+    _DCT_NS.accessRights, _DCATAP_NS.hvdCategory, _DCAT_NS.accessService,
+]
+
+
+def _augment_with_dcat_vocab(graph: "rdflib.Graph") -> None:
+    refs = set()
+    for prop in _DCAT_VOCAB_PROPS:
+        refs |= set(graph.objects(None, prop))
+    for ref in refs:
+        if not isinstance(ref, rdflib.URIRef):
+            continue
+        vocab_graph = _get_vocab_graph(str(ref))
+        if vocab_graph is not None:
+            graph += vocab_graph
+
+
+# Plain-language label for each RDF property the DCAT-AP + MDR vocabulary
+# shapes check, same idea as _HVD_PATH_LABELS.
+_DCAT_PATH_LABELS = {
+    "title":               "the title",
+    "description":         "the description",
+    "publisher":           "the publisher",
+    "language":            "the language",
+    "theme":               "the theme/category classification",
+    "accrualPeriodicity":  "the update frequency",
+    "spatial":             "the geographic coverage",
+    "license":             "the license",
+    "type":                "the resource type",
+    "accessRights":        "the access rights statement",
+    "status":              "the distribution's status",
+    "format":               "the file format",
+    "mediaType":            "the media type",
+    "contactPoint":         "the contact point",
+    "distribution":         "at least one distribution (downloadable file/API)",
+}
+
+
+def _friendly_dcat_message(path_s: str, comp, raw_msg: str) -> str:
+    return _generic_property_message(path_s, comp, _DCAT_PATH_LABELS) or raw_msg or "Unrecognized SHACL validation issue."
+
+
+def _classify_dcat_results(results_graph: "rdflib.Graph"):
+    violations, warnings = [], []
+    vocabulary_issue = False
+    structural_issue = False
+    for r in results_graph.subjects(rdflib.RDF.type, _SH_NS.ValidationResult):
+        sev   = results_graph.value(r, _SH_NS.resultSeverity)
+        msg   = results_graph.value(r, _SH_NS.resultMessage)
+        path  = results_graph.value(r, _SH_NS.resultPath)
+        shape = results_graph.value(r, _SH_NS.sourceShape)
+        comp  = results_graph.value(r, _SH_NS.sourceConstraintComponent)
+        path_s  = str(path) if path is not None else ""
+        shape_s = str(shape) if shape is not None else ""
+        raw_msg = str(msg) if msg else ""
+        entry = {
+            "severity":    "violation" if sev == _SH_NS.Violation else "warning",
+            "path":        path_s or None,
+            "message":     _friendly_dcat_message(path_s, comp, raw_msg),
+            "raw_message": raw_msg,
+        }
+        if sev == _SH_NS.Violation:
+            violations.append(entry)
+            # The MDR vocabulary shapes file's shapes all live under the
+            # http://data.europa.eu/r5r/mdrcv# base URI -- distinguishing a
+            # "used the wrong controlled-vocabulary value" violation from a
+            # "missing/malformed core DCAT-AP field" one.
+            if "mdrcv" in shape_s:
+                vocabulary_issue = True
+            else:
+                structural_issue = True
+        else:
+            warnings.append(entry)
+    return violations, warnings, vocabulary_issue, structural_issue
+
+
+def _dcat_check_one(name: str) -> dict:
+    url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
+    r = requests.get(url, timeout=_DCAT_CHECK_TIMEOUT,
+                      headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
+    r.raise_for_status()
+    graph = rdflib.Graph()
+    graph.parse(data=r.text, format="xml")
+    _augment_with_dcat_vocab(graph)
+
+    conforms, results_graph, _ = pyshacl.validate(
+        graph, shacl_graph=_DCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
+    )
+    violations, warnings, vocabulary_issue, structural_issue = _classify_dcat_results(results_graph)
+
+    title = None
+    for t in graph.objects(None, _DCT_NS.title):
+        title = str(t)
+        break
+
+    return {
+        "name":             name,
+        "title":            title or name,
+        "conforms":         conforms,
+        "violation_count":  len(violations),
+        "warning_count":    len(warnings),
+        "vocabulary_issue": vocabulary_issue,
+        "structural_issue": structural_issue,
+        "details":          _dedupe_shacl_details(violations + warnings),
+    }
+
+
+def _list_all_datasets() -> list:
+    """[{"name":..., "metadata_modified":..., "org_title":...}, ...] for
+    every dataset on the portal -- same paginated package_search as
+    _list_hvd_datasets, just without the hvd_category filter."""
+    items = []
+    start, batch = 0, 100
+    while True:
+        r = requests.get(
+            f"{config.API_BASE}/package_search",
+            params={"rows": batch, "start": start, "fl": "name,metadata_modified,organization"},
+            headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            break
+        results = data["result"]["results"]
+        if not results:
+            break
+        items.extend(
+            {
+                "name":              p["name"],
+                "metadata_modified": p.get("metadata_modified"),
+                "org_title":         (p.get("organization_card") or {}).get("title") or "",
+            }
+            for p in results if p.get("name")
+        )
+        start += batch
+        if start >= data["result"]["count"]:
+            break
+    return items
+
+
+def _do_run_dcat_check() -> None:
+    cancelled = False
+    try:
+        datasets = _list_all_datasets()
+        _set_dcat_status(total=len(datasets))
+
+        with app.app_context():
+            cached_rows = {row.name: row for row in DcatApDatasetCheckCache.query.all()}
+
+        to_fetch, rows = [], []
+        for d in datasets:
+            row = cached_rows.get(d["name"])
+            cached = row.result() if (row and row.result_json) else None
+            if (cached and isinstance(cached, dict) and cached.get("_cache_version") == _DCAT_CHECK_VERSION
+                    and row.metadata_modified == d["metadata_modified"]):
+                cached_result = cached["result"]
+                cached_result["org_title"] = d.get("org_title", "")
+                rows.append(cached_result)
+            else:
+                to_fetch.append(d)
+        _bump_dcat_progress(len(rows))
+
+        newly_checked = []
+        pool = ThreadPoolExecutor(max_workers=_DCAT_CHECK_CONCURRENCY)
+        try:
+            futures = {pool.submit(_dcat_check_one, d["name"]): d for d in to_fetch}
+            for fut in as_completed(futures):
+                d = futures[fut]
+                try:
+                    result = fut.result()
+                    result["org_title"] = d.get("org_title", "")
+                    rows.append(result)
+                    newly_checked.append((d["name"], d["metadata_modified"], result))
+                except Exception as exc:
+                    rows.append({"name": d["name"], "error": str(exc)})
+                    newly_checked.append((d["name"], d["metadata_modified"], None))
+                if _bump_dcat_progress(len(rows)):
+                    cancelled = True
+                    break
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+        if newly_checked:
+            with app.app_context():
+                for name, mtime, result in newly_checked:
+                    row = DcatApDatasetCheckCache.query.get(name)
+                    if not row:
+                        row = DcatApDatasetCheckCache(name=name)
+                        db.session.add(row)
+                    row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    if result is not None:
+                        row.metadata_modified = mtime
+                        row.result_json = json.dumps({"_cache_version": _DCAT_CHECK_VERSION, "result": result})
+                db.session.commit()
+
+        checked = [r for r in rows if "error" not in r]
+        failed  = [r for r in rows if "error" in r]
+        summary = {
+            "total":             len(datasets),
+            "checked":           len(checked),
+            "failed_to_fetch":   len(failed),
+            "reused_from_cache": len(datasets) - len(to_fetch),
+            "conforms":          sum(1 for r in checked if r["conforms"]),
+            "vocabulary_issue":  sum(1 for r in checked if r["vocabulary_issue"]),
+            "structural_issue":  sum(1 for r in checked if r["structural_issue"]),
+        }
+        flagged = [r for r in checked if not r["conforms"]]
+        flagged.sort(key=lambda r: -r["violation_count"])
+        result = {
+            "summary":     summary,
+            "datasets":    flagged,
+            "partial":     cancelled,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _save_dcat_check_cache(result)
+        _set_dcat_status(error=None)
+    except Exception as exc:
+        _set_dcat_status(error=str(exc))
+    finally:
+        _set_dcat_status(running=False, cancel_requested=False)
+
+
+@app.route("/api/quality/dcat-check", methods=["POST"])
+def start_dcat_check():
+    err = _require_admin()
+    if err:
+        return err
+    if _get_dcat_status()["running"]:
+        return jsonify({"started": False, "already_running": True})
+    _set_dcat_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
+                      cancel_requested=False, total=0, completed=0, error=None)
+    threading.Thread(target=_do_run_dcat_check, daemon=True).start()
+    return jsonify({"started": True})
+
+
+@app.route("/api/quality/dcat-check/cancel", methods=["POST"])
+def cancel_dcat_check():
+    err = _require_admin()
+    if err:
+        return err
+    if not _get_dcat_status()["running"]:
+        return jsonify({"cancelled": False, "reason": "not_running"})
+    _set_dcat_status(cancel_requested=True)
+    return jsonify({"cancelled": True})
+
+
+@app.route("/api/quality/dcat-check")
+def get_dcat_check():
+    status = _get_dcat_status()
+    return jsonify({
+        "running":    status["running"],
+        "started_at": status["started_at"],
+        "error":      status["error"],
+        "result":     _load_dcat_check_result(),
+        "total":      status["total"],
+        "completed":  status["completed"],
+        "cancelling": status["cancel_requested"],
+    })
+
+
+_DCAT_EXPORT_PREDICATES = {
+    "non_conforming":   lambda d: not d.get("conforms"),
+    "vocabulary_issue": lambda d: bool(d.get("vocabulary_issue")),
+    "structural_issue": lambda d: bool(d.get("structural_issue")),
+}
+
+
+@app.route("/api/quality/dcat-check/export")
+def dcat_check_export():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    result = _load_dcat_check_result()
+    if not result:
+        return jsonify({"error": "No DCAT-AP check results to export yet."}), 404
+
+    datasets = result.get("datasets") or []
+    filters = [f for f in (freq.args.get("filters") or "").split(",") if f in _DCAT_EXPORT_PREDICATES]
+    if filters:
+        datasets = [d for d in datasets if all(_DCAT_EXPORT_PREDICATES[f](d) for f in filters)]
+    q = _search_normalize((freq.args.get("q") or "").strip())
+    if q:
+        datasets = [
+            d for d in datasets
+            if q in _search_normalize(d.get("title", "")) or q in _search_normalize(d.get("org_title", ""))
+        ]
+    datasets = sorted(datasets, key=lambda d: (d.get("org_title") or "", -(d.get("violation_count") or 0)))
+
+    wb = Workbook()
+
+    summary_ws = wb.active
+    summary_ws.title = "Summary"
+    s = result.get("summary") or {}
+    summary_rows = [
+        ("Total datasets",         s.get("total")),
+        ("Checked",                s.get("checked")),
+        ("Could not be fetched",   s.get("failed_to_fetch")),
+        ("Reused from cache",      s.get("reused_from_cache")),
+        ("Conforms to SHACL shapes", s.get("conforms")),
+        ("Vocabulary issues",      s.get("vocabulary_issue")),
+        ("Structural issues",      s.get("structural_issue")),
+        ("Run finished at",        result.get("finished_at")),
+        ("Partial run (cancelled early)", "Yes" if result.get("partial") else "No"),
+    ]
+    hdr_font = Font(bold=True, color="FFFFFF")
+    hdr_fill = PatternFill("solid", fgColor="2563EB")
+    for row_idx, (label, value) in enumerate(summary_rows, 1):
+        summary_ws.cell(row_idx, 1, label).font = Font(bold=True)
+        summary_ws.cell(row_idx, 2, value)
+    summary_ws.column_dimensions["A"].width = 32
+    summary_ws.column_dimensions["B"].width = 24
+
+    ws = wb.create_sheet("Flagged Datasets")
+    columns = [
+        ("org_title",          "Organization",     lambda d: d.get("org_title") or ""),
+        ("title",              "Dataset",          lambda d: d.get("title") or d.get("name") or ""),
+        ("url",                "URL",              lambda d: f"{config.PORTAL_BASE}/dataset/{d.get('name', '')}"),
+        ("conforms",           "Conforms",         lambda d: "Yes" if d.get("conforms") else "No"),
+        ("violation_count",    "Violations",       lambda d: d.get("violation_count") or 0),
+        ("warning_count",      "Warnings",         lambda d: d.get("warning_count") or 0),
+        ("vocabulary_issue",   "Vocabulary issue",  lambda d: "Yes" if d.get("vocabulary_issue") else "No"),
+        ("structural_issue",   "Structural issue",  lambda d: "Yes" if d.get("structural_issue") else "No"),
+        ("issues",             "Issues",           lambda d: "\n".join(
+            f"[{v.get('severity')}] {v.get('message')}" + (f" (×{v['count']})" if v.get("count", 1) > 1 else "")
+            for v in d.get("details") or []
+        )),
+    ]
+    for col_idx, (_key, header, _getter) in enumerate(columns, 1):
+        cell = ws.cell(1, col_idx, header)
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    for ri, d in enumerate(datasets, 2):
+        for col_idx, (key, _header, getter) in enumerate(columns, 1):
+            cell = ws.cell(ri, col_idx, getter(d))
+            if key == "issues":
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    for col in ws.columns:
+        width = max((len(str(cell.value or "").split("\n")[0]) for cell in col), default=0)
+        ws.column_dimensions[col[0].column_letter].width = min(width + 2, 60)
+
+    if datasets:
+        ws.auto_filter.ref = ws.dimensions
+        ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"dcat_ap_compliance_{today}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/api/quality/dcat-check/clear", methods=["POST"])
+def clear_dcat_check_cache():
+    err = _require_admin()
+    if err:
+        return err
+    if _get_dcat_status()["running"]:
+        return jsonify({"cleared": False, "reason": "running"})
+    DcatApDatasetCheckCache.query.delete()
+    DcatApCheckCache.query.delete()
+    db.session.commit()
+    _set_dcat_status(error=None, started_at=None, total=0, completed=0)
     return jsonify({"cleared": True})
 
 
