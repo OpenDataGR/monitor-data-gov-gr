@@ -1595,6 +1595,15 @@ _hvd_check_cache: dict = {
     "total": 0, "completed": 0, "cancel_requested": False,
 }
 _HVD_CHECK_REFRESH_INTERVAL = 24 * 3600  # scheduled nightly re-check, same cadence as the geo-datasets cache
+# Lower than the other CKAN-facing pools (e.g. 15 for the geo-datasets refresh)
+# since a full run can be 1,000+ requests rather than ~55 -- keep the burst
+# gentle on data.gov.gr rather than maximizing our own throughput.
+_HVD_CHECK_CONCURRENCY = 5
+# More generous than config.REQUEST_TIMEOUT (used for time-sensitive things
+# like health checks) since nothing in this background check is waiting on a
+# live user request -- a slow-but-working response shouldn't get counted as
+# a failure just because it took longer than a page load would tolerate.
+_HVD_CHECK_TIMEOUT = 30
 
 with app.app_context():
     # Warm from the DB so a fresh process/restart can show the last completed
@@ -1621,7 +1630,7 @@ def _get_vocab_graph(url: str):
             return _hvd_vocab_cache[url]
     g = None
     try:
-        r = requests.get(url, timeout=config.REQUEST_TIMEOUT, headers={"Accept": "application/rdf+xml"})
+        r = requests.get(url, timeout=_HVD_CHECK_TIMEOUT, headers={"Accept": "application/rdf+xml"})
         r.raise_for_status()
         g = rdflib.Graph()
         g.parse(data=r.text, format="xml")
@@ -1709,7 +1718,7 @@ def _classify_shacl_results(results_graph: "rdflib.Graph"):
 
 def _hvd_check_one(name: str) -> dict:
     url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
-    r = requests.get(url, timeout=config.REQUEST_TIMEOUT, headers={"Accept": "application/rdf+xml"})
+    r = requests.get(url, timeout=_HVD_CHECK_TIMEOUT, headers={"Accept": "application/rdf+xml"})
     r.raise_for_status()
     graph = rdflib.Graph()
     graph.parse(data=r.text, format="xml")
@@ -1791,7 +1800,7 @@ def _do_run_hvd_check() -> None:
         _hvd_check_cache["completed"] = len(rows)
 
         newly_checked = []  # (name, metadata_modified, result-or-None-if-failed)
-        pool = ThreadPoolExecutor(max_workers=15)
+        pool = ThreadPoolExecutor(max_workers=_HVD_CHECK_CONCURRENCY)
         try:
             futures = {pool.submit(_hvd_check_one, d["name"]): d for d in to_fetch}
             for fut in as_completed(futures):
