@@ -1610,7 +1610,7 @@ _HVD_CHECK_TIMEOUT = 30
 # that produced this cached result is now stale", only "the dataset changed".
 # A version bump forces every cached row to be treated as a miss once, so the
 # next run re-populates everything with the new/fixed shape.
-_HVD_CHECK_VERSION = 2
+_HVD_CHECK_VERSION = 3
 
 with app.app_context():
     # Warm from the DB so a fresh process/restart can show the last completed
@@ -1673,6 +1673,43 @@ def _license_status(graph: "rdflib.Graph") -> str:
         if any(marker in str(lic).lower() for marker in _OPEN_LICENSE_MARKERS):
             return "open"
     return "non_open"
+
+
+# Generic administrative words stripped before comparing a dataset's RDF
+# dct:publisher name against CKAN's organization title -- without this,
+# e.g. "Δήμος Ρόδου" vs "Δήμος Πειραιώς" would appear to match on "Δήμος"
+# alone. Not exhaustive, just the terms common enough in Greek/EU public
+# bodies to otherwise cause false negatives.
+_PUBLISHER_MISMATCH_STOPWORDS = {
+    "δημος", "δημου", "δημων", "περιφερεια", "περιφερειας", "περιφερειακη", "περιφερειακης",
+    "υπουργειο", "υπουργειου", "γενικη", "γενικης", "γραμματεια", "γραμματειας",
+    "διευθυνση", "διευθυνσης", "τμημα", "τμηματος", "οργανισμος", "οργανισμου",
+    "εθνικο", "εθνικος", "εθνικη", "εθνικης", "κεντρο", "κεντρου", "αρχη", "αρχης",
+    "φορεας", "φορεα", "and", "of", "the", "ministry", "general", "secretariat",
+    "directorate", "department", "national", "organization", "authority",
+}
+
+
+def _publisher_mismatch(publisher_name: str, org_title: str) -> bool:
+    """True when a dataset's RDF dct:publisher name shares no meaningful word
+    with CKAN's own organization title -- catches metadata where a data
+    owner typed a contact person's name into the publisher field instead of
+    the organization's name (confirmed to happen on real data.gov.gr
+    datasets: dct:publisher/foaf:name held a staff member's name while
+    CKAN's organization record correctly showed "Περιφέρεια Νοτίου Αιγαίου").
+    Token-overlap based rather than exact-match, since legitimate publisher
+    names often differ from the org title in wording/case (e.g. a longer
+    department name) without actually being wrong."""
+    if not publisher_name or not org_title:
+        return False
+
+    def tokens(s):
+        return {w for w in _search_normalize(s).split() if len(w) >= 3 and w not in _PUBLISHER_MISMATCH_STOPWORDS}
+
+    pub_tokens, org_tokens = tokens(publisher_name), tokens(org_title)
+    if not pub_tokens or not org_tokens:
+        return False
+    return pub_tokens.isdisjoint(org_tokens)
 
 
 def _classify_shacl_results(results_graph: "rdflib.Graph"):
@@ -1742,17 +1779,17 @@ def _hvd_check_one(name: str) -> dict:
         title = str(t)
         break
 
-    org_title = None
+    publisher_name = None
     for publisher in graph.objects(None, _DCT_NS.publisher):
-        org_name = graph.value(publisher, _FOAF_NS.name)
-        if org_name:
-            org_title = str(org_name)
+        name_lit = graph.value(publisher, _FOAF_NS.name)
+        if name_lit:
+            publisher_name = str(name_lit)
             break
 
     return {
         "name":                 name,
         "title":                title or name,
-        "org_title":            org_title or "",
+        "publisher_name":       publisher_name or "",
         "conforms":             conforms,
         "violation_count":      len(violations),
         "warning_count":        len(warnings),
@@ -1764,15 +1801,19 @@ def _hvd_check_one(name: str) -> dict:
 
 
 def _list_hvd_datasets() -> list:
-    """[{"name":..., "metadata_modified":...}, ...] for every currently
-    HVD-tagged dataset -- one bulk paginated call, used both to know what to
-    check and to detect which ones actually changed since the last check."""
+    """[{"name":..., "metadata_modified":..., "org_title":...}, ...] for every
+    currently HVD-tagged dataset -- one bulk paginated call, used both to know
+    what to check and to detect which ones actually changed since the last
+    check. org_title comes from CKAN's own organization record, NOT from the
+    dataset's dct:publisher RDF field -- that field is free text set by each
+    data owner and is often wrong (e.g. a contact person's name instead of
+    the organization), so it's unusable for grouping."""
     items = []
     start, batch = 0, 100
     while True:
         r = requests.get(
             f"{config.API_BASE}/package_search",
-            params={"rows": batch, "start": start, "fq": '-hvd_category:"[]"', "fl": "name,metadata_modified"},
+            params={"rows": batch, "start": start, "fq": '-hvd_category:"[]"', "fl": "name,metadata_modified,organization"},
             headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
         )
         r.raise_for_status()
@@ -1783,7 +1824,11 @@ def _list_hvd_datasets() -> list:
         if not results:
             break
         items.extend(
-            {"name": p["name"], "metadata_modified": p.get("metadata_modified")}
+            {
+                "name":             p["name"],
+                "metadata_modified": p.get("metadata_modified"),
+                "org_title":        (p.get("organization_card") or {}).get("title") or "",
+            }
             for p in results if p.get("name")
         )
         start += batch
@@ -1812,7 +1857,11 @@ def _do_run_hvd_check() -> None:
             cached = row.result() if (row and row.result_json) else None
             if (cached and isinstance(cached, dict) and cached.get("_cache_version") == _HVD_CHECK_VERSION
                     and row.metadata_modified == d["metadata_modified"]):
-                rows.append(cached["result"])
+                cached_result = cached["result"]
+                cached_result["org_title"] = d.get("org_title", "")
+                cached_result["publisher_mismatch"] = _publisher_mismatch(
+                    cached_result.get("publisher_name", ""), cached_result["org_title"])
+                rows.append(cached_result)
             else:
                 to_fetch.append(d)
         _hvd_check_cache["completed"] = len(rows)
@@ -1825,6 +1874,9 @@ def _do_run_hvd_check() -> None:
                 d = futures[fut]
                 try:
                     result = fut.result()
+                    result["org_title"] = d.get("org_title", "")
+                    result["publisher_mismatch"] = _publisher_mismatch(
+                        result.get("publisher_name", ""), result["org_title"])
                     rows.append(result)
                     newly_checked.append((d["name"], d["metadata_modified"], result))
                 except Exception as exc:
@@ -1870,10 +1922,12 @@ def _do_run_hvd_check() -> None:
             "no_api_access":        sum(1 for r in checked if r["no_api_access"]),
             "license_missing":      sum(1 for r in checked if r["license_status"] == "missing"),
             "license_non_open":     sum(1 for r in checked if r["license_status"] == "non_open"),
+            "publisher_mismatch":   sum(1 for r in checked if r["publisher_mismatch"]),
         }
         flagged = [
             r for r in checked
-            if r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] != "open" or not r["conforms"]
+            if r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] != "open"
+                or not r["conforms"] or r["publisher_mismatch"]
         ]
         flagged.sort(key=lambda r: -r["violation_count"])
         _hvd_check_cache["result"] = {
@@ -1931,6 +1985,23 @@ def get_hvd_check():
     })
 
 
+def _ckan_org_title(name: str) -> str:
+    """CKAN's own organization title for a dataset -- reliable, unlike the
+    dataset's own dct:publisher RDF field (see _list_hvd_datasets)."""
+    try:
+        r = requests.get(
+            f"{config.API_BASE}/package_show", params={"id": name},
+            headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data.get("success"):
+            return ""
+        return (data["result"].get("organization") or {}).get("title") or ""
+    except Exception:
+        return ""
+
+
 @app.route("/api/quality/hvd-check-one")
 def hvd_check_one_route():
     name = (freq.args.get("name") or "").strip()
@@ -1939,7 +2010,10 @@ def hvd_check_one_route():
     # Accept a full dataset URL pasted from the portal, not just the bare slug.
     name = name.rstrip("/").rsplit("/", 1)[-1]
     try:
-        return jsonify(_hvd_check_one(name))
+        result = _hvd_check_one(name)
+        result["org_title"] = _ckan_org_title(name)
+        result["publisher_mismatch"] = _publisher_mismatch(result.get("publisher_name", ""), result["org_title"])
+        return jsonify(result)
     except requests.exceptions.HTTPError as exc:
         return jsonify({"error": f"Could not fetch dataset '{name}': {exc}"}), 502
     except Exception as exc:

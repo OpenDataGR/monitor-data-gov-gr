@@ -1455,6 +1455,10 @@ const TRANSLATIONS = {
     'quality.hvd_conforms': 'Fully conforms',
     'quality.hvd_legal_ok': 'Legal citation linked',
     'quality.hvd_api_ok': 'Has API access',
+    'quality.hvd_publisher_mismatch': 'Publisher looks wrong',
+    'quality.hvd_publisher_mismatch_hint': 'The dataset\'s publisher name doesn\'t match its organization ({org}) — likely a contact person\'s name entered by mistake instead of the organization.',
+    'quality.hvd_publisher_ok': 'Publisher matches organization',
+    'quality.hvd_col_publisher': 'Publisher',
     'orgs.title': 'Organizations & Dataset Counts',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'All Public Sector',
@@ -1870,6 +1874,10 @@ const TRANSLATIONS = {
     'quality.hvd_conforms': 'Πλήρης συμμόρφωση',
     'quality.hvd_legal_ok': 'Συνδεδεμένη νομική αναφορά',
     'quality.hvd_api_ok': 'Διαθέτει πρόσβαση API',
+    'quality.hvd_publisher_mismatch': 'Ύποπτος εκδότης',
+    'quality.hvd_publisher_mismatch_hint': 'Το όνομα εκδότη του συνόλου δεδομένων δεν ταιριάζει με τον οργανισμό του ({org}) — πιθανώς καταχωρήθηκε εκ παραδρομής το όνομα ενός υπαλλήλου αντί του οργανισμού.',
+    'quality.hvd_publisher_ok': 'Ο εκδότης ταιριάζει με τον οργανισμό',
+    'quality.hvd_col_publisher': 'Εκδότης',
     'orgs.title': 'Οργανισμοί & Αριθμός Συνόλων Δεδομένων',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'Όλος ο Δημόσιος Τομέας',
@@ -3420,6 +3428,9 @@ function _renderHvdSingleResult(d) {
           ? `<i class="bi bi-hdd-network text-warning me-1"></i>${t('quality.hvd_no_api')}`
           : `<i class="bi bi-check2 text-success me-1"></i>${t('quality.hvd_api_ok')}`}</span>
         <span>${licenseBadge}</span>
+        <span>${d.publisher_mismatch
+          ? `<i class="bi bi-person-badge text-warning me-1"></i>${t('quality.hvd_publisher_mismatch')}`
+          : `<i class="bi bi-check2 text-success me-1"></i>${t('quality.hvd_publisher_ok')}`}</span>
       </div>
       ${detailsHtml}
     </div>`;
@@ -3545,6 +3556,7 @@ function _renderHvdCheck(result) {
     { value: s.no_api_access,        label: t('quality.hvd_no_api'),         bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-hdd-network' },
     { value: s.license_missing,      label: t('quality.hvd_license_missing'),bg: 'bg-danger bg-opacity-10',    text: 'text-danger',    icon: 'bi-file-earmark-x' },
     { value: s.license_non_open,     label: t('quality.hvd_license_non_open'),bg: 'bg-warning bg-opacity-10',  text: 'text-warning',   icon: 'bi-file-earmark-lock' },
+    { value: s.publisher_mismatch,   label: t('quality.hvd_publisher_mismatch'),bg: 'bg-warning bg-opacity-10',text: 'text-warning',   icon: 'bi-person-badge' },
   ];
   const cardsHtml = `<div class="row g-2 mb-3">${cards.map(c => `
     <div class="col-6 col-sm-4 col-lg-2">
@@ -3579,6 +3591,7 @@ function _hvdCompare(a, b, col) {
     case 'title':      return a.title.localeCompare(b.title);
     case 'legal_citation_issue':
     case 'no_api_access':
+    case 'publisher_mismatch':
       return (a[col] ? 1 : 0) - (b[col] ? 1 : 0);
     case 'license_status': {
       const rank = { missing: 2, non_open: 1, open: 0 };
@@ -3639,7 +3652,7 @@ function _renderHvdTable() {
     const isExpanded = _hvdExpandedOrgs.has(orgTitle);
     const groupRow = `
       <tr class="table-light" style="cursor:pointer" onclick="toggleHvdOrg(${idx})">
-        <td colspan="6">
+        <td colspan="7">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
             <span class="fw-semibold">${esc(orgTitle)}</span>
@@ -3656,6 +3669,9 @@ function _renderHvdTable() {
         <td>${d.license_status === 'missing' ? `<span class="badge bg-danger">${t('quality.hvd_license_missing')}</span>`
             : d.license_status === 'non_open' ? `<span class="badge bg-warning text-dark">${t('quality.hvd_license_non_open')}</span>`
             : `<span class="badge bg-success">${t('quality.hvd_license_open')}</span>`}</td>
+        <td>${d.publisher_mismatch
+            ? `<i class="bi bi-person-badge text-warning" title="${esc(t('quality.hvd_publisher_mismatch_hint').replace('{org}', d.org_title || ''))}"></i>`
+            : ''}</td>
         <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
           <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}">${esc(v.message)}</li>`).join('')}</ul>
         </details></td>
@@ -3672,6 +3688,7 @@ function _renderHvdTable() {
           <th style="cursor:pointer" onclick="sortHvdTable('legal_citation_issue')">${t('quality.hvd_col_legal')}${hvdSortArrow('legal_citation_issue')}</th>
           <th style="cursor:pointer" onclick="sortHvdTable('no_api_access')">${t('quality.hvd_col_api')}${hvdSortArrow('no_api_access')}</th>
           <th style="cursor:pointer" onclick="sortHvdTable('license_status')">${t('quality.hvd_col_license')}${hvdSortArrow('license_status')}</th>
+          <th style="cursor:pointer" onclick="sortHvdTable('publisher_mismatch')">${t('quality.hvd_col_publisher')}${hvdSortArrow('publisher_mismatch')}</th>
           <th></th>
         </tr></thead>
         <tbody>${bodyRows}</tbody>
