@@ -703,6 +703,29 @@
       </div>
     </div>
 
+    <!-- HVD re-run confirmation modal -->
+    <div class="modal fade" id="hvdRerunModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-warning">
+          <div class="modal-header bg-warning border-0">
+            <h5 class="modal-title fw-bold"><i class="bi bi-info-circle-fill me-2"></i><span data-i18n="quality.hvd_rerun_title">Run HVD Check Again?</span></h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body pt-4">
+            <p class="fw-semibold mb-1" data-i18n="quality.hvd_rerun_line1">The results shown are already up to date.</p>
+            <p class="text-muted small mb-3" id="hvdRerunLastRun"></p>
+            <p class="text-muted small mb-0" data-i18n="quality.hvd_rerun_line2">Datasets are checked incrementally, so a new run only re-validates what actually changed on the portal — there's usually no need to run it again unless you know something major has changed on data.gov.gr.</p>
+          </div>
+          <div class="modal-footer border-top">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="quality.hvd_rerun_cancel">Cancel</button>
+            <button type="button" class="btn btn-warning btn-sm" onclick="_confirmHvdRerun()">
+              <i class="bi bi-play me-1"></i><span data-i18n="quality.hvd_rerun_confirm_btn">Run Anyway</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Organizations -->
     <div class="tab-pane fade" id="tab-orgs">
       <div class="row g-3">
@@ -1403,7 +1426,11 @@ const TRANSLATIONS = {
     'quality.hvd_running': 'Validating HVD-tagged datasets against the official SHACL shapes… this can take several minutes. Feel free to switch tabs — it keeps running in the background.',
     'quality.hvd_still_running': 'Still running after a long wait — it may still finish in the background. Try clicking Run HVD Check again in a bit to check the latest status.',
     'quality.hvd_last_run': 'Last run',
-    'quality.hvd_rerun_confirm': 'The results shown are already up to date (last run: {time}). Datasets are checked incrementally, so a new run only re-validates what actually changed on the portal — there\'s usually no need to run it again unless you know something major has changed on data.gov.gr. Run anyway?',
+    'quality.hvd_rerun_title': 'Run HVD Check Again?',
+    'quality.hvd_rerun_line1': 'The results shown are already up to date.',
+    'quality.hvd_rerun_line2': 'Datasets are checked incrementally, so a new run only re-validates what actually changed on the portal — there\'s usually no need to run it again unless you know something major has changed on data.gov.gr.',
+    'quality.hvd_rerun_cancel': 'Cancel',
+    'quality.hvd_rerun_confirm_btn': 'Run Anyway',
     'quality.hvd_checked': 'Checked',
     'quality.hvd_non_conforming': 'Non-conforming',
     'quality.hvd_legal_issue': 'Legal citation not linked',
@@ -1813,7 +1840,11 @@ const TRANSLATIONS = {
     'quality.hvd_running': 'Επικύρωση συνόλων δεδομένων HVD βάσει των επίσημων μορφών SHACL… μπορεί να διαρκέσει αρκετά λεπτά. Μπορείτε να αλλάξετε καρτέλα — η διαδικασία συνεχίζεται στο παρασκήνιο.',
     'quality.hvd_still_running': 'Εξακολουθεί να εκτελείται μετά από μεγάλη αναμονή — ενδέχεται να ολοκληρωθεί στο παρασκήνιο. Δοκιμάστε ξανά το «Εκτέλεση Ελέγχου HVD» σε λίγο για την πιο πρόσφατη κατάσταση.',
     'quality.hvd_last_run': 'Τελευταία εκτέλεση',
-    'quality.hvd_rerun_confirm': 'Τα αποτελέσματα που εμφανίζονται είναι ήδη ενημερωμένα (τελευταία εκτέλεση: {time}). Ο έλεγχος γίνεται σταδιακά, οπότε μια νέα εκτέλεση επικυρώνει εκ νέου μόνο ό,τι έχει πράγματι αλλάξει στην πύλη — συνήθως δεν χρειάζεται να τον εκτελέσετε ξανά, εκτός αν γνωρίζετε ότι έχει γίνει κάποια σημαντική αλλαγή στο data.gov.gr. Εκτέλεση ούτως ή άλλως;',
+    'quality.hvd_rerun_title': 'Εκτέλεση Ελέγχου HVD Ξανά;',
+    'quality.hvd_rerun_line1': 'Τα αποτελέσματα που εμφανίζονται είναι ήδη ενημερωμένα.',
+    'quality.hvd_rerun_line2': 'Ο έλεγχος γίνεται σταδιακά, οπότε μια νέα εκτέλεση επικυρώνει εκ νέου μόνο ό,τι έχει πράγματι αλλάξει στην πύλη — συνήθως δεν χρειάζεται να τον εκτελέσετε ξανά, εκτός αν γνωρίζετε ότι έχει γίνει κάποια σημαντική αλλαγή στο data.gov.gr.',
+    'quality.hvd_rerun_cancel': 'Ακύρωση',
+    'quality.hvd_rerun_confirm_btn': 'Εκτέλεση Ούτως ή Άλλως',
     'quality.hvd_checked': 'Ελέγχθηκαν',
     'quality.hvd_non_conforming': 'Μη συμμορφούμενα',
     'quality.hvd_legal_issue': 'Μη συνδεδεμένη νομική αναφορά',
@@ -3411,11 +3442,24 @@ function _resetHvdControls() {
   cancelBtn.innerHTML = `<i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">${t('quality.hvd_cancel')}</span>`;
 }
 
-async function runHvdCheck() {
+let _hvdRerunModal = null;
+
+function runHvdCheck() {
   if (_hvdLastResult?.finished_at) {
-    const msg = t('quality.hvd_rerun_confirm').replace('{time}', relativeDate(_hvdLastResult.finished_at));
-    if (!confirm(msg)) return;
+    show('hvdRerunLastRun').textContent = t('quality.hvd_last_run') + ' ' + relativeDate(_hvdLastResult.finished_at);
+    if (!_hvdRerunModal) _hvdRerunModal = new bootstrap.Modal(document.getElementById('hvdRerunModal'));
+    _hvdRerunModal.show();
+    return;
   }
+  _startHvdCheck();
+}
+
+function _confirmHvdRerun() {
+  if (_hvdRerunModal) _hvdRerunModal.hide();
+  _startHvdCheck();
+}
+
+async function _startHvdCheck() {
   const btn = show('hvdCheckBtn');
   const el  = show('hvdCheckResults');
   try {
