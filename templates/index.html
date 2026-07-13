@@ -2196,7 +2196,14 @@ document.getElementById('mainTabs').addEventListener('shown.bs.tab', (e) => {
 window.addEventListener('hashchange', () => _activateTabByKey(_tabKeyFromHash(location.hash)));
 
 // Honor a hash already in the URL on first load (a bookmarked or shared link).
-_activateTabByKey(_tabKeyFromHash(location.hash));
+// Deferred via setTimeout(...,0): this line runs partway through a single long
+// script block, before the per-tab lazy-load listeners further down (e.g.
+// qualityTabBtn's) have been registered yet -- clicking now would switch the
+// visual tab (Bootstrap's own handling, wired up separately) without ever
+// triggering that tab's data fetch. Deferring to the next tick runs this
+// after the rest of the script -- and all those addEventListener calls --
+// has finished.
+setTimeout(() => _activateTabByKey(_tabKeyFromHash(location.hash)), 0);
 
 // ── Tiny helpers ─────────────────────────────────────────────────────────────
 const fmt  = n  => n == null ? '—' : Number(n).toLocaleString('el-GR');
