@@ -32,39 +32,84 @@
       opacity: .65;
     }
     .admin-nav .nav-link {
+      display: flex;
+      align-items: center;
       color: #495057;
       border-radius: .5rem;
       font-weight: 600;
       font-size: .9rem;
+      white-space: nowrap;
+      overflow: hidden;
     }
     .admin-nav .nav-link.active { background: #0057b8; color: #fff; }
     .admin-nav .nav-link:not(.active):hover { background: #e9ecef; }
+    .admin-nav .nav-link i { width: 1.4rem; text-align: center; flex-shrink: 0; }
+
+    /* ── Collapsible sidebar (same pattern as the main dashboard) ────── */
+    .admin-sidebar {
+      width: 220px; flex-shrink: 0; background: #fff; border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08); padding: .6rem; margin-right: 1rem;
+      position: sticky; top: 1rem; transition: width .2s ease;
+    }
+    .admin-sidebar-toggle-btn {
+      width: 100%; border: none; background: transparent; color: #6c757d;
+      padding: .45rem; border-radius: 8px; margin-bottom: .5rem;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .admin-sidebar-toggle-btn:hover { background: rgba(0,0,0,.04); }
+    .admin-sidebar.collapsed { width: 60px; }
+    .admin-sidebar.collapsed .sidebar-label { display: none; }
+    .admin-sidebar.collapsed .admin-nav .nav-link { justify-content: center; padding: .55rem; }
+    .admin-sidebar.collapsed #adminSidebarToggleIcon { transform: rotate(180deg); }
+    .admin-sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 1044; }
+    @media (max-width: 767.98px) {
+      .admin-sidebar {
+        position: fixed; top: 0; bottom: 0; left: 0; z-index: 1045;
+        width: 250px !important; margin: 0; border-radius: 0;
+        transform: translateX(-100%); transition: transform .25s ease;
+        overflow-y: auto;
+      }
+      .admin-sidebar.mobile-open { transform: translateX(0); }
+      .admin-sidebar.collapsed .sidebar-label { display: inline; }
+      .admin-sidebar.collapsed .admin-nav .nav-link { justify-content: flex-start; padding: .55rem .7rem; }
+      .admin-sidebar-toggle-btn { display: none !important; }
+      .admin-sidebar-backdrop.show { display: block; }
+    }
   </style>
 </head>
 <body>
   <div class="top-header d-flex align-items-center justify-content-between">
-    <div>
-      <a href="{{ url_for('index') }}" class="text-white-50 text-decoration-none small d-block mb-1">
-        <i class="bi bi-arrow-left me-1"></i>Back to dashboard
-      </a>
-      <div class="fw-bold fs-5"><i class="bi bi-shield-lock-fill me-2"></i>Admin Panel</div>
+    <div class="d-flex align-items-center gap-3">
+      <button class="btn btn-outline-light btn-sm d-md-none" id="adminSidebarMobileToggle" onclick="toggleAdminMobileSidebar()" title="Menu">
+        <i class="bi bi-list"></i>
+      </button>
+      <div>
+        <a href="{{ url_for('index') }}" class="text-white-50 text-decoration-none small d-block mb-1">
+          <i class="bi bi-arrow-left me-1"></i>Back to dashboard
+        </a>
+        <div class="fw-bold fs-5"><i class="bi bi-shield-lock-fill me-2"></i>Admin Panel</div>
+      </div>
     </div>
   </div>
 
   <div class="container-fluid px-4 py-4">
-    <div class="row g-4">
-      <div class="col-md-3 col-lg-2">
-        <div class="nav flex-column nav-pills admin-nav gap-1" role="tablist" aria-orientation="vertical">
+    <div class="admin-sidebar-backdrop" id="adminSidebarBackdrop" onclick="closeAdminMobileSidebar()"></div>
+    <div class="d-flex align-items-start">
+      <nav class="admin-sidebar" id="adminSidebar">
+        <button class="admin-sidebar-toggle-btn d-none d-md-flex" onclick="toggleAdminSidebar()" title="Collapse">
+          <i class="bi bi-chevron-left" id="adminSidebarToggleIcon"></i>
+        </button>
+        <div class="nav flex-column nav-pills admin-nav gap-1" role="tablist" aria-orientation="vertical" id="adminNavTabs">
           <button class="nav-link active text-start" data-bs-toggle="pill" data-bs-target="#panel-users" type="button">
-            <i class="bi bi-people-fill me-2"></i>Users
+            <i class="bi bi-people-fill me-2"></i><span class="sidebar-label">Users</span>
           </button>
           <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-system" type="button">
-            <i class="bi bi-gear-fill me-2"></i>System
+            <i class="bi bi-gear-fill me-2"></i><span class="sidebar-label">System</span>
           </button>
         </div>
-      </div>
+      </nav>
 
-      <div class="col-md-9 col-lg-10">
+      <div class="flex-grow-1" style="min-width:0">
         <div class="tab-content">
 
           <!-- Users section -->
@@ -283,6 +328,29 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     const CURRENT_USER_ID = {{ current_user_id|tojson }};
+
+    // ── Collapsible sidebar (same pattern as the main dashboard) ──────
+    function initAdminSidebar() {
+      const sidebar = document.getElementById('adminSidebar');
+      if (localStorage.getItem('adminSidebarCollapsed') === '1') sidebar.classList.add('collapsed');
+      document.getElementById('adminNavTabs').addEventListener('click', (e) => {
+        if (e.target.closest('.nav-link')) closeAdminMobileSidebar();
+      });
+    }
+    function toggleAdminSidebar() {
+      const sidebar = document.getElementById('adminSidebar');
+      sidebar.classList.toggle('collapsed');
+      localStorage.setItem('adminSidebarCollapsed', sidebar.classList.contains('collapsed') ? '1' : '0');
+    }
+    function toggleAdminMobileSidebar() {
+      document.getElementById('adminSidebar').classList.toggle('mobile-open');
+      document.getElementById('adminSidebarBackdrop').classList.toggle('show');
+    }
+    function closeAdminMobileSidebar() {
+      document.getElementById('adminSidebar').classList.remove('mobile-open');
+      document.getElementById('adminSidebarBackdrop').classList.remove('show');
+    }
+    initAdminSidebar();
 
     function esc(s) {
       return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
