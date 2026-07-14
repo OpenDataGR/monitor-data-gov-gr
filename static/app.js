@@ -453,6 +453,18 @@ const TRANSLATIONS = {
     'pw.err_length': 'New password must be at least 8 characters.',
     'pw.err_mismatch': 'New passwords do not match.',
     'pw.err_generic': 'Failed to change password.',
+    'nav.manage_passkeys': 'Manage Passkeys',
+    'passkey.modal_title': 'Manage Passkeys',
+    'passkey.modal_hint': "A passkey lets you sign in with Touch ID, Windows Hello, or a security key instead of your password.",
+    'passkey.nickname_label': 'Name this passkey',
+    'passkey.nickname_placeholder': 'e.g. My laptop',
+    'passkey.add': 'Add a passkey',
+    'passkey.adding': 'Waiting for passkey…',
+    'passkey.unsupported': "This browser doesn't support passkeys.",
+    'passkey.none': "You haven't added any passkeys yet.",
+    'passkey.added': 'Added',
+    'passkey.last_used': 'last used',
+    'passkey.delete_confirm': 'Remove this passkey? You can add it again later if needed.',
     'footer.changelog': 'Changelog',
     'footer.changelog_title': 'Changelog',
     'footer.changelog_none': 'No changelog entries available.',
@@ -968,6 +980,18 @@ const TRANSLATIONS = {
     'pw.err_length': 'Ο νέος κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες.',
     'pw.err_mismatch': 'Οι νέοι κωδικοί δεν ταιριάζουν.',
     'pw.err_generic': 'Αποτυχία αλλαγής κωδικού.',
+    'nav.manage_passkeys': 'Διαχείριση Passkeys',
+    'passkey.modal_title': 'Διαχείριση Passkeys',
+    'passkey.modal_hint': 'Ένα passkey σας επιτρέπει να συνδέεστε με Touch ID, Windows Hello, ή κλειδί ασφαλείας αντί για τον κωδικό σας.',
+    'passkey.nickname_label': 'Ονομασία passkey',
+    'passkey.nickname_placeholder': 'π.χ. Ο υπολογιστής μου',
+    'passkey.add': 'Προσθήκη passkey',
+    'passkey.adding': 'Αναμονή για passkey…',
+    'passkey.unsupported': 'Αυτό το πρόγραμμα περιήγησης δεν υποστηρίζει passkeys.',
+    'passkey.none': 'Δεν έχετε προσθέσει κανένα passkey ακόμα.',
+    'passkey.added': 'Προστέθηκε',
+    'passkey.last_used': 'τελευταία χρήση',
+    'passkey.delete_confirm': 'Αφαίρεση αυτού του passkey; Μπορείτε να το προσθέσετε ξανά αργότερα αν χρειαστεί.',
     'footer.changelog': 'Ιστορικό αλλαγών',
     'footer.changelog_title': 'Ιστορικό αλλαγών',
     'footer.changelog_none': 'Δεν υπάρχουν διαθέσιμες καταχωρήσεις ιστορικού αλλαγών.',
@@ -5630,6 +5654,88 @@ async function submitChangePassword() {
     errEl.classList.remove('d-none');
   } finally {
     btn.disabled = false;
+  }
+}
+
+if (typeof webauthnSupported === 'function' && webauthnSupported()) {
+  document.getElementById('managePasskeysNavItem')?.classList.remove('d-none');
+}
+
+const _PASSKEY_URLS = {
+  begin:    `${API_BASE}api/account/passkeys/register/begin`,
+  complete: `${API_BASE}api/account/passkeys/register/complete`,
+};
+
+let _managePasskeysModal = null;
+
+function openManagePasskeysModal() {
+  if (!_managePasskeysModal) _managePasskeysModal = new bootstrap.Modal(document.getElementById('managePasskeysModal'));
+  document.getElementById('passkeyNickname').value = '';
+  document.getElementById('passkeyAddError').classList.add('d-none');
+  document.getElementById('passkeyAddBtn').disabled = false;
+  const unsupported = !webauthnSupported();
+  document.getElementById('passkeyUnsupported').classList.toggle('d-none', !unsupported);
+  document.getElementById('passkeyAddBtn').classList.toggle('d-none', unsupported);
+  document.getElementById('passkeyNickname').classList.toggle('d-none', unsupported);
+  _managePasskeysModal.show();
+  loadPasskeysList();
+}
+
+async function loadPasskeysList() {
+  const el = document.getElementById('passkeysList');
+  el.innerHTML = `<div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm"></div></div>`;
+  try {
+    const passkeys = await fetch(`${API_BASE}api/account/passkeys`).then(r => r.json());
+    if (!passkeys.length) {
+      el.innerHTML = `<p class="text-muted small mb-0" data-i18n="passkey.none">You haven't added any passkeys yet.</p>`;
+      return;
+    }
+    el.innerHTML = passkeys.map(p => `
+      <div class="d-flex justify-content-between align-items-center border rounded px-3 py-2 mb-2">
+        <div>
+          <div class="fw-semibold small">${esc(p.nickname)}</div>
+          <div class="text-muted" style="font-size:.75rem">
+            ${t('passkey.added')} ${relativeDate(p.created_at)}${p.last_used_at ? ' · ' + t('passkey.last_used') + ' ' + relativeDate(p.last_used_at) : ''}
+          </div>
+        </div>
+        <button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deletePasskey(${p.id})"><i class="bi bi-trash"></i></button>
+      </div>`).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${esc(e.message)}</div>`;
+  }
+}
+
+async function submitAddPasskey() {
+  const btn = document.getElementById('passkeyAddBtn');
+  if (btn.disabled) return;
+  const nickname = document.getElementById('passkeyNickname').value.trim() || 'Passkey';
+  const errEl = document.getElementById('passkeyAddError');
+  errEl.classList.add('d-none');
+  btn.disabled = true;
+  const originalHtml = btn.innerHTML;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${esc(t('passkey.adding'))}`;
+  try {
+    await registerPasskey(nickname, _PASSKEY_URLS);
+    document.getElementById('passkeyNickname').value = '';
+    await loadPasskeysList();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+
+async function deletePasskey(id) {
+  if (!confirm(t('passkey.delete_confirm'))) return;
+  try {
+    const resp = await fetch(`${API_BASE}api/account/passkeys/${id}/delete`, { method: 'POST' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || t('pw.err_generic'));
+    await loadPasskeysList();
+  } catch (e) {
+    alert(e.message);
   }
 }
 

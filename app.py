@@ -19,10 +19,20 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential
 import rdflib
 import pyshacl
 import config
+from webauthn import (
+    generate_registration_options, verify_registration_response,
+    generate_authentication_options, verify_authentication_response,
+    base64url_to_bytes,
+)
+from webauthn.helpers import bytes_to_base64url, options_to_json_dict
+from webauthn.helpers.structs import (
+    AuthenticatorSelectionCriteria, ResidentKeyRequirement,
+    UserVerificationRequirement, PublicKeyCredentialDescriptor,
+)
 
 app = Flask(__name__)
 
@@ -131,7 +141,8 @@ with app.app_context():
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 PASSWORD_LINK_VALID_HOURS = 24
-_PUBLIC_PATHS = ("/login", "/logout", "/forgot-password", "/set-password", "/robots.txt")
+_PUBLIC_PATHS = ("/login", "/logout", "/forgot-password", "/set-password", "/robots.txt",
+                  "/webauthn/login/begin", "/webauthn/login/complete")
 
 # Dashboard sidebar tabs, in the order they appear. "overview" is the landing
 # tab and is always included so a restricted user is never left with nothing.
@@ -282,6 +293,65 @@ def login():
             return redirect(freq.form.get("next") or url_for("index"))
         error = "Incorrect email or password."
     return render_template("login.html", error=error, next=freq.args.get("next", ""))
+
+
+def _webauthn_rp_id_and_origin():
+    """RP ID/origin derived live from the request (via ProxyFix-normalized headers)
+    rather than fixed config -- this makes both localhost dev and the prod subpath
+    deployment work automatically. RP ID is host-only (no port); origin keeps the
+    port when present, since that's what the browser puts in clientDataJSON."""
+    host = freq.host.split(":")[0]
+    origin = f"{freq.scheme}://{freq.host}"
+    return host, origin
+
+
+@app.route("/webauthn/login/begin", methods=["POST"])
+@limiter.limit("10 per minute")
+def webauthn_login_begin():
+    rp_id, _ = _webauthn_rp_id_and_origin()
+    options = generate_authentication_options(rp_id=rp_id)  # allow_credentials omitted -> discoverable/usernameless
+    session["webauthn_auth_challenge"] = options.challenge
+    return jsonify(options_to_json_dict(options))
+
+
+@app.route("/webauthn/login/complete", methods=["POST"])
+@limiter.limit("10 per minute")
+def webauthn_login_complete():
+    challenge = session.pop("webauthn_auth_challenge", None)
+    if not challenge:
+        return jsonify({"error": "Login session expired, please try again"}), 400
+    body = freq.get_json(force=True, silent=True) or {}
+    raw_credential = body.get("credential") or {}
+    cred_row = WebAuthnCredential.query.filter_by(credential_id=raw_credential.get("id", "")).first()
+    if not cred_row:
+        return jsonify({"error": "Passkey not recognized"}), 400
+    rp_id, origin = _webauthn_rp_id_and_origin()
+    try:
+        verification = verify_authentication_response(
+            credential=raw_credential,
+            expected_challenge=challenge,
+            expected_rp_id=rp_id,
+            expected_origin=origin,
+            credential_public_key=cred_row.public_key,
+            credential_current_sign_count=cred_row.sign_count,
+        )
+    except Exception as exc:
+        return jsonify({"error": f"Could not verify passkey: {exc}"}), 400
+
+    user = User.query.get(cred_row.user_id)
+    if not user:
+        return jsonify({"error": "Account no longer exists"}), 400
+
+    cred_row.sign_count = verification.new_sign_count
+    cred_row.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    session.permanent      = True
+    session["user_id"]    = user.id
+    session["user_name"]  = user.name or user.email
+    session["user_email"] = user.email
+    session["is_admin"]   = user.is_admin
+    user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.session.commit()
+    return jsonify({"ok": True, "redirect": freq.args.get("next") or url_for("index")})
 
 
 @app.route("/forgot-password", methods=["GET", "POST"])
@@ -456,6 +526,88 @@ def update_name():
     db.session.commit()
     session["user_name"] = user.name
     return jsonify({"ok": True, "name": user.name})
+
+
+@app.route("/api/account/passkeys", methods=["GET"])
+def passkeys_list():
+    user = User.query.get(session.get("user_id"))
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    creds = WebAuthnCredential.query.filter_by(user_id=user.id).order_by(WebAuthnCredential.created_at).all()
+    return jsonify([c.to_dict() for c in creds])
+
+
+@app.route("/api/account/passkeys/register/begin", methods=["POST"])
+def passkeys_register_begin():
+    user = User.query.get(session.get("user_id"))
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    rp_id, _ = _webauthn_rp_id_and_origin()
+    existing = WebAuthnCredential.query.filter_by(user_id=user.id).all()
+    options = generate_registration_options(
+        rp_id=rp_id,
+        rp_name="data.gov.gr Monitor",
+        user_id=str(user.id).encode("utf-8"),
+        user_name=user.email,
+        user_display_name=user.name or user.email,
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            resident_key=ResidentKeyRequirement.REQUIRED,
+            user_verification=UserVerificationRequirement.PREFERRED,
+        ),
+        exclude_credentials=[
+            PublicKeyCredentialDescriptor(id=base64url_to_bytes(c.credential_id))
+            for c in existing
+        ],
+    )
+    session["webauthn_reg_challenge"] = options.challenge
+    return jsonify(options_to_json_dict(options))
+
+
+@app.route("/api/account/passkeys/register/complete", methods=["POST"])
+def passkeys_register_complete():
+    user = User.query.get(session.get("user_id"))
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    challenge = session.pop("webauthn_reg_challenge", None)
+    if not challenge:
+        return jsonify({"error": "Registration session expired, please try again"}), 400
+    body = _decode_payload()
+    nickname = (body.get("nickname") or "").strip()[:100] or "Passkey"
+    credential = body.get("credential") or {}
+    rp_id, origin = _webauthn_rp_id_and_origin()
+    try:
+        verification = verify_registration_response(
+            credential=credential,
+            expected_challenge=challenge,
+            expected_rp_id=rp_id,
+            expected_origin=origin,
+        )
+    except Exception as exc:
+        return jsonify({"error": f"Could not verify passkey: {exc}"}), 400
+    cred = WebAuthnCredential(
+        user_id=user.id,
+        credential_id=bytes_to_base64url(verification.credential_id),
+        public_key=verification.credential_public_key,
+        sign_count=verification.sign_count,
+        transports=",".join(credential.get("response", {}).get("transports") or []) or None,
+        nickname=nickname,
+    )
+    db.session.add(cred)
+    db.session.commit()
+    return jsonify({"ok": True, "passkey": cred.to_dict()})
+
+
+@app.route("/api/account/passkeys/<int:cred_id>/delete", methods=["POST"])
+def passkeys_delete(cred_id):
+    user = User.query.get(session.get("user_id"))
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    cred = WebAuthnCredential.query.filter_by(id=cred_id, user_id=user.id).first()
+    if not cred:
+        return jsonify({"error": "Not found"}), 404
+    db.session.delete(cred)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

@@ -272,6 +272,7 @@ class User(db.Model):
             "name":          self.name or self.email,
             "is_admin":      self.is_admin,
             "has_password":  bool(self.password_hash),
+            "has_passkey":   bool(self.webauthn_credentials),
             "created_at":    self.created_at.isoformat() if self.created_at else None,
             "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
             "last_active_at": self.last_active_at.isoformat() if self.last_active_at else None,
@@ -288,6 +289,31 @@ class PasswordResetToken(db.Model):
     token      = db.Column(db.String(64), unique=True, nullable=False, index=True)
     expires_at = db.Column(db.DateTime, nullable=False)
     used_at    = db.Column(db.DateTime)
+
+
+class WebAuthnCredential(db.Model):
+    """A passkey (WebAuthn/FIDO2 discoverable credential) bound to a user account."""
+    __tablename__ = "webauthn_credentials"
+
+    id            = db.Column(db.Integer, primary_key=True)
+    user_id       = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    credential_id = db.Column(db.String(255), unique=True, nullable=False, index=True)  # base64url text, as sent by the browser
+    public_key    = db.Column(db.LargeBinary, nullable=False)  # raw COSE-encoded public key bytes
+    sign_count    = db.Column(db.Integer, nullable=False, default=0)
+    transports    = db.Column(db.String(100))  # comma-joined, e.g. "internal,hybrid" -- UI hint only
+    nickname      = db.Column(db.String(100), nullable=False)
+    created_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    last_used_at  = db.Column(db.DateTime)
+
+    user = db.relationship("User", backref=db.backref("webauthn_credentials", cascade="all, delete-orphan"))
+
+    def to_dict(self):
+        return {
+            "id":           self.id,
+            "nickname":     self.nickname,
+            "created_at":   self.created_at.isoformat() if self.created_at else None,
+            "last_used_at": self.last_used_at.isoformat() if self.last_used_at else None,
+        }
 
 
 STALE_CASE_DAYS = 14  # an open case idle this many days is flagged as stale (treated as "No Response")
