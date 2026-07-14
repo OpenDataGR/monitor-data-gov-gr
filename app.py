@@ -5369,6 +5369,38 @@ def admin_test_email():
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/mass-email", methods=["POST"])
+@limiter.limit("5 per hour")
+def admin_mass_email():
+    """Send an announcement to some or all dashboard users. Sent one at a time
+    (this user base is small) so one bad address doesn't fail the whole batch."""
+    err = _require_admin()
+    if err:
+        return err
+    body = _decode_payload()
+    subject = (body.get("subject") or "").strip()
+    message = (body.get("message") or "").strip()
+    user_ids = body.get("user_ids")
+    if not subject or not message:
+        return jsonify({"error": "Subject and message are required"}), 400
+    if not isinstance(user_ids, list) or not user_ids:
+        return jsonify({"error": "Select at least one recipient"}), 400
+
+    recipients = User.query.filter(User.id.in_(user_ids)).all()
+    if not recipients:
+        return jsonify({"error": "No matching recipients"}), 400
+
+    html = "<p>" + message.replace("\n", "<br>") + "</p>"
+    sent, failed = 0, []
+    for u in recipients:
+        try:
+            send_email(u.email, subject, html)
+            sent += 1
+        except Exception as exc:
+            failed.append({"email": u.email, "error": str(exc)})
+    return jsonify({"ok": True, "sent": sent, "failed": failed})
+
+
 if __name__ == "__main__":
     app.run(debug=True, use_reloader=True)
 # deploy-restart marker (auth system live)
