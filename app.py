@@ -5379,9 +5379,9 @@ def admin_mass_email():
         return err
     body = _decode_payload()
     subject = (body.get("subject") or "").strip()
-    message = (body.get("message") or "").strip()
+    html = (body.get("message") or "").strip()  # rich-text HTML from the admin panel's Quill editor
     user_ids = body.get("user_ids")
-    if not subject or not message:
+    if not subject or not re.sub("<[^<]+?>", "", html).strip():
         return jsonify({"error": "Subject and message are required"}), 400
     if not isinstance(user_ids, list) or not user_ids:
         return jsonify({"error": "Select at least one recipient"}), 400
@@ -5390,7 +5390,6 @@ def admin_mass_email():
     if not recipients:
         return jsonify({"error": "No matching recipients"}), 400
 
-    html = "<p>" + message.replace("\n", "<br>") + "</p>"
     sent, failed = 0, []
     for u in recipients:
         try:
