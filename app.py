@@ -90,6 +90,16 @@ with app.app_context():
     if 'deadline' not in _case_cols:
         db.session.execute(text('ALTER TABLE cases ADD COLUMN deadline VARCHAR(10)'))
         db.session.commit()
+    # Cleanup: a case whose last communication was deleted used to linger forever
+    # with zero entries, still counted in the Communications tab's Total/Open/
+    # Closed/stale summaries (communications_delete() now deletes the case itself
+    # once it goes to zero entries, but this sweeps up any that already went
+    # orphaned before that fix). Safe to run on every startup -- matches nothing
+    # once existing orphans are gone.
+    db.session.execute(text(
+        "DELETE FROM cases WHERE id NOT IN (SELECT DISTINCT case_id FROM communications WHERE case_id IS NOT NULL)"
+    ))
+    db.session.commit()
     _contact_cols = [c['name'] for c in _insp.get_columns('org_contacts')]
     if 'contact_type' not in _contact_cols:
         db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN contact_type VARCHAR(200)'))
@@ -3697,8 +3707,17 @@ def communications_update(comm_id):
 @app.route("/api/communications/<int:comm_id>/delete", methods=["GET", "DELETE", "POST"])
 def communications_delete(comm_id):
     comm = Communication.query.get_or_404(comm_id)
+    case_id = comm.case_id
     db.session.delete(comm)
     db.session.commit()
+    # A case with no communications left serves no purpose -- it's already
+    # invisible in every comms view (they're all grouped by iterating entries)
+    # and leaving it around only inflates the Total/Open/Closed/stale counts.
+    if case_id and not Communication.query.filter_by(case_id=case_id).first():
+        case = Case.query.get(case_id)
+        if case:
+            db.session.delete(case)
+            db.session.commit()
     return jsonify({"ok": True})
 
 
