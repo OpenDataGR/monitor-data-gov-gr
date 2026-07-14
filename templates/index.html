@@ -1507,7 +1507,7 @@
   window.__GIT_SHA_SUFFIX__ = {{ ((' · ' + git_sha) if git_sha else '')|tojson }};
   window.__ALLOWED_TABS__ = {{ allowed_tabs|tojson }};
 </script>
-<script src="{{ url_for('static', filename='app.js') }}" defer></script>
+<script src="{{ url_for('static', filename='app.js') }}?v={{ build_date }}" defer></script>
 
 <footer class="text-center text-muted py-3 mt-4" style="font-size:.8rem; border-top:1px solid #dee2e6;">
   <div>&copy; {{ current_year }} Τμήμα Προτύπων και Τεχνολογικών Εφαρμογών Δεδομένων, Ειδική Γραμματεία Τεχνητής Νοημοσύνης και Διακυβέρνησης Δεδομένων</div>
