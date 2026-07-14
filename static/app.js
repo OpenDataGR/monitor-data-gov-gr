@@ -2705,10 +2705,29 @@ document.getElementById('qualityTabBtn').addEventListener('click', () => {
   _loadQualityTab();
 });
 
+// Shown the instant the Quality tab opens, replacing the static "Click Run
+// ... Check" hint, so a user landing on a deep link (e.g. #quality) doesn't
+// see "click to run" and fire off a real (slow) check while the previous
+// cached result is still in flight over the network.
+function _qualityLoadingHtml() {
+  return `<div class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>${esc(t('loading'))}</div>`;
+}
+
+function _qualityHintHtml(iconClass, key) {
+  return `<div class="text-center py-5 text-muted">
+    <i class="bi ${iconClass} fs-2 d-block mb-2"></i>
+    <span>${esc(t(key))}</span>
+  </div>`;
+}
+
 // Shows whatever's already there (a stored result from a previous run, or a
 // check someone else left running) without triggering a new one -- "Run HVD
 // Check" is the only thing that ever starts a fresh check.
 async function _loadQualityTab() {
+  show('hvdCheckResults').innerHTML = _qualityLoadingHtml();
+  show('dcatCheckResults').innerHTML = _qualityLoadingHtml();
+  show('geodcatCheckResults').innerHTML = _qualityLoadingHtml();
+  show('mqaContent').innerHTML = _qualityLoadingHtml();
   try {
     const data = await fetch(API_BASE + 'api/quality/hvd-check').then(r => r.json());
     if (data.running) {
@@ -2719,8 +2738,12 @@ async function _loadQualityTab() {
       _pollHvdCheck();
     } else if (data.result) {
       _renderHvdCheck(data.result);
+    } else {
+      show('hvdCheckResults').innerHTML = _qualityHintHtml('bi-patch-question', 'quality.hvd_hint');
     }
-  } catch (e) { /* leave the default "click Run HVD Check" hint in place */ }
+  } catch (e) {
+    show('hvdCheckResults').innerHTML = _qualityHintHtml('bi-patch-question', 'quality.hvd_hint');
+  }
   _loadDcatTab();
 }
 
@@ -3082,8 +3105,14 @@ async function _loadDcatTab() {
       _pollDcatCheck();
       return;
     }
-    if (data.result) _renderDcatCheck(data.result);
-  } catch (e) { /* leave the default "click Run DCAT-AP Check" hint in place */ }
+    if (data.result) {
+      _renderDcatCheck(data.result);
+    } else {
+      show('dcatCheckResults').innerHTML = _qualityHintHtml('bi-patch-question', 'quality.dcat_hint');
+    }
+  } catch (e) {
+    show('dcatCheckResults').innerHTML = _qualityHintHtml('bi-patch-question', 'quality.dcat_hint');
+  }
   _loadGeoDcatTab();
   _loadMqaTab();
 }
@@ -3435,8 +3464,14 @@ async function _loadGeoDcatTab() {
       _pollGeoDcatCheck();
       return;
     }
-    if (data.result) _renderGeoDcatCheck(data.result);
-  } catch (e) { /* leave the default "click Run GeoDCAT-AP Check" hint in place */ }
+    if (data.result) {
+      _renderGeoDcatCheck(data.result);
+    } else {
+      show('geodcatCheckResults').innerHTML = _qualityHintHtml('bi-patch-question', 'quality.geodcat_hint');
+    }
+  } catch (e) {
+    show('geodcatCheckResults').innerHTML = _qualityHintHtml('bi-patch-question', 'quality.geodcat_hint');
+  }
 }
 
 // ── EU Metadata Quality Assessment (MQA) score ──────────────────────────────
@@ -3501,7 +3536,9 @@ async function _loadMqaTab() {
   try {
     const data = await fetch(API_BASE + 'api/quality/mqa').then(r => r.json());
     _renderMqa(data.result);
-  } catch (e) { /* leave the default hint in place */ }
+  } catch (e) {
+    _renderMqa(null);
+  }
 }
 
 async function refreshMqa() {
