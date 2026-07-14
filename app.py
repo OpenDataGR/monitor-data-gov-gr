@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import io
 import secrets
+from urllib.parse import urlparse
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -48,6 +49,21 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=14)  # absolute cap; see also the idle timeout in require_login
 app.secret_key = config.FLASK_SECRET_KEY or "insecure-dev-secret-key-change-me"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+# Production-only cookie hardening, gated on a real FLASK_SECRET_KEY being set
+# (local dev never sets one, so this leaves local behavior untouched). Flask
+# has no idea we're mounted at a subpath, so without this the session cookie
+# defaults to Path=/ -- the whole shared experiments.data.gov.gr domain -- and
+# gets sent to (and mixes with cookie bloat from) every other app on that
+# domain. A request whose combined Cookie header grows past a proxy's size
+# limit can come back as a 403 before it ever reaches this app, even on a
+# plain GET /login; clearing cookies "fixes" it only because it wipes the
+# oversized cookie along with everything else. Scoping our own cookie to the
+# actual mount path at least stops us contributing to that.
+if config.FLASK_SECRET_KEY:
+    app.config["SESSION_COOKIE_PATH"] = urlparse(config.PUBLIC_BASE_URL).path or "/"
+    app.config["SESSION_COOKIE_SECURE"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 # In-memory storage: limits are per gunicorn worker process, not shared across
 # workers. With N workers the effective ceiling is roughly N x the configured
