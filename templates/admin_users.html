@@ -325,7 +325,7 @@
                   </td>
                   <td>
                     <span class="badge ${u.has_password ? 'badge-active' : 'badge-invited'}">${u.has_password ? 'Active' : 'Invited'}</span>
-                    ${u.has_passkey ? `<i class="bi bi-fingerprint text-primary ms-1" title="Has a passkey registered"></i>` : ''}
+                    ${u.has_passkey ? `<i class="bi bi-fingerprint text-primary ms-1" title="Passkey enabled -- this user has registered at least one passkey for sign-in"></i>` : ''}
                   </td>
                   <td class="small text-muted text-nowrap">${relTime(u.last_login_at)}</td>
                   <td class="small text-muted text-nowrap">${relTime(u.last_active_at)}</td>
