@@ -693,6 +693,10 @@
                 <button id="hvdCancelBtn" class="btn btn-outline-danger btn-sm d-none" onclick="cancelHvdCheck()">
                   <i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">Cancel</span>
                 </button>
+                <div class="btn-group btn-group-sm d-none" id="hvdViewToggle" role="group">
+                  <button id="hvdViewFlatBtn" type="button" class="btn btn-outline-primary" onclick="setHvdView('flat')" data-i18n="quality.view_flat">All</button>
+                  <button id="hvdViewGroupedBtn" type="button" class="btn btn-primary" onclick="setHvdView('grouped')" data-i18n="quality.view_grouped">By Organization</button>
+                </div>
                 <button id="hvdExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllHvd()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="hvdCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllHvd()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
                 <button id="hvdExportBtn" class="btn btn-outline-secondary btn-sm d-none" onclick="downloadHvdExcel()">
@@ -737,6 +741,10 @@
                 <button id="dcatCancelBtn" class="btn btn-outline-danger btn-sm d-none" onclick="cancelDcatCheck()">
                   <i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">Cancel</span>
                 </button>
+                <div class="btn-group btn-group-sm d-none" id="dcatViewToggle" role="group">
+                  <button id="dcatViewFlatBtn" type="button" class="btn btn-outline-primary" onclick="setDcatView('flat')" data-i18n="quality.view_flat">All</button>
+                  <button id="dcatViewGroupedBtn" type="button" class="btn btn-primary" onclick="setDcatView('grouped')" data-i18n="quality.view_grouped">By Organization</button>
+                </div>
                 <button id="dcatExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllDcat()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="dcatCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllDcat()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
                 <button id="dcatExportBtn" class="btn btn-outline-secondary btn-sm d-none" onclick="downloadDcatExcel()">
@@ -781,6 +789,10 @@
                 <button id="geodcatCancelBtn" class="btn btn-outline-danger btn-sm d-none" onclick="cancelGeoDcatCheck()">
                   <i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">Cancel</span>
                 </button>
+                <div class="btn-group btn-group-sm d-none" id="geodcatViewToggle" role="group">
+                  <button id="geodcatViewFlatBtn" type="button" class="btn btn-outline-primary" onclick="setGeoDcatView('flat')" data-i18n="quality.view_flat">All</button>
+                  <button id="geodcatViewGroupedBtn" type="button" class="btn btn-primary" onclick="setGeoDcatView('grouped')" data-i18n="quality.view_grouped">By Organization</button>
+                </div>
                 <button id="geodcatExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllGeoDcat()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="geodcatCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllGeoDcat()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
                 <button id="geodcatExportBtn" class="btn btn-outline-secondary btn-sm d-none" onclick="downloadGeoDcatExcel()">
@@ -1685,6 +1697,9 @@ const TRANSLATIONS = {
     'quality.hvd_filter_no_match': 'No datasets match the selected filters.',
     'quality.hvd_filter_group_compliance': 'Compliance',
     'quality.hvd_filter_group_metadata': 'Metadata',
+    'quality.view_flat': 'All',
+    'quality.view_grouped': 'By Organization',
+    'quality.col_org': 'Organization',
     'quality.tab_hvd': 'HVD',
     'quality.tab_dcat': 'DCAT-AP',
     'quality.tab_geodcat': 'GeoDCAT-AP',
@@ -2197,6 +2212,9 @@ const TRANSLATIONS = {
     'quality.hvd_filter_no_match': 'Κανένα σύνολο δεδομένων δεν ταιριάζει με τα επιλεγμένα φίλτρα.',
     'quality.hvd_filter_group_compliance': 'Συμμόρφωση',
     'quality.hvd_filter_group_metadata': 'Μεταδεδομένα',
+    'quality.view_flat': 'Όλα',
+    'quality.view_grouped': 'Ανά Οργανισμό',
+    'quality.col_org': 'Οργανισμός',
     'quality.tab_hvd': 'HVD',
     'quality.tab_dcat': 'DCAT-AP',
     'quality.tab_geodcat': 'GeoDCAT-AP',
@@ -3779,6 +3797,7 @@ function renderTrafficTopDownloads(downloads) {
 let _hvdLastResult = null;  // set by _renderHvdCheck() -- used to warn before an unnecessary re-run
 let _hvdSortCol = 'violation_count';
 let _hvdSortDir = 'desc';
+let _hvdViewMode = 'grouped';
 let _hvdExpandedOrgs = new Set();
 let _hvdGroupsCache = [];  // [[orgTitle, datasets[]], ...] from the most recent table render
 let _hvdActiveFilters = new Set();  // summary-card filter keys currently toggled on
@@ -3964,8 +3983,7 @@ function _renderHvdCheck(result) {
   show('hvdLastRunAt').textContent = result.finished_at
     ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
   show('hvdExportBtn').classList.toggle('d-none', !(result.datasets || []).length);
-  show('hvdExpandAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
-  show('hvdCollapseAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  _updateHvdViewControls();
   const partialNote = result.partial
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
@@ -4034,6 +4052,21 @@ function _hvdCompare(a, b, col) {
   }
 }
 
+function _updateHvdViewControls() {
+  const hasData = !!(_hvdLastResult?.datasets || []).length;
+  show('hvdViewToggle').classList.toggle('d-none', !hasData);
+  show('hvdViewFlatBtn').className    = 'btn btn-sm ' + (_hvdViewMode === 'flat'    ? 'btn-primary' : 'btn-outline-primary');
+  show('hvdViewGroupedBtn').className = 'btn btn-sm ' + (_hvdViewMode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
+  show('hvdExpandAllBtn').classList.toggle('d-none', !hasData || _hvdViewMode !== 'grouped');
+  show('hvdCollapseAllBtn').classList.toggle('d-none', !hasData || _hvdViewMode !== 'grouped');
+}
+
+function setHvdView(mode) {
+  _hvdViewMode = mode;
+  _updateHvdViewControls();
+  _renderHvdTable();
+}
+
 function sortHvdTable(col) {
   if (_hvdSortCol === col) {
     _hvdSortDir = _hvdSortDir === 'asc' ? 'desc' : 'asc';
@@ -4068,6 +4101,40 @@ function collapseAllHvd() {
   _renderHvdTable();
 }
 
+function _hvdRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}) {
+  return `
+      <tr${hidden ? ' style="display:none"' : ''}>
+        <td${indent ? ' class="ps-4"' : ''}><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
+        ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
+        <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
+        <td>${d.legal_citation_issue ? `<i class="bi bi-file-earmark-text text-warning" title="${esc(t('quality.hvd_legal_issue'))}"></i>` : ''}</td>
+        <td>${d.no_api_access ? `<i class="bi bi-hdd-network text-warning" title="${esc(t('quality.hvd_no_api'))}"></i>` : ''}</td>
+        <td>${d.license_status === 'missing' ? `<span class="badge bg-danger">${t('quality.hvd_license_missing')}</span>`
+            : d.license_status === 'non_open' ? `<span class="badge bg-warning text-dark">${t('quality.hvd_license_non_open')}</span>`
+            : `<span class="badge bg-success">${t('quality.hvd_license_open')}</span>`}</td>
+        <td>${d.publisher_mismatch
+            ? `<i class="bi bi-person-badge text-warning" title="${esc(t('quality.hvd_publisher_mismatch_hint').replace('{org}', d.org_title || ''))}"></i>`
+            : ''}</td>
+        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
+          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
+        </details></td>
+      </tr>`;
+}
+
+function _hvdTableHead(showOrg) {
+  return `
+      <thead><tr>
+        <th style="cursor:pointer" onclick="sortHvdTable('title')">${t('quality.col_dataset')}${hvdSortArrow('title')}</th>
+        ${showOrg ? `<th>${t('quality.col_org')}</th>` : ''}
+        <th style="cursor:pointer" onclick="sortHvdTable('violation_count')">${t('quality.hvd_col_violations')}${hvdSortArrow('violation_count')}</th>
+        <th style="cursor:pointer" onclick="sortHvdTable('legal_citation_issue')">${t('quality.hvd_col_legal')}${hvdSortArrow('legal_citation_issue')}</th>
+        <th style="cursor:pointer" onclick="sortHvdTable('no_api_access')">${t('quality.hvd_col_api')}${hvdSortArrow('no_api_access')}</th>
+        <th style="cursor:pointer" onclick="sortHvdTable('license_status')">${t('quality.hvd_col_license')}${hvdSortArrow('license_status')}</th>
+        <th style="cursor:pointer" onclick="sortHvdTable('publisher_mismatch')">${t('quality.hvd_col_publisher')}${hvdSortArrow('publisher_mismatch')}</th>
+        <th></th>
+      </tr></thead>`;
+}
+
 function _renderHvdTable() {
   const wrap = show('hvdTableWrap');
   if (!wrap) return;
@@ -4086,6 +4153,18 @@ function _renderHvdTable() {
     return;
   }
 
+  const dir = _hvdSortDir === 'asc' ? 1 : -1;
+
+  if (_hvdViewMode === 'flat') {
+    const sorted = [...datasets].sort((a, b) => dir * _hvdCompare(a, b, _hvdSortCol));
+    wrap.innerHTML = `
+    <table class="table table-hover align-middle mb-0">
+      ${_hvdTableHead(true)}
+      <tbody>${sorted.map(d => _hvdRowHtml(d, { showOrg: true })).join('')}</tbody>
+    </table>`;
+    return;
+  }
+
   const groups = new Map();
   for (const d of datasets) {
     const key = d.org_title || t('quality.hvd_unknown_org');
@@ -4093,7 +4172,6 @@ function _renderHvdTable() {
     groups.get(key).push(d);
   }
 
-  const dir = _hvdSortDir === 'asc' ? 1 : -1;
   for (const list of groups.values()) {
     list.sort((a, b) => dir * _hvdCompare(a, b, _hvdSortCol));
   }
@@ -4115,36 +4193,13 @@ function _renderHvdTable() {
           </div>
         </td>
       </tr>`;
-    const datasetRows = list.map(d => `
-      <tr style="${isExpanded ? '' : 'display:none'}">
-        <td class="ps-4"><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
-        <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
-        <td>${d.legal_citation_issue ? `<i class="bi bi-file-earmark-text text-warning" title="${esc(t('quality.hvd_legal_issue'))}"></i>` : ''}</td>
-        <td>${d.no_api_access ? `<i class="bi bi-hdd-network text-warning" title="${esc(t('quality.hvd_no_api'))}"></i>` : ''}</td>
-        <td>${d.license_status === 'missing' ? `<span class="badge bg-danger">${t('quality.hvd_license_missing')}</span>`
-            : d.license_status === 'non_open' ? `<span class="badge bg-warning text-dark">${t('quality.hvd_license_non_open')}</span>`
-            : `<span class="badge bg-success">${t('quality.hvd_license_open')}</span>`}</td>
-        <td>${d.publisher_mismatch
-            ? `<i class="bi bi-person-badge text-warning" title="${esc(t('quality.hvd_publisher_mismatch_hint').replace('{org}', d.org_title || ''))}"></i>`
-            : ''}</td>
-        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
-          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
-        </details></td>
-      </tr>`).join('');
+    const datasetRows = list.map(d => _hvdRowHtml(d, { indent: true, hidden: !isExpanded })).join('');
     return groupRow + datasetRows;
   }).join('');
 
   wrap.innerHTML = `
     <table class="table table-hover align-middle mb-0">
-      <thead><tr>
-        <th style="cursor:pointer" onclick="sortHvdTable('title')">${t('quality.col_dataset')}${hvdSortArrow('title')}</th>
-        <th style="cursor:pointer" onclick="sortHvdTable('violation_count')">${t('quality.hvd_col_violations')}${hvdSortArrow('violation_count')}</th>
-        <th style="cursor:pointer" onclick="sortHvdTable('legal_citation_issue')">${t('quality.hvd_col_legal')}${hvdSortArrow('legal_citation_issue')}</th>
-        <th style="cursor:pointer" onclick="sortHvdTable('no_api_access')">${t('quality.hvd_col_api')}${hvdSortArrow('no_api_access')}</th>
-        <th style="cursor:pointer" onclick="sortHvdTable('license_status')">${t('quality.hvd_col_license')}${hvdSortArrow('license_status')}</th>
-        <th style="cursor:pointer" onclick="sortHvdTable('publisher_mismatch')">${t('quality.hvd_col_publisher')}${hvdSortArrow('publisher_mismatch')}</th>
-        <th></th>
-      </tr></thead>
+      ${_hvdTableHead(false)}
       <tbody>${bodyRows}</tbody>
     </table>`;
 }
@@ -4181,6 +4236,7 @@ async function _loadQualityTab() {
 let _dcatLastResult = null;
 let _dcatSortCol = 'violation_count';
 let _dcatSortDir = 'desc';
+let _dcatViewMode = 'grouped';
 let _dcatExpandedOrgs = new Set();
 let _dcatGroupsCache = [];
 let _dcatActiveFilters = new Set();
@@ -4334,8 +4390,7 @@ function _renderDcatCheck(result) {
   show('dcatLastRunAt').textContent = result.finished_at
     ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
   show('dcatExportBtn').classList.toggle('d-none', !(result.datasets || []).length);
-  show('dcatExpandAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
-  show('dcatCollapseAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  _updateDcatViewControls();
   const partialNote = result.partial
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
@@ -4379,6 +4434,21 @@ function _dcatCompare(a, b, col) {
   }
 }
 
+function _updateDcatViewControls() {
+  const hasData = !!(_dcatLastResult?.datasets || []).length;
+  show('dcatViewToggle').classList.toggle('d-none', !hasData);
+  show('dcatViewFlatBtn').className    = 'btn btn-sm ' + (_dcatViewMode === 'flat'    ? 'btn-primary' : 'btn-outline-primary');
+  show('dcatViewGroupedBtn').className = 'btn btn-sm ' + (_dcatViewMode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
+  show('dcatExpandAllBtn').classList.toggle('d-none', !hasData || _dcatViewMode !== 'grouped');
+  show('dcatCollapseAllBtn').classList.toggle('d-none', !hasData || _dcatViewMode !== 'grouped');
+}
+
+function setDcatView(mode) {
+  _dcatViewMode = mode;
+  _updateDcatViewControls();
+  _renderDcatTable();
+}
+
 function sortDcatTable(col) {
   if (_dcatSortCol === col) {
     _dcatSortDir = _dcatSortDir === 'asc' ? 'desc' : 'asc';
@@ -4413,6 +4483,32 @@ function collapseAllDcat() {
   _renderDcatTable();
 }
 
+function _dcatRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}) {
+  return `
+      <tr${hidden ? ' style="display:none"' : ''}>
+        <td${indent ? ' class="ps-4"' : ''}><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
+        ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
+        <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
+        <td>${d.structural_issue ? `<i class="bi bi-file-earmark-text text-warning" title="${esc(t('quality.dcat_structural_issue'))}"></i>` : ''}</td>
+        <td>${d.vocabulary_issue ? `<i class="bi bi-tags text-warning" title="${esc(t('quality.dcat_vocabulary_issue'))}"></i>` : ''}</td>
+        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
+          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
+        </details></td>
+      </tr>`;
+}
+
+function _dcatTableHead(showOrg) {
+  return `
+      <thead><tr>
+        <th style="cursor:pointer" onclick="sortDcatTable('title')">${t('quality.col_dataset')}${dcatSortArrow('title')}</th>
+        ${showOrg ? `<th>${t('quality.col_org')}</th>` : ''}
+        <th style="cursor:pointer" onclick="sortDcatTable('violation_count')">${t('quality.hvd_col_violations')}${dcatSortArrow('violation_count')}</th>
+        <th style="cursor:pointer" onclick="sortDcatTable('structural_issue')">${t('quality.dcat_col_structural')}${dcatSortArrow('structural_issue')}</th>
+        <th style="cursor:pointer" onclick="sortDcatTable('vocabulary_issue')">${t('quality.dcat_col_vocabulary')}${dcatSortArrow('vocabulary_issue')}</th>
+        <th></th>
+      </tr></thead>`;
+}
+
 function _renderDcatTable() {
   const wrap = show('dcatTableWrap');
   if (!wrap) return;
@@ -4431,6 +4527,18 @@ function _renderDcatTable() {
     return;
   }
 
+  const dir = _dcatSortDir === 'asc' ? 1 : -1;
+
+  if (_dcatViewMode === 'flat') {
+    const sorted = [...datasets].sort((a, b) => dir * _dcatCompare(a, b, _dcatSortCol));
+    wrap.innerHTML = `
+    <table class="table table-hover align-middle mb-0">
+      ${_dcatTableHead(true)}
+      <tbody>${sorted.map(d => _dcatRowHtml(d, { showOrg: true })).join('')}</tbody>
+    </table>`;
+    return;
+  }
+
   const groups = new Map();
   for (const d of datasets) {
     const key = d.org_title || t('quality.hvd_unknown_org');
@@ -4438,7 +4546,6 @@ function _renderDcatTable() {
     groups.get(key).push(d);
   }
 
-  const dir = _dcatSortDir === 'asc' ? 1 : -1;
   for (const list of groups.values()) {
     list.sort((a, b) => dir * _dcatCompare(a, b, _dcatSortCol));
   }
@@ -4459,28 +4566,13 @@ function _renderDcatTable() {
           </div>
         </td>
       </tr>`;
-    const datasetRows = list.map(d => `
-      <tr style="${isExpanded ? '' : 'display:none'}">
-        <td class="ps-4"><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
-        <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
-        <td>${d.structural_issue ? `<i class="bi bi-file-earmark-text text-warning" title="${esc(t('quality.dcat_structural_issue'))}"></i>` : ''}</td>
-        <td>${d.vocabulary_issue ? `<i class="bi bi-tags text-warning" title="${esc(t('quality.dcat_vocabulary_issue'))}"></i>` : ''}</td>
-        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
-          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
-        </details></td>
-      </tr>`).join('');
+    const datasetRows = list.map(d => _dcatRowHtml(d, { indent: true, hidden: !isExpanded })).join('');
     return groupRow + datasetRows;
   }).join('');
 
   wrap.innerHTML = `
     <table class="table table-hover align-middle mb-0">
-      <thead><tr>
-        <th style="cursor:pointer" onclick="sortDcatTable('title')">${t('quality.col_dataset')}${dcatSortArrow('title')}</th>
-        <th style="cursor:pointer" onclick="sortDcatTable('violation_count')">${t('quality.hvd_col_violations')}${dcatSortArrow('violation_count')}</th>
-        <th style="cursor:pointer" onclick="sortDcatTable('structural_issue')">${t('quality.dcat_col_structural')}${dcatSortArrow('structural_issue')}</th>
-        <th style="cursor:pointer" onclick="sortDcatTable('vocabulary_issue')">${t('quality.dcat_col_vocabulary')}${dcatSortArrow('vocabulary_issue')}</th>
-        <th></th>
-      </tr></thead>
+      ${_dcatTableHead(false)}
       <tbody>${bodyRows}</tbody>
     </table>`;
 }
@@ -4509,6 +4601,7 @@ async function _loadDcatTab() {
 let _geodcatLastResult = null;
 let _geodcatSortCol = 'violation_count';
 let _geodcatSortDir = 'desc';
+let _geodcatViewMode = 'grouped';
 let _geodcatExpandedOrgs = new Set();
 let _geodcatGroupsCache = [];
 let _geodcatActiveFilters = new Set();
@@ -4657,8 +4750,7 @@ function _renderGeoDcatCheck(result) {
   show('geodcatLastRunAt').textContent = result.finished_at
     ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
   show('geodcatExportBtn').classList.toggle('d-none', !(result.datasets || []).length);
-  show('geodcatExpandAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
-  show('geodcatCollapseAllBtn').classList.toggle('d-none', !(result.datasets || []).length);
+  _updateGeoDcatViewControls();
   const partialNote = result.partial
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
@@ -4699,6 +4791,21 @@ function _geodcatCompare(a, b, col) {
   }
 }
 
+function _updateGeoDcatViewControls() {
+  const hasData = !!(_geodcatLastResult?.datasets || []).length;
+  show('geodcatViewToggle').classList.toggle('d-none', !hasData);
+  show('geodcatViewFlatBtn').className    = 'btn btn-sm ' + (_geodcatViewMode === 'flat'    ? 'btn-primary' : 'btn-outline-primary');
+  show('geodcatViewGroupedBtn').className = 'btn btn-sm ' + (_geodcatViewMode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
+  show('geodcatExpandAllBtn').classList.toggle('d-none', !hasData || _geodcatViewMode !== 'grouped');
+  show('geodcatCollapseAllBtn').classList.toggle('d-none', !hasData || _geodcatViewMode !== 'grouped');
+}
+
+function setGeoDcatView(mode) {
+  _geodcatViewMode = mode;
+  _updateGeoDcatViewControls();
+  _renderGeoDcatTable();
+}
+
 function sortGeoDcatTable(col) {
   if (_geodcatSortCol === col) {
     _geodcatSortDir = _geodcatSortDir === 'asc' ? 'desc' : 'asc';
@@ -4733,6 +4840,28 @@ function collapseAllGeoDcat() {
   _renderGeoDcatTable();
 }
 
+function _geodcatRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}) {
+  return `
+      <tr${hidden ? ' style="display:none"' : ''}>
+        <td${indent ? ' class="ps-4"' : ''}><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
+        ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
+        <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
+        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
+          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
+        </details></td>
+      </tr>`;
+}
+
+function _geodcatTableHead(showOrg) {
+  return `
+      <thead><tr>
+        <th style="cursor:pointer" onclick="sortGeoDcatTable('title')">${t('quality.col_dataset')}${geodcatSortArrow('title')}</th>
+        ${showOrg ? `<th>${t('quality.col_org')}</th>` : ''}
+        <th style="cursor:pointer" onclick="sortGeoDcatTable('violation_count')">${t('quality.hvd_col_violations')}${geodcatSortArrow('violation_count')}</th>
+        <th></th>
+      </tr></thead>`;
+}
+
 function _renderGeoDcatTable() {
   const wrap = show('geodcatTableWrap');
   if (!wrap) return;
@@ -4751,6 +4880,18 @@ function _renderGeoDcatTable() {
     return;
   }
 
+  const dir = _geodcatSortDir === 'asc' ? 1 : -1;
+
+  if (_geodcatViewMode === 'flat') {
+    const sorted = [...datasets].sort((a, b) => dir * _geodcatCompare(a, b, _geodcatSortCol));
+    wrap.innerHTML = `
+    <table class="table table-hover align-middle mb-0">
+      ${_geodcatTableHead(true)}
+      <tbody>${sorted.map(d => _geodcatRowHtml(d, { showOrg: true })).join('')}</tbody>
+    </table>`;
+    return;
+  }
+
   const groups = new Map();
   for (const d of datasets) {
     const key = d.org_title || t('quality.hvd_unknown_org');
@@ -4758,7 +4899,6 @@ function _renderGeoDcatTable() {
     groups.get(key).push(d);
   }
 
-  const dir = _geodcatSortDir === 'asc' ? 1 : -1;
   for (const list of groups.values()) {
     list.sort((a, b) => dir * _geodcatCompare(a, b, _geodcatSortCol));
   }
@@ -4779,24 +4919,13 @@ function _renderGeoDcatTable() {
           </div>
         </td>
       </tr>`;
-    const datasetRows = list.map(d => `
-      <tr style="${isExpanded ? '' : 'display:none'}">
-        <td class="ps-4"><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
-        <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
-        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
-          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
-        </details></td>
-      </tr>`).join('');
+    const datasetRows = list.map(d => _geodcatRowHtml(d, { indent: true, hidden: !isExpanded })).join('');
     return groupRow + datasetRows;
   }).join('');
 
   wrap.innerHTML = `
     <table class="table table-hover align-middle mb-0">
-      <thead><tr>
-        <th style="cursor:pointer" onclick="sortGeoDcatTable('title')">${t('quality.col_dataset')}${geodcatSortArrow('title')}</th>
-        <th style="cursor:pointer" onclick="sortGeoDcatTable('violation_count')">${t('quality.hvd_col_violations')}${geodcatSortArrow('violation_count')}</th>
-        <th></th>
-      </tr></thead>
+      ${_geodcatTableHead(false)}
       <tbody>${bodyRows}</tbody>
     </table>`;
 }
