@@ -4808,16 +4808,11 @@ async function saveComm() {
     const json   = await resp.json();
     if (!resp.ok) { err.textContent = json.error || t('common.save_failed'); err.classList.remove('d-none'); return; }
 
-    if (id) {
-      _commsData = _commsData.map(c => c.id === parseInt(id) ? json : c);
-    } else {
-      _commsData.unshift(json);
-    }
-    const casesResp = await fetch(API_BASE + 'api/cases').then(r => r.json());
-    _casesData = Array.isArray(casesResp) ? casesResp : _casesData;
+    // Full reload (not a local patch) -- editing/adding one entry can change its
+    // case's computed is_stale/entry_count, which every other entry in that case
+    // carries a denormalized snapshot of, so a partial patch would leave siblings stale.
+    await _reloadCasesAndComms();
     _commModal.hide();
-    renderCommsSummary();
-    filterComms();
     _refreshCommSubjectDatalist();
   } catch (e) {
     err.textContent = t('common.network_error').replace('{msg}', e.message);
@@ -4831,11 +4826,11 @@ function deleteComm(id) {
   confirmDangerAction(t('comm_modal.delete_confirm'), async () => {
     try {
       await fetch(`${API_BASE}api/communications/${id}/delete`, { method: 'DELETE', cache: 'no-store' });
-      _commsData = _commsData.filter(c => c.id !== id);
-      const casesResp = await fetch(API_BASE + 'api/cases').then(r => r.json());
-      _casesData = Array.isArray(casesResp) ? casesResp : _casesData;
-      renderCommsSummary();
-      filterComms();
+      // Full reload (not a local splice) -- removing an entry can change its case's
+      // computed is_stale/entry_count, which every remaining entry in that case
+      // carries a denormalized snapshot of, so a partial patch left the filter-tab
+      // counts (Follow-up/Status) showing stale values.
+      await _reloadCasesAndComms();
     } catch (e) {
       alert(t('comm_modal.delete_failed') + ' ' + e.message);
     }
