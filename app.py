@@ -296,12 +296,21 @@ def login():
 
 
 def _webauthn_rp_id_and_origin():
-    """RP ID/origin derived live from the request (via ProxyFix-normalized headers)
-    rather than fixed config -- this makes both localhost dev and the prod subpath
-    deployment work automatically. RP ID is host-only (no port); origin keeps the
-    port when present, since that's what the browser puts in clientDataJSON."""
+    """RP ID/origin derived live from the request rather than fixed config --
+    this makes both localhost dev and the prod subpath deployment work
+    automatically. RP ID is host-only (no port); origin keeps the port when
+    present, since that's what the browser puts in clientDataJSON.
+
+    Scheme is NOT taken from freq.scheme/X-Forwarded-Proto: in production the
+    reverse proxy forwards X-Forwarded-Host but not X-Forwarded-Proto, so
+    ProxyFix falls back to plain http even though the real request was https,
+    which breaks WebAuthn's origin check. This app only ever runs as plain
+    HTTP in local dev (localhost/127.0.0.1) and as HTTPS everywhere else, so
+    that's a safe, self-contained way to get the scheme right regardless of
+    what the proxy does or doesn't forward."""
     host = freq.host.split(":")[0]
-    origin = f"{freq.scheme}://{freq.host}"
+    scheme = "http" if host in ("localhost", "127.0.0.1") else "https"
+    origin = f"{scheme}://{freq.host}"
     return host, origin
 
 
