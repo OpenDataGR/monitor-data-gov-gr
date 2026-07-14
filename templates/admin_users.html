@@ -159,8 +159,14 @@
                 <input type="text" id="massEmailSubject" class="form-control form-control-sm">
               </div>
               <div class="mb-2">
-                <label class="form-label small mb-1">Message</label>
-                <div id="massEmailMessageEditor" style="background:#fff"></div>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <label class="form-label small mb-0">Message</label>
+                  <a href="#" class="small" id="massEmailHtmlToggleLink" onclick="toggleMassEmailHtmlSource();return false;">Edit as HTML</a>
+                </div>
+                <div id="massEmailQuillWrap">
+                  <div id="massEmailMessageEditor" style="background:#fff"></div>
+                </div>
+                <textarea id="massEmailHtmlSource" class="form-control form-control-sm d-none" rows="12" spellcheck="false" style="font-family:Consolas,Menlo,monospace;font-size:.8rem"></textarea>
               </div>
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <label class="form-label small mb-0">Recipients</label>
@@ -513,6 +519,32 @@
       },
     });
 
+    let _massEmailHtmlMode = false;
+
+    function toggleMassEmailHtmlSource() {
+      const wrap = document.getElementById('massEmailQuillWrap');
+      const sourceEl = document.getElementById('massEmailHtmlSource');
+      const link = document.getElementById('massEmailHtmlToggleLink');
+      if (!_massEmailHtmlMode) {
+        // Entering HTML mode: seed the textarea with whatever's currently in Quill.
+        sourceEl.value = massEmailQuill.root.innerHTML;
+        wrap.classList.add('d-none');
+        sourceEl.classList.remove('d-none');
+        link.textContent = 'Apply & preview';
+      } else {
+        // Leaving HTML mode: load the (possibly hand-edited/pasted) HTML back into
+        // Quill via its clipboard parser, which normalizes it into proper formatting
+        // instead of a raw dump -- much more reliable than pasting rich text
+        // straight into the editor, which often drags along source styling.
+        massEmailQuill.setText('');
+        massEmailQuill.clipboard.dangerouslyPasteHTML(sourceEl.value);
+        wrap.classList.remove('d-none');
+        sourceEl.classList.add('d-none');
+        link.textContent = 'Edit as HTML';
+      }
+      _massEmailHtmlMode = !_massEmailHtmlMode;
+    }
+
     function renderMassEmailRecipients() {
       const el = document.getElementById('massEmailRecipientList');
       if (!_usersCache.length) {
@@ -541,6 +573,7 @@
     let _massEmailModal = null;
 
     function openMassEmailConfirm() {
+      if (_massEmailHtmlMode) toggleMassEmailHtmlSource();  // apply any unsaved HTML edits first
       const subject = document.getElementById('massEmailSubject').value.trim();
       const hasMessage = massEmailQuill.getText().trim().length > 0;
       const ids = [...document.querySelectorAll('.mass-email-recipient:checked')].map(cb => parseInt(cb.value, 10));
