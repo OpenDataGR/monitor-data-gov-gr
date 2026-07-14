@@ -564,6 +564,24 @@
       _massEmailModal.show();
     }
 
+    function _b64enc(obj) {
+      // Encode as a URL-safe base64 query param instead of a raw JSON body --
+      // the shared domain's WAF blocks POST bodies containing raw HTML (like
+      // the rich-text message here), same reason app.js does this for comms.
+      const bytes = new TextEncoder().encode(JSON.stringify(obj));
+      let bin = '';
+      bytes.forEach(b => bin += String.fromCharCode(b));
+      return encodeURIComponent(btoa(bin));
+    }
+
+    async function _parseJsonResponse(resp) {
+      try {
+        return await resp.json();
+      } catch (e) {
+        throw new Error(`Server error (HTTP ${resp.status})`);
+      }
+    }
+
     async function confirmMassEmail() {
       const btn = document.getElementById('massEmailSendBtn');
       if (btn.disabled) return;
@@ -573,11 +591,10 @@
       const ids = [...document.querySelectorAll('.mass-email-recipient:checked')].map(cb => parseInt(cb.value, 10));
       const resultEl = document.getElementById('massEmailResult');
       try {
-        const resp = await fetch('../api/admin/mass-email', {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({subject, message, user_ids: ids}),
+        const resp = await fetch(`../api/admin/mass-email?d=${_b64enc({subject, message, user_ids: ids})}`, {
+          method: 'POST',
         });
-        const data = await resp.json();
+        const data = await _parseJsonResponse(resp);
         if (!resp.ok) throw new Error(data.error || 'Failed to send');
         _massEmailModal.hide();
         document.getElementById('massEmailSubject').value = '';
