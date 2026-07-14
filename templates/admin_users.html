@@ -624,8 +624,15 @@
       const ids = [...document.querySelectorAll('.mass-email-recipient:checked')].map(cb => parseInt(cb.value, 10));
       const resultEl = document.getElementById('massEmailResult');
       try {
-        const resp = await fetch(`../api/admin/mass-email?d=${_b64enc({subject, message, user_ids: ids})}`, {
+        // The base64 blob goes in the POST body (form-urlencoded), not the query
+        // string -- a full rich-text email is long enough to exceed a proxy's
+        // URL-length limit, where it would get silently truncated. The body has
+        // no such ceiling, and staying form-urlencoded (not raw JSON/HTML) keeps
+        // the same WAF-bypass property as before.
+        const resp = await fetch('../api/admin/mass-email', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'd=' + _b64enc({subject, message, user_ids: ids}),
         });
         const data = await _parseJsonResponse(resp);
         if (!resp.ok) throw new Error(data.error || 'Failed to send');
