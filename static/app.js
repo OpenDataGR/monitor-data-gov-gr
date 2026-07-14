@@ -473,6 +473,7 @@ const TRANSLATIONS = {
     'common.edit': 'Edit',
     'common.delete': 'Delete',
     'common.add': 'Add',
+    'common.back_to_top': 'Back to top',
     'common.cancel': 'Cancel',
     'common.save': 'Save',
     'common.clear': 'Clear',
@@ -1000,6 +1001,7 @@ const TRANSLATIONS = {
     'common.edit': 'Επεξεργασία',
     'common.delete': 'Διαγραφή',
     'common.add': 'Προσθήκη',
+    'common.back_to_top': 'Επιστροφή στην κορυφή',
     'common.cancel': 'Ακύρωση',
     'common.save': 'Αποθήκευση',
     'common.clear': 'Εκκαθάριση',
@@ -7177,6 +7179,11 @@ document.addEventListener('DOMContentLoaded', () => {
   loadLiveVisitors();
   setInterval(loadLiveVisitors, 20_000);  // faster cadence — this widget is meant to feel live
   setInterval(_fadeLiveMapMarkers, 2_000);  // smooth fade independent of the data-refresh cadence
+});
+
+// ── Back-to-top floating button ─────────────────────────────────────────────
+window.addEventListener('scroll', () => {
+  show('backToTopBtn').classList.toggle('show', window.scrollY > 300);
 });
 
 // ── Changelog modal ─────────────────────────────────────────────────────────

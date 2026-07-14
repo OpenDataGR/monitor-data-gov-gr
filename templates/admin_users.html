@@ -46,6 +46,15 @@
     .admin-nav .nav-link:not(.active):hover { background: #e9ecef; }
     .admin-nav .nav-link i { width: 1.4rem; text-align: center; flex-shrink: 0; }
     #massEmailMessageEditor .ql-editor { min-height: 150px; }
+    .back-to-top-btn {
+      display: none; position: fixed; bottom: 1.5rem; right: 1.5rem;
+      width: 44px; height: 44px; border-radius: 50%; background: #003366; color: #fff;
+      border: none; font-size: 1.2rem; cursor: pointer; z-index: 1030;
+      align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,.3);
+      transition: background .15s;
+    }
+    .back-to-top-btn:hover { background: #0057b8; }
+    .back-to-top-btn.show { display: flex; }
 
     /* ── Collapsible sidebar (same pattern as the main dashboard) ────── */
     .admin-sidebar {
@@ -80,6 +89,10 @@
   </style>
 </head>
 <body>
+  <button class="back-to-top-btn" id="backToTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">
+    <i class="bi bi-arrow-up"></i>
+  </button>
+
   <div class="top-header d-flex align-items-center justify-content-between">
     <div class="d-flex align-items-center gap-3">
       <button class="btn btn-outline-light btn-sm d-md-none" id="adminSidebarMobileToggle" onclick="toggleAdminMobileSidebar()" title="Menu">
@@ -441,6 +454,10 @@
       document.getElementById('adminSidebarBackdrop').classList.remove('show');
     }
     initAdminSidebar();
+
+    window.addEventListener('scroll', () => {
+      document.getElementById('backToTopBtn').classList.toggle('show', window.scrollY > 300);
+    });
 
     function esc(s) {
       return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
