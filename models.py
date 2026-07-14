@@ -316,6 +316,35 @@ class WebAuthnCredential(db.Model):
         }
 
 
+class MassEmailLog(db.Model):
+    """A record of one admin-sent mass email, for the Mass Email tab's send history.
+    sent_by_user_id is deliberately a plain column (no ForeignKey) -- deleting the
+    sending admin's account later must not be blocked by, or cascade into, old logs."""
+    __tablename__ = "mass_email_logs"
+
+    id              = db.Column(db.Integer, primary_key=True)
+    sent_by_user_id = db.Column(db.Integer)
+    sent_by_name    = db.Column(db.String(255))
+    subject         = db.Column(db.String(500), nullable=False)
+    message_html    = db.Column(db.Text, nullable=False)
+    recipient_count = db.Column(db.Integer, nullable=False, default=0)
+    success_count   = db.Column(db.Integer, nullable=False, default=0)
+    failed_emails   = db.Column(db.Text)  # comma-separated
+    sent_at         = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def to_dict(self):
+        return {
+            "id":              self.id,
+            "sent_by_name":    self.sent_by_name,
+            "subject":         self.subject,
+            "message_html":    self.message_html,
+            "recipient_count": self.recipient_count,
+            "success_count":   self.success_count,
+            "failed_emails":   self.failed_emails.split(",") if self.failed_emails else [],
+            "sent_at":         self.sent_at.isoformat() if self.sent_at else None,
+        }
+
+
 STALE_CASE_DAYS = 14  # an open case idle this many days is flagged as stale (treated as "No Response")
 
 

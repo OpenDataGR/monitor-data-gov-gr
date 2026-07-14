@@ -19,7 +19,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog
 import rdflib
 import pyshacl
 import config
@@ -5397,7 +5397,29 @@ def admin_mass_email():
             sent += 1
         except Exception as exc:
             failed.append({"email": u.email, "error": str(exc)})
+
+    admin = User.query.get(session.get("user_id"))
+    db.session.add(MassEmailLog(
+        sent_by_user_id=session.get("user_id"),
+        sent_by_name=(admin.name or admin.email) if admin else None,
+        subject=subject,
+        message_html=html,
+        recipient_count=len(recipients),
+        success_count=sent,
+        failed_emails=",".join(f["email"] for f in failed) or None,
+    ))
+    db.session.commit()
+
     return jsonify({"ok": True, "sent": sent, "failed": failed})
+
+
+@app.route("/api/admin/mass-email/history", methods=["GET"])
+def admin_mass_email_history():
+    err = _require_admin()
+    if err:
+        return err
+    logs = MassEmailLog.query.order_by(MassEmailLog.sent_at.desc()).all()
+    return jsonify([l.to_dict() for l in logs])
 
 
 if __name__ == "__main__":

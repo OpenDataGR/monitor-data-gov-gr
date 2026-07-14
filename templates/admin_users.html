@@ -105,6 +105,9 @@
           <button class="nav-link active text-start" data-bs-toggle="pill" data-bs-target="#panel-users" type="button">
             <i class="bi bi-people-fill me-2"></i><span class="sidebar-label">Users</span>
           </button>
+          <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-mass-email" type="button">
+            <i class="bi bi-megaphone me-2"></i><span class="sidebar-label">Mass Email</span>
+          </button>
           <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-system" type="button">
             <i class="bi bi-gear-fill me-2"></i><span class="sidebar-label">System</span>
           </button>
@@ -146,27 +149,10 @@
             </div>
           </div>
 
-          <!-- System section -->
-          <div class="tab-pane fade" id="panel-system">
+          <!-- Mass Email section -->
+          <div class="tab-pane fade" id="panel-mass-email">
             <div class="card p-4 mb-4">
-              <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-check me-2"></i>Email Delivery</h6>
-              <p class="text-muted small mb-3">Send a test email to confirm the SendGrid configuration works end-to-end.</p>
-              <form class="row g-2 align-items-end" onsubmit="return sendTestEmail(event)">
-                <div class="col-sm-6">
-                  <label class="form-label small mb-1">Recipient</label>
-                  <input type="email" id="testEmailTo" class="form-control form-control-sm" required>
-                </div>
-                <div class="col-sm-3">
-                  <button type="submit" class="btn btn-outline-primary btn-sm w-100">
-                    <i class="bi bi-send me-1"></i>Send Test Email
-                  </button>
-                </div>
-              </form>
-              <div id="testEmailResult" class="mt-2 small d-none"></div>
-            </div>
-
-            <div class="card p-4 mb-4">
-              <h6 class="fw-semibold mb-1"><i class="bi bi-megaphone me-2"></i>Mass Email</h6>
+              <h6 class="fw-semibold mb-1"><i class="bi bi-megaphone me-2"></i>Compose</h6>
               <p class="text-muted small mb-3">Send an announcement to some or all dashboard users.</p>
               <div class="mb-2">
                 <label class="form-label small mb-1">Subject</label>
@@ -192,6 +178,31 @@
                 <i class="bi bi-send me-1"></i>Send Mass Email
               </button>
               <div id="massEmailResult" class="mt-2 small d-none"></div>
+            </div>
+
+            <div class="card p-4">
+              <h6 class="fw-semibold mb-3"><i class="bi bi-clock-history me-2"></i>Send History</h6>
+              <div id="massEmailHistory"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
+            </div>
+          </div>
+
+          <!-- System section -->
+          <div class="tab-pane fade" id="panel-system">
+            <div class="card p-4 mb-4">
+              <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-check me-2"></i>Email Delivery</h6>
+              <p class="text-muted small mb-3">Send a test email to confirm the SendGrid configuration works end-to-end.</p>
+              <form class="row g-2 align-items-end" onsubmit="return sendTestEmail(event)">
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1">Recipient</label>
+                  <input type="email" id="testEmailTo" class="form-control form-control-sm" required>
+                </div>
+                <div class="col-sm-3">
+                  <button type="submit" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-send me-1"></i>Send Test Email
+                  </button>
+                </div>
+              </form>
+              <div id="testEmailResult" class="mt-2 small d-none"></div>
             </div>
 
             <div class="card p-4 mb-4">
@@ -378,6 +389,25 @@
     </div>
   </div>
 
+  <!-- Mass email history detail modal -->
+  <div class="modal fade" id="massEmailHistoryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold" id="massEmailHistorySubject"></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-3">
+          <p class="text-muted small mb-3" id="massEmailHistoryMeta"></p>
+          <div class="border rounded p-3" id="massEmailHistoryBody" style="background:#f8f9fa"></div>
+        </div>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
   <script>
@@ -557,6 +587,7 @@
         if (data.failed && data.failed.length) msg += ` ${data.failed.length} failed to send.`;
         resultEl.textContent = msg;
         resultEl.classList.remove('d-none');
+        loadMassEmailHistory();
       } catch (e) {
         resultEl.className = 'mt-2 small text-danger';
         resultEl.textContent = e.message;
@@ -564,6 +595,60 @@
       } finally {
         btn.disabled = false;
       }
+    }
+
+    let _massEmailHistoryCache = [];
+
+    async function loadMassEmailHistory() {
+      const el = document.getElementById('massEmailHistory');
+      try {
+        const resp = await fetch('../api/admin/mass-email/history');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const logs = await resp.json();
+        _massEmailHistoryCache = logs;
+        if (!logs.length) {
+          el.innerHTML = '<p class="text-muted text-center py-3 mb-0">No mass emails sent yet.</p>';
+          return;
+        }
+        el.innerHTML = `
+          <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr>
+              <th>Sent</th><th>Subject</th><th>Sent by</th><th class="text-nowrap">Recipients</th><th></th>
+            </tr></thead>
+            <tbody>
+              ${logs.map((l, i) => `
+                <tr>
+                  <td class="small text-muted text-nowrap">${relTime(l.sent_at)}</td>
+                  <td class="small">${esc(l.subject)}</td>
+                  <td class="small">${esc(l.sent_by_name || '—')}</td>
+                  <td class="small text-nowrap">
+                    ${l.success_count}/${l.recipient_count} sent
+                    ${l.failed_emails.length ? `<span class="text-danger" title="${esc(l.failed_emails.join(', '))}">(${l.failed_emails.length} failed)</span>` : ''}
+                  </td>
+                  <td class="text-end">
+                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="viewMassEmailLog(${i})" title="View message"><i class="bi bi-eye"></i></button>
+                  </td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+          </div>`;
+      } catch (e) {
+        el.innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+      }
+    }
+
+    let _massEmailHistoryModal = null;
+
+    function viewMassEmailLog(i) {
+      const l = _massEmailHistoryCache[i];
+      if (!l) return;
+      document.getElementById('massEmailHistorySubject').textContent = l.subject;
+      document.getElementById('massEmailHistoryMeta').textContent =
+        `Sent by ${l.sent_by_name || 'unknown'} · ${relTime(l.sent_at)} · ${l.success_count}/${l.recipient_count} delivered`;
+      document.getElementById('massEmailHistoryBody').innerHTML = l.message_html;
+      if (!_massEmailHistoryModal) _massEmailHistoryModal = new bootstrap.Modal(document.getElementById('massEmailHistoryModal'));
+      _massEmailHistoryModal.show();
     }
 
     async function inviteUser(ev) {
@@ -773,6 +858,7 @@
     }
 
     loadUsers();
+    loadMassEmailHistory();
   </script>
 </body>
 </html>
