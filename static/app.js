@@ -4582,7 +4582,7 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commDeadline').value = (_casesData.find(x => x.id === c.case_id) || {}).deadline || _plus14(c.contact_date);
     show('commSubject').value = c.subject;
     show('commStatus').value  = c.status;
-    show('commStatus').disabled = false;
+    show('commStatus').disabled = c.status === 'Initial Contact';  // the entry that opened the case must stay Initial Contact
     show('commStatusInitialOption').hidden = false;
     show('commMedium').value  = c.medium || '';
     show('commNotes').value   = c.notes;

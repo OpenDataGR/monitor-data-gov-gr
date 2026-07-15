@@ -3713,6 +3713,8 @@ def communications_update(comm_id):
     if "status" in body:
         if body["status"] not in VALID_STATUSES:
             return jsonify({"error": f"status must be one of {sorted(VALID_STATUSES)}"}), 400
+        if comm.status == "Initial Contact" and body["status"] != "Initial Contact":
+            return jsonify({"error": "Initial Contact is reserved for the entry that opens a case and cannot be changed"}), 400
         comm.status = body["status"]
     if "notes" in body:
         comm.notes = (body["notes"] or "").strip() or None
