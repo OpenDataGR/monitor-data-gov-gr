@@ -4724,8 +4724,17 @@ function _getContactsForOrg(orgCode) {
   return contacts;
 }
 
+function _commContactBaseName(label) {
+  // Strips the trailing " (position)" so a stored contact_person still
+  // matches after the contact's position text changes (e.g. re-fetched
+  // portal-member data with an updated title).
+  return (label || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+}
+
 function _fillCommContacts(contacts, preselectName) {
   const sel = show('commContact');
+  const preselectBase = _commContactBaseName(preselectName);
+  let exactMatch = null, baseMatch = null;
   contacts.forEach(c => {
     const label = [c.first_name, c.last_name].filter(Boolean).join(' ') +
                   (c.position ? ' (' + c.position + ')' : '');
@@ -4734,9 +4743,14 @@ function _fillCommContacts(contacts, preselectName) {
     o.textContent = label;
     o.dataset.email = c.email || '';
     o.dataset.tel   = c.tel   || '';
-    if (preselectName && label === preselectName) o.selected = true;
     sel.appendChild(o);
+    if (preselectName) {
+      if (label === preselectName) exactMatch = o;
+      else if (!baseMatch && preselectBase && _commContactBaseName(label) === preselectBase) baseMatch = o;
+    }
   });
+  const chosen = exactMatch || baseMatch;
+  if (chosen) chosen.selected = true;
   show('commContactSection').classList.remove('d-none');
   if (preselectName) onCommContactChange();
 }
