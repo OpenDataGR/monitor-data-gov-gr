@@ -5071,9 +5071,10 @@ async function importContactsExcel(input) {
 }
 
 async function loadContactSummary() {
+  const s = {};
+
   if (_portalMembersCache) {
     // Rebuild locally so keys match what _portalContactCell looks up (HRMS label OR CKAN slug)
-    const s = {};
     const seen = new Set();
     for (const m of _portalMembersCache) {
       if (!m.contact_id || seen.has(m.contact_id)) continue;
@@ -5093,25 +5094,26 @@ async function loadContactSummary() {
       // If stored with CKAN slug, also index under HRMS code for "All orgs" view
       if (_hrmsLookup) { const hrms = _hrmsLookup.get(key); if (hrms) s[hrms] = (s[hrms] || 0) + 1; }
     }
-    _contactSummary = s;
-  } else {
-    try {
-      const raw = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
-      // raw is keyed by whatever org_code contacts were imported with (usually
-      // an HRMS code) -- cross-index by CKAN slug too, same as the warm-cache
-      // branch above, so the portal view's lookup by CKAN slug matches even
-      // before the Contacts tab has ever been opened
-      const s = {};
-      for (const [key, cnt] of Object.entries(raw)) {
-        s[key] = (s[key] || 0) + cnt;
-        const ckan = _ckanByHrms ? _ckanByHrms.get(key) : null;
-        if (ckan) s[ckan] = (s[ckan] || 0) + cnt;
-        const hrms = _hrmsLookup ? _hrmsLookup.get(key) : null;
-        if (hrms) s[hrms] = (s[hrms] || 0) + cnt;
-      }
-      _contactSummary = s;
-    } catch (_) {}
   }
+
+  // Always fold in the plain per-org_code contact count from the backend too,
+  // as a floor (via max, never summed -- these two sources overlap). The
+  // portal-members reconstruction above only counts a contact if its email
+  // happens to match a live portal account under the same org; any contact
+  // that doesn't clear that bar would otherwise silently drop out of the
+  // badge count the moment the portal-members cache warms up (e.g. as soon
+  // as the user opens one org's contact list), even though it's still a
+  // perfectly real row in the contacts table.
+  try {
+    const raw = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
+    for (const [key, cnt] of Object.entries(raw)) {
+      const ckan = _ckanByHrms ? _ckanByHrms.get(key) : null;
+      const hrms = _hrmsLookup ? _hrmsLookup.get(key) : null;
+      for (const k of [key, ckan, hrms].filter(Boolean)) s[k] = Math.max(s[k] || 0, cnt);
+    }
+  } catch (_) {}
+
+  _contactSummary = s;
   if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
   if (_orgsViewMode === 'all') filterOrgs();
 }
