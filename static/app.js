@@ -5095,7 +5095,22 @@ async function loadContactSummary() {
     }
     _contactSummary = s;
   } else {
-    try { _contactSummary = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json()); } catch (_) {}
+    try {
+      const raw = await fetch(API_BASE + 'api/contacts/summary').then(r => r.json());
+      // raw is keyed by whatever org_code contacts were imported with (usually
+      // an HRMS code) -- cross-index by CKAN slug too, same as the warm-cache
+      // branch above, so the portal view's lookup by CKAN slug matches even
+      // before the Contacts tab has ever been opened
+      const s = {};
+      for (const [key, cnt] of Object.entries(raw)) {
+        s[key] = (s[key] || 0) + cnt;
+        const ckan = _ckanByHrms ? _ckanByHrms.get(key) : null;
+        if (ckan) s[ckan] = (s[ckan] || 0) + cnt;
+        const hrms = _hrmsLookup ? _hrmsLookup.get(key) : null;
+        if (hrms) s[hrms] = (s[hrms] || 0) + cnt;
+      }
+      _contactSummary = s;
+    } catch (_) {}
   }
   if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
   if (_orgsViewMode === 'all') filterOrgs();
