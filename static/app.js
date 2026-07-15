@@ -7229,6 +7229,13 @@ document.addEventListener('DOMContentLoaded', () => {
   loadLiveVisitors();
   setInterval(loadLiveVisitors, 20_000);  // faster cadence — this widget is meant to feel live
   setInterval(_fadeLiveMapMarkers, 2_000);  // smooth fade independent of the data-refresh cadence
+  // Communications are edited by multiple people at once; poll for other
+  // people's changes so nobody has to remember to hit refresh. Only once the
+  // tab has actually been opened, and only while this browser tab is visible,
+  // to keep it cheap.
+  setInterval(() => {
+    if (_commsLoaded && document.visibilityState === 'visible') _reloadCasesAndComms();
+  }, 20_000);
 });
 
 // ── Back-to-top floating button ─────────────────────────────────────────────
