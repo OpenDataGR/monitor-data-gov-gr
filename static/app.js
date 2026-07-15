@@ -5074,25 +5074,38 @@ async function loadContactSummary() {
   const s = {};
 
   if (_portalMembersCache) {
-    // Rebuild locally so keys match what _portalContactCell looks up (HRMS label OR CKAN slug)
-    const seen = new Set();
+    // Rebuild locally so keys match what _portalContactCell looks up (HRMS label OR CKAN slug).
+    // Dedup is scoped PER ORG KEY (not globally by contact_id) -- the same
+    // person can hold portal roles in more than one organization, and a
+    // global dedup would only ever credit whichever org's row happened to be
+    // processed first, silently dropping that person from every other org's
+    // count (matches the per-org filter-then-dedup _renderOrgContactsPanel
+    // already does correctly).
+    const seenPerKey = new Map();
+    const bump = (key, id) => {
+      if (!key) return;
+      let seen = seenPerKey.get(key);
+      if (!seen) { seen = new Set(); seenPerKey.set(key, seen); }
+      if (id != null) {
+        if (seen.has(id)) return;
+        seen.add(id);
+      }
+      s[key] = (s[key] || 0) + 1;
+    };
     for (const m of _portalMembersCache) {
-      if (!m.contact_id || seen.has(m.contact_id)) continue;
-      seen.add(m.contact_id);
+      if (!m.contact_id) continue;
       const ckan = m.org_name || '';
-      if (ckan) s[ckan] = (s[ckan] || 0) + 1;
+      bump(ckan, m.contact_id);
       // Also index by HRMS code so "All orgs" view count badge works
-      if (_hrmsLookup) { const hrms = _hrmsLookup.get(ckan); if (hrms) s[hrms] = (s[hrms] || 0) + 1; }
+      if (_hrmsLookup) bump(_hrmsLookup.get(ckan), m.contact_id);
     }
     for (const c of (_pmUnmatched || [])) {
-      if (seen.has(c.id)) continue;
-      seen.add(c.id);
       const key = c.org_code || '';
-      if (key) s[key] = (s[key] || 0) + 1;
+      bump(key, c.id);
       // If stored with HRMS code or label, also index under CKAN slug so portal view count works
-      if (_ckanByHrms) { const ckan = _ckanByHrms.get(key); if (ckan) s[ckan] = (s[ckan] || 0) + 1; }
+      if (_ckanByHrms) bump(_ckanByHrms.get(key), c.id);
       // If stored with CKAN slug, also index under HRMS code for "All orgs" view
-      if (_hrmsLookup) { const hrms = _hrmsLookup.get(key); if (hrms) s[hrms] = (s[hrms] || 0) + 1; }
+      if (_hrmsLookup) bump(_hrmsLookup.get(key), c.id);
     }
   }
 
