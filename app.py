@@ -3699,6 +3699,15 @@ def communications_update(comm_id):
         comm.org_name = (body["org_name"] or "").strip()
     if "org_title" in body:
         comm.org_title = (body["org_title"] or "").strip() or None
+    if ("org_name" in body or "org_title" in body) and comm.case:
+        # a case represents one organization -- keep the case header and every
+        # sibling entry's org in sync with whichever entry was just edited
+        comm.case.org_name = comm.org_name
+        comm.case.org_title = comm.org_title
+        for sibling in comm.case.communications:
+            if sibling.id != comm.id:
+                sibling.org_name = comm.org_name
+                sibling.org_title = comm.org_title
     if "subject" in body:
         comm.subject = (body["subject"] or "").strip()
     if "status" in body:
