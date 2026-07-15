@@ -223,9 +223,33 @@ def _require_admin():
 
 
 @app.after_request
+def _purge_legacy_root_cookie(response):
+    # Before the SESSION_COOKIE_PATH fix above, our session cookie was set at
+    # Path=/ on the shared experiments.data.gov.gr domain. Changing the config
+    # only affects cookies set from here on -- browsers that already had the
+    # old Path=/ cookie keep sending it (same name, different path, so it
+    # doesn't get overwritten) on top of the new properly-scoped one, still
+    # contributing to the oversized combined Cookie header that trips a 403
+    # at the proxy. Actively expire the old one so it stops accumulating.
+    if config.FLASK_SECRET_KEY and app.config.get("SESSION_COOKIE_PATH", "/") != "/":
+        response.set_cookie(
+            app.config["SESSION_COOKIE_NAME"], "", expires=0, path="/",
+            secure=True, httponly=True, samesite="Lax",
+        )
+    return response
+
+
+@app.after_request
 def no_cache(response):
-    # Only prevent caching of HTML pages — static assets (CSS/JS) should remain cacheable
-    if response.content_type and response.content_type.startswith("text/html"):
+    # Prevent caching of dynamic content -- HTML pages and JSON API responses.
+    # Without this, a GET with no explicit cache header is fair game for a
+    # browser's (or an intermediate proxy's) own heuristic caching, which is
+    # how some users kept seeing stale communications/cases even after a
+    # background refresh actually ran: the fetch never left the cache to hit
+    # the network. Static assets (CSS/JS) are deliberately left alone so they
+    # stay cacheable.
+    ct = response.content_type or ""
+    if ct.startswith("text/html") or ct.startswith("application/json"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
