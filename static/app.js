@@ -3725,7 +3725,13 @@ function filterOrgs() {
   const q = _ns(show('orgSearch').value);
   if (_orgsViewMode === 'all') {
     renderAllOrgsTable(q
-      ? _publicOrgs.filter(o => _ns(o.label).includes(q))
+      ? _publicOrgs.filter(o => {
+          if (_ns(o.label).includes(q)) return true;
+          // also match the portal alias shown as "(as <ckan.title>)" — it's
+          // only attached at render time, so search has to look it up too
+          const ckan = _ckanLookup ? _ckanLookup.get(_normOrg(o.label)) : null;
+          return !!ckan && _ns(ckan.title).includes(q);
+        })
       : _publicOrgs);
   } else {
     renderOrgsTable(q
