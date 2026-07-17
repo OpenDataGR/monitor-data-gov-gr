@@ -162,6 +162,9 @@ with app.app_context():
     if 'last_active_at' not in _user_cols:
         db.session.execute(text('ALTER TABLE users ADD COLUMN last_active_at TIMESTAMP'))
         db.session.commit()
+    if 'is_superadmin' not in _user_cols:
+        db.session.execute(text('ALTER TABLE users ADD COLUMN is_superadmin BOOLEAN NOT NULL DEFAULT FALSE'))
+        db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -219,6 +222,12 @@ def _send_password_link(user: "User", kind: str = "invite") -> str:
 def _require_admin():
     if not session.get("is_admin"):
         return jsonify({"error": "Admin access required"}), 403
+    return None
+
+
+def _require_superadmin():
+    if not session.get("is_superadmin"):
+        return jsonify({"error": "Superadmin access required"}), 403
     return None
 
 
@@ -338,6 +347,7 @@ def login():
             session["user_name"]  = user.name or user.email
             session["user_email"] = user.email
             session["is_admin"]   = user.is_admin
+            session["is_superadmin"] = user.is_superadmin
             user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.session.commit()
             return redirect(freq.form.get("next") or url_for("index"))
@@ -408,6 +418,7 @@ def webauthn_login_complete():
     session["user_name"]  = user.name or user.email
     session["user_email"] = user.email
     session["is_admin"]   = user.is_admin
+    session["is_superadmin"] = user.is_superadmin
     user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.session.commit()
     return jsonify({"ok": True, "redirect": freq.args.get("next") or url_for("index")})
@@ -455,6 +466,7 @@ def set_password():
                 session["user_name"]  = user.name or user.email
                 session["user_email"] = user.email
                 session["is_admin"]   = user.is_admin
+                session["is_superadmin"] = user.is_superadmin
                 return redirect(url_for("index"))
     return render_template("set_password.html", valid=valid, error=error, token=token_str)
 
@@ -469,7 +481,8 @@ def logout():
 def admin_users_page():
     if not session.get("is_admin"):
         return redirect(url_for("index"))
-    return render_template("admin_users.html", current_user_id=session.get("user_id"))
+    return render_template("admin_users.html", current_user_id=session.get("user_id"),
+                           current_user_is_superadmin=session.get("is_superadmin", False))
 
 
 @app.route("/api/users", methods=["GET", "POST"])
@@ -510,12 +523,14 @@ def users_resend_invite(user_id):
 
 @app.route("/api/users/<int:user_id>/toggle-admin", methods=["POST"])
 def users_toggle_admin(user_id):
-    err = _require_admin()
+    err = _require_superadmin()
     if err:
         return err
     if user_id == session.get("user_id"):
         return jsonify({"error": "You cannot change your own admin status"}), 400
     user = User.query.get_or_404(user_id)
+    if user.is_superadmin:
+        return jsonify({"error": "Superadmin status can only be changed by editing the database directly"}), 400
     user.is_admin = not user.is_admin
     db.session.commit()
     return jsonify({"ok": True, "user": user.to_dict()})
@@ -540,12 +555,14 @@ def users_set_tabs(user_id):
 
 @app.route("/api/users/<int:user_id>/delete", methods=["POST"])
 def users_delete(user_id):
-    err = _require_admin()
+    err = _require_superadmin()
     if err:
         return err
     if user_id == session.get("user_id"):
         return jsonify({"error": "You cannot delete your own account"}), 400
     user = User.query.get_or_404(user_id)
+    if user.is_superadmin:
+        return jsonify({"error": "Superadmin accounts cannot be deleted"}), 400
     db.session.delete(user)
     db.session.commit()
     return jsonify({"ok": True})

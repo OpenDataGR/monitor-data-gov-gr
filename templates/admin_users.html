@@ -16,6 +16,7 @@
       padding: 1.25rem 2rem;
     }
     .badge-admin  { background: #0d6efd; }
+    .badge-superadmin { background: #6f42c1; }
     .badge-active { background: #198754; }
     .badge-invited{ background: #6c757d; }
     .role-toggle {
@@ -431,6 +432,7 @@
   <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
   <script>
     const CURRENT_USER_ID = {{ current_user_id|tojson }};
+    const CURRENT_USER_IS_SUPERADMIN = {{ current_user_is_superadmin|tojson }};
 
     // ── Collapsible sidebar (same pattern as the main dashboard) ──────
     function initAdminSidebar() {
@@ -488,16 +490,27 @@
             <tbody>
               ${users.map(u => {
                 const isSelf = u.id === CURRENT_USER_ID;
-                const roleTitle = isSelf ? "You can't change your own role" : (u.is_admin ? 'Click to revoke admin' : 'Click to make admin');
+                const canManageRoles = CURRENT_USER_IS_SUPERADMIN && !isSelf;
+                const roleTitle = u.is_superadmin
+                  ? "Superadmin status can only be changed by editing the database directly"
+                  : (isSelf ? "You can't change your own role"
+                     : (CURRENT_USER_IS_SUPERADMIN ? (u.is_admin ? 'Click to revoke admin' : 'Click to make admin')
+                        : 'Only a superadmin can change roles'));
+                const canDelete = CURRENT_USER_IS_SUPERADMIN && !isSelf && !u.is_superadmin;
+                const deleteTitle = u.is_superadmin ? "Superadmin accounts can't be deleted"
+                  : (isSelf ? "You can't delete your own account"
+                     : (CURRENT_USER_IS_SUPERADMIN ? "Delete" : "Only a superadmin can delete users"));
                 return `
                 <tr>
                   <td>${esc(u.name)}</td>
                   <td class="small">${esc(u.email)}</td>
                   <td>
-                    <button type="button" class="badge role-toggle ${u.is_admin ? 'badge-admin' : 'bg-secondary'}"
-                            ${isSelf ? 'disabled' : `onclick="toggleAdmin(${u.id})"`} title="${roleTitle}">
-                      ${u.is_admin ? 'Admin' : 'User'}
-                    </button>
+                    ${u.is_superadmin
+                      ? `<span class="badge badge-superadmin" title="${roleTitle}">Superadmin</span>`
+                      : `<button type="button" class="badge role-toggle ${u.is_admin ? 'badge-admin' : 'bg-secondary'}"
+                                 ${canManageRoles ? `onclick="toggleAdmin(${u.id})"` : 'disabled'} title="${roleTitle}">
+                           ${u.is_admin ? 'Admin' : 'User'}
+                         </button>`}
                   </td>
                   <td>
                     <span class="badge ${u.has_password ? 'badge-active' : 'badge-invited'}">${u.has_password ? 'Active' : 'Invited'}</span>
@@ -510,7 +523,7 @@
                     ${u.is_admin
                       ? `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" disabled title="Admins always see every tab"><i class="bi bi-ui-checks-grid"></i></button>`
                       : `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="Manage tab access" onclick="openTabsModal(${u.id})"><i class="bi bi-ui-checks-grid"></i></button>`}
-                    <button class="btn btn-outline-danger btn-sm py-0 px-2" title="Delete" onclick="deleteUser(${u.id})"><i class="bi bi-trash"></i></button>
+                    <button class="btn btn-outline-danger btn-sm py-0 px-2" ${canDelete ? `onclick="deleteUser(${u.id})"` : 'disabled'} title="${deleteTitle}"><i class="bi bi-trash"></i></button>
                   </td>
                 </tr>`;
               }).join('')}

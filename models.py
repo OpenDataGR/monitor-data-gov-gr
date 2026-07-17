@@ -256,6 +256,7 @@ class User(db.Model):
     name          = db.Column(db.String(255))
     password_hash = db.Column(db.String(255))  # null until the invite/reset link is used
     is_admin      = db.Column(db.Boolean, nullable=False, default=False)
+    is_superadmin = db.Column(db.Boolean, nullable=False, default=False)
     created_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     last_login_at = db.Column(db.DateTime)
     last_active_at = db.Column(db.DateTime)  # updated (throttled) on any authenticated request
@@ -271,6 +272,7 @@ class User(db.Model):
             "email":         self.email,
             "name":          self.name or self.email,
             "is_admin":      self.is_admin,
+            "is_superadmin": self.is_superadmin,
             "has_password":  bool(self.password_hash),
             "has_passkey":   bool(self.webauthn_credentials),
             "created_at":    self.created_at.isoformat() if self.created_at else None,
