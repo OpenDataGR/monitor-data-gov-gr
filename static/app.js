@@ -1209,6 +1209,10 @@ document.addEventListener('hidden.bs.tab', (e) => {
   const target = e.target.dataset.bsTarget;
   if (target === '#tab-orgs' && _orgsLoaded) show('orgsTable').innerHTML = '';
   if (target === '#tab-contacts' && _portalMembersCache) show('contactsTableBody').innerHTML = '';
+  // Communications/Cases: same story -- every row of _commsData/_casesData
+  // ever logged renders into one #commsTable, unpaginated, and grows for as
+  // long as the dashboard is used.
+  if (target === '#tab-comms' && _commsLoaded) show('commsTable').innerHTML = '';
   // hvdTableWrap/dcatTableWrap/geodcatTableWrap only exist once their check has
   // actually been run at least once this session (they're created dynamically
   // inside _renderHvdCheck/_renderDcatCheck/_renderGeoDcatCheck), so guard
@@ -4102,7 +4106,10 @@ function mediumLabel(medium) {
 }
 
 document.getElementById('commsTabBtn').addEventListener('click', () => {
-  if (_commsLoaded) return;
+  // Already-loaded data lives in _commsData/_casesData -- re-render from
+  // there instead of skipping outright, since #commsTable is emptied
+  // whenever this tab is hidden (see the hidden.bs.tab listener above).
+  if (_commsLoaded) { renderCommsSummary(); filterComms(); return; }
   loadComms();
 });
 
@@ -4139,8 +4146,10 @@ async function _reloadCasesAndComms() {
   _commsPollSnapshot = snapshot;
   _commsData = comms;
   _casesData = casesArr;
-  renderCommsSummary();
-  filterComms();
+  if (_isTabActive('tab-comms')) {
+    renderCommsSummary();
+    filterComms();
+  }
 }
 
 function _refreshCommSubjectDatalist() {
@@ -6007,9 +6016,14 @@ async function loadContactsTab(force = false) {
       _pmUnmatched = cached.unmatched || [];
       show('contactsReloadBtn').disabled = false;
       _pmSetFetchedAt(cached.ts);
-      renderContactsSummary();
-      filterContactsTab();
-      renderUnmatchedContacts();
+      // This branch also runs as a background warm-up triggered from the
+      // Comms tab (see loadComms()'s `if (!_portalMembersCache) loadContactsTab()`),
+      // so the Contacts tab may not be visible here.
+      if (_isTabActive('tab-contacts')) {
+        renderContactsSummary();
+        filterContactsTab();
+        renderUnmatchedContacts();
+      }
       if (_orgsLoaded) loadContactSummary();
       // Silently refresh in background if stale
       if (Date.now() - cached.ts > _PM_STALE_MS) {
