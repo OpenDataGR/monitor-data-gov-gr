@@ -16,6 +16,7 @@ import io
 import secrets
 from urllib.parse import urlparse
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response
+from flask_compress import Compress
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -49,6 +50,17 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=14)  # absolute cap; see also the idle timeout in require_login
 app.secret_key = config.FLASK_SECRET_KEY or "insecure-dev-secret-key-change-me"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+# Static assets are cache-busted with ?v={{ build_date }} in templates, so a
+# year-long cache is safe -- a new deploy changes the URL, not the response.
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31536000
+# Gzip everything (HTML/JSON/JS/CSS) -- app.js alone is ~370KB unminified and
+# the contacts/communications/organizations endpoints return large JSON arrays.
+app.config["COMPRESS_MIMETYPES"] = [
+    "text/html", "text/css", "text/javascript", "application/javascript",
+    "application/json",
+]
+Compress(app)
 
 # Production-only cookie hardening, gated on a real FLASK_SECRET_KEY being set
 # (local dev never sets one, so this leaves local behavior untouched). Flask
