@@ -1187,18 +1187,59 @@ document.getElementById('mainTabs').addEventListener('shown.bs.tab', (e) => {
   if (key) history.replaceState(null, '', '#' + key);
 });
 
-// Organizations and Contacts render every row into one big table each --
-// with the full org/portal-member list this can be thousands of DOM nodes.
-// Bootstrap tabs only toggle display:none on the inactive pane, so that DOM
-// stays mounted and keeps costing style/layout recalculation everywhere else
-// in the page (e.g. scroll jank) unless we empty it out here. Both tabs keep
-// their data cached in memory and fully rebuild from that cache on the next
-// visit (see the orgsTabBtn/contactsTabBtn click handlers below), so this is
-// a pure DOM-size optimization -- no extra network fetch, no data loss.
-document.getElementById('mainTabs').addEventListener('hidden.bs.tab', (e) => {
+// Organizations, Contacts, and the Quality sub-tabs (HVD/DCAT-AP/GeoDCAT-AP --
+// the latter two check every dataset in the catalog, so their result tables
+// can run into the tens of thousands of rows) each render every row into one
+// big table. Bootstrap tabs only toggle display:none on the inactive pane, so
+// that DOM stays mounted and keeps costing style/layout recalculation
+// everywhere else in the page (e.g. scroll jank) unless we empty it out here.
+// All of them keep their data cached in memory and fully rebuild from that
+// cache on the next visit (see the shown.bs.tab listener below and the
+// orgsTabBtn/contactsTabBtn click handlers further down), so this is a pure
+// DOM-size optimization -- no extra network fetch, no data loss.
+//
+// Listening on `document` (not just #mainTabs) so this also catches the
+// Quality tab's nested HVD/DCAT-AP/GeoDCAT-AP sub-tabs, which are a separate
+// tab group nested inside #tab-quality.
+function _clearIfPresent(id) {
+  const el = show(id);
+  if (el) el.innerHTML = '';
+}
+document.addEventListener('hidden.bs.tab', (e) => {
   const target = e.target.dataset.bsTarget;
   if (target === '#tab-orgs' && _orgsLoaded) show('orgsTable').innerHTML = '';
   if (target === '#tab-contacts' && _portalMembersCache) show('contactsTableBody').innerHTML = '';
+  // hvdTableWrap/dcatTableWrap/geodcatTableWrap only exist once their check has
+  // actually been run at least once this session (they're created dynamically
+  // inside _renderHvdCheck/_renderDcatCheck/_renderGeoDcatCheck), so guard
+  // every access -- most users won't have run all three.
+  if (target === '#qsub-hvd') _clearIfPresent('hvdTableWrap');
+  if (target === '#qsub-dcat') _clearIfPresent('dcatTableWrap');
+  if (target === '#qsub-geodcat') _clearIfPresent('geodcatTableWrap');
+  // Leaving the whole Quality tab hides whichever sub-tab was active without
+  // firing its own hidden.bs.tab (only the ancestor's fires) -- clear all
+  // three explicitly since we don't track which one was showing.
+  if (target === '#tab-quality') {
+    _clearIfPresent('hvdTableWrap');
+    _clearIfPresent('dcatTableWrap');
+    _clearIfPresent('geodcatTableWrap');
+  }
+});
+
+// Mirror image of the above: rebuild whichever table was just emptied, from
+// the in-memory result cache, the moment its tab (or the Quality tab itself,
+// landing back on whichever sub-tab is active) becomes visible again.
+document.addEventListener('shown.bs.tab', (e) => {
+  let target = e.target.dataset.bsTarget;
+  // Landing back on the Quality tab doesn't re-fire its nested sub-tab's own
+  // shown.bs.tab (only #tab-quality's fires), so resolve to whichever
+  // sub-tab is actually visible -- rebuilding only that one, not all three.
+  if (target === '#tab-quality') {
+    target = ['#qsub-hvd', '#qsub-dcat', '#qsub-geodcat'].find(id => _isTabActive(id.slice(1))) || target;
+  }
+  if (target === '#qsub-hvd' && _hvdLastResult && !show('hvdTableWrap')?.innerHTML) _renderHvdTable();
+  if (target === '#qsub-dcat' && _dcatLastResult && !show('dcatTableWrap')?.innerHTML) _renderDcatTable();
+  if (target === '#qsub-geodcat' && _geodcatLastResult && !show('geodcatTableWrap')?.innerHTML) _renderGeoDcatTable();
 });
 
 // Both tabs also get refreshed from background polls (enrichment / stale-cache
