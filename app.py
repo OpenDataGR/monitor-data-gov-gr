@@ -4076,17 +4076,29 @@ def communications_export():
 
 
 
+_CONTACTS_IMPORT_MAX_BYTES = 5 * 1024 * 1024  # 5MB -- generous for a contacts spreadsheet
+
+
 @app.route("/api/contacts/import", methods=["POST"])
 def contacts_import():
+    err = _require_admin()
+    if err:
+        return err
+
     import unicodedata
     from openpyxl import load_workbook
 
     file = freq.files.get("file")
     if not file:
         return jsonify({"error": "No file provided"}), 400
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        return jsonify({"error": "Only .xlsx files are accepted"}), 400
 
     try:
-        buf = io.BytesIO(file.read())
+        raw = file.read(_CONTACTS_IMPORT_MAX_BYTES + 1)
+        if len(raw) > _CONTACTS_IMPORT_MAX_BYTES:
+            return jsonify({"error": "File too large (max 5MB)"}), 413
+        buf = io.BytesIO(raw)
 
         def _norm(s):
             if not s:
