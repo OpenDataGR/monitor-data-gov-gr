@@ -210,15 +210,86 @@ _PUBLIC_PATHS = ("/login", "/logout", "/forgot-password", "/set-password", "/rob
 ALL_TABS = ["overview", "comms", "contacts", "orgs", "health", "traffic", "datasets", "stats", "quality"]
 
 
+# API path prefixes -> the sidebar tab(s) whose UI legitimately calls them,
+# used to enforce allowed_tabs server-side (it used to be UI-only: a
+# restricted user's sidebar hid a tab, but nothing stopped them calling its
+# API routes directly). Order matters -- more specific prefixes must come
+# before broader ones they'd otherwise be shadowed by. A handful of routes
+# are genuinely called from more than one tab's UI (shared widgets/detail
+# panels); access is granted if the user has ANY of the listed tabs, not
+# all of them. Anything not matched here (account/admin/auth routes, static
+# files, etc.) has no tab restriction -- being logged in is enough, same as
+# before this existed.
+_TAB_ROUTE_RULES = [
+    ("/api/contacts/summary",      ("orgs", "contacts")),
+    ("/api/communications",        ("comms",)),
+    ("/api/cases",                 ("comms",)),
+    ("/api/contacts",              ("contacts",)),
+    ("/api/portal-members",        ("contacts",)),
+    ("/api/portal-user/",          ("contacts",)),
+    # HRMS public-sector org list -- the canonical org picker/autocomplete
+    # data source for creating a communication, adding a contact, AND the
+    # Organizations tab's own "All Public Sector" view. Not orgs-exclusive.
+    ("/api/public-orgs",           ("orgs", "comms", "contacts")),
+    # Catalog org filter dropdown also reads this, not just the Organizations tab.
+    ("/api/organizations",         ("orgs", "datasets")),
+    # loadOverview() -- runs for every user regardless of restriction, since
+    # "overview" is always allowed -- also calls health/summary and
+    # stats/latest+live for its own summary cards, not just the dedicated
+    # Health/Insights tabs. Those three need "overview" too, or a restricted
+    # user's own Overview tab breaks.
+    ("/api/health/summary",        ("overview", "health")),
+    ("/api/health/",               ("health",)),
+    ("/api/stats/latest",          ("overview",)),
+    ("/api/stats/live",            ("overview",)),
+    ("/api/datasets/geo-locations", ("stats",)),
+    ("/api/datasets/formats",      ("datasets", "stats")),
+    ("/api/datasets/search",       ("datasets", "orgs")),
+    ("/api/datasets/",             ("datasets", "orgs", "quality")),  # dataset detail panel
+    ("/api/matomo/live",           ("overview",)),
+    ("/api/matomo/today",          ("overview",)),
+    ("/api/matomo/",               ("traffic",)),
+    ("/api/stats/",                ("stats",)),
+    ("/api/quality/",              ("quality",)),
+]
+
+
+def _tab_route_check(path, allowed_tabs):
+    """None (unrestricted) always passes. Otherwise, find the first matching
+    prefix rule and require the user to have at least one of its tabs; a path
+    matching no rule is unrestricted (account/admin/auth routes etc.)."""
+    if allowed_tabs is None:
+        return True
+    for prefix, tabs in _TAB_ROUTE_RULES:
+        if path.startswith(prefix):
+            return any(t in allowed_tabs for t in tabs)
+    return True
+
+
+def _parse_allowed_tabs(raw):
+    tabs = [t for t in (raw or "").split(",") if t in ALL_TABS]
+    if "overview" not in tabs:
+        tabs.insert(0, "overview")
+    return tabs
+
+
 def _effective_allowed_tabs(user: "User"):
     """None means unrestricted (sees every tab) — true for admins and for any
     user who hasn't been given an explicit allow-list."""
     if not user or user.is_admin or not user.allowed_tabs:
         return None
-    tabs = [t for t in user.allowed_tabs.split(",") if t in ALL_TABS]
-    if "overview" not in tabs:
-        tabs.insert(0, "overview")
-    return tabs
+    return _parse_allowed_tabs(user.allowed_tabs)
+
+
+def _session_allowed_tabs():
+    """Same as _effective_allowed_tabs(), but reads is_admin/allowed_tabs from
+    the session cache (set at login) instead of hitting the DB on every single
+    request -- require_login() calls this on every path. Like is_admin, this
+    goes stale if an admin changes the user's tabs mid-session; refreshes on
+    next login, same tradeoff the rest of the session cache already makes."""
+    if session.get("is_admin") or not session.get("allowed_tabs"):
+        return None
+    return _parse_allowed_tabs(session["allowed_tabs"])
 
 
 def _send_password_link(user: "User", kind: str = "invite") -> str:
@@ -376,6 +447,8 @@ def require_login():
             return redirect(url_for("login", next=freq.script_root + freq.path))
         session["_last_seen"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         _touch_last_active(user_id)
+        if not _tab_route_check(freq.path, _session_allowed_tabs()):
+            return jsonify({"error": "Forbidden"}), 403
         return
     if freq.path.startswith("/api/"):
         return jsonify({"error": "Unauthorized"}), 401
@@ -403,6 +476,7 @@ def login():
             session["user_email"] = user.email
             session["is_admin"]   = user.is_admin
             session["is_superadmin"] = user.is_superadmin
+            session["allowed_tabs"] = user.allowed_tabs
             user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.session.commit()
             return redirect(freq.form.get("next") or url_for("index"))
@@ -474,6 +548,7 @@ def webauthn_login_complete():
     session["user_email"] = user.email
     session["is_admin"]   = user.is_admin
     session["is_superadmin"] = user.is_superadmin
+    session["allowed_tabs"] = user.allowed_tabs
     user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.session.commit()
     return jsonify({"ok": True, "redirect": freq.args.get("next") or url_for("index")})
@@ -522,6 +597,7 @@ def set_password():
                 session["user_email"] = user.email
                 session["is_admin"]   = user.is_admin
                 session["is_superadmin"] = user.is_superadmin
+                session["allowed_tabs"] = user.allowed_tabs
                 return redirect(url_for("index"))
     return render_template("set_password.html", valid=valid, error=error, token=token_str)
 
