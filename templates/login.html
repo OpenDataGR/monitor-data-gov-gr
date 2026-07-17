@@ -46,8 +46,9 @@
       <form method="post" action="{{ url_for('login') }}">
         <input type="hidden" name="next" value="{{ next }}">
         <div class="hp-field" aria-hidden="true">
-          <label for="website">Website</label>
-          <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+          <label for="hp_check">Leave this field blank</label>
+          <input type="text" id="hp_check" name="hp_check" tabindex="-1" autocomplete="off"
+                 data-bwignore="true" data-lpignore="true" data-1p-ignore="true" data-form-type="other">
         </div>
         <div class="mb-3">
           <label class="form-label fw-semibold small">Email</label>

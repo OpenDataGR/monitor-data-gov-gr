@@ -347,7 +347,7 @@ def login():
         return redirect(url_for("index"))
     error = None
     if freq.method == "POST":
-        if (freq.form.get("website") or "").strip():
+        if (freq.form.get("hp_check") or "").strip():
             # Honeypot field only a bot would fill in — reject without touching the DB
             return render_template("login.html", error="Incorrect email or password.",
                                     next=freq.args.get("next", ""))
