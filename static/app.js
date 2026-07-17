@@ -855,7 +855,7 @@ const TRANSLATIONS = {
     'contacts.type_org_administrator': 'Διαχειριστής Οργανισμού',
     'contacts.type_org_member': 'Μέλος Οργανισμού',
     'contacts.type_data_officer': 'Υπεύθυνος Διακυβέρνησης Δεδομένων',
-    'contacts.type_data_steward': 'Θεματοφύλακας Δεδομένων',
+    'contacts.type_data_steward': 'Διαχειριστής Δεδομένων',
     'contacts.type_org_editor': 'Συντάκτης Οργανισμού',
     'contacts.type_contact_point': 'Κεντρικός Διαχειριστής Οργανισμού 🎩',
     'contacts.email': 'Email',
