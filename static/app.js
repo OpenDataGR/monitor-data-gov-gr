@@ -1,3 +1,28 @@
+// ── CSRF ─────────────────────────────────────────────────────────────────────
+// Flask-WTF requires an X-CSRFToken header on every POST/PUT/PATCH/DELETE.
+// Patching fetch here once means the many existing fetch() call sites below
+// don't each need to remember to attach it. webauthn.js carries an identical
+// guarded patch (it's a standalone, dependency-free file also loaded on its
+// own by login.html) -- the __csrfFetchPatched guard means whichever of the
+// two loads first on a page that has both (index.html) is the one that wins.
+if (!window.__csrfFetchPatched) {
+  window.__csrfFetchPatched = true;
+  const token = document.querySelector('meta[name="csrf-token"]')?.content;
+  if (token) {
+    const origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      init = init || {};
+      const method = (init.method || 'GET').toUpperCase();
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+        const headers = new Headers(init.headers || {});
+        headers.set('X-CSRFToken', token);
+        init = { ...init, headers };
+      }
+      return origFetch(input, init);
+    };
+  }
+}
+
 // ── i18n ─────────────────────────────────────────────────────────────────────
 const TRANSLATIONS = {
   en: {

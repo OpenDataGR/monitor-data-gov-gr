@@ -18,6 +18,7 @@ import secrets
 from urllib.parse import urlparse
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response
 from flask_compress import Compress
+from flask_wtf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -72,6 +73,14 @@ app.config["COMPRESS_MIMETYPES"] = [
     "application/json",
 ]
 Compress(app)
+
+# CSRF tokens are tied to the session and don't need their own separate
+# expiry -- PERMANENT_SESSION_LIFETIME (14 days) already governs how long a
+# session (and the token in it) stays valid. Without this, Flask-WTF's own
+# default (1 hour) would 400 a perfectly normal session that's just been
+# open in a browser tab for a while.
+app.config["WTF_CSRF_TIME_LIMIT"] = None
+csrf = CSRFProtect(app)
 
 # Production-only cookie hardening, gated on a real FLASK_SECRET_KEY being set
 # (local dev never sets one, so this leaves local behavior untouched). Flask

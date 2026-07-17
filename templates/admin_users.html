@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>Admin Panel — data.gov.gr Monitor</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
@@ -431,6 +432,26 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
   <script>
+    // CSRF: same guarded fetch patch as app.js/webauthn.js -- this page is
+    // fully standalone (loads neither), so it needs its own copy.
+    if (!window.__csrfFetchPatched) {
+      window.__csrfFetchPatched = true;
+      const _csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+      if (_csrfToken) {
+        const _origFetch = window.fetch;
+        window.fetch = function (input, init) {
+          init = init || {};
+          const method = (init.method || 'GET').toUpperCase();
+          if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+            const headers = new Headers(init.headers || {});
+            headers.set('X-CSRFToken', _csrfToken);
+            init = { ...init, headers };
+          }
+          return _origFetch(input, init);
+        };
+      }
+    }
+
     const CURRENT_USER_ID = {{ current_user_id|tojson }};
     const CURRENT_USER_IS_SUPERADMIN = {{ current_user_is_superadmin|tojson }};
 

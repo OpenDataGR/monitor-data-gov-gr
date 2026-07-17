@@ -2,6 +2,26 @@
 // "Manage passkeys" modal (app.js). Kept dependency-free (no esc()/t()/show()
 // from app.js) since login.html loads this on its own with no other JS.
 
+// CSRF: same guarded fetch patch as app.js -- see its comment. Needed here
+// too since login.html loads this file standalone (no app.js on that page).
+if (!window.__csrfFetchPatched) {
+  window.__csrfFetchPatched = true;
+  const _csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+  if (_csrfToken) {
+    const _origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      init = init || {};
+      const method = (init.method || 'GET').toUpperCase();
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+        const headers = new Headers(init.headers || {});
+        headers.set('X-CSRFToken', _csrfToken);
+        init = { ...init, headers };
+      }
+      return _origFetch(input, init);
+    };
+  }
+}
+
 function _b64urlToBuffer(b64url) {
   const pad = '='.repeat((4 - b64url.length % 4) % 4);
   const b64 = (b64url + pad).replace(/-/g, '+').replace(/_/g, '/');
