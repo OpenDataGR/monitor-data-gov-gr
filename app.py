@@ -3607,6 +3607,7 @@ def refresh_mqa():
 
 
 @app.route("/api/trigger-check", methods=["POST"])
+@limiter.limit("10 per hour")
 def trigger_check():
     threading.Thread(target=run_health_checks, daemon=True).start()
     return jsonify({"ok": True, "timestamp": datetime.now(timezone.utc).isoformat()})
@@ -3649,6 +3650,7 @@ def debug_portal():
 
 
 @app.route("/api/organizations", methods=["GET", "POST"])
+@limiter.limit("10 per hour", methods=["POST"])
 def organizations():
     if freq.method == "POST" or _orgs_cache["data"] is None:
         # Quick fetch returns data immediately (org list only, no last_updated).
