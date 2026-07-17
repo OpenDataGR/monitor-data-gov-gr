@@ -1187,6 +1187,29 @@ document.getElementById('mainTabs').addEventListener('shown.bs.tab', (e) => {
   if (key) history.replaceState(null, '', '#' + key);
 });
 
+// Organizations and Contacts render every row into one big table each --
+// with the full org/portal-member list this can be thousands of DOM nodes.
+// Bootstrap tabs only toggle display:none on the inactive pane, so that DOM
+// stays mounted and keeps costing style/layout recalculation everywhere else
+// in the page (e.g. scroll jank) unless we empty it out here. Both tabs keep
+// their data cached in memory and fully rebuild from that cache on the next
+// visit (see the orgsTabBtn/contactsTabBtn click handlers below), so this is
+// a pure DOM-size optimization -- no extra network fetch, no data loss.
+document.getElementById('mainTabs').addEventListener('hidden.bs.tab', (e) => {
+  const target = e.target.dataset.bsTarget;
+  if (target === '#tab-orgs' && _orgsLoaded) show('orgsTable').innerHTML = '';
+  if (target === '#tab-contacts' && _portalMembersCache) show('contactsTableBody').innerHTML = '';
+});
+
+// Both tabs also get refreshed from background polls (enrichment / stale-cache
+// refresh) that run on a timer regardless of which tab the user is looking
+// at. Without this check those polls would rebuild the big table right after
+// the hidden.bs.tab handler above just emptied it out.
+function _isTabActive(paneId) {
+  const pane = document.getElementById(paneId);
+  return !!pane && pane.classList.contains('active');
+}
+
 window.addEventListener('hashchange', () => _activateTabByKey(_tabKeyFromHash(location.hash)));
 
 // Honor a hash already in the URL on first load (a bookmarked or shared link).
@@ -3654,7 +3677,10 @@ function sortArrow(col) {
 }
 
 document.getElementById('orgsTabBtn').addEventListener('click', () => {
-  if (_orgsLoaded) return;
+  // Already-loaded data lives in _orgsData/_publicOrgs -- re-render from
+  // there instead of skipping outright, since the table DOM is emptied
+  // whenever this tab is hidden (see the hidden.bs.tab listener above).
+  if (_orgsLoaded) { filterOrgs(); return; }
   loadOrgs();
 });
 
@@ -3736,7 +3762,7 @@ async function _loadOrgsBackground() {
     show('orgsFetchedAt').textContent = json.fetched_at
       ? t('orgs.fetched') + ' ' + relativeDate(json.fetched_at)
       : '';
-    renderOrgsTable(_orgsData);
+    if (_isTabActive('tab-orgs')) renderOrgsTable(_orgsData);
     if (json.enriching) _pollUntilEnriched();
   } catch (_) {}
 }
@@ -3979,7 +4005,7 @@ async function _pollUntilEnriched(attempts = 0) {
     _orgsSaveCache(_orgsData, json.fetched_at);
     if (_publicOrgs.length) _buildCkanLookup();
     show('orgsFetchedAt').textContent = json.fetched_at ? t('orgs.fetched') + ' ' + relativeDate(json.fetched_at) : '';
-    if (_orgsViewMode === 'portal') renderOrgsTable(_orgsData);
+    if (_orgsViewMode === 'portal' && _isTabActive('tab-orgs')) renderOrgsTable(_orgsData);
     if (json.enriching) _pollUntilEnriched(attempts + 1);
   } catch (_) {}
 }
@@ -5157,8 +5183,10 @@ async function loadContactSummary() {
   } catch (_) {}
 
   _contactSummary = s;
-  if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
-  if (_orgsViewMode === 'all') filterOrgs();
+  if (_isTabActive('tab-orgs')) {
+    if (_orgsViewMode === 'portal' && _orgsLoaded) renderOrgsTable(_orgsData);
+    if (_orgsViewMode === 'all') filterOrgs();
+  }
 }
 // Detail offcanvases (org/dataset) can open one from within the other in either
 // direction, and Bootstrap gives every offcanvas the same default z-index — ties
@@ -5993,9 +6021,11 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
     _pmSaveCache(_portalMembersCache, _pmUnmatched);
     _pmSetFetchedAt(Date.now());
     show('contactsReloadBtn').disabled = false;
-    renderContactsSummary();
-    filterContactsTab();
-    renderUnmatchedContacts();
+    if (_isTabActive('tab-contacts')) {
+      renderContactsSummary();
+      filterContactsTab();
+      renderUnmatchedContacts();
+    }
     if (_orgsLoaded) loadContactSummary();
   } catch (e) {
     if (!silent) {
