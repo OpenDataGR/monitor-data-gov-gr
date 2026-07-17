@@ -4375,12 +4375,12 @@ function renderCommsTable(rows) {
       <tbody>
         ${sorted.map(c => `
           <tr>
-            <td class="text-muted small mono text-nowrap">${c.contact_date}</td>
-            <td class="fw-semibold small">${c.org_title}</td>
-            <td class="small">${c.subject} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
+            <td class="text-muted small mono text-nowrap">${esc(c.contact_date)}</td>
+            <td class="fw-semibold small">${esc(c.org_title)}</td>
+            <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
             <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
             <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
-            <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
+            <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
             <td class="text-end text-nowrap">
               <div class="d-flex gap-1 justify-content-end">
                 ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
@@ -4428,7 +4428,7 @@ function renderCommsGrouped(data) {
         <td colspan="6">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
-            <span class="fw-semibold">${orgTitle}</span>
+            <span class="fw-semibold">${esc(orgTitle)}</span>
             <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${comms.length} ${comms.length === 1 ? t('comms.entry') : t('comms.entries')}</span>
             <span class="badge ${STATUS_BADGE[latest.status] || 'bg-secondary'}" style="font-size:.7rem">${statusLabel[latest.status] || latest.status}</span>
             <span class="text-muted small ms-auto">${latest.contact_date}</span>
@@ -4442,11 +4442,11 @@ function renderCommsGrouped(data) {
       </tr>
       ${comms.map(c => `
         <tr style="${isExpanded ? '' : 'display:none'}" class="comm-hist-row">
-          <td class="text-muted small mono text-nowrap ps-4">${c.contact_date}</td>
-          <td class="small">${c.subject} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
+          <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
+          <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
           <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
           <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
-          <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
+          <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
           <td class="text-end text-nowrap">
             <div class="d-flex gap-1 justify-content-end">
               ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
@@ -4526,11 +4526,11 @@ function renderCommsCases(data) {
       </tr>
       ${comms.map(c => `
         <tr style="${isExpanded ? '' : 'display:none'}" class="comm-hist-row">
-          <td class="text-muted small mono text-nowrap ps-4">${c.contact_date}</td>
-          <td class="small">${c.subject}${contactPersonHtml(c)}</td>
+          <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
+          <td class="small">${esc(c.subject)}${contactPersonHtml(c)}</td>
           <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
           <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
-          <td class="small text-muted text-truncate" style="max-width:0" title="${(c.notes||'').replace(/"/g,'&quot;')}">${c.notes || ''}</td>
+          <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
           <td class="text-end text-nowrap">
             <div class="d-flex gap-1 justify-content-end">
               ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}

@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import json
 from pathlib import Path
@@ -48,6 +49,16 @@ if _db_url.startswith("postgres://"):  # normalize legacy Heroku-style prefix
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=14)  # absolute cap; see also the idle timeout in require_login
+if not config.FLASK_SECRET_KEY:
+    # Falling back silently would mean a misconfigured production deploy
+    # signs sessions with a key that's sitting in plain sight in this file --
+    # anyone could forge session["is_admin"] = True. This also gates
+    # SESSION_COOKIE_SECURE/SESSION_COOKIE_SAMESITE below, so a missing key
+    # quietly weakens several things at once. Warn loudly (stderr -> gunicorn
+    # -> journalctl) rather than fail the process, since local dev relies on
+    # this fallback and has no env file at all.
+    print("WARNING: FLASK_SECRET_KEY is not set -- falling back to an insecure, "
+          "hardcoded dev key. This must never happen in production.", file=sys.stderr)
 app.secret_key = config.FLASK_SECRET_KEY or "insecure-dev-secret-key-change-me"
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
@@ -290,6 +301,16 @@ def no_cache(response):
     # This dashboard has no business being in search results — tell every crawler
     # that respects the header to stay out, regardless of how it found a URL.
     response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    # Defense-in-depth headers -- cheap, no functional cost.
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    # Same signal the cookie hardening above uses for "this is the production
+    # deploy" (config.FLASK_SECRET_KEY is only ever unset locally) -- HSTS is
+    # meaningless (and browsers ignore it) over plain HTTP local dev anyway,
+    # but there's no reason to send it there. No includeSubDomains: this is a
+    # subpath on a shared domain (experiments.data.gov.gr), not our own host.
+    if config.FLASK_SECRET_KEY:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response
 
 
