@@ -727,7 +727,7 @@
             <div class="mb-3" style="width:340px;max-width:100%">
               <input type="text" id="hvdResultsSearchInput" class="form-control form-control-sm"
                      placeholder="Search results by title…" data-i18n-ph="quality.hvd_results_search_placeholder"
-                     autocomplete="off" oninput="_renderHvdTable()">
+                     autocomplete="off" oninput="debouncedRenderHvdTable()">
             </div>
             <div id="hvdProgressWrap" class="mb-3 d-none">
               <div class="d-flex justify-content-between small text-muted mb-1">
@@ -775,7 +775,7 @@
             <div class="mb-3" style="width:340px;max-width:100%">
               <input type="text" id="dcatResultsSearchInput" class="form-control form-control-sm"
                      placeholder="Search results by title…" data-i18n-ph="quality.hvd_results_search_placeholder"
-                     autocomplete="off" oninput="_renderDcatTable()">
+                     autocomplete="off" oninput="debouncedRenderDcatTable()">
             </div>
             <div id="dcatProgressWrap" class="mb-3 d-none">
               <div class="d-flex justify-content-between small text-muted mb-1">
@@ -823,7 +823,7 @@
             <div class="mb-3" style="width:340px;max-width:100%">
               <input type="text" id="geodcatResultsSearchInput" class="form-control form-control-sm"
                      placeholder="Search results by title…" data-i18n-ph="quality.hvd_results_search_placeholder"
-                     autocomplete="off" oninput="_renderGeoDcatTable()">
+                     autocomplete="off" oninput="debouncedRenderGeoDcatTable()">
             </div>
             <div id="geodcatProgressWrap" class="mb-3 d-none">
               <div class="d-flex justify-content-between small text-muted mb-1">
@@ -972,7 +972,7 @@
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span id="orgsFetchedAt" class="text-muted small"></span>
-                <input type="search" id="orgSearch" class="form-control form-control-sm" placeholder="Search organizations…" data-i18n-ph="orgs.search" style="width:200px" oninput="filterOrgs()">
+                <input type="search" id="orgSearch" class="form-control form-control-sm" placeholder="Search organizations…" data-i18n-ph="orgs.search" style="width:200px" oninput="debouncedFilterOrgs()">
                 <button id="orgsRefreshBtn" class="btn btn-outline-primary btn-sm" onclick="loadOrgs(true)"><i class="bi bi-arrow-repeat me-1"></i><span data-i18n="orgs.refresh">Refresh</span></button>
               </div>
             </div>
@@ -1000,7 +1000,7 @@
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <button id="commsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="expandAllComms()" data-i18n-title="comms.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="commsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="collapseAllComms()" data-i18n-title="comms.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
-                <input type="search" id="commsSearch" class="form-control form-control-sm" placeholder="Search communications…" data-i18n-ph="comms.search" style="width:180px" oninput="filterComms()">
+                <input type="search" id="commsSearch" class="form-control form-control-sm" placeholder="Search communications…" data-i18n-ph="comms.search" style="width:180px" oninput="debouncedFilterComms()">
                 <button class="btn btn-outline-secondary btn-sm" onclick="downloadCommsExcel()" data-i18n-title="comms.download_excel_title" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span></button>
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
               </div>
@@ -1069,7 +1069,7 @@
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span id="contactsFetchedAt" class="text-muted small"></span>
                 <input type="search" id="contactsSearch" class="form-control form-control-sm" style="width:180px"
-                  placeholder="Search contacts…" data-i18n-ph="contacts.search_ph" oninput="filterContactsTab()">
+                  placeholder="Search contacts…" data-i18n-ph="contacts.search_ph" oninput="debouncedFilterContactsTab()">
                 <button id="contactsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllContacts()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="contactsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllContacts()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
                 <button class="btn btn-outline-secondary btn-sm" id="contactsReloadBtn" onclick="loadContactsTab(true)">

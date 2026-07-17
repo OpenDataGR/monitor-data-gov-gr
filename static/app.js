@@ -1223,6 +1223,26 @@ function showSpinner(v) {
   show('spinner').classList.toggle('active', v);
 }
 
+function debounce(fn, wait) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
+// Debounced search-input handlers — the underlying functions each re-filter/sort
+// the full dataset and rebuild a table's innerHTML, so running them on every
+// keystroke is what made typing in these boxes feel laggy. Programmatic callers
+// (data loads, sort/view toggles, etc.) keep calling the undebounced functions
+// directly, so only the search boxes below get the delay.
+const debouncedFilterContactsTab  = debounce(() => filterContactsTab(),  200);
+const debouncedFilterOrgs         = debounce(() => filterOrgs(),         200);
+const debouncedFilterComms        = debounce(() => filterComms(),        200);
+const debouncedRenderHvdTable     = debounce(() => _renderHvdTable(),     200);
+const debouncedRenderDcatTable    = debounce(() => _renderDcatTable(),    200);
+const debouncedRenderGeoDcatTable = debounce(() => _renderGeoDcatTable(), 200);
+
 // ── Today's Traffic ──────────────────────────────────────────────────────────
 async function loadTodayTraffic() {
   try {
