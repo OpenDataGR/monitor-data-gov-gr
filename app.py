@@ -1067,6 +1067,10 @@ def _background_loop():
             _do_refresh_mqa()
         except Exception as exc:
             print(f"[mqa] initial error: {exc}")
+    try:
+        _do_fetch_portal_members()
+    except Exception as exc:
+        print(f"[portal-members] initial error: {exc}")
 
     last_orgs_refresh           = time.time()
     last_dataset_growth_refresh = time.time()
@@ -1075,6 +1079,7 @@ def _background_loop():
     last_dcat_check_refresh     = time.time()
     last_geodcat_check_refresh  = time.time()
     last_mqa_refresh            = time.time()
+    last_pm_refresh             = time.time()
     while True:
         time.sleep(config.CHECK_INTERVAL_SECONDS)
         try:
@@ -1142,6 +1147,12 @@ def _background_loop():
             except Exception as exc:
                 print(f"[mqa] refresh error: {exc}")
             last_mqa_refresh = time.time()
+        if time.time() - last_pm_refresh >= _PM_REFRESH_INTERVAL:
+            try:
+                _do_fetch_portal_members()
+            except Exception as exc:
+                print(f"[portal-members] refresh error: {exc}")
+            last_pm_refresh = time.time()
 
 
 _singleton_lock_file = None  # kept open for the process lifetime; closing it releases the lock
@@ -4740,6 +4751,7 @@ def portal_user_activity(username):
 # ── Portal Members (all orgs) ─────────────────────────────────────────────────
 
 _pm_cache: dict = {"data": None, "ts": 0, "loading": False, "error": None}
+_PM_REFRESH_INTERVAL = 90 * 60  # refresh proactively before the 2h cache below goes stale
 
 
 def _do_fetch_portal_members():
