@@ -485,7 +485,7 @@
           <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
             <thead><tr>
-              <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th class="text-nowrap">Last login</th><th class="text-nowrap">Last active</th><th></th>
+              <th>Name</th><th>Email</th><th>Role</th>${CURRENT_USER_IS_SUPERADMIN ? '<th>Status</th><th class="text-nowrap">Last login</th><th class="text-nowrap">Last active</th>' : ''}<th></th>
             </tr></thead>
             <tbody>
               ${users.map(u => {
@@ -512,12 +512,13 @@
                            ${u.is_admin ? 'Admin' : 'User'}
                          </button>`}
                   </td>
+                  ${CURRENT_USER_IS_SUPERADMIN ? `
                   <td>
                     <span class="badge ${u.has_password ? 'badge-active' : 'badge-invited'}">${u.has_password ? 'Active' : 'Invited'}</span>
                     ${u.has_passkey ? `<i class="bi bi-fingerprint text-primary ms-1" title="Passkey enabled -- this user has registered at least one passkey for sign-in"></i>` : ''}
                   </td>
                   <td class="small text-muted text-nowrap">${relTime(u.last_login_at)}</td>
-                  <td class="small text-muted text-nowrap">${relTime(u.last_active_at)}</td>
+                  <td class="small text-muted text-nowrap">${relTime(u.last_active_at)}</td>` : ''}
                   <td class="text-end text-nowrap">
                     <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="Resend invite / reset link" onclick="resendInvite(${u.id})"><i class="bi bi-envelope-arrow-up"></i></button>
                     ${u.is_admin

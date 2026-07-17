@@ -231,6 +231,19 @@ def _require_superadmin():
     return None
 
 
+def _user_dict_for_viewer(user):
+    """Status/last-login/last-active are only meaningful to someone auditing
+    the whole user base -- restrict them to superadmins so a plain admin
+    can't see when their peers last signed in."""
+    d = user.to_dict()
+    if not session.get("is_superadmin"):
+        d.pop("has_password", None)
+        d.pop("has_passkey", None)
+        d.pop("last_login_at", None)
+        d.pop("last_active_at", None)
+    return d
+
+
 @app.after_request
 def _purge_legacy_root_cookie(response):
     # Before the SESSION_COOKIE_PATH fix above, our session cookie was set at
@@ -506,8 +519,8 @@ def users_collection():
             user.name = name
             db.session.commit()
         link = _send_password_link(user, kind="invite")
-        return jsonify({"ok": True, "user": user.to_dict(), "invite_link": link}), 201
-    return jsonify([u.to_dict() for u in User.query.order_by(User.created_at).all()])
+        return jsonify({"ok": True, "user": _user_dict_for_viewer(user), "invite_link": link}), 201
+    return jsonify([_user_dict_for_viewer(u) for u in User.query.order_by(User.created_at).all()])
 
 
 @app.route("/api/users/<int:user_id>/resend-invite", methods=["POST"])
@@ -533,7 +546,7 @@ def users_toggle_admin(user_id):
         return jsonify({"error": "Superadmin status can only be changed by editing the database directly"}), 400
     user.is_admin = not user.is_admin
     db.session.commit()
-    return jsonify({"ok": True, "user": user.to_dict()})
+    return jsonify({"ok": True, "user": _user_dict_for_viewer(user)})
 
 
 @app.route("/api/users/<int:user_id>/tabs", methods=["POST"])
@@ -550,7 +563,7 @@ def users_set_tabs(user_id):
         cleaned = [t for t in tabs if t in ALL_TABS and t != "overview"]
         user.allowed_tabs = ",".join(cleaned) if cleaned else "overview"
     db.session.commit()
-    return jsonify({"ok": True, "user": user.to_dict()})
+    return jsonify({"ok": True, "user": _user_dict_for_viewer(user)})
 
 
 @app.route("/api/users/<int:user_id>/delete", methods=["POST"])
