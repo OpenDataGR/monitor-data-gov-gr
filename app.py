@@ -3833,7 +3833,7 @@ def communications_update(comm_id):
     return jsonify(comm.to_dict())
 
 
-@app.route("/api/communications/<int:comm_id>/delete", methods=["GET", "DELETE", "POST"])
+@app.route("/api/communications/<int:comm_id>/delete", methods=["DELETE", "POST"])
 def communications_delete(comm_id):
     comm = Communication.query.get_or_404(comm_id)
     case_id = comm.case_id
@@ -3905,7 +3905,7 @@ def case_reopen(case_id):
     return jsonify(case.to_dict())
 
 
-@app.route("/api/cases/<int:case_id>/delete", methods=["GET", "DELETE", "POST"])
+@app.route("/api/cases/<int:case_id>/delete", methods=["DELETE", "POST"])
 def case_delete(case_id):
     case = Case.query.get_or_404(case_id)
     db.session.delete(case)  # cascades to its communications
@@ -4588,7 +4588,7 @@ def _decode_payload():
     return freq.get_json(force=True, silent=True) or freq.form.to_dict() or freq.args.to_dict()
 
 
-@app.route("/api/contacts/save", methods=["GET", "POST", "PATCH"])
+@app.route("/api/contacts/save", methods=["POST", "PATCH"])
 def contacts_save():
     body = _decode_payload()
     contact_id = body.get("id") or None
@@ -4638,7 +4638,7 @@ def contacts_save():
         return jsonify(contact.to_dict()), 201
 
 
-@app.route("/api/contacts/remove", methods=["GET", "POST", "DELETE"])
+@app.route("/api/contacts/remove", methods=["POST", "DELETE"])
 def contacts_remove():
     body = _decode_payload()
     contact_id = body.get("id")
