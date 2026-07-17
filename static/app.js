@@ -2793,6 +2793,12 @@ function _renderHvdTable() {
     ([an, al], [bn, bl]) => bl.length - al.length || an.localeCompare(bn)
   );
 
+  // DCAT-AP/GeoDCAT-AP-style checks cover the *entire* catalog (tens of
+  // thousands of datasets), and every org starts collapsed -- building every
+  // group's dataset rows up front (just hidden via CSS) meant a check with a
+  // large result set could block the main thread for seconds on tab open,
+  // for rows nobody was even looking at. Only expanded groups get their rows
+  // built; toggling a group re-renders (cheap: everyone else stays header-only).
   const bodyRows = _hvdGroupsCache.map(([orgTitle, list], idx) => {
     const isExpanded = _hvdExpandedOrgs.has(orgTitle);
     const groupRow = `
@@ -2805,7 +2811,7 @@ function _renderHvdTable() {
           </div>
         </td>
       </tr>`;
-    const datasetRows = list.map(d => _hvdRowHtml(d, { indent: true, hidden: !isExpanded })).join('');
+    const datasetRows = isExpanded ? list.map(d => _hvdRowHtml(d, { indent: true })).join('') : '';
     return groupRow + datasetRows;
   }).join('');
 
@@ -3201,7 +3207,7 @@ function _renderDcatTable() {
           </div>
         </td>
       </tr>`;
-    const datasetRows = list.map(d => _dcatRowHtml(d, { indent: true, hidden: !isExpanded })).join('');
+    const datasetRows = isExpanded ? list.map(d => _dcatRowHtml(d, { indent: true })).join('') : '';
     return groupRow + datasetRows;
   }).join('');
 
@@ -3560,7 +3566,7 @@ function _renderGeoDcatTable() {
           </div>
         </td>
       </tr>`;
-    const datasetRows = list.map(d => _geodcatRowHtml(d, { indent: true, hidden: !isExpanded })).join('');
+    const datasetRows = isExpanded ? list.map(d => _geodcatRowHtml(d, { indent: true })).join('') : '';
     return groupRow + datasetRows;
   }).join('');
 
