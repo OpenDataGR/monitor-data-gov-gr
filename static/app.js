@@ -3988,6 +3988,7 @@ async function _pollUntilEnriched(attempts = 0) {
 let _commsLoaded   = false;
 let _commsData     = [];
 let _casesData     = [];   // [{id, org_name, org_title, subject, status, opened_at, closed_at, entry_count, last_update}]
+let _commsPollSnapshot = '';  // last-seen JSON of comms+cases, so the 20s poll can skip re-rendering when nothing changed
 let _publicOrgs    = [];   // [{code, label}] from hrms.gov.gr
 let _commModal     = null;
 let _commContactsPrefetchStarted = false;
@@ -4048,6 +4049,7 @@ async function loadComms() {
     const results = await Promise.all(fetches);
     _commsData = results[0];
     _casesData = Array.isArray(results[1]) ? results[1] : [];
+    _commsPollSnapshot = JSON.stringify([_commsData, _casesData]);
     if (results[2]) _publicOrgs = Array.isArray(results[2]) ? results[2] : [];
     _commsLoaded = true;
     if (!_portalMembersCache) loadContactsTab();
@@ -4064,8 +4066,12 @@ async function _reloadCasesAndComms() {
     fetch(API_BASE + 'api/communications').then(r => r.json()),
     fetch(API_BASE + 'api/cases').then(r => r.json()),
   ]);
+  const casesArr = Array.isArray(cases) ? cases : [];
+  const snapshot = JSON.stringify([comms, casesArr]);
+  if (snapshot === _commsPollSnapshot) return;  // nobody else changed anything — skip the re-render
+  _commsPollSnapshot = snapshot;
   _commsData = comms;
-  _casesData = Array.isArray(cases) ? cases : [];
+  _casesData = casesArr;
   renderCommsSummary();
   filterComms();
 }
@@ -6253,6 +6259,15 @@ function filterContactsTab() {
     return;
   }
 
+  // Precompute username -> org-memberships once instead of scanning the full
+  // portal-members cache per row (was O(rows * _portalMembersCache) below).
+  const orgsByUsername = new Map();
+  for (const x of (_portalMembersCache || [])) {
+    if (!x.org_name) continue;
+    if (!orgsByUsername.has(x.username)) orgsByUsername.set(x.username, []);
+    orgsByUsername.get(x.username).push(x);
+  }
+
   _pmRows = rows;
   show('contactsTableBody').innerHTML = rows.map((m, i) => {
     const state    = m.state || 'active';
@@ -6261,7 +6276,7 @@ function filterContactsTab() {
     const stateCls = STATE_BADGE_CLS[state]       || 'bg-secondary';
     const posLine = m.contact_position
       ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
-    const userOrgs = (_portalMembersCache || []).filter(x => x.username === m.username && x.org_name);
+    const userOrgs = orgsByUsername.get(m.username) || [];
     const MAX_ORGS = 2;
     const orgsHtml = userOrgs.length === 0
       ? `<span class="text-muted small fst-italic">—</span>`
@@ -7265,8 +7280,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Back-to-top floating button ─────────────────────────────────────────────
+let _scrollTicking = false;
 window.addEventListener('scroll', () => {
-  show('backToTopBtn').classList.toggle('show', window.scrollY > 300);
+  if (_scrollTicking) return;
+  _scrollTicking = true;
+  requestAnimationFrame(() => {
+    show('backToTopBtn').classList.toggle('show', window.scrollY > 300);
+    _scrollTicking = false;
+  });
 });
 
 // ── Changelog modal ─────────────────────────────────────────────────────────
