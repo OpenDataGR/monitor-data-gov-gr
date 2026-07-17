@@ -15,6 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js" defer></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
   <style>
+    #pmEditContactType option.type-spacer { min-height: 1px; height: 1px; padding: 0; margin: 4px 0; border-top: 1px solid #dee2e6; }
     body { background: #f0f2f5; }
     .navbar { background: linear-gradient(135deg, #003366 0%, #0057b8 100%); }
     .stat-card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); transition: transform .2s; }
@@ -1347,11 +1348,12 @@
         </div>
         <div class="mb-2">
           <label class="form-label small mb-1" data-i18n="contacts.type">Contact type</label>
-          <select class="form-select form-select-sm" id="pmEditContactType" multiple size="6">
+          <select class="form-select form-select-sm" id="pmEditContactType" multiple size="7">
             <option value="Κεντρικός Διαχειριστής Οργανισμού" data-i18n="contacts.type_contact_point">Κεντρικός Διαχειριστής Οργανισμού 🎩</option>
             <option value="Org Administrator" data-i18n="contacts.type_org_administrator">Org Administrator</option>
             <option value="Org Editor" data-i18n="contacts.type_org_editor">Org Editor</option>
             <option value="Org Member" data-i18n="contacts.type_org_member">Org Member</option>
+            <option disabled class="type-spacer"></option>
             <option value="Data Governance Officer" data-i18n="contacts.type_data_officer">Data Governance Officer</option>
             <option value="Data Steward" data-i18n="contacts.type_data_steward">Data Steward</option>
           </select>
