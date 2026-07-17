@@ -328,7 +328,7 @@ const TRANSLATIONS = {
     'contacts.type_data_officer': 'Data Governance Officer',
     'contacts.type_data_steward': 'Data Steward',
     'contacts.type_org_editor': 'Org Editor',
-    'contacts.type_contact_point': 'Κεντρικός Διαχειριστής Οργανισμού 🎩',
+    'contacts.type_contact_point': 'Org Central Administrator 🎩',
     'contacts.email': 'Email',
     'contacts.tel': 'Tel',
     'contacts.mobile': 'Mobile',

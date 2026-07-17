@@ -884,6 +884,10 @@ _ROLE_MAP = {
     "data officer":                    "Data Governance Officer",
     "data governance officer":         "Data Governance Officer",
     "data steward":                    "Data Steward",
+    "κεντρικος διαχειριστης οργανισμου": "Κεντρικός Διαχειριστής Οργανισμού",
+    "κεντρικος διαχειριστης":           "Κεντρικός Διαχειριστής Οργανισμού",
+    "org central administrator":       "Κεντρικός Διαχειριστής Οργανισμού",
+    "central administrator":           "Κεντρικός Διαχειριστής Οργανισμού",
 }
 
 
