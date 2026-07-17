@@ -328,6 +328,7 @@ const TRANSLATIONS = {
     'contacts.type_data_officer': 'Data Governance Officer',
     'contacts.type_data_steward': 'Data Steward',
     'contacts.type_org_editor': 'Org Editor',
+    'contacts.type_contact_point': 'Organization Contact Point 🎩',
     'contacts.email': 'Email',
     'contacts.tel': 'Tel',
     'contacts.mobile': 'Mobile',
@@ -856,6 +857,7 @@ const TRANSLATIONS = {
     'contacts.type_data_officer': 'Υπεύθυνος Διακυβέρνησης Δεδομένων',
     'contacts.type_data_steward': 'Θεματοφύλακας Δεδομένων',
     'contacts.type_org_editor': 'Συντάκτης Οργανισμού',
+    'contacts.type_contact_point': 'Σημείο Επαφής Οργανισμού 🎩',
     'contacts.email': 'Email',
     'contacts.tel': 'Τηλ',
     'contacts.mobile': 'Κινητό',
@@ -6004,6 +6006,7 @@ const CONTACT_TYPE_CLS = {
   'Org Member':           'bg-secondary',
   'Data Governance Officer': 'bg-info text-dark',
   'Data Steward':         'bg-warning text-dark',
+  'Organization Contact Point': 'bg-dark',
 };
 
 // Portal capacity ('admin'/'editor'/'member'/'user') -> the English label used
@@ -6021,6 +6024,7 @@ const _CONTACT_TYPE_I18N_KEY = {
   'Org Member':               'contacts.type_org_member',
   'Data Governance Officer': 'contacts.type_data_officer',
   'Data Steward':             'contacts.type_data_steward',
+  'Organization Contact Point': 'contacts.type_contact_point',
 };
 
 function _portalRoleLabel(m) {
