@@ -11,13 +11,13 @@ jobs:
     steps:
       - name: Pull latest code
         run: |
-          cd /home/localadmin/communcation_dashboard
+          cd /home/localadmin/crm-data-gov-gr
           git pull
           date -u '+%Y-%m-%d %H:%M UTC' > build_date.txt
 
       - name: Install dependencies
         run: |
-          cd /home/localadmin/communcation_dashboard
+          cd /home/localadmin/crm-data-gov-gr
           source venv/bin/activate
           pip install -r requirements.txt
 
@@ -25,4 +25,4 @@ jobs:
         run: |
           pkill -TERM -u localadmin -f "gunicorn.*app:app" || true
           sleep 5
-          systemctl is-active --quiet communcation_dashboard && echo "Service restarted OK" || (journalctl -u communcation_dashboard -n 30 --no-pager; exit 1)
+          systemctl is-active --quiet crm-data-gov-gr && echo "Service restarted OK" || (journalctl -u crm-data-gov-gr -n 30 --no-pager; exit 1)
