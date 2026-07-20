@@ -140,7 +140,7 @@ Deployment is automated via GitHub Actions (`.github/workflows/deploy.yml`) on e
 
 1. A self-hosted runner on the production VM pulls the latest code and reinstalls dependencies.
 2. The running `gunicorn` process is sent `SIGTERM` and given a few seconds to exit.
-3. systemd (unit: `crm-data-gov-gr`) restarts it; the workflow fails the deploy if the service isn't active afterwards.
+3. systemd (unit: `monitor-data-gov-gr`) restarts it; the workflow fails the deploy if the service isn't active afterwards.
 
 In production, gunicorn runs threaded worker processes (`gunicorn -w 3 --threads 4 --worker-class gthread -b 127.0.0.1:5000 app:app`) behind a reverse proxy. Anything that needs to stay consistent across requests regardless of which worker handles them (e.g. the HVD check's live progress) is backed by the database rather than in-process memory.
 
