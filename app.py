@@ -83,15 +83,15 @@ app.config["WTF_CSRF_TIME_LIMIT"] = None
 csrf = CSRFProtect(app)
 
 # Production-only cookie hardening, gated on a real FLASK_SECRET_KEY being set
-# (local dev never sets one, so this leaves local behavior untouched). Flask
-# has no idea we're mounted at a subpath, so without this the session cookie
-# defaults to Path=/ -- the whole shared experiments.data.gov.gr domain -- and
-# gets sent to (and mixes with cookie bloat from) every other app on that
-# domain. A request whose combined Cookie header grows past a proxy's size
-# limit can come back as a 403 before it ever reaches this app, even on a
-# plain GET /login; clearing cookies "fixes" it only because it wipes the
-# oversized cookie along with everything else. Scoping our own cookie to the
-# actual mount path at least stops us contributing to that.
+# (local dev never sets one, so this leaves local behavior untouched).
+# SESSION_COOKIE_PATH is derived from PUBLIC_BASE_URL's path rather than
+# hardcoded to "/" so this keeps working if the app is ever mounted at a
+# subpath again, as it was on the old shared experiments.data.gov.gr host --
+# there, Flask had no idea it was mounted at a subpath, so the session cookie
+# defaulted to Path=/ (the whole shared domain) and mixed with cookie bloat
+# from every other app on it, occasionally tripping a proxy's Cookie-header
+# size limit as a 403. On monitor.data.gov.gr's own domain root, PUBLIC_BASE_URL
+# has no path and this just resolves to "/".
 if config.FLASK_SECRET_KEY:
     app.config["SESSION_COOKIE_PATH"] = urlparse(config.PUBLIC_BASE_URL).path or "/"
     app.config["SESSION_COOKIE_SECURE"] = True
@@ -388,8 +388,9 @@ def no_cache(response):
     # Same signal the cookie hardening above uses for "this is the production
     # deploy" (config.FLASK_SECRET_KEY is only ever unset locally) -- HSTS is
     # meaningless (and browsers ignore it) over plain HTTP local dev anyway,
-    # but there's no reason to send it there. No includeSubDomains: this is a
-    # subpath on a shared domain (experiments.data.gov.gr), not our own host.
+    # but there's no reason to send it there. No includeSubDomains: left off
+    # from the days this was a subpath on the shared experiments.data.gov.gr
+    # host, not re-evaluated since -- monitor.data.gov.gr is our own domain now.
     if config.FLASK_SECRET_KEY:
         response.headers["Strict-Transport-Security"] = "max-age=31536000"
     return response

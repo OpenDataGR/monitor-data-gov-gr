@@ -13,7 +13,7 @@ DATABASE_URL        = os.environ.get("DATABASE_URL", "").strip()
 
 # Used to build absolute links (invite/reset emails) from contexts with no
 # incoming request to infer the host from, e.g. create_admin.py.
-PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://experiments.data.gov.gr/data_dashboard").strip().rstrip("/")
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://monitor.data.gov.gr").strip().rstrip("/")
 
 SMTP_SERVER         = os.environ.get("SMTP_SERVER", "smtp.sendgrid.net").strip()
 SMTP_PORT           = int(os.environ.get("SMTP_PORT", "587") or 587)

@@ -2,7 +2,7 @@
 
 An internal dashboard for monitoring and managing the Greek open data portal ([data.gov.gr](https://data.gov.gr)) — uptime/health checks, dataset and organization statistics, traffic analytics, stakeholder communications tracking, and automated HVD (EU High-Value Dataset) compliance checking.
 
-Live at `https://crm.data.gov.gr/`.
+Live at `https://monitor.data.gov.gr/`.
 
 ## Features
 
@@ -89,7 +89,7 @@ Everything below is **optional** unless marked otherwise — sensible defaults e
 | `DATABASE_URL` | Database connection string. Accepts a `postgresql://...` URL for production, or leave unset for local SQLite. | Local SQLite at `instance/dashboard.db` |
 | `DATAGOVGR_TOKEN` | API token for authenticated calls to the data.gov.gr CKAN API. Most read endpoints work fine without one. | `""` (unauthenticated) |
 | `MATOMO_TOKEN` | Auth token for the Matomo analytics API that powers the Traffic tab. Without it, the Traffic tab has no data. | `""` |
-| `PUBLIC_BASE_URL` | Base URL used to build absolute links (invite/password-reset emails) in contexts with no incoming HTTP request, e.g. `create_admin.py`. | `https://experiments.data.gov.gr/data_dashboard` |
+| `PUBLIC_BASE_URL` | Base URL used to build absolute links (invite/password-reset emails) in contexts with no incoming HTTP request, e.g. `create_admin.py`. | `https://monitor.data.gov.gr` |
 | `SMTP_SERVER` | SMTP host used to send invite/password-reset emails. | `smtp.sendgrid.net` |
 | `SMTP_PORT` | SMTP port. | `587` |
 | `SMTP_USERNAME` | SMTP auth username. For SendGrid, this is literally the string `apikey`. | `""` (email sending disabled) |
