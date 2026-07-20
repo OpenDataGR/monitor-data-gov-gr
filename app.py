@@ -2118,14 +2118,17 @@ def _get_vocab_graph(url: str):
 
 
 def _augment_with_vocab(graph: "rdflib.Graph") -> None:
-    """Merge in the actual RDF for every hvdCategory/accessService URI this
-    dataset references. Without this, SHACL validates those terms' *typing*
-    blind: a dataset's own RDF export only references e.g. its HVD category
-    by URI, so a legitimate EU category code fails skos:Concept/skos:inScheme
+    """Merge in the actual RDF for every hvdCategory/accessService/license URI
+    this dataset references. Without this, SHACL validates those terms'
+    *typing* blind: a dataset's own RDF export only references e.g. its HVD
+    category or license by URI, so a legitimate EU category code or canonical
+    license URI fails skos:Concept/skos:inScheme or license-vocabulary-match
     checks simply because its definition triples live in a separate document
     (confirmed by testing: this exact fix made real category-code violations
     disappear while leaving genuine gaps intact)."""
-    refs = set(graph.objects(None, _DCATAP_NS.hvdCategory)) | set(graph.objects(None, _DCAT_NS.accessService))
+    refs = (set(graph.objects(None, _DCATAP_NS.hvdCategory))
+            | set(graph.objects(None, _DCAT_NS.accessService))
+            | set(graph.objects(None, _DCT_NS.license)))
     for ref in refs:
         if not isinstance(ref, rdflib.URIRef):
             continue
