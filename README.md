@@ -48,8 +48,8 @@ instance/                       Local SQLite DB (gitignored, created automatical
 ### Setup
 
 ```bash
-git clone https://github.com/OpenDataGR/crm-data-gov-gr.git
-cd crm-data-gov-gr
+git clone https://github.com/OpenDataGR/monitor-data-gov-gr.git
+cd monitor-data-gov-gr
 
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate

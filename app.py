@@ -203,7 +203,8 @@ with app.app_context():
 
 PASSWORD_LINK_VALID_HOURS = 24
 _PUBLIC_PATHS = ("/login", "/logout", "/forgot-password", "/set-password", "/robots.txt",
-                  "/webauthn/login/begin", "/webauthn/login/complete")
+                  "/webauthn/login/begin", "/webauthn/login/complete",
+                  "/api/email-sync/inbound-webhook")
 
 # Dashboard sidebar tabs, in the order they appear. "overview" is the landing
 # tab and is always included so a restricted user is never left with nothing.
@@ -3998,6 +3999,25 @@ def case_delete(case_id):
     db.session.delete(case)  # cascades to its communications
     db.session.commit()
     return jsonify({"ok": True})
+
+
+# ── Email sync (auto-captured communications) ────────────────────────────────
+# Phase 1: minimal test webhook. Just logs what SendGrid's Inbound Parse
+# actually POSTs, so the whole chain -- Exchange Bcc rule -> SendGrid Inbound
+# Parse (parser.data.gov.gr) -> this endpoint -- can be proven working before
+# the real signature verification / MIME parsing / matching / schema work is
+# built against it. Deliberately no signature check and no DB writes yet.
+@app.route("/api/email-sync/inbound-webhook", methods=["POST"])
+@csrf.exempt
+def email_inbound_webhook():
+    form_keys = sorted(freq.form.keys())
+    email_field = freq.form.get("email", "")
+    print(f"[email-sync] webhook hit -- content-type={freq.content_type!r} form_keys={form_keys}")
+    print(f"[email-sync] from={freq.form.get('from', '')!r} to={freq.form.get('to', '')!r} "
+          f"subject={freq.form.get('subject', '')!r} envelope={freq.form.get('envelope', '')!r}")
+    if email_field:
+        print(f"[email-sync] raw 'email' field ({len(email_field)} chars), first 500:\n{email_field[:500]}")
+    return jsonify({"ok": True}), 200
 
 
 @app.route("/api/communications/export", methods=["GET"])

@@ -1,5 +1,9 @@
 name: Deploy to Azure VM
 
+# The GitHub repo is now OpenDataGR/monitor-data-gov-gr, but the VM directory
+# and systemd service below are still named crm-data-gov-gr -- that rename
+# happens separately, on the VM itself.
+
 on:
   push:
     branches: [main]
