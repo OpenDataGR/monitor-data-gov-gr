@@ -2491,15 +2491,19 @@ def _do_run_hvd_check() -> None:
             "license_non_open":     sum(1 for r in checked if r["license_status"] == "non_open"),
             "publisher_mismatch":   sum(1 for r in checked if r["publisher_mismatch"]),
         }
-        flagged = [
-            r for r in checked
-            if r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] != "open"
+        # Every checked dataset is kept (not just non-compliant ones) so the
+        # UI can offer a "show compliant datasets" toggle -- `flagged` marks
+        # which ones actually have an issue, and drives the default (flagged-
+        # only) view as well as the summary-card filters.
+        for r in checked:
+            r["flagged"] = bool(
+                r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] != "open"
                 or not r["conforms"] or r["publisher_mismatch"]
-        ]
-        flagged.sort(key=lambda r: -r["violation_count"])
+            )
+        checked.sort(key=lambda r: (not r["flagged"], -r["violation_count"]))
         result = {
             "summary":     summary,
-            "datasets":    flagged,
+            "datasets":    checked,
             "partial":     cancelled,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -2571,9 +2575,12 @@ def hvd_check_export():
 
     datasets = result.get("datasets") or []
 
-    # Mirrors the on-screen summary-card filters and search box exactly, so
-    # exporting after narrowing the table down produces a file with just
-    # what's currently shown rather than always the full flagged list.
+    # Mirrors the on-screen "show compliant datasets" toggle, summary-card
+    # filters, and search box exactly, so exporting after narrowing the table
+    # down produces a file with just what's currently shown.
+    include_compliant = freq.args.get("include_compliant") == "1"
+    if not include_compliant:
+        datasets = [d for d in datasets if d.get("flagged", True)]
     filters = [f for f in (freq.args.get("filters") or "").split(",") if f in _HVD_EXPORT_PREDICATES]
     if filters:
         datasets = [d for d in datasets if all(_HVD_EXPORT_PREDICATES[f](d) for f in filters)]
@@ -2612,7 +2619,7 @@ def hvd_check_export():
     summary_ws.column_dimensions["A"].width = 32
     summary_ws.column_dimensions["B"].width = 24
 
-    ws = wb.create_sheet("Flagged Datasets")
+    ws = wb.create_sheet("All Datasets" if include_compliant else "Flagged Datasets")
     columns = [
         ("org_title",           "Organization",         lambda d: d.get("org_title") or ""),
         ("title",               "Dataset",               lambda d: d.get("title") or d.get("name") or ""),

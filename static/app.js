@@ -191,6 +191,8 @@ const TRANSLATIONS = {
     'quality.hvd_rerun_cancel': 'Cancel',
     'quality.hvd_rerun_confirm_btn': 'Run Anyway',
     'quality.hvd_checked': 'Checked',
+    'quality.hvd_compliant': 'Compliant',
+    'quality.hvd_show_compliant': 'Show compliant datasets',
     'quality.hvd_non_conforming': 'Non-conforming',
     'quality.hvd_legal_issue': 'Legal citation not linked',
     'quality.hvd_no_api': 'No API access',
@@ -721,6 +723,8 @@ const TRANSLATIONS = {
     'quality.hvd_rerun_cancel': 'Ακύρωση',
     'quality.hvd_rerun_confirm_btn': 'Εκτέλεση Ούτως ή Άλλως',
     'quality.hvd_checked': 'Ελέγχθηκαν',
+    'quality.hvd_compliant': 'Συμμορφούμενα',
+    'quality.hvd_show_compliant': 'Εμφάνιση συμμορφούμενων συνόλων δεδομένων',
     'quality.hvd_non_conforming': 'Μη συμμορφούμενα',
     'quality.hvd_legal_issue': 'Μη συνδεδεμένη νομική αναφορά',
     'quality.hvd_no_api': 'Χωρίς πρόσβαση API',
@@ -2439,6 +2443,12 @@ let _hvdExpandedOrgs = new Set();
 let _hvdGroupsCache = [];  // [[orgTitle, datasets[]], ...] from the most recent table render
 let _hvdActiveFilters = new Set();  // summary-card filter keys currently toggled on
 let _hvdSummaryCards = [];
+// result.datasets now holds every checked dataset, not just non-compliant
+// ones -- this toggle controls whether compliant ones are included in the
+// table. Missing `flagged` (older cached results, saved before this field
+// existed) is treated as flagged, since only non-compliant datasets were
+// ever stored back then.
+let _hvdShowCompliant = false;
 
 // Each card key maps to a predicate over a flagged dataset row. Independent,
 // combinable facets (a dataset can be non-conforming AND have no API access
@@ -2462,8 +2472,10 @@ const HVD_FILTER_PREDICATES = {
 function _renderHvdSummaryCards() {
   const s = _hvdLastResult.summary;
   const checkedCard = { key: null, value: s.checked, label: t('quality.hvd_checked'), bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' };
+  const flaggedCount = _hvdFlaggedCount();
   _hvdSummaryCards = [
     { ...checkedCard, group: 'compliance' },
+    { key: null, group: 'compliance', value: s.checked - flaggedCount, label: t('quality.hvd_compliant'), bg: 'bg-success bg-opacity-10', text: 'text-success', icon: 'bi-check-circle' },
     { key: 'non_conforming',       group: 'compliance', value: s.checked - s.conforms, label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
     { key: 'legal_citation_issue', group: 'compliance', value: s.legal_citation_issue, label: t('quality.hvd_legal_issue'),    bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
     { key: 'no_api_access',        group: 'compliance', value: s.no_api_access,        label: t('quality.hvd_no_api'),         bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-hdd-network' },
@@ -2474,6 +2486,10 @@ function _renderHvdSummaryCards() {
   ];
   _renderHvdCardGroup('hvdComplianceSummary', _hvdSummaryCards.filter(c => c.group === 'compliance'), 'hvdComplianceTabDot');
   _renderHvdCardGroup('hvdMetadataSummary',   _hvdSummaryCards.filter(c => c.group === 'metadata'),   'hvdMetadataTabDot');
+}
+
+function _hvdFlaggedCount() {
+  return (_hvdLastResult?.datasets || []).filter(d => d.flagged !== false).length;
 }
 
 function _renderHvdCardGroup(elId, cards, tabDotId) {
@@ -2562,6 +2578,7 @@ async function _startHvdCheck() {
 function downloadHvdExcel() {
   const params = new URLSearchParams();
   if (_hvdActiveFilters.size) params.set('filters', [..._hvdActiveFilters].join(','));
+  if (_hvdShowCompliant) params.set('include_compliant', '1');
   const q = show('hvdResultsSearchInput')?.value.trim();
   if (q) params.set('q', q);
   window.location.href = `${API_BASE}api/quality/hvd-check/export?${params}`;
@@ -2615,7 +2632,10 @@ async function _pollHvdCheck(attempts = 0) {
 function _renderHvdCheck(result) {
   _hvdLastResult = result;
   _hvdActiveFilters = new Set();
+  _hvdShowCompliant = false;
   show('hvdResultsSearchInput').value = '';
+  const compliantToggle = show('hvdShowCompliantToggle');
+  if (compliantToggle) compliantToggle.checked = false;
   const s = result.summary;
   show('hvdLastRunAt').textContent = result.finished_at
     ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
@@ -2668,8 +2688,14 @@ function _renderHvdCheck(result) {
     return;
   }
 
+  // Even with no issues, datasets are still there to browse (via "show
+  // compliant datasets") -- only skip the table entirely when nothing at
+  // all was checked, handled above.
+  const allCleanNote = !_hvdFlaggedCount()
+    ? `<p class="text-success small mb-2"><i class="bi bi-check-circle me-1"></i>${t('quality.hvd_all_clean')}</p>` : '';
+
   _hvdExpandedOrgs = new Set();
-  show('hvdCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote + `<div id="hvdTableWrap"></div>`;
+  show('hvdCheckResults').innerHTML = partialNote + cardsHtml + cacheNote + failedNote + allCleanNote + `<div id="hvdTableWrap"></div>`;
   _renderHvdSummaryCards();
   _renderHvdTable();
 }
@@ -2696,6 +2722,12 @@ function _updateHvdViewControls() {
   show('hvdViewGroupedBtn').className = 'btn btn-sm ' + (_hvdViewMode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
   show('hvdExpandAllBtn').classList.toggle('d-none', !hasData || _hvdViewMode !== 'grouped');
   show('hvdCollapseAllBtn').classList.toggle('d-none', !hasData || _hvdViewMode !== 'grouped');
+  show('hvdShowCompliantWrap').classList.toggle('d-none', !hasData);
+}
+
+function toggleHvdShowCompliant(checked) {
+  _hvdShowCompliant = checked;
+  _renderHvdTable();
 }
 
 function setHvdView(mode) {
@@ -2752,9 +2784,9 @@ function _hvdRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}
         <td>${d.publisher_mismatch
             ? `<i class="bi bi-person-badge text-warning" title="${esc(t('quality.hvd_publisher_mismatch_hint').replace('{org}', d.org_title || ''))}"></i>`
             : ''}</td>
-        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
+        <td>${d.details.length ? `<details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
           <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
-        </details></td>
+        </details>` : ''}</td>
       </tr>`;
 }
 
@@ -2775,7 +2807,8 @@ function _hvdTableHead(showOrg) {
 function _renderHvdTable() {
   const wrap = show('hvdTableWrap');
   if (!wrap) return;
-  const all = _hvdLastResult?.datasets || [];
+  const source = _hvdLastResult?.datasets || [];
+  const all = _hvdShowCompliant ? source : source.filter(d => d.flagged !== false);
   if (!all.length) { wrap.innerHTML = ''; return; }
 
   let datasets = _hvdActiveFilters.size

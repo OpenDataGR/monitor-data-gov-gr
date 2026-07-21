@@ -719,6 +719,10 @@
                 </div>
                 <button id="hvdExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllHvd()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="hvdCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllHvd()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
+                <div class="form-check form-switch d-none mb-0" id="hvdShowCompliantWrap">
+                  <input class="form-check-input" type="checkbox" id="hvdShowCompliantToggle" onchange="toggleHvdShowCompliant(this.checked)">
+                  <label class="form-check-label small" for="hvdShowCompliantToggle" data-i18n="quality.hvd_show_compliant">Show compliant datasets</label>
+                </div>
                 <button id="hvdExportBtn" class="btn btn-outline-secondary btn-sm d-none" onclick="downloadHvdExcel()">
                   <i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span>
                 </button>
