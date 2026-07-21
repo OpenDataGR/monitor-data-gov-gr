@@ -5094,12 +5094,20 @@ function _renderOrgContactsPanel() {
     return;
   }
 
-  // All portal members for this org (dedup by username, highest role)
+  // All portal members for this org (dedup by username, highest role) -- match
+  // both by live CKAN org membership AND by what the linked contact file says.
+  // A member's portal account can have no CKAN org (or a different one) while
+  // their HR contact record still ties them to this org (e.g. an account that
+  // was never added to any organization on the portal), so relying on
+  // m.org_name alone silently drops them from every org's contact list even
+  // though the badge count (driven by org_code, not live membership) counts them.
   const roleRank = { admin: 3, editor: 2, member: 1 };
   const rankM = m => m.sysadmin ? 4 : (roleRank[m.capacity] || 0);
   const memberMap = new Map();
   for (const m of _portalMembersCache) {
-    if (!ckanName || m.org_name !== ckanName) continue;
+    const orgMatch  = orgCode && _orgCodeMatches(m.org_name || '', orgCode);
+    const fileMatch = orgCode && (m.contact_org_codes || []).some(o => _orgCodeMatches(o.code || '', orgCode));
+    if (!orgMatch && !fileMatch) continue;
     const prev = memberMap.get(m.username);
     if (!prev || rankM(m) > rankM(prev)) memberMap.set(m.username, m);
   }
