@@ -507,14 +507,23 @@ class InboundEmail(db.Model):
     matched_contact_id = db.Column(db.Integer, db.ForeignKey("org_contacts.id"))
     matched_org_code   = db.Column(db.String(200))
     matched_org_label  = db.Column(db.String(300))
+    candidate_contact_ids = db.Column(db.Text)  # JSON list of OrgContact ids -- only set when reason == multiple_contacts_match
     status         = db.Column(db.String(20), nullable=False, default="pending_review")  # attached | pending_review | dismissed
-    reason         = db.Column(db.String(50))  # why pending: no_contact_match | multiple_orgs_matched | no_open_case | multiple_open_cases
+    reason         = db.Column(db.String(50))  # why pending: no_contact_match | multiple_contacts_match | no_open_case | multiple_open_cases
     communication_id = db.Column(db.Integer, db.ForeignKey("communications.id"))
 
     matched_contact = db.relationship("OrgContact")
     communication   = db.relationship("Communication")
 
     def to_dict(self):
+        candidate_contacts = []
+        if self.candidate_contact_ids:
+            try:
+                ids = json.loads(self.candidate_contact_ids)
+                rows = {c.id: c for c in OrgContact.query.filter(OrgContact.id.in_(ids)).all()}
+                candidate_contacts = [rows[i].to_dict() for i in ids if i in rows]
+            except Exception:
+                pass
         return {
             "id":             self.id,
             "received_at":    self.received_at.isoformat() if self.received_at else None,
@@ -526,7 +535,29 @@ class InboundEmail(db.Model):
             "matched_contact": self.matched_contact.to_dict() if self.matched_contact else None,
             "matched_org_code":  self.matched_org_code or "",
             "matched_org_label": self.matched_org_label or "",
+            "candidate_contacts": candidate_contacts,
             "status":         self.status,
             "reason":         self.reason or "",
             "communication_id": self.communication_id,
+        }
+
+
+class ExcludedEmailAddress(db.Model):
+    """Addresses/domains that should never be treated as the "contact" for an
+    inbound email -- staff forwarding a backlog thread appear as the
+    forwarder and often as a participant quoted in the body too, and neither
+    is a real case correspondent. A bare domain (no "@") excludes every
+    address on it; a full address excludes just that one."""
+    __tablename__ = "excluded_email_addresses"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    value      = db.Column(db.String(320), nullable=False, unique=True)  # "user@domain.tld" or "domain.tld"
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def to_dict(self):
+        return {
+            "id":         self.id,
+            "value":      self.value,
+            "is_domain":  "@" not in self.value,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }

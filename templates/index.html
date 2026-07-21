@@ -1286,6 +1286,13 @@
           <div><span class="text-muted" data-i18n="inbound.subject_label">Subject</span>: <span id="inboundAttachSubjectView"></span></div>
         </div>
         <div class="row g-3">
+          <div class="col-12 d-none" id="inboundAttachCandidatesWrap">
+            <label class="form-label small fw-semibold" data-i18n="inbound.candidates_label">Which contact is this?</label>
+            <select id="inboundAttachCandidateSelect" class="form-select form-select-sm"></select>
+            <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="pickInboundContact()">
+              <i class="bi bi-check-lg me-1"></i><span data-i18n="inbound.use_this_contact">Use this contact</span>
+            </button>
+          </div>
           <div class="col-12 d-none" id="inboundAttachOrgKnown">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.org">Organization</label>
             <div><span class="badge bg-secondary" id="inboundAttachOrgBadge"></span></div>

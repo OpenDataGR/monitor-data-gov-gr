@@ -344,6 +344,7 @@ const TRANSLATIONS = {
     'inbound.reason_no_contact': 'Unknown sender',
     'inbound.reason_no_case': 'No open case',
     'inbound.reason_multiple_cases': 'Multiple open cases',
+    'inbound.reason_multiple_contacts': 'Multiple possible contacts',
     'inbound.attach': 'Attach',
     'inbound.dismiss': 'Dismiss',
     'inbound.attach_title': 'Attach Email to a Case',
@@ -351,6 +352,8 @@ const TRANSLATIONS = {
     'inbound.subject_label': 'Subject',
     'inbound.case': 'Case',
     'inbound.new_case': '— Open new case —',
+    'inbound.candidates_label': 'Which contact is this?',
+    'inbound.use_this_contact': 'Use this contact',
     'inbound.attach_required': 'Organization and subject are required to open a new case.',
     'inbound.dismiss_confirm': 'Dismiss this email? It will not be attached to any case.',
     'inbound.auto_badge': 'Auto',
@@ -893,6 +896,7 @@ const TRANSLATIONS = {
     'inbound.reason_no_contact': 'Άγνωστος αποστολέας',
     'inbound.reason_no_case': 'Καμία ενεργή υπόθεση',
     'inbound.reason_multiple_cases': 'Πολλαπλές ενεργές υποθέσεις',
+    'inbound.reason_multiple_contacts': 'Πολλαπλές πιθανές επαφές',
     'inbound.attach': 'Επισύναψη',
     'inbound.dismiss': 'Απόρριψη',
     'inbound.attach_title': 'Επισύναψη Email σε Υπόθεση',
@@ -900,6 +904,8 @@ const TRANSLATIONS = {
     'inbound.subject_label': 'Θέμα',
     'inbound.case': 'Υπόθεση',
     'inbound.new_case': '— Νέα υπόθεση —',
+    'inbound.candidates_label': 'Ποια είναι η σωστή επαφή;',
+    'inbound.use_this_contact': 'Χρήση αυτής της επαφής',
     'inbound.attach_required': 'Απαιτούνται οργανισμός και θέμα για το άνοιγμα νέας υπόθεσης.',
     'inbound.dismiss_confirm': 'Απόρριψη αυτού του email; Δεν θα επισυναφθεί σε καμία υπόθεση.',
     'inbound.auto_badge': 'Αυτόματο',
@@ -4326,9 +4332,10 @@ const CARD_BORDER_COLOR = {
 };
 
 const INBOUND_REASON_KEY = {
-  no_contact_match:    'inbound.reason_no_contact',
-  no_open_case:        'inbound.reason_no_case',
-  multiple_open_cases: 'inbound.reason_multiple_cases',
+  no_contact_match:       'inbound.reason_no_contact',
+  no_open_case:           'inbound.reason_no_case',
+  multiple_open_cases:    'inbound.reason_multiple_cases',
+  multiple_contacts_match: 'inbound.reason_multiple_contacts',
 };
 
 function renderCommsReviewSection() {
@@ -4347,6 +4354,9 @@ function renderCommsReviewSection() {
     const orgLine = (e.matched_org_label || e.matched_org_code)
       ? `<div class="small text-muted">${esc(e.matched_org_label || e.matched_org_code)}${contactName ? ' &middot; ' + esc(contactName) : ''}</div>`
       : '';
+    const candidatesLine = (e.reason === 'multiple_contacts_match' && (e.candidate_contacts || []).length)
+      ? `<div class="small text-muted">${e.candidate_contacts.map(c => esc(`${c.first_name || ''} ${c.last_name || ''}`.trim() + (c.org_label ? ` (${c.org_label})` : ''))).join(' &middot; ')}</div>`
+      : '';
     const body = e.body_text || '';
     const preview = body.length > 220 ? body.slice(0, 220) + '…' : body;
     return `
@@ -4361,6 +4371,7 @@ function renderCommsReviewSection() {
             </div>
             <div class="small">${esc(e.subject || '')}</div>
             ${orgLine}
+            ${candidatesLine}
             ${preview ? `<div class="text-muted small mt-1" style="white-space:pre-wrap">${esc(preview)}</div>` : ''}
             <div class="text-muted small mt-1">${relativeDate(e.received_at)}</div>
           </div>
@@ -5241,6 +5252,25 @@ function openInboundAttachModal(id) {
   show('inboundAttachSubject').value = e.subject || '';
   show('inboundAttachError').classList.add('d-none');
 
+  // Several equally-plausible contacts were found and none has been chosen
+  // yet -- ask which one is real before showing anything org/case-related,
+  // since we don't know the org (and therefore the case options) until then.
+  const needsContactPick = e.reason === 'multiple_contacts_match' && !e.matched_org_code;
+  document.getElementById('inboundAttachCandidatesWrap').classList.toggle('d-none', !needsContactPick);
+  document.getElementById('inboundAttachOrgKnown').classList.add('d-none');
+  document.getElementById('inboundAttachOrgSearchWrap').classList.add('d-none');
+  document.getElementById('inboundAttachCaseWrap').classList.add('d-none');
+  document.getElementById('inboundAttachSubjectWrap').classList.add('d-none');
+
+  if (needsContactPick) {
+    document.getElementById('inboundAttachCandidateSelect').innerHTML = (e.candidate_contacts || []).map(c =>
+      `<option value="${c.id}">${esc(`${c.first_name || ''} ${c.last_name || ''}`.trim())}${c.org_label ? ' — ' + esc(c.org_label) : ''}</option>`
+    ).join('');
+    if (!_inboundAttachModal) _inboundAttachModal = new bootstrap.Modal(document.getElementById('inboundAttachModal'));
+    _inboundAttachModal.show();
+    return;
+  }
+
   const hasOrg = !!e.matched_org_code;
   document.getElementById('inboundAttachOrgKnown').classList.toggle('d-none', !hasOrg);
   document.getElementById('inboundAttachOrgSearchWrap').classList.toggle('d-none', hasOrg);
@@ -5254,6 +5284,40 @@ function openInboundAttachModal(id) {
 
   if (!_inboundAttachModal) _inboundAttachModal = new bootstrap.Modal(document.getElementById('inboundAttachModal'));
   _inboundAttachModal.show();
+}
+
+async function pickInboundContact() {
+  const id = Number(show('inboundAttachId').value);
+  const contactId = document.getElementById('inboundAttachCandidateSelect').value;
+  if (!contactId) return;
+  const err = show('inboundAttachError');
+  err.classList.add('d-none');
+  try {
+    const resp = await fetch(`${API_BASE}api/inbound-emails/${id}/pick-contact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contact_id: contactId }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { err.textContent = data.error || t('common.save_failed'); err.classList.remove('d-none'); return; }
+
+    const idx = _inboundEmailsData.findIndex(x => x.id === id);
+    if (idx >= 0) _inboundEmailsData[idx] = data;
+    renderCommsReviewSection();
+
+    if (data.status === 'attached') {
+      _inboundAttachModal.hide();
+      await _reloadCasesAndComms();
+    } else {
+      // Contact resolved but the case still needs a human -- reopen the same
+      // modal, now with the org known, so it continues straight to the
+      // normal case picker / new-case flow instead of a second click.
+      openInboundAttachModal(id);
+    }
+  } catch (e) {
+    err.textContent = t('common.network_error').replace('{msg}', e.message);
+    err.classList.remove('d-none');
+  }
 }
 
 async function saveInboundAttach() {

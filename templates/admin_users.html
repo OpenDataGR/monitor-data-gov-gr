@@ -227,6 +227,27 @@
             </div>
 
             <div class="card p-4 mb-4">
+              <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-x me-2"></i>Inbound Email Matching — Excluded Senders</h6>
+              <p class="text-muted small mb-3">Addresses or domains listed here are never treated as the "contact" for an auto-captured or forwarded email — useful for staff mailboxes and internal domains that would otherwise get mistaken for the external correspondent. A bare domain (no @) excludes every address on it.</p>
+              <form class="row g-2 align-items-end mb-3" onsubmit="return addExcludedEmail(event)">
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1">Address or domain</label>
+                  <input type="text" id="excludedEmailValue" class="form-control form-control-sm" placeholder="user@domain.gr or domain.gr" required>
+                </div>
+                <div class="col-sm-3">
+                  <button type="submit" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-plus-lg me-1"></i>Add
+                  </button>
+                </div>
+              </form>
+              <div id="excludedEmailError" class="alert alert-danger small mb-3 d-none"></div>
+              <table class="table table-sm mb-0">
+                <thead><tr><th>Value</th><th>Type</th><th></th></tr></thead>
+                <tbody id="excludedEmailsBody"><tr><td colspan="3" class="text-muted small">Loading…</td></tr></tbody>
+              </table>
+            </div>
+
+            <div class="card p-4 mb-4">
               <h6 class="fw-semibold mb-1"><i class="bi bi-patch-check me-2"></i>HVD Compliance Check Cache</h6>
               <p class="text-muted small mb-3">Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.</p>
               <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#hvdClearModal">
@@ -860,6 +881,54 @@
       else alert(data.error || 'Failed');
     }
 
+    async function loadExcludedEmails() {
+      const tbody = document.getElementById('excludedEmailsBody');
+      try {
+        const resp = await fetch('../api/admin/excluded-emails');
+        const rows = await resp.json();
+        if (!Array.isArray(rows) || !rows.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="text-muted small">None configured.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = rows.map(r => `
+          <tr>
+            <td class="small">${esc(r.value)}</td>
+            <td class="small">${r.is_domain ? '<span class="badge bg-secondary">Domain</span>' : '<span class="badge bg-light text-dark border">Address</span>'}</td>
+            <td class="text-end"><button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteExcludedEmail(${r.id})"><i class="bi bi-trash"></i></button></td>
+          </tr>`).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="3" class="text-danger small">Failed to load: ${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    async function addExcludedEmail(ev) {
+      ev.preventDefault();
+      const input = document.getElementById('excludedEmailValue');
+      const errEl = document.getElementById('excludedEmailError');
+      errEl.classList.add('d-none');
+      try {
+        const resp = await fetch('../api/admin/excluded-emails', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({value: input.value.trim()}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Failed to add');
+        input.value = '';
+        loadExcludedEmails();
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.classList.remove('d-none');
+      }
+      return false;
+    }
+
+    async function deleteExcludedEmail(id) {
+      if (!confirm('Remove this exclusion?')) return;
+      const resp = await fetch(`../api/admin/excluded-emails/${id}/delete`, {method: 'POST'});
+      if (resp.ok) loadExcludedEmails();
+      else { const d = await resp.json(); alert(d.error || 'Failed'); }
+    }
+
     async function sendTestEmail(ev) {
       ev.preventDefault();
       const to = document.getElementById('testEmailTo').value.trim();
@@ -968,6 +1037,7 @@
 
     loadUsers();
     loadMassEmailHistory();
+    loadExcludedEmails();
   </script>
 </body>
 </html>

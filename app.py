@@ -28,7 +28,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, ExcludedEmailAddress
 import rdflib
 import pyshacl
 import config
@@ -204,6 +204,10 @@ with app.app_context():
         db.session.commit()
     if 'is_superadmin' not in _user_cols:
         db.session.execute(text('ALTER TABLE users ADD COLUMN is_superadmin BOOLEAN NOT NULL DEFAULT FALSE'))
+        db.session.commit()
+    _inbound_cols = [c['name'] for c in _insp.get_columns('inbound_emails')]
+    if 'candidate_contact_ids' not in _inbound_cols:
+        db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN candidate_contact_ids TEXT'))
         db.session.commit()
 
 
@@ -4160,34 +4164,30 @@ def _extract_quoted_thread_info(body: str):
     return {"addrs": addrs, "subject": subject_at_top, "sent_date": sent_date_at_top}
 
 
-def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject: str = "", body_text: str = ""):
-    """Resolve the org contact(s) named in an inbound email's From/To/Cc headers
-    (or, failing that, in a quoted thread inside the body -- see
-    _extract_quoted_thread_info) and, only if that's unambiguous, the single
-    Open case it belongs to.
+def _load_excluded_matchers():
+    """Admin-managed addresses/domains that should never count as "the
+    contact" -- staff forwarding a backlog thread appear as the forwarder and
+    often as a participant quoted in the body too. Returns (addrs, domains)."""
+    addrs, domains = set(), set()
+    for row in ExcludedEmailAddress.query.all():
+        (domains if "@" not in row.value else addrs).add(row.value)
+    return addrs, domains
 
-    Deliberately conservative: an unknown sender, an org with zero Open cases,
-    or contacts spanning more than one org all fall through to "reason" rather
-    than guessing -- the caller parks those for manual review instead of
-    risking a reply getting filed against the wrong case. An org with several
-    Open cases is narrowed by subject (stripped of Re:/Fwd: markers) before
-    giving up -- replies keep the original subject line, so this is normally
-    enough to tell cases apart without guessing.
-    """
-    addrs = {addr.lower() for _, addr in getaddresses([from_field or "", to_field or "", cc_field or ""]) if addr}
-    quoted = _extract_quoted_thread_info(body_text)
-    if quoted:
-        addrs |= quoted["addrs"]
-    if not addrs:
-        return {"contact": None, "case": None, "reason": "no_contact_match"}
 
-    contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(addrs)).all()
-    if not contacts:
-        return {"contact": None, "case": None, "reason": "no_contact_match"}
+def _filter_excluded(candidate_addrs, excluded_addrs, excluded_domains):
+    kept = set()
+    for a in candidate_addrs:
+        domain = a.rsplit("@", 1)[-1] if "@" in a else ""
+        if a in excluded_addrs or domain in excluded_domains:
+            continue
+        kept.add(a)
+    return kept
 
-    # Every org a matched contact is affiliated with -- a contact can belong to more than one.
-    org_codes = set()
-    org_labels = set()
+
+def _org_identifiers_for_contacts(contacts):
+    """Every org code/normalized-label a set of contacts is affiliated with --
+    a contact can belong to more than one org."""
+    org_codes, org_labels = set(), set()
     for c in contacts:
         org_codes.add(c.org_code)
         if c.org_label:
@@ -4200,6 +4200,14 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
                     org_labels.add(_norm_org_text(o["label"]))
         except Exception:
             pass
+    return org_codes, org_labels
+
+
+def _resolve_case_for_contact(contact, subject: str = ""):
+    """Given a single confidently-matched contact, find the one Open case
+    their org belongs to -- narrowing by subject (stripped of Re:/Fwd:
+    markers) when there are several -- or a reason it couldn't be resolved."""
+    org_codes, org_labels = _org_identifiers_for_contacts([contact])
 
     open_cases = Case.query.filter(Case.status == "Open", Case.org_name.in_(org_codes)).all()
     if not open_cases and org_labels:
@@ -4210,19 +4218,103 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
             case for case in Case.query.filter(Case.status == "Open").all()
             if case.org_title and _norm_org_text(case.org_title) in org_labels
         ]
-    contact = contacts[0]
+
     if len(open_cases) == 1:
-        return {"contact": contact, "case": open_cases[0], "reason": None}
+        return {"case": open_cases[0], "reason": None}
 
     if len(open_cases) > 1:
         norm_subject = _norm_org_text(_strip_reply_prefixes(subject))
         if norm_subject:
             subject_matches = [c for c in open_cases if _norm_org_text(_strip_reply_prefixes(c.subject)) == norm_subject]
             if len(subject_matches) == 1:
-                return {"contact": contact, "case": subject_matches[0], "reason": None}
-        return {"contact": contact, "case": None, "reason": "multiple_open_cases"}
+                return {"case": subject_matches[0], "reason": None}
+        return {"case": None, "reason": "multiple_open_cases"}
 
-    return {"contact": contact, "case": None, "reason": "no_open_case"}
+    return {"case": None, "reason": "no_open_case"}
+
+
+def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject: str = "", body_text: str = ""):
+    """Resolve the org contact(s) named in an inbound email's From/To/Cc headers
+    and, only if that's unambiguous, the single Open case it belongs to.
+
+    Excluded addresses/domains (admin-managed -- see ExcludedEmailAddress) are
+    dropped first, since staff forwarding a backlog thread appear as the
+    forwarder and often as a participant quoted in the body too, and neither
+    is a real case correspondent. Only when none of what's left in the outer
+    From/To/Cc resolves to a known contact does this fall back to a quoted
+    thread inside the body (see _extract_quoted_thread_info) -- a genuine
+    reply's own headers are already enough, so there's no need to go digging
+    through quoted history.
+
+    Deliberately conservative: an unknown sender, several equally-plausible
+    contacts, an org with zero Open cases, or an org with several all fall
+    through to "reason" rather than guessing -- the caller parks those for
+    manual review instead of risking a reply getting filed against the wrong
+    case or the wrong org entirely.
+    """
+    excluded_addrs, excluded_domains = _load_excluded_matchers()
+
+    # The outer envelope almost always has *some* non-excluded address in it
+    # even when it's useless for matching -- the parser's own receiving
+    # address in To:, for instance -- so "is there anything left after
+    # exclusion" is the wrong trigger for falling back to the body. What
+    # actually matters is whether any of it resolves to a known contact.
+    outer_addrs = {addr.lower() for _, addr in getaddresses([from_field or "", to_field or "", cc_field or ""]) if addr}
+    addrs = _filter_excluded(outer_addrs, excluded_addrs, excluded_domains)
+    contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(addrs)).all() if addrs else []
+
+    if not contacts:
+        quoted = _extract_quoted_thread_info(body_text)
+        if quoted:
+            quoted_addrs = _filter_excluded(quoted["addrs"], excluded_addrs, excluded_domains)
+            if quoted_addrs:
+                contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(quoted_addrs)).all()
+
+    if not contacts:
+        return {"contact": None, "case": None, "reason": "no_contact_match"}
+
+    if len(contacts) > 1:
+        return {"contact": None, "case": None, "reason": "multiple_contacts_match", "candidates": contacts}
+
+    contact = contacts[0]
+    result = _resolve_case_for_contact(contact, subject)
+    return {"contact": contact, "case": result["case"], "reason": result["reason"]}
+
+
+def _auto_captured_notes(body_text: str) -> str:
+    return f"Auto-captured from inbound email.\n\n{body_text[:2000]}" if body_text else "Auto-captured from inbound email."
+
+
+def _resolved_contact_date(inbound: "InboundEmail") -> str:
+    """A forwarded backlog email's own receipt date is "whenever someone got
+    around to forwarding it" -- prefer the newest quoted message's own
+    Sent:/Date: line when one was found, so historical comms land on the
+    case with their real date instead of today's."""
+    quoted = _extract_quoted_thread_info(inbound.body_text or "")
+    return (
+        (quoted and quoted.get("sent_date"))
+        or (inbound.received_at.date().isoformat() if inbound.received_at else None)
+        or datetime.now(timezone.utc).date().isoformat()
+    )
+
+
+def _create_email_communication(inbound: "InboundEmail", case: "Case", contact, comm_status: str, contact_date: str = None) -> "Communication":
+    contact_name = " ".join(p for p in [contact.first_name, contact.last_name] if p) if contact else ""
+    comm = Communication(
+        case_id=case.id,
+        contact_date=contact_date or _resolved_contact_date(inbound),
+        org_name=case.org_name,
+        org_title=case.org_title,
+        subject=inbound.subject or case.subject,
+        status=comm_status,
+        medium="Email",
+        contact_person=contact_name or inbound.from_name or None,
+        notes=_auto_captured_notes(inbound.body_text or ""),
+        source="email",
+    )
+    db.session.add(comm)
+    db.session.flush()
+    return comm
 
 
 # SendGrid can't sign or authenticate Inbound Parse POSTs, so the secret path
@@ -4242,7 +4334,6 @@ def email_inbound_webhook(secret):
     body_text  = _extract_email_body(freq.form.get("email", ""))
 
     match  = _match_inbound_email(from_field, to_field, cc_field, subject, body_text)
-    quoted = _extract_quoted_thread_info(body_text)
     contact = match["contact"]
 
     inbound = InboundEmail(
@@ -4257,31 +4348,14 @@ def email_inbound_webhook(secret):
     )
 
     if match["case"]:
-        case = match["case"]
-        # A forwarded backlog email's own receipt date is "whenever someone
-        # got around to forwarding it" -- prefer the newest quoted message's
-        # own Sent:/Date: line when one was found, so historical comms land
-        # on the case with their real date instead of today's.
-        contact_date = (quoted and quoted.get("sent_date")) or datetime.now(timezone.utc).date().isoformat()
-        comm = Communication(
-            case_id=case.id,
-            contact_date=contact_date,
-            org_name=case.org_name,
-            org_title=case.org_title,
-            subject=subject or case.subject,
-            status="Intermediate Contact",
-            medium="Email",
-            contact_person=" ".join(p for p in [contact.first_name, contact.last_name] if p) or None,
-            notes=f"Auto-captured from inbound email.\n\n{body_text[:2000]}" if body_text else "Auto-captured from inbound email.",
-            source="email",
-        )
-        db.session.add(comm)
-        db.session.flush()
+        comm = _create_email_communication(inbound, match["case"], contact, "Intermediate Contact")
         inbound.status = "attached"
         inbound.communication_id = comm.id
     else:
         inbound.status = "pending_review"
         inbound.reason = match["reason"]
+        if match["reason"] == "multiple_contacts_match":
+            inbound.candidate_contact_ids = json.dumps([c.id for c in match["candidates"]])
 
     db.session.add(inbound)
     db.session.commit()
@@ -4300,6 +4374,45 @@ def inbound_emails_list():
     return jsonify([e.to_dict() for e in q.limit(200).all()])
 
 
+@app.route("/api/inbound-emails/<int:inbound_id>/pick-contact", methods=["POST"])
+def inbound_email_pick_contact(inbound_id):
+    """Resolve a multiple_contacts_match email once a human says which of the
+    candidates is the real correspondent -- mirrors what _match_inbound_email
+    does automatically for an unambiguous single-contact match: auto-attach
+    if their org has exactly one Open case, otherwise fall through to the
+    normal single-org pending state (no_open_case / multiple_open_cases) for
+    the existing case-picker UI to handle."""
+    inbound = InboundEmail.query.get_or_404(inbound_id)
+    if inbound.status == "attached":
+        return jsonify({"error": "already attached"}), 400
+    body = _decode_payload()
+    try:
+        contact_id = int(body.get("contact_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "contact_id is required"}), 400
+    candidate_ids = set(json.loads(inbound.candidate_contact_ids or "[]"))
+    if contact_id not in candidate_ids:
+        return jsonify({"error": "contact_id is not one of this email's candidates"}), 400
+    contact = OrgContact.query.get_or_404(contact_id)
+
+    inbound.matched_contact_id = contact.id
+    inbound.matched_org_code   = contact.org_code
+    inbound.matched_org_label  = contact.org_label
+    inbound.candidate_contact_ids = None
+
+    result = _resolve_case_for_contact(contact, inbound.subject or "")
+    if result["case"]:
+        comm = _create_email_communication(inbound, result["case"], contact, "Intermediate Contact")
+        inbound.status = "attached"
+        inbound.communication_id = comm.id
+        inbound.reason = None
+    else:
+        inbound.reason = result["reason"]
+
+    db.session.commit()
+    return jsonify(inbound.to_dict())
+
+
 @app.route("/api/inbound-emails/<int:inbound_id>/attach", methods=["POST"])
 def inbound_email_attach(inbound_id):
     inbound = InboundEmail.query.get_or_404(inbound_id)
@@ -4308,15 +4421,7 @@ def inbound_email_attach(inbound_id):
     body = _decode_payload()
     case_id = body.get("case_id")
     contact = inbound.matched_contact
-    contact_person = " ".join(p for p in [contact.first_name, contact.last_name] if p) if contact else ""
-    # Same backlog-forward reasoning as the auto-attach path: prefer the
-    # newest quoted message's own date over when this was forwarded/received.
-    quoted = _extract_quoted_thread_info(inbound.body_text or "")
-    contact_date = (
-        (quoted and quoted.get("sent_date"))
-        or (inbound.received_at.date().isoformat() if inbound.received_at else None)
-        or datetime.now(timezone.utc).date().isoformat()
-    )
+    contact_date = _resolved_contact_date(inbound)
 
     if case_id:
         case = Case.query.get_or_404(int(case_id))
@@ -4340,20 +4445,7 @@ def inbound_email_attach(inbound_id):
         db.session.flush()
         comm_status = "Initial Contact"
 
-    comm = Communication(
-        case_id=case.id,
-        contact_date=contact_date,
-        org_name=case.org_name,
-        org_title=case.org_title,
-        subject=inbound.subject or case.subject,
-        status=comm_status,
-        medium="Email",
-        contact_person=contact_person or inbound.from_name or None,
-        notes=f"Auto-captured from inbound email.\n\n{(inbound.body_text or '')[:2000]}",
-        source="email",
-    )
-    db.session.add(comm)
-    db.session.flush()
+    comm = _create_email_communication(inbound, case, contact, comm_status, contact_date)
     inbound.status = "attached"
     inbound.communication_id = comm.id
     db.session.commit()
@@ -6019,6 +6111,35 @@ def admin_mass_email_history():
         return err
     logs = MassEmailLog.query.order_by(MassEmailLog.sent_at.desc()).all()
     return jsonify([l.to_dict() for l in logs])
+
+
+@app.route("/api/admin/excluded-emails", methods=["GET", "POST"])
+def admin_excluded_emails():
+    err = _require_admin()
+    if err:
+        return err
+    if freq.method == "POST":
+        body = _decode_payload()
+        value = (body.get("value") or "").strip().lower()
+        if not value or "." not in value.rsplit("@", 1)[-1]:
+            return jsonify({"error": "Enter a full address (user@domain.tld) or a bare domain (domain.tld)"}), 400
+        if not ExcludedEmailAddress.query.filter_by(value=value).first():
+            db.session.add(ExcludedEmailAddress(value=value))
+            db.session.commit()
+        return jsonify({"ok": True}), 201
+    rows = ExcludedEmailAddress.query.order_by(ExcludedEmailAddress.value).all()
+    return jsonify([r.to_dict() for r in rows])
+
+
+@app.route("/api/admin/excluded-emails/<int:excl_id>/delete", methods=["POST"])
+def admin_excluded_email_delete(excl_id):
+    err = _require_admin()
+    if err:
+        return err
+    row = ExcludedEmailAddress.query.get_or_404(excl_id)
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
