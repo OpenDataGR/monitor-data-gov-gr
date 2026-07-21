@@ -4086,9 +4086,85 @@ def _strip_reply_prefixes(subject: str) -> str:
         s = stripped
 
 
-def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject: str = ""):
+# Backlogged historical comms get manually forwarded to the parser to be
+# captured, but a forward's own From/To only ever names the forwarder (a
+# staff member) -- the actual correspondent is quoted inside the body
+# instead, as one or more mail-client-inserted header blocks (Outlook: "From:
+# / Sent: / To: / Subject:", one per message in the thread, newest first) or
+# a single-line "On <date>, <name> <email> wrote:" (Gmail/Apple Mail style).
+# Mail clients often keep these auto-inserted labels in whatever language the
+# client itself is set to -- English or Greek -- regardless of the language
+# the correspondence is actually written in, so both are matched.
+_QUOTE_FROM_RE    = re.compile(r"^(?:From|Από)[ \t]*:[ \t]*(.+)$", re.MULTILINE)
+_QUOTE_SENT_RE    = re.compile(r"^(?:Sent|Date|Στάλθηκε|Απεστάλη|Ημερομηνία)[ \t]*:[ \t]*(.+)$", re.MULTILINE)
+_QUOTE_SUBJECT_RE = re.compile(r"^(?:Subject|Θέμα)[ \t]*:[ \t]*(.*)$", re.MULTILINE)
+_QUOTE_ONWROTE_RE = re.compile(
+    r"^(?:On|Στις) .{0,80}?([\w.+-]+@[\w-]+\.[\w.-]+).{0,40}?(?:wrote|έγραψε)[ \t]*:[ \t]*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+
+_QUOTED_SENT_DATE_FORMATS = [
+    "%A, %B %d, %Y %H:%M",
+    "%A, %B %d, %Y %I:%M %p",
+    "%a, %d %b %Y %H:%M:%S",
+    "%B %d, %Y %H:%M",
+    "%B %d, %Y %I:%M %p",
+    "%d/%m/%Y %H:%M",
+]
+
+
+def _parse_quoted_sent_date(raw):
+    if not raw:
+        return None
+    cleaned = re.sub(r"\s+", " ", raw).strip()
+    for fmt in _QUOTED_SENT_DATE_FORMATS:
+        try:
+            return datetime.strptime(cleaned, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def _extract_quoted_thread_info(body: str):
+    """Best-effort parse of quoted header blocks embedded in a forwarded or
+    replied-to body. Returns None if nothing looks like a quoted message,
+    otherwise every email address found across all quoted messages (so
+    matching can find the real correspondent, not just the forwarder) plus
+    the newest quoted message's subject/sent-date for context."""
+    if not body:
+        return None
+
+    addrs = set()
+    from_matches = list(_QUOTE_FROM_RE.finditer(body))
+    for m in from_matches:
+        # To:/Cc: recipient lists can run long and wrap across lines, so
+        # rather than parsing them line-by-line, just sweep every address in
+        # the span from this "From:" up through its "Subject:" line.
+        subj_match = _QUOTE_SUBJECT_RE.search(body, m.start())
+        end = subj_match.end() if subj_match else min(len(body), m.start() + 600)
+        addrs.update(a.lower() for a in _EMAIL_RE.findall(body[m.start():end]))
+
+    addrs.update(a.lower() for a in _QUOTE_ONWROTE_RE.findall(body))
+    if not addrs:
+        return None
+
+    subject_at_top = None
+    sent_date_at_top = None
+    if from_matches:
+        subj_match = _QUOTE_SUBJECT_RE.search(body, from_matches[0].start())
+        sent_match = _QUOTE_SENT_RE.search(body, from_matches[0].start())
+        subject_at_top   = subj_match.group(1).strip() if subj_match else None
+        sent_date_at_top = _parse_quoted_sent_date(sent_match.group(1)) if sent_match else None
+
+    return {"addrs": addrs, "subject": subject_at_top, "sent_date": sent_date_at_top}
+
+
+def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject: str = "", body_text: str = ""):
     """Resolve the org contact(s) named in an inbound email's From/To/Cc headers
-    and, only if that's unambiguous, the single Open case it belongs to.
+    (or, failing that, in a quoted thread inside the body -- see
+    _extract_quoted_thread_info) and, only if that's unambiguous, the single
+    Open case it belongs to.
 
     Deliberately conservative: an unknown sender, an org with zero Open cases,
     or contacts spanning more than one org all fall through to "reason" rather
@@ -4099,6 +4175,9 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
     enough to tell cases apart without guessing.
     """
     addrs = {addr.lower() for _, addr in getaddresses([from_field or "", to_field or "", cc_field or ""]) if addr}
+    quoted = _extract_quoted_thread_info(body_text)
+    if quoted:
+        addrs |= quoted["addrs"]
     if not addrs:
         return {"contact": None, "case": None, "reason": "no_contact_match"}
 
@@ -4162,7 +4241,8 @@ def email_inbound_webhook(secret):
     from_name, from_addr = parseaddr(from_field)
     body_text  = _extract_email_body(freq.form.get("email", ""))
 
-    match = _match_inbound_email(from_field, to_field, cc_field, subject)
+    match  = _match_inbound_email(from_field, to_field, cc_field, subject, body_text)
+    quoted = _extract_quoted_thread_info(body_text)
     contact = match["contact"]
 
     inbound = InboundEmail(
@@ -4178,9 +4258,14 @@ def email_inbound_webhook(secret):
 
     if match["case"]:
         case = match["case"]
+        # A forwarded backlog email's own receipt date is "whenever someone
+        # got around to forwarding it" -- prefer the newest quoted message's
+        # own Sent:/Date: line when one was found, so historical comms land
+        # on the case with their real date instead of today's.
+        contact_date = (quoted and quoted.get("sent_date")) or datetime.now(timezone.utc).date().isoformat()
         comm = Communication(
             case_id=case.id,
-            contact_date=datetime.now(timezone.utc).date().isoformat(),
+            contact_date=contact_date,
             org_name=case.org_name,
             org_title=case.org_title,
             subject=subject or case.subject,
@@ -4224,8 +4309,14 @@ def inbound_email_attach(inbound_id):
     case_id = body.get("case_id")
     contact = inbound.matched_contact
     contact_person = " ".join(p for p in [contact.first_name, contact.last_name] if p) if contact else ""
-    contact_date = (inbound.received_at.date().isoformat() if inbound.received_at
-                    else datetime.now(timezone.utc).date().isoformat())
+    # Same backlog-forward reasoning as the auto-attach path: prefer the
+    # newest quoted message's own date over when this was forwarded/received.
+    quoted = _extract_quoted_thread_info(inbound.body_text or "")
+    contact_date = (
+        (quoted and quoted.get("sent_date"))
+        or (inbound.received_at.date().isoformat() if inbound.received_at else None)
+        or datetime.now(timezone.utc).date().isoformat()
+    )
 
     if case_id:
         case = Case.query.get_or_404(int(case_id))
