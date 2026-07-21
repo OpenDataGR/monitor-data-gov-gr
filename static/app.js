@@ -3818,6 +3818,12 @@ async function loadOrgs(force = false) {
         : '';
       renderOrgsTable(_orgsData);
       _loadPublicOrgsForPortal();
+      // Contact-count badges need the full portal-members data (loadContactSummary()
+      // alone only has the raw per-org_code DB counts, which undercounts orgs whose
+      // contacts weren't stored under an org_code loadContactSummary can resolve) --
+      // warm it in the background the same way the Comms tab already does, instead of
+      // leaving badges wrong until the user happens to open the Contacts tab first.
+      if (!_portalMembersCache) loadContactsTab();
       // Silently refresh in background if stale
       if (Date.now() - cached.ts > _ORGS_STALE_MS) _loadOrgsBackground();
       return;
@@ -3849,6 +3855,7 @@ async function loadOrgs(force = false) {
     renderOrgsTable(_orgsData);
     if (json.enriching) _pollUntilEnriched();
     _loadPublicOrgsForPortal();
+    if (!_portalMembersCache) loadContactsTab();
   } catch (e) {
     el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${e.message}</div>`;
   } finally {
