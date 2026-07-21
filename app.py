@@ -209,6 +209,12 @@ with app.app_context():
     if 'candidate_contact_ids' not in _inbound_cols:
         db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN candidate_contact_ids TEXT'))
         db.session.commit()
+    if 'detected_name' not in _inbound_cols:
+        db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN detected_name VARCHAR(200)'))
+        db.session.commit()
+    if 'detected_email' not in _inbound_cols:
+        db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN detected_email VARCHAR(320)'))
+        db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -3977,6 +3983,15 @@ def communications_update(comm_id):
 def communications_delete(comm_id):
     comm = Communication.query.get_or_404(comm_id)
     case_id = comm.case_id
+    # An auto-captured/attached Communication can be referenced by the
+    # InboundEmail that produced it -- clear that link first (and park it
+    # back in the review queue) instead of leaving a dangling foreign key,
+    # which the database otherwise rejects the whole delete over.
+    inbound = InboundEmail.query.filter_by(communication_id=comm.id).first()
+    if inbound:
+        inbound.communication_id = None
+        inbound.status = "pending_review"
+        inbound.reason = "communication_deleted"
     db.session.delete(comm)
     db.session.commit()
     # A case with no communications left serves no purpose -- it's already
@@ -4134,12 +4149,16 @@ def _extract_quoted_thread_info(body: str):
     """Best-effort parse of quoted header blocks embedded in a forwarded or
     replied-to body. Returns None if nothing looks like a quoted message,
     otherwise every email address found across all quoted messages (so
-    matching can find the real correspondent, not just the forwarder) plus
-    the newest quoted message's subject/sent-date for context."""
+    matching can find the real correspondent, not just the forwarder), the
+    newest quoted message's subject/sent-date for context, and the (name,
+    email) of every quoted "From:" line in order of appearance -- unlike
+    addrs (a flat set), this keeps names attached, for display purposes when
+    nothing resolves to a registered contact."""
     if not body:
         return None
 
     addrs = set()
+    named_from = []
     from_matches = list(_QUOTE_FROM_RE.finditer(body))
     for m in from_matches:
         # To:/Cc: recipient lists can run long and wrap across lines, so
@@ -4148,6 +4167,10 @@ def _extract_quoted_thread_info(body: str):
         subj_match = _QUOTE_SUBJECT_RE.search(body, m.start())
         end = subj_match.end() if subj_match else min(len(body), m.start() + 600)
         addrs.update(a.lower() for a in _EMAIL_RE.findall(body[m.start():end]))
+
+        name, email = parseaddr(m.group(1))
+        if email:
+            named_from.append((name.strip(), email.lower()))
 
     addrs.update(a.lower() for a in _QUOTE_ONWROTE_RE.findall(body))
     if not addrs:
@@ -4161,7 +4184,7 @@ def _extract_quoted_thread_info(body: str):
         subject_at_top   = subj_match.group(1).strip() if subj_match else None
         sent_date_at_top = _parse_quoted_sent_date(sent_match.group(1)) if sent_match else None
 
-    return {"addrs": addrs, "subject": subject_at_top, "sent_date": sent_date_at_top}
+    return {"addrs": addrs, "subject": subject_at_top, "sent_date": sent_date_at_top, "named_from": named_from}
 
 
 def _load_excluded_matchers():
@@ -4263,6 +4286,7 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
     addrs = _filter_excluded(outer_addrs, excluded_addrs, excluded_domains)
     contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(addrs)).all() if addrs else []
 
+    quoted = None
     if not contacts:
         quoted = _extract_quoted_thread_info(body_text)
         if quoted:
@@ -4271,7 +4295,24 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
                 contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(quoted_addrs)).all()
 
     if not contacts:
-        return {"contact": None, "case": None, "reason": "no_contact_match"}
+        # Nothing resolved to a registered contact -- surface whoever the
+        # quoted thread was actually with (if anyone, and not just the
+        # forwarder repeated) as a display-only hint for the human who'll
+        # have to search for the org by hand.
+        detected_name = detected_email = None
+        outer_from_addr = (parseaddr(from_field)[1] or "").lower()
+        if quoted:
+            for name, email in quoted.get("named_from", []):
+                if email in excluded_addrs or email.rsplit("@", 1)[-1] in excluded_domains:
+                    continue
+                if email == outer_from_addr:
+                    continue
+                detected_name, detected_email = name, email
+                break
+        return {
+            "contact": None, "case": None, "reason": "no_contact_match",
+            "detected_name": detected_name, "detected_email": detected_email,
+        }
 
     if len(contacts) > 1:
         return {"contact": None, "case": None, "reason": "multiple_contacts_match", "candidates": contacts}
@@ -4356,6 +4397,9 @@ def email_inbound_webhook(secret):
         inbound.reason = match["reason"]
         if match["reason"] == "multiple_contacts_match":
             inbound.candidate_contact_ids = json.dumps([c.id for c in match["candidates"]])
+        elif match["reason"] == "no_contact_match":
+            inbound.detected_name  = match.get("detected_name") or None
+            inbound.detected_email = match.get("detected_email") or None
 
     db.session.add(inbound)
     db.session.commit()

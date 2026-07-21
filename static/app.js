@@ -345,6 +345,7 @@ const TRANSLATIONS = {
     'inbound.reason_no_case': 'No open case',
     'inbound.reason_multiple_cases': 'Multiple open cases',
     'inbound.reason_multiple_contacts': 'Multiple possible contacts',
+    'inbound.reason_comm_deleted': 'Communication was deleted',
     'inbound.attach': 'Attach',
     'inbound.dismiss': 'Dismiss',
     'inbound.attach_title': 'Attach Email to a Case',
@@ -354,6 +355,7 @@ const TRANSLATIONS = {
     'inbound.new_case': '— Open new case —',
     'inbound.candidates_label': 'Which contact is this?',
     'inbound.use_this_contact': 'Use this contact',
+    'inbound.detected_hint': 'Detected in this email:',
     'inbound.attach_required': 'Organization and subject are required to open a new case.',
     'inbound.dismiss_confirm': 'Dismiss this email? It will not be attached to any case.',
     'inbound.auto_badge': 'Auto',
@@ -897,6 +899,7 @@ const TRANSLATIONS = {
     'inbound.reason_no_case': 'Καμία ενεργή υπόθεση',
     'inbound.reason_multiple_cases': 'Πολλαπλές ενεργές υποθέσεις',
     'inbound.reason_multiple_contacts': 'Πολλαπλές πιθανές επαφές',
+    'inbound.reason_comm_deleted': 'Η επικοινωνία διαγράφηκε',
     'inbound.attach': 'Επισύναψη',
     'inbound.dismiss': 'Απόρριψη',
     'inbound.attach_title': 'Επισύναψη Email σε Υπόθεση',
@@ -906,6 +909,7 @@ const TRANSLATIONS = {
     'inbound.new_case': '— Νέα υπόθεση —',
     'inbound.candidates_label': 'Ποια είναι η σωστή επαφή;',
     'inbound.use_this_contact': 'Χρήση αυτής της επαφής',
+    'inbound.detected_hint': 'Εντοπίστηκε σε αυτό το email:',
     'inbound.attach_required': 'Απαιτούνται οργανισμός και θέμα για το άνοιγμα νέας υπόθεσης.',
     'inbound.dismiss_confirm': 'Απόρριψη αυτού του email; Δεν θα επισυναφθεί σε καμία υπόθεση.',
     'inbound.auto_badge': 'Αυτόματο',
@@ -4336,6 +4340,7 @@ const INBOUND_REASON_KEY = {
   no_open_case:           'inbound.reason_no_case',
   multiple_open_cases:    'inbound.reason_multiple_cases',
   multiple_contacts_match: 'inbound.reason_multiple_contacts',
+  communication_deleted:  'inbound.reason_comm_deleted',
 };
 
 function renderCommsReviewSection() {
@@ -5163,7 +5168,14 @@ async function saveComm() {
 function deleteComm(id) {
   confirmDangerAction(t('comm_modal.delete_confirm'), async () => {
     try {
-      await fetch(`${API_BASE}api/communications/${id}/delete`, { method: 'DELETE', cache: 'no-store' });
+      const resp = await fetch(`${API_BASE}api/communications/${id}/delete`, { method: 'DELETE', cache: 'no-store' });
+      // fetch() only rejects on a network failure, not an HTTP error status --
+      // without this check a 500 (e.g. a save/delete conflict) silently left
+      // the row in place with no feedback at all.
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${resp.status}`);
+      }
       // Full reload (not a local splice) -- removing an entry can change its case's
       // computed is_stale/entry_count, which every remaining entry in that case
       // carries a denormalized snapshot of, so a partial patch left the filter-tab
@@ -5279,6 +5291,17 @@ function openInboundAttachModal(id) {
   show('inboundAttachOrgLabel').value  = hasOrg ? (e.matched_org_label || e.matched_org_code) : '';
   show('inboundAttachOrgSearch').value = '';
   if (hasOrg) show('inboundAttachOrgBadge').textContent = e.matched_org_label || e.matched_org_code;
+
+  // Org unknown -- surface whoever was found quoted in the body (even though
+  // they aren't a registered contact) so the search isn't a total blank slate.
+  const hintEl = document.getElementById('inboundAttachDetectedHint');
+  if (!hasOrg && (e.detected_name || e.detected_email)) {
+    const who = [e.detected_name, e.detected_email].filter(Boolean).join(' — ');
+    hintEl.innerHTML = `<i class="bi bi-info-circle me-1"></i>${t('inbound.detected_hint')} ${esc(who)}`;
+    hintEl.classList.remove('d-none');
+  } else {
+    hintEl.classList.add('d-none');
+  }
 
   _refreshInboundAttachCases();
 
