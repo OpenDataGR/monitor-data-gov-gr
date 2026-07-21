@@ -4025,11 +4025,11 @@ def case_delete(case_id):
 def email_inbound_webhook():
     form_keys = sorted(freq.form.keys())
     email_field = freq.form.get("email", "")
-    print(f"[email-sync] webhook hit -- content-type={freq.content_type!r} form_keys={form_keys}")
+    print(f"[email-sync] webhook hit -- content-type={freq.content_type!r} form_keys={form_keys}", flush=True)
     print(f"[email-sync] from={freq.form.get('from', '')!r} to={freq.form.get('to', '')!r} "
-          f"subject={freq.form.get('subject', '')!r} envelope={freq.form.get('envelope', '')!r}")
+          f"subject={freq.form.get('subject', '')!r} envelope={freq.form.get('envelope', '')!r}", flush=True)
     if email_field:
-        print(f"[email-sync] raw 'email' field ({len(email_field)} chars), first 500:\n{email_field[:500]}")
+        print(f"[email-sync] raw 'email' field ({len(email_field)} chars), first 500:\n{email_field[:500]}", flush=True)
     return jsonify({"ok": True}), 200
 
 
