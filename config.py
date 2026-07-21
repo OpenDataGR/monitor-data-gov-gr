@@ -22,6 +22,12 @@ SMTP_PASSWORD       = os.environ.get("SMTP_PASSWORD", "").strip()
 SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL", "").strip()
 SENDGRID_FROM_NAME  = os.environ.get("SENDGRID_FROM_NAME", "data.gov.gr Monitor").strip()
 
+# Long random path segment SendGrid's Inbound Parse must include in its
+# configured destination URL. SendGrid can't sign or authenticate these
+# POSTs itself, so this is the only thing standing between the endpoint and
+# anyone who guesses the URL. Unset -> the endpoint is unreachable (fails closed).
+EMAIL_INBOUND_SECRET = os.environ.get("EMAIL_INBOUND_SECRET", "").strip()
+
 ENDPOINTS_TO_MONITOR = [
     {"name": "Portal Homepage",  "url": "https://data.gov.gr/",                          "critical": True},
     {"name": "CKAN API",         "url": "https://data.gov.gr/api/3/action/status_show",  "critical": True},

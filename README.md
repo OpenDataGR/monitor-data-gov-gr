@@ -96,6 +96,7 @@ Everything below is **optional** unless marked otherwise — sensible defaults e
 | `SMTP_PASSWORD` | SMTP auth password / **your SendGrid API key**. | `""` (email sending disabled) |
 | `SENDGRID_FROM_EMAIL` | "From" address on outgoing emails. Must be a verified sender in SendGrid. | `""` |
 | `SENDGRID_FROM_NAME` | "From" display name on outgoing emails. | `data.gov.gr Monitor` |
+| `EMAIL_INBOUND_SECRET` | Secret path segment gating the SendGrid Inbound Parse webhook (`/api/email-sync/inbound-webhook/<secret>`). SendGrid can't sign these POSTs itself, so this is the only auth on that endpoint — generate one the same way as `FLASK_SECRET_KEY` and set SendGrid's Inbound Parse destination URL to include it. | `""` (endpoint unreachable) |
 
 ### Getting the API keys
 
