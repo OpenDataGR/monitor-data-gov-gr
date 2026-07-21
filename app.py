@@ -2554,6 +2554,7 @@ def get_hvd_check():
 
 
 _HVD_EXPORT_PREDICATES = {
+    "compliant":            lambda d: not d.get("flagged", True),
     "non_conforming":       lambda d: not d.get("conforms"),
     "legal_citation_issue": lambda d: bool(d.get("legal_citation_issue")),
     "no_api_access":        lambda d: bool(d.get("no_api_access")),
@@ -2575,13 +2576,14 @@ def hvd_check_export():
 
     datasets = result.get("datasets") or []
 
-    # Mirrors the on-screen "show compliant datasets" toggle, summary-card
-    # filters, and search box exactly, so exporting after narrowing the table
-    # down produces a file with just what's currently shown.
-    include_compliant = freq.args.get("include_compliant") == "1"
-    if not include_compliant:
-        datasets = [d for d in datasets if d.get("flagged", True)]
+    # Mirrors the on-screen summary-card filters and search box exactly, so
+    # exporting after narrowing the table down produces a file with just
+    # what's currently shown. Compliant (zero-issue) datasets are excluded
+    # by default, same as the on-screen table -- unless "compliant" itself
+    # is one of the active filters, which is an explicit ask to include them.
     filters = [f for f in (freq.args.get("filters") or "").split(",") if f in _HVD_EXPORT_PREDICATES]
+    if "compliant" not in filters:
+        datasets = [d for d in datasets if d.get("flagged", True)]
     if filters:
         datasets = [d for d in datasets if all(_HVD_EXPORT_PREDICATES[f](d) for f in filters)]
     q = _search_normalize((freq.args.get("q") or "").strip())
@@ -2619,7 +2621,7 @@ def hvd_check_export():
     summary_ws.column_dimensions["A"].width = 32
     summary_ws.column_dimensions["B"].width = 24
 
-    ws = wb.create_sheet("All Datasets" if include_compliant else "Flagged Datasets")
+    ws = wb.create_sheet("Datasets")
     columns = [
         ("org_title",           "Organization",         lambda d: d.get("org_title") or ""),
         ("title",               "Dataset",               lambda d: d.get("title") or d.get("name") or ""),

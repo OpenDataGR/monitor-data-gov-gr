@@ -192,7 +192,6 @@ const TRANSLATIONS = {
     'quality.hvd_rerun_confirm_btn': 'Run Anyway',
     'quality.hvd_checked': 'Checked',
     'quality.hvd_compliant': 'Compliant',
-    'quality.hvd_show_compliant': 'Show compliant datasets',
     'quality.hvd_non_conforming': 'Non-conforming',
     'quality.hvd_legal_issue': 'Legal citation not linked',
     'quality.hvd_no_api': 'No API access',
@@ -724,7 +723,6 @@ const TRANSLATIONS = {
     'quality.hvd_rerun_confirm_btn': 'Εκτέλεση Ούτως ή Άλλως',
     'quality.hvd_checked': 'Ελέγχθηκαν',
     'quality.hvd_compliant': 'Συμμορφούμενα',
-    'quality.hvd_show_compliant': 'Εμφάνιση συμμορφούμενων συνόλων δεδομένων',
     'quality.hvd_non_conforming': 'Μη συμμορφούμενα',
     'quality.hvd_legal_issue': 'Μη συνδεδεμένη νομική αναφορά',
     'quality.hvd_no_api': 'Χωρίς πρόσβαση API',
@@ -2443,12 +2441,6 @@ let _hvdExpandedOrgs = new Set();
 let _hvdGroupsCache = [];  // [[orgTitle, datasets[]], ...] from the most recent table render
 let _hvdActiveFilters = new Set();  // summary-card filter keys currently toggled on
 let _hvdSummaryCards = [];
-// result.datasets now holds every checked dataset, not just non-compliant
-// ones -- this toggle controls whether compliant ones are included in the
-// table. Missing `flagged` (older cached results, saved before this field
-// existed) is treated as flagged, since only non-compliant datasets were
-// ever stored back then.
-let _hvdShowCompliant = false;
 
 // Each card key maps to a predicate over a flagged dataset row. Independent,
 // combinable facets (a dataset can be non-conforming AND have no API access
@@ -2456,6 +2448,7 @@ let _hvdShowCompliant = false;
 // filter cards -- so toggling one narrows the table without resetting the
 // others; all active predicates must match (AND).
 const HVD_FILTER_PREDICATES = {
+  compliant:            d => d.flagged === false,
   non_conforming:       d => !d.conforms,
   legal_citation_issue: d => d.legal_citation_issue,
   no_api_access:        d => d.no_api_access,
@@ -2463,6 +2456,11 @@ const HVD_FILTER_PREDICATES = {
   license_non_open:     d => d.license_status === 'non_open',
   publisher_mismatch:   d => d.publisher_mismatch,
 };
+
+// Datasets with no issue at all are hidden from the default (flagged-only)
+// view -- same as before this became a filter card -- but selecting the
+// "Compliant" card explicitly asks for them, so it lifts that default hiding.
+const HVD_ISSUE_FILTER_KEYS = ['non_conforming', 'legal_citation_issue', 'no_api_access', 'license_missing', 'license_non_open', 'publisher_mismatch'];
 
 // Compliance = SHACL-shape-driven checks (structural conformance, legal
 // citation, API access). Metadata = checks the SHACL shapes themselves can't
@@ -2475,7 +2473,7 @@ function _renderHvdSummaryCards() {
   const flaggedCount = _hvdFlaggedCount();
   _hvdSummaryCards = [
     { ...checkedCard, group: 'compliance' },
-    { key: null, group: 'compliance', value: s.checked - flaggedCount, label: t('quality.hvd_compliant'), bg: 'bg-success bg-opacity-10', text: 'text-success', icon: 'bi-check-circle' },
+    { key: 'compliant', group: 'compliance', value: s.checked - flaggedCount, label: t('quality.hvd_compliant'), bg: 'bg-success bg-opacity-10', text: 'text-success', icon: 'bi-check-circle' },
     { key: 'non_conforming',       group: 'compliance', value: s.checked - s.conforms, label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
     { key: 'legal_citation_issue', group: 'compliance', value: s.legal_citation_issue, label: t('quality.hvd_legal_issue'),    bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
     { key: 'no_api_access',        group: 'compliance', value: s.no_api_access,        label: t('quality.hvd_no_api'),         bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-hdd-network' },
@@ -2510,6 +2508,11 @@ function toggleHvdCardFilter(key) {
     // a dataset can never match both, so selecting one clears the other.
     if (key === 'license_missing')  _hvdActiveFilters.delete('license_non_open');
     if (key === 'license_non_open') _hvdActiveFilters.delete('license_missing');
+    // "Compliant" means zero issues, so it can never match alongside any
+    // issue-flag filter (and vice versa) -- AND-combining them would always
+    // produce an empty result, so selecting one clears the other side.
+    if (key === 'compliant') HVD_ISSUE_FILTER_KEYS.forEach(k => _hvdActiveFilters.delete(k));
+    else if (HVD_ISSUE_FILTER_KEYS.includes(key)) _hvdActiveFilters.delete('compliant');
   }
   _renderHvdSummaryCards();
   _renderHvdTable();
@@ -2578,7 +2581,6 @@ async function _startHvdCheck() {
 function downloadHvdExcel() {
   const params = new URLSearchParams();
   if (_hvdActiveFilters.size) params.set('filters', [..._hvdActiveFilters].join(','));
-  if (_hvdShowCompliant) params.set('include_compliant', '1');
   const q = show('hvdResultsSearchInput')?.value.trim();
   if (q) params.set('q', q);
   window.location.href = `${API_BASE}api/quality/hvd-check/export?${params}`;
@@ -2632,10 +2634,7 @@ async function _pollHvdCheck(attempts = 0) {
 function _renderHvdCheck(result) {
   _hvdLastResult = result;
   _hvdActiveFilters = new Set();
-  _hvdShowCompliant = false;
   show('hvdResultsSearchInput').value = '';
-  const compliantToggle = show('hvdShowCompliantToggle');
-  if (compliantToggle) compliantToggle.checked = false;
   const s = result.summary;
   show('hvdLastRunAt').textContent = result.finished_at
     ? t('quality.hvd_last_run') + ' ' + relativeDate(result.finished_at) : '';
@@ -2722,12 +2721,6 @@ function _updateHvdViewControls() {
   show('hvdViewGroupedBtn').className = 'btn btn-sm ' + (_hvdViewMode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
   show('hvdExpandAllBtn').classList.toggle('d-none', !hasData || _hvdViewMode !== 'grouped');
   show('hvdCollapseAllBtn').classList.toggle('d-none', !hasData || _hvdViewMode !== 'grouped');
-  show('hvdShowCompliantWrap').classList.toggle('d-none', !hasData);
-}
-
-function toggleHvdShowCompliant(checked) {
-  _hvdShowCompliant = checked;
-  _renderHvdTable();
 }
 
 function setHvdView(mode) {
@@ -2808,7 +2801,10 @@ function _renderHvdTable() {
   const wrap = show('hvdTableWrap');
   if (!wrap) return;
   const source = _hvdLastResult?.datasets || [];
-  const all = _hvdShowCompliant ? source : source.filter(d => d.flagged !== false);
+  // Compliant (zero-issue) datasets are hidden from the default view, same
+  // as before "Compliant" became a filter card -- but selecting it is an
+  // explicit ask to see them, so it lifts that default hiding.
+  const all = _hvdActiveFilters.has('compliant') ? source : source.filter(d => d.flagged !== false);
   if (!all.length) { wrap.innerHTML = ''; return; }
 
   let datasets = _hvdActiveFilters.size
