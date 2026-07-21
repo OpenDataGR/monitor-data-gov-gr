@@ -1044,6 +1044,7 @@
                 </div>
               </div>
             </div>
+            <div id="commsReviewSection" class="d-none mb-3"></div>
             <div id="commsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
           </div>
         </div>
@@ -1265,6 +1266,57 @@
       <div class="modal-footer border-top">
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="comm_modal.cancel">Cancel</button>
         <button type="button" class="btn btn-primary btn-sm" id="commSaveBtn" onclick="saveComm()"><i class="bi bi-check me-1"></i><span data-i18n="comm_modal.save">Save</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Inbound email attach modal -->
+<div class="modal fade" id="inboundAttachModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header border-bottom">
+        <h5 class="modal-title fw-bold" data-i18n="inbound.attach_title">Attach Email to a Case</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="inboundAttachId">
+        <div class="p-2 rounded-3 mb-3 small" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+          <div><span class="text-muted" data-i18n="inbound.from">From</span>: <span id="inboundAttachFrom" class="fw-semibold"></span></div>
+          <div><span class="text-muted" data-i18n="inbound.subject_label">Subject</span>: <span id="inboundAttachSubjectView"></span></div>
+        </div>
+        <div class="row g-3">
+          <div class="col-12 d-none" id="inboundAttachOrgKnown">
+            <label class="form-label small fw-semibold" data-i18n="comm_modal.org">Organization</label>
+            <div><span class="badge bg-secondary" id="inboundAttachOrgBadge"></span></div>
+          </div>
+          <div class="col-12 d-none" id="inboundAttachOrgSearchWrap">
+            <label class="form-label small fw-semibold" data-i18n="comm_modal.org">Organization</label> <span class="text-danger">*</span>
+            <input type="hidden" id="inboundAttachOrgCode">
+            <input type="hidden" id="inboundAttachOrgLabel">
+            <div class="position-relative">
+              <input type="text" class="form-control form-control-sm" id="inboundAttachOrgSearch"
+                     placeholder="Search organizations…" data-i18n-ph="comm_modal.org_ph" autocomplete="off"
+                     oninput="_inboundAttachOrgSearch(this.value)" onfocus="_inboundAttachOrgSearch(this.value)"
+                     onblur="setTimeout(()=>document.getElementById('inboundAttachOrgDropdown').classList.add('d-none'),150)">
+              <ul class="list-group shadow-sm position-absolute w-100 d-none"
+                  id="inboundAttachOrgDropdown" style="z-index:1060;max-height:260px;overflow-y:auto;top:100%"></ul>
+            </div>
+          </div>
+          <div class="col-12 d-none" id="inboundAttachCaseWrap">
+            <label class="form-label small fw-semibold" data-i18n="inbound.case">Case</label>
+            <select id="inboundAttachCaseSelect" class="form-select form-select-sm" onchange="_onInboundAttachCaseChange()"></select>
+          </div>
+          <div class="col-12 d-none" id="inboundAttachSubjectWrap">
+            <label class="form-label small fw-semibold" data-i18n="comm_modal.subject">Subject</label> <span class="text-danger">*</span>
+            <input type="text" id="inboundAttachSubject" class="form-control form-control-sm">
+          </div>
+        </div>
+        <div id="inboundAttachError" class="alert alert-danger mt-3 mb-0 d-none"></div>
+      </div>
+      <div class="modal-footer border-top">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="comm_modal.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="inboundAttachSaveBtn" onclick="saveInboundAttach()"><i class="bi bi-check me-1"></i><span data-i18n="inbound.attach">Attach</span></button>
       </div>
     </div>
   </div>

@@ -12,6 +12,10 @@ import requests
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email import policy as email_policy
+from email.parser import Parser as EmailParser
+from email.utils import parseaddr, getaddresses
+from html import unescape as html_unescape
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import io
@@ -24,7 +28,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail
 import rdflib
 import pyshacl
 import config
@@ -116,6 +120,9 @@ with app.app_context():
         db.session.commit()
     if 'medium' not in _comm_cols:
         db.session.execute(text('ALTER TABLE communications ADD COLUMN medium VARCHAR(50)'))
+        db.session.commit()
+    if 'source' not in _comm_cols:
+        db.session.execute(text('ALTER TABLE communications ADD COLUMN source VARCHAR(20)'))
         db.session.commit()
     if 'case_id' not in _comm_cols:
         db.session.execute(text('ALTER TABLE communications ADD COLUMN case_id INTEGER'))
@@ -229,6 +236,7 @@ _TAB_ROUTE_RULES = [
     ("/api/contacts/summary",      ("orgs", "contacts")),
     ("/api/communications",        ("comms",)),
     ("/api/cases",                 ("comms",)),
+    ("/api/inbound-emails",        ("comms",)),
     ("/api/contacts",              ("contacts",)),
     ("/api/portal-members",        ("contacts",)),
     ("/api/portal-user/",          ("contacts",)),
@@ -4042,12 +4050,102 @@ def case_delete(case_id):
 
 
 # ── Email sync (auto-captured communications) ────────────────────────────────
-# Phase 1: minimal test webhook. Just logs what SendGrid's Inbound Parse
-# actually POSTs, so the whole chain -- Exchange Bcc rule -> SendGrid Inbound
-# Parse (parser.data.gov.gr) -> this endpoint -- can be proven working before
-# the real MIME parsing / matching / schema work is built against it.
-# Deliberately no DB writes yet.
-#
+def _extract_email_body(raw_mime: str) -> str:
+    """Best-effort plain-text body from SendGrid's raw MIME 'email' field.
+    Prefers text/plain; falls back to a crude tag-strip of text/html when
+    that's all the message has."""
+    if not raw_mime:
+        return ""
+    try:
+        msg = EmailParser(policy=email_policy.default).parsestr(raw_mime)
+        part = msg.get_body(preferencelist=("plain", "html"))
+        if part is None:
+            return ""
+        content = part.get_content()
+        if part.get_content_type() == "text/html":
+            content = html_unescape(re.sub(r"<[^>]+>", " ", content))
+        return re.sub(r"[ \t]+", " ", content).strip()
+    except Exception:
+        return ""
+
+
+_REPLY_PREFIX_RE = re.compile(
+    r"^\s*(re|fw|fwd|απ|απαντηση|απάντηση|προωθηση|προώθηση)\s*:\s*", re.IGNORECASE
+)
+
+
+def _strip_reply_prefixes(subject: str) -> str:
+    """Strip leading Re:/Fwd:/Απ:/Προώθηση: markers, repeatedly (mail clients
+    chain them: 'Re: Fwd: Re: ...'), so a reply's subject can be compared
+    against the original case's subject."""
+    s = subject or ""
+    while True:
+        stripped = _REPLY_PREFIX_RE.sub("", s)
+        if stripped == s:
+            return s.strip()
+        s = stripped
+
+
+def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject: str = ""):
+    """Resolve the org contact(s) named in an inbound email's From/To/Cc headers
+    and, only if that's unambiguous, the single Open case it belongs to.
+
+    Deliberately conservative: an unknown sender, an org with zero Open cases,
+    or contacts spanning more than one org all fall through to "reason" rather
+    than guessing -- the caller parks those for manual review instead of
+    risking a reply getting filed against the wrong case. An org with several
+    Open cases is narrowed by subject (stripped of Re:/Fwd: markers) before
+    giving up -- replies keep the original subject line, so this is normally
+    enough to tell cases apart without guessing.
+    """
+    addrs = {addr.lower() for _, addr in getaddresses([from_field or "", to_field or "", cc_field or ""]) if addr}
+    if not addrs:
+        return {"contact": None, "case": None, "reason": "no_contact_match"}
+
+    contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(addrs)).all()
+    if not contacts:
+        return {"contact": None, "case": None, "reason": "no_contact_match"}
+
+    # Every org a matched contact is affiliated with -- a contact can belong to more than one.
+    org_codes = set()
+    org_labels = set()
+    for c in contacts:
+        org_codes.add(c.org_code)
+        if c.org_label:
+            org_labels.add(_norm_org_text(c.org_label))
+        try:
+            for o in json.loads(c.org_codes or "[]"):
+                if o.get("code"):
+                    org_codes.add(o["code"])
+                if o.get("label"):
+                    org_labels.add(_norm_org_text(o["label"]))
+        except Exception:
+            pass
+
+    open_cases = Case.query.filter(Case.status == "Open", Case.org_name.in_(org_codes)).all()
+    if not open_cases and org_labels:
+        # A contact's org_code is often an HRMS code/label rather than the CKAN
+        # slug Case.org_name stores (the same mismatch fixed earlier for the org
+        # panel's comms summary) -- fall back to comparing normalized org titles.
+        open_cases = [
+            case for case in Case.query.filter(Case.status == "Open").all()
+            if case.org_title and _norm_org_text(case.org_title) in org_labels
+        ]
+    contact = contacts[0]
+    if len(open_cases) == 1:
+        return {"contact": contact, "case": open_cases[0], "reason": None}
+
+    if len(open_cases) > 1:
+        norm_subject = _norm_org_text(_strip_reply_prefixes(subject))
+        if norm_subject:
+            subject_matches = [c for c in open_cases if _norm_org_text(_strip_reply_prefixes(c.subject)) == norm_subject]
+            if len(subject_matches) == 1:
+                return {"contact": contact, "case": subject_matches[0], "reason": None}
+        return {"contact": contact, "case": None, "reason": "multiple_open_cases"}
+
+    return {"contact": contact, "case": None, "reason": "no_open_case"}
+
+
 # SendGrid can't sign or authenticate Inbound Parse POSTs, so the secret path
 # segment (EMAIL_INBOUND_SECRET) is the only thing gating this endpoint --
 # update SendGrid's configured destination URL to match if this ever rotates.
@@ -4056,14 +4154,129 @@ def case_delete(case_id):
 def email_inbound_webhook(secret):
     if not config.EMAIL_INBOUND_SECRET or not secrets.compare_digest(secret, config.EMAIL_INBOUND_SECRET):
         return jsonify({"error": "not found"}), 404
-    form_keys = sorted(freq.form.keys())
-    email_field = freq.form.get("email", "")
-    print(f"[email-sync] webhook hit -- content-type={freq.content_type!r} form_keys={form_keys}", flush=True)
-    print(f"[email-sync] from={freq.form.get('from', '')!r} to={freq.form.get('to', '')!r} "
-          f"subject={freq.form.get('subject', '')!r} envelope={freq.form.get('envelope', '')!r}", flush=True)
-    if email_field:
-        print(f"[email-sync] raw 'email' field ({len(email_field)} chars), first 500:\n{email_field[:500]}", flush=True)
+
+    from_field = freq.form.get("from", "")
+    to_field   = freq.form.get("to", "")
+    cc_field   = freq.form.get("cc", "")
+    subject    = (freq.form.get("subject") or "").strip()
+    from_name, from_addr = parseaddr(from_field)
+    body_text  = _extract_email_body(freq.form.get("email", ""))
+
+    match = _match_inbound_email(from_field, to_field, cc_field, subject)
+    contact = match["contact"]
+
+    inbound = InboundEmail(
+        from_email=from_addr or None,
+        from_name=from_name or None,
+        to_email=to_field or None,
+        subject=subject or None,
+        body_text=body_text or None,
+        matched_contact_id=contact.id if contact else None,
+        matched_org_code=contact.org_code if contact else None,
+        matched_org_label=contact.org_label if contact else None,
+    )
+
+    if match["case"]:
+        case = match["case"]
+        comm = Communication(
+            case_id=case.id,
+            contact_date=datetime.now(timezone.utc).date().isoformat(),
+            org_name=case.org_name,
+            org_title=case.org_title,
+            subject=subject or case.subject,
+            status="Intermediate Contact",
+            medium="Email",
+            contact_person=" ".join(p for p in [contact.first_name, contact.last_name] if p) or None,
+            notes=f"Auto-captured from inbound email.\n\n{body_text[:2000]}" if body_text else "Auto-captured from inbound email.",
+            source="email",
+        )
+        db.session.add(comm)
+        db.session.flush()
+        inbound.status = "attached"
+        inbound.communication_id = comm.id
+    else:
+        inbound.status = "pending_review"
+        inbound.reason = match["reason"]
+
+    db.session.add(inbound)
+    db.session.commit()
+
+    print(f"[email-sync] webhook hit -- from={from_addr!r} subject={subject!r} "
+          f"status={inbound.status!r} reason={inbound.reason!r} comm_id={inbound.communication_id}", flush=True)
     return jsonify({"ok": True}), 200
+
+
+@app.route("/api/inbound-emails", methods=["GET"])
+def inbound_emails_list():
+    status_filter = (freq.args.get("status") or "").strip()
+    q = InboundEmail.query.order_by(InboundEmail.received_at.desc())
+    if status_filter:
+        q = q.filter(InboundEmail.status == status_filter)
+    return jsonify([e.to_dict() for e in q.limit(200).all()])
+
+
+@app.route("/api/inbound-emails/<int:inbound_id>/attach", methods=["POST"])
+def inbound_email_attach(inbound_id):
+    inbound = InboundEmail.query.get_or_404(inbound_id)
+    if inbound.status == "attached":
+        return jsonify({"error": "already attached"}), 400
+    body = _decode_payload()
+    case_id = body.get("case_id")
+    contact = inbound.matched_contact
+    contact_person = " ".join(p for p in [contact.first_name, contact.last_name] if p) if contact else ""
+    contact_date = (inbound.received_at.date().isoformat() if inbound.received_at
+                    else datetime.now(timezone.utc).date().isoformat())
+
+    if case_id:
+        case = Case.query.get_or_404(int(case_id))
+        comm_status = "Intermediate Contact"
+    else:
+        # No existing case picked -> open a new one, using the email itself as
+        # its Initial Contact entry (mirrors communications_create's own
+        # case_id-less path). org/subject default from what the email already
+        # resolved, but can be overridden -- needed when reason is
+        # no_contact_match, since there's no matched org to default from.
+        org_name  = (body.get("org_name") or inbound.matched_org_code or "").strip()
+        org_title = (body.get("org_title") or inbound.matched_org_label or "").strip() or None
+        subject   = (body.get("subject") or inbound.subject or "").strip()
+        if not org_name or not subject:
+            return jsonify({"error": "org_name and subject are required to open a new case"}), 400
+        case = Case(
+            org_name=org_name, org_title=org_title, subject=subject, status="Open",
+            deadline=_default_deadline(contact_date),
+        )
+        db.session.add(case)
+        db.session.flush()
+        comm_status = "Initial Contact"
+
+    comm = Communication(
+        case_id=case.id,
+        contact_date=contact_date,
+        org_name=case.org_name,
+        org_title=case.org_title,
+        subject=inbound.subject or case.subject,
+        status=comm_status,
+        medium="Email",
+        contact_person=contact_person or inbound.from_name or None,
+        notes=f"Auto-captured from inbound email.\n\n{(inbound.body_text or '')[:2000]}",
+        source="email",
+    )
+    db.session.add(comm)
+    db.session.flush()
+    inbound.status = "attached"
+    inbound.communication_id = comm.id
+    db.session.commit()
+    return jsonify(inbound.to_dict())
+
+
+@app.route("/api/inbound-emails/<int:inbound_id>/dismiss", methods=["POST"])
+def inbound_email_dismiss(inbound_id):
+    inbound = InboundEmail.query.get_or_404(inbound_id)
+    if inbound.status == "attached":
+        return jsonify({"error": "already attached"}), 400
+    inbound.status = "dismissed"
+    db.session.commit()
+    return jsonify(inbound.to_dict())
 
 
 @app.route("/api/communications/export", methods=["GET"])

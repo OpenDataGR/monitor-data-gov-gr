@@ -424,6 +424,7 @@ class Communication(db.Model):
     notes          = db.Column(db.Text)
     contact_person = db.Column(db.String(200))
     medium         = db.Column(db.String(50))
+    source         = db.Column(db.String(20))  # None = logged manually; "email" = auto-captured from an inbound email
 
     def to_dict(self):
         return {
@@ -440,6 +441,7 @@ class Communication(db.Model):
             "notes":           self.notes or "",
             "contact_person":  self.contact_person or "",
             "medium":          self.medium or "",
+            "source":          self.source or "",
         }
 
 class OrgContact(db.Model):
@@ -480,4 +482,51 @@ class OrgContact(db.Model):
             "tel":          self.tel or "",
             "mobile":       self.mobile or "",
             "created_at":   self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class InboundEmail(db.Model):
+    """A record of every email SendGrid's Inbound Parse handed to the webhook.
+
+    On a confident match (sender resolves to exactly one OrgContact whose org
+    has exactly one Open case) this also produces a Communication, linked via
+    communication_id. Anything else -- unknown sender, no open case, or a
+    sender tied to more than one org -- lands here with status
+    'pending_review' for a human to attach or dismiss by hand, instead of
+    guessing and silently mis-filing a reply against the wrong case.
+    """
+    __tablename__ = "inbound_emails"
+
+    id             = db.Column(db.Integer, primary_key=True)
+    received_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+    from_email     = db.Column(db.String(320))
+    from_name      = db.Column(db.String(200))
+    to_email       = db.Column(db.String(320))
+    subject        = db.Column(db.String(500))
+    body_text      = db.Column(db.Text)
+    matched_contact_id = db.Column(db.Integer, db.ForeignKey("org_contacts.id"))
+    matched_org_code   = db.Column(db.String(200))
+    matched_org_label  = db.Column(db.String(300))
+    status         = db.Column(db.String(20), nullable=False, default="pending_review")  # attached | pending_review | dismissed
+    reason         = db.Column(db.String(50))  # why pending: no_contact_match | multiple_orgs_matched | no_open_case | multiple_open_cases
+    communication_id = db.Column(db.Integer, db.ForeignKey("communications.id"))
+
+    matched_contact = db.relationship("OrgContact")
+    communication   = db.relationship("Communication")
+
+    def to_dict(self):
+        return {
+            "id":             self.id,
+            "received_at":    self.received_at.isoformat() if self.received_at else None,
+            "from_email":     self.from_email or "",
+            "from_name":      self.from_name or "",
+            "to_email":       self.to_email or "",
+            "subject":        self.subject or "",
+            "body_text":      self.body_text or "",
+            "matched_contact": self.matched_contact.to_dict() if self.matched_contact else None,
+            "matched_org_code":  self.matched_org_code or "",
+            "matched_org_label": self.matched_org_label or "",
+            "status":         self.status,
+            "reason":         self.reason or "",
+            "communication_id": self.communication_id,
         }

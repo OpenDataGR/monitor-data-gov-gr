@@ -340,6 +340,21 @@ const TRANSLATIONS = {
     'comm_modal.required': 'Date, organization and subject are required.',
     'comm_modal.delete_confirm': 'Delete this communication record?',
     'comm_modal.delete_failed': 'Delete failed:',
+    'inbound.pending_title': 'Pending Approval',
+    'inbound.reason_no_contact': 'Unknown sender',
+    'inbound.reason_no_case': 'No open case',
+    'inbound.reason_multiple_cases': 'Multiple open cases',
+    'inbound.attach': 'Attach',
+    'inbound.dismiss': 'Dismiss',
+    'inbound.attach_title': 'Attach Email to a Case',
+    'inbound.from': 'From',
+    'inbound.subject_label': 'Subject',
+    'inbound.case': 'Case',
+    'inbound.new_case': '— Open new case —',
+    'inbound.attach_required': 'Organization and subject are required to open a new case.',
+    'inbound.dismiss_confirm': 'Dismiss this email? It will not be attached to any case.',
+    'inbound.auto_badge': 'Auto',
+    'inbound.auto_badge_title': 'Auto-captured from an inbound email',
     'contacts.panel_title': 'Contacts',
     'contacts.add': 'Add Contact',
     'contacts.none': 'No contacts yet — click Add to start.',
@@ -874,6 +889,21 @@ const TRANSLATIONS = {
     'comm_modal.required': 'Η ημερομηνία, ο οργανισμός και το θέμα είναι υποχρεωτικά.',
     'comm_modal.delete_confirm': 'Διαγραφή αυτής της επικοινωνίας;',
     'comm_modal.delete_failed': 'Η διαγραφή απέτυχε:',
+    'inbound.pending_title': 'Εκκρεμεί Έγκριση',
+    'inbound.reason_no_contact': 'Άγνωστος αποστολέας',
+    'inbound.reason_no_case': 'Καμία ενεργή υπόθεση',
+    'inbound.reason_multiple_cases': 'Πολλαπλές ενεργές υποθέσεις',
+    'inbound.attach': 'Επισύναψη',
+    'inbound.dismiss': 'Απόρριψη',
+    'inbound.attach_title': 'Επισύναψη Email σε Υπόθεση',
+    'inbound.from': 'Από',
+    'inbound.subject_label': 'Θέμα',
+    'inbound.case': 'Υπόθεση',
+    'inbound.new_case': '— Νέα υπόθεση —',
+    'inbound.attach_required': 'Απαιτούνται οργανισμός και θέμα για το άνοιγμα νέας υπόθεσης.',
+    'inbound.dismiss_confirm': 'Απόρριψη αυτού του email; Δεν θα επισυναφθεί σε καμία υπόθεση.',
+    'inbound.auto_badge': 'Αυτόματο',
+    'inbound.auto_badge_title': 'Καταγράφηκε αυτόματα από εισερχόμενο email',
     'contacts.panel_title': 'Επαφές',
     'contacts.add': 'Προσθήκη Επαφής',
     'contacts.none': 'Δεν υπάρχουν επαφές — κάντε κλικ στο «Προσθήκη».',
@@ -4140,6 +4170,8 @@ let _commsLoaded   = false;
 let _commsData     = [];
 let _casesData     = [];   // [{id, org_name, org_title, subject, status, opened_at, closed_at, entry_count, last_update}]
 let _commsPollSnapshot = '';  // last-seen JSON of comms+cases, so the 20s poll can skip re-rendering when nothing changed
+let _inboundEmailsData = [];  // pending_review InboundEmail rows -- not real Communications yet, shown above the log for approval
+let _inboundAttachModal = null;
 let _publicOrgs    = [];   // [{code, label}] from hrms.gov.gr
 let _commModal     = null;
 let _commContactsPrefetchStarted = false;
@@ -4184,6 +4216,13 @@ function mediumLabel(medium) {
   const KEY = { "Telephone": "comms.medium_telephone", "Email": "comms.medium_email", "In Person": "comms.medium_in_person", "Other": "comms.medium_other" };
   return KEY[medium] ? t(KEY[medium]) : '';
 }
+function autoEmailBadge(c) {
+  // Distinguishes a Communication that was auto-captured (or approved) from an
+  // inbound email from one logged by hand, even when both have medium=Email.
+  return c.source === 'email'
+    ? `<span class="badge rounded-pill ms-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" data-i18n-title="inbound.auto_badge_title" title="${esc(t('inbound.auto_badge_title'))}"><i class="bi bi-robot me-1"></i>${esc(t('inbound.auto_badge'))}</span>`
+    : '';
+}
 
 document.getElementById('commsTabBtn').addEventListener('click', () => {
   // Already-loaded data lives in _commsData/_casesData -- re-render from
@@ -4217,9 +4256,20 @@ async function loadComms() {
     renderCommsSummary();
     filterComms();
     _refreshCommSubjectDatalist();
+    _loadInboundEmails();
   } catch (e) {
     show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${t('error')}: ${e.message}</div>`;
   }
+}
+
+async function _loadInboundEmails() {
+  try {
+    const data = await fetch(API_BASE + 'api/inbound-emails?status=pending_review').then(r => r.ok ? r.json() : []);
+    _inboundEmailsData = Array.isArray(data) ? data : [];
+  } catch (_) {
+    _inboundEmailsData = [];
+  }
+  renderCommsReviewSection();
 }
 
 async function _reloadCasesAndComms() {
@@ -4229,13 +4279,20 @@ async function _reloadCasesAndComms() {
   ]);
   const casesArr = Array.isArray(cases) ? cases : [];
   const snapshot = JSON.stringify([comms, casesArr]);
-  if (snapshot === _commsPollSnapshot) return;  // nobody else changed anything — skip the re-render
-  _commsPollSnapshot = snapshot;
-  _commsData = comms;
-  _casesData = casesArr;
+  const changed = snapshot !== _commsPollSnapshot;
+  if (changed) {
+    _commsPollSnapshot = snapshot;
+    _commsData = comms;
+    _casesData = casesArr;
+  }
   if (_isTabActive('tab-comms')) {
-    renderCommsSummary();
-    filterComms();
+    // Refreshed unconditionally -- a new pending email doesn't touch comms/cases
+    // at all, so it would never surface if gated behind the snapshot-changed check.
+    await _loadInboundEmails();
+    if (changed) {
+      renderCommsSummary();
+      filterComms();
+    }
   }
 }
 
@@ -4267,6 +4324,61 @@ const CARD_BORDER_COLOR = {
   'text-secondary': '#6c757d', 'text-warning': '#ffc107', 'text-success': '#198754',
   'text-primary':   '#0057b8', 'text-info':    '#0dcaf0', 'text-danger':  '#dc3545',
 };
+
+const INBOUND_REASON_KEY = {
+  no_contact_match:    'inbound.reason_no_contact',
+  no_open_case:        'inbound.reason_no_case',
+  multiple_open_cases: 'inbound.reason_multiple_cases',
+};
+
+function renderCommsReviewSection() {
+  const el = document.getElementById('commsReviewSection');
+  if (!el) return;
+  if (!_inboundEmailsData.length) {
+    el.classList.add('d-none');
+    el.innerHTML = '';
+    return;
+  }
+  el.classList.remove('d-none');
+
+  const cards = _inboundEmailsData.map(e => {
+    const contact = e.matched_contact;
+    const contactName = contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : '';
+    const orgLine = (e.matched_org_label || e.matched_org_code)
+      ? `<div class="small text-muted">${esc(e.matched_org_label || e.matched_org_code)}${contactName ? ' &middot; ' + esc(contactName) : ''}</div>`
+      : '';
+    const body = e.body_text || '';
+    const preview = body.length > 220 ? body.slice(0, 220) + '…' : body;
+    return `
+    <div class="card mb-2 border-warning">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+          <div class="flex-grow-1" style="min-width:0">
+            <div class="fw-semibold">
+              ${esc(e.from_name || e.from_email || '')}
+              ${e.from_email ? `<span class="text-muted small fw-normal">&lt;${esc(e.from_email)}&gt;</span>` : ''}
+              <span class="badge bg-warning text-dark ms-1">${esc(t(INBOUND_REASON_KEY[e.reason]) || e.reason || '')}</span>
+            </div>
+            <div class="small">${esc(e.subject || '')}</div>
+            ${orgLine}
+            ${preview ? `<div class="text-muted small mt-1" style="white-space:pre-wrap">${esc(preview)}</div>` : ''}
+            <div class="text-muted small mt-1">${relativeDate(e.received_at)}</div>
+          </div>
+          <div class="d-flex gap-1 flex-shrink-0">
+            <button class="btn btn-primary btn-sm py-0 px-2" onclick="openInboundAttachModal(${e.id})"><i class="bi bi-check-lg me-1"></i>${t('inbound.attach')}</button>
+            <button class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="dismissInboundEmail(${e.id})"><i class="bi bi-x-lg me-1"></i>${t('inbound.dismiss')}</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <h6 class="fw-semibold small text-uppercase text-muted mb-2">
+      <i class="bi bi-inbox me-1"></i>${t('inbound.pending_title')} <span class="badge bg-warning text-dark rounded-pill">${_inboundEmailsData.length}</span>
+    </h6>
+    ${cards}`;
+}
 
 function renderCommsSummary() {
   // Cases with a communications entry matching the current Status filter
@@ -4460,7 +4572,7 @@ function renderCommsTable(rows) {
             <td class="fw-semibold small">${esc(c.org_title)}</td>
             <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
             <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-            <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
+            <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
             <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
             <td class="text-end text-nowrap">
               <div class="d-flex gap-1 justify-content-end">
@@ -4526,7 +4638,7 @@ function renderCommsGrouped(data) {
           <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
           <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
           <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-          <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
+          <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
           <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
           <td class="text-end text-nowrap">
             <div class="d-flex gap-1 justify-content-end">
@@ -4610,7 +4722,7 @@ function renderCommsCases(data) {
           <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
           <td class="small">${esc(c.subject)}${contactPersonHtml(c)}</td>
           <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-          <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
+          <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
           <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
           <td class="text-end text-nowrap">
             <div class="d-flex gap-1 justify-content-end">
@@ -4733,7 +4845,7 @@ function renderCommsTimeline(rows) {
           </div>
           <div class="small mt-1">${esc(c.subject)}</div>
           ${c.contact_person ? `<div class="text-muted" style="font-size:.72rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>` : ''}
-          ${c.medium ? `<div class="text-muted" style="font-size:.72rem"><i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}</div>` : ''}
+          ${c.medium ? `<div class="text-muted" style="font-size:.72rem"><i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}${autoEmailBadge(c)}</div>` : ''}
           ${c.notes ? `<div class="text-muted small mt-1">${esc(c.notes)}</div>` : ''}
         </div>`;
     }
@@ -5048,6 +5160,158 @@ function deleteComm(id) {
       await _reloadCasesAndComms();
     } catch (e) {
       alert(t('comm_modal.delete_failed') + ' ' + e.message);
+    }
+  });
+}
+
+// ── Inbound email review queue (pending Communications awaiting approval) ────
+
+function _inboundAttachOrgSearch(q) {
+  const dd = document.getElementById('inboundAttachOrgDropdown');
+  const nq = _ns((q || '').trim());
+  const ckanPool = _orgsData.length ? _orgsData : [];
+  const ckanMatches = nq
+    ? ckanPool.filter(o => _ns(o.title).includes(nq) || _ns(o.name).includes(nq)).slice(0, 10)
+    : ckanPool.slice(0, 20);
+  const hrmsMatches = nq && _publicOrgs.length
+    ? _publicOrgs.filter(o => !(_ckanByHrms && _ckanByHrms.get(o.code)) && _ns(o.label).includes(nq)).slice(0, 5)
+    : [];
+  if (!ckanMatches.length && !hrmsMatches.length) { dd.classList.add('d-none'); return; }
+  dd.innerHTML = [
+    ...ckanMatches.map(o =>
+      `<li class="list-group-item list-group-item-action py-2 px-2" style="cursor:pointer"
+           data-code="${esc(o.name)}" data-label="${esc(o.title)}"
+           onmousedown="_inboundAttachOrgSelect(this.dataset.code,this.dataset.label)">
+         <i class="bi bi-building me-1 text-muted"></i><span class="fw-semibold">${esc(o.title)}</span></li>`
+    ),
+    ...hrmsMatches.map(o =>
+      `<li class="list-group-item list-group-item-action py-2 px-2" style="cursor:pointer"
+           data-code="${esc(o.code)}" data-label="${esc(o.label)}"
+           onmousedown="_inboundAttachOrgSelect(this.dataset.code,this.dataset.label)">
+         <i class="bi bi-building me-1 text-muted"></i><span class="fw-semibold">${esc(o.label)}</span>
+         <span class="badge bg-secondary ms-1" style="font-size:.75rem">HRMS only</span></li>`
+    ),
+  ].join('');
+  dd.classList.remove('d-none');
+}
+
+function _inboundAttachOrgSelect(code, label) {
+  show('inboundAttachOrgCode').value  = code;
+  show('inboundAttachOrgLabel').value = label;
+  show('inboundAttachOrgSearch').value = label;
+  document.getElementById('inboundAttachOrgDropdown').classList.add('d-none');
+  _refreshInboundAttachCases();
+}
+
+function _refreshInboundAttachCases() {
+  const orgCode = show('inboundAttachOrgCode').value.trim();
+  const sel  = document.getElementById('inboundAttachCaseSelect');
+  const wrap = document.getElementById('inboundAttachCaseWrap');
+  if (!orgCode) {
+    wrap.classList.add('d-none');
+    sel.innerHTML = '';
+    _onInboundAttachCaseChange();
+    return;
+  }
+  wrap.classList.remove('d-none');
+  const openCases = _casesData.filter(c => c.status === 'Open' && _orgCodeMatches(c.org_name || '', orgCode));
+  sel.innerHTML = [
+    `<option value="">${esc(t('inbound.new_case'))}</option>`,
+    ...openCases.map(c => `<option value="${c.id}">${esc(c.subject)}</option>`),
+  ].join('');
+  sel.value = '';
+  _onInboundAttachCaseChange();
+}
+
+function _onInboundAttachCaseChange() {
+  const sel = document.getElementById('inboundAttachCaseSelect');
+  // No case selected (including when the picker itself is hidden because the
+  // org isn't known yet) means this attach will open a brand new case, which
+  // needs its own subject.
+  document.getElementById('inboundAttachSubjectWrap').classList.toggle('d-none', !!sel.value);
+}
+
+function openInboundAttachModal(id) {
+  const e = _inboundEmailsData.find(x => x.id === id);
+  if (!e) return;
+
+  show('inboundAttachId').value = id;
+  show('inboundAttachFrom').textContent = e.from_name ? `${e.from_name} <${e.from_email || ''}>` : (e.from_email || '');
+  show('inboundAttachSubjectView').textContent = e.subject || '';
+  show('inboundAttachSubject').value = e.subject || '';
+  show('inboundAttachError').classList.add('d-none');
+
+  const hasOrg = !!e.matched_org_code;
+  document.getElementById('inboundAttachOrgKnown').classList.toggle('d-none', !hasOrg);
+  document.getElementById('inboundAttachOrgSearchWrap').classList.toggle('d-none', hasOrg);
+  document.getElementById('inboundAttachOrgDropdown').classList.add('d-none');
+  show('inboundAttachOrgCode').value   = hasOrg ? e.matched_org_code : '';
+  show('inboundAttachOrgLabel').value  = hasOrg ? (e.matched_org_label || e.matched_org_code) : '';
+  show('inboundAttachOrgSearch').value = '';
+  if (hasOrg) show('inboundAttachOrgBadge').textContent = e.matched_org_label || e.matched_org_code;
+
+  _refreshInboundAttachCases();
+
+  if (!_inboundAttachModal) _inboundAttachModal = new bootstrap.Modal(document.getElementById('inboundAttachModal'));
+  _inboundAttachModal.show();
+}
+
+async function saveInboundAttach() {
+  const btn = show('inboundAttachSaveBtn');
+  if (btn.disabled) return;
+
+  const err    = show('inboundAttachError');
+  const id     = show('inboundAttachId').value;
+  const caseId = show('inboundAttachCaseSelect').value || '';
+  const orgCode  = show('inboundAttachOrgCode').value.trim();
+  const orgLabel = show('inboundAttachOrgLabel').value.trim() || orgCode;
+  const subject  = show('inboundAttachSubject').value.trim();
+
+  const body = {};
+  if (caseId) {
+    body.case_id = caseId;
+  } else {
+    if (!orgCode || !subject) {
+      err.textContent = t('inbound.attach_required');
+      err.classList.remove('d-none');
+      return;
+    }
+    body.org_name  = orgCode;
+    body.org_title = orgLabel;
+    body.subject   = subject;
+  }
+
+  btn.disabled = true;
+  try {
+    const resp = await fetch(`${API_BASE}api/inbound-emails/${id}/attach`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await resp.json();
+    if (!resp.ok) { err.textContent = json.error || t('common.save_failed'); err.classList.remove('d-none'); return; }
+    _inboundAttachModal.hide();
+    // Full reload -- pulls the newly created Communication/Case into the main
+    // views and refreshes the pending-review list in the same round trip.
+    await _reloadCasesAndComms();
+  } catch (e) {
+    err.textContent = t('common.network_error').replace('{msg}', e.message);
+    err.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function dismissInboundEmail(id) {
+  confirmDangerAction(t('inbound.dismiss_confirm'), async () => {
+    try {
+      const resp = await fetch(`${API_BASE}api/inbound-emails/${id}/dismiss`, { method: 'POST' });
+      const json = await resp.json();
+      if (!resp.ok) { alert(json.error || t('common.save_failed')); return; }
+      _inboundEmailsData = _inboundEmailsData.filter(e2 => e2.id !== id);
+      renderCommsReviewSection();
+    } catch (e) {
+      alert(t('common.network_error').replace('{msg}', e.message));
     }
   });
 }
