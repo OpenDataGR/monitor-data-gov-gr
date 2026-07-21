@@ -4187,6 +4187,13 @@ async function loadComms() {
     if (results[2]) _publicOrgs = Array.isArray(results[2]) ? results[2] : [];
     _commsLoaded = true;
     if (!_portalMembersCache) loadContactsTab();
+    if (!_orgsData.length) {
+      // Warm the portal-orgs cache so the "add communication" org search has
+      // more than just HRMS matches, even if the user never opened the Orgs tab.
+      const cached = _orgsReadCache();
+      if (cached) _orgsData = cached.data;
+      else _loadOrgsBackground();
+    }
     renderCommsSummary();
     filterComms();
     _refreshCommSubjectDatalist();
