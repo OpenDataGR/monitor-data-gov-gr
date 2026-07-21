@@ -4418,6 +4418,76 @@ def inbound_emails_list():
     return jsonify([e.to_dict() for e in q.limit(200).all()])
 
 
+@app.route("/api/communications/stream")
+def communications_stream():
+    """Server-Sent Events stream that pushes a notification the moment a new
+    inbound email needing review arrives, or a new Communication is logged --
+    by hand or auto-captured -- instead of the client polling for either. One
+    connection covers both so an open dashboard tab never needs more than
+    this single stream.
+
+    An auto-captured Communication that was already announced once as a
+    pending inbound email (and only got created later once a human resolved
+    it) can end up producing a second, separate toast for the same
+    underlying email -- accepted as harmless; the alternative would need
+    tracking whether a resolved InboundEmail ever passed through
+    pending_review, which its final state doesn't preserve.
+
+    Bounded to ~55s per connection so it can never pin a worker indefinitely --
+    the browser's EventSource auto-reconnects the instant the stream ends
+    (that's a normal, un-erroring close, not a failure), making this a
+    self-renewing "hanging poll" rather than a truly permanent connection.
+
+    Each per-connection baseline is the highest id that exists at all (any
+    status/source), not just the subset that gets announced -- ids only ever
+    go up and rows are never deleted, so this is guaranteed to never decrease
+    across reconnects. Baselining on "highest *announced-worthy* id" instead
+    would be wrong: resolving the current highest-id pending email (or the
+    highest id happening to be an auto-captured Communication) would lower
+    that number on the next reconnect, making already-seen older rows look
+    new again and re-firing stale toasts.
+    """
+    def _events():
+        with app.app_context():
+            inbound_baseline = db.session.query(db.func.max(InboundEmail.id)).scalar() or 0
+            comm_baseline    = db.session.query(db.func.max(Communication.id)).scalar() or 0
+            deadline = time.time() + 55
+            while time.time() < deadline:
+                sent_anything = False
+
+                new_inbound = InboundEmail.query.filter(InboundEmail.id > inbound_baseline).order_by(InboundEmail.id).all()
+                if new_inbound:
+                    inbound_baseline = max(r.id for r in new_inbound)
+                    pending_new = [r for r in new_inbound if r.status == "pending_review"]
+                    if pending_new:
+                        payload = json.dumps([
+                            {"id": r.id, "from_name": r.from_name or "", "from_email": r.from_email or "", "subject": r.subject or ""}
+                            for r in pending_new
+                        ])
+                        yield f"event: new_inbound_email\ndata: {payload}\n\n"
+                        sent_anything = True
+
+                new_comms = Communication.query.filter(Communication.id > comm_baseline).order_by(Communication.id).all()
+                if new_comms:
+                    comm_baseline = max(r.id for r in new_comms)
+                    payload = json.dumps([
+                        {"id": r.id, "org_title": r.org_title or r.org_name, "subject": r.subject,
+                         "contact_person": r.contact_person or ""}
+                        for r in new_comms
+                    ])
+                    yield f"event: new_communication\ndata: {payload}\n\n"
+                    sent_anything = True
+
+                if not sent_anything:
+                    yield ": heartbeat\n\n"
+                time.sleep(3)
+
+    return Response(_events(), mimetype="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",  # disable reverse-proxy buffering so events aren't delayed
+    })
+
+
 @app.route("/api/inbound-emails/<int:inbound_id>/pick-contact", methods=["POST"])
 def inbound_email_pick_contact(inbound_id):
     """Resolve a multiple_contacts_match email once a human says which of the

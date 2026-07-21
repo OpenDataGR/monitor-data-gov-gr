@@ -346,6 +346,10 @@ const TRANSLATIONS = {
     'inbound.reason_multiple_cases': 'Multiple open cases',
     'inbound.reason_multiple_contacts': 'Multiple possible contacts',
     'inbound.reason_comm_deleted': 'Communication was deleted',
+    'inbound.toast_title': 'New email needs review',
+    'inbound.toast_multi': '{n} new emails need review',
+    'inbound.toast_title_comm': 'New communication logged',
+    'inbound.toast_multi_comms': '{n} new communications logged',
     'inbound.attach': 'Attach',
     'inbound.dismiss': 'Dismiss',
     'inbound.attach_title': 'Attach Email to a Case',
@@ -900,6 +904,10 @@ const TRANSLATIONS = {
     'inbound.reason_multiple_cases': 'Πολλαπλές ενεργές υποθέσεις',
     'inbound.reason_multiple_contacts': 'Πολλαπλές πιθανές επαφές',
     'inbound.reason_comm_deleted': 'Η επικοινωνία διαγράφηκε',
+    'inbound.toast_title': 'Νέο email προς έλεγχο',
+    'inbound.toast_multi': '{n} νέα email προς έλεγχο',
+    'inbound.toast_title_comm': 'Νέα επικοινωνία καταχωρήθηκε',
+    'inbound.toast_multi_comms': '{n} νέες επικοινωνίες καταχωρήθηκαν',
     'inbound.attach': 'Επισύναψη',
     'inbound.dismiss': 'Απόρριψη',
     'inbound.attach_title': 'Επισύναψη Email σε Υπόθεση',
@@ -7807,6 +7815,85 @@ async function loadLiveVisitors() {
   }
 }
 
+// ── Toast notifications ─────────────────────────────────────────────────────
+function showToast(title, body, { onClick } = {}) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = 'toast align-items-center border-0 shadow';
+  el.setAttribute('role', 'alert');
+  el.innerHTML = `
+    <div class="d-flex">
+      <div class="toast-body"${onClick ? ' style="cursor:pointer"' : ''}>
+        <div class="fw-semibold">${esc(title)}</div>
+        <div class="small">${esc(body)}</div>
+      </div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>`;
+  if (onClick) el.querySelector('.toast-body').addEventListener('click', onClick);
+  container.appendChild(el);
+  const toast = new bootstrap.Toast(el, { delay: 8000 });
+  el.addEventListener('hidden.bs.toast', () => el.remove());
+  toast.show();
+}
+
+// ── Live Comms notifications (Server-Sent Events) ───────────────────────────
+// One stream covers both a new inbound email needing review and a new
+// Communication being logged (by hand or auto-captured) -- a single bounded
+// connection per open dashboard tab, not two. A long poll, not a permanent
+// socket: the server deliberately ends the stream every ~55s so it can never pin a worker
+// indefinitely, and the browser's EventSource auto-reconnects on that close
+// the same as any other -- onerror fires on *every* one of those routine
+// cycles, not just genuine failures, so onopen (a successful (re)connect) is
+// what resets the failure streak; only failures that never make it back to
+// OPEN accumulate.
+let _commsLiveSource = null;
+let _commsLiveErrorStreak = 0;
+
+function _startCommsLiveStream() {
+  if (ALLOWED_TABS && !ALLOWED_TABS.includes('comms')) return;  // no Comms access -- nothing to stream
+  if (_commsLiveSource) return;
+  _commsLiveSource = new EventSource(API_BASE + 'api/communications/stream');
+  _commsLiveSource.onopen = () => { _commsLiveErrorStreak = 0; };
+  _commsLiveSource.onerror = () => {
+    if (++_commsLiveErrorStreak > 5) {
+      _commsLiveSource.close();
+      _commsLiveSource = null;
+    }
+  };
+  _commsLiveSource.addEventListener('new_inbound_email', ev => {
+    let items;
+    try { items = JSON.parse(ev.data); } catch (_) { return; }
+    if (!Array.isArray(items) || !items.length) return;
+
+    const first = items[0];
+    const who = first.from_name || first.from_email || '';
+    const body = items.length === 1
+      ? [who, first.subject].filter(Boolean).join(' — ')
+      : t('inbound.toast_multi').replace('{n}', items.length);
+    showToast(t('inbound.toast_title'), body, {
+      onClick: () => { if (typeof _activateTabByKey === 'function') _activateTabByKey('comms'); },
+    });
+
+    if (_isTabActive('tab-comms')) _loadInboundEmails();
+  });
+  _commsLiveSource.addEventListener('new_communication', ev => {
+    let items;
+    try { items = JSON.parse(ev.data); } catch (_) { return; }
+    if (!Array.isArray(items) || !items.length) return;
+
+    const first = items[0];
+    const body = items.length === 1
+      ? [first.org_title, first.subject].filter(Boolean).join(' — ')
+      : t('inbound.toast_multi_comms').replace('{n}', items.length);
+    showToast(t('inbound.toast_title_comm'), body, {
+      onClick: () => { if (typeof _activateTabByKey === 'function') _activateTabByKey('comms'); },
+    });
+
+    if (_isTabActive('tab-comms')) _reloadCasesAndComms();
+  });
+}
+
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   applyI18n();
@@ -7823,6 +7910,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(() => {
     if (_commsLoaded && document.visibilityState === 'visible') _reloadCasesAndComms();
   }, 20_000);
+  _startCommsLiveStream();
 });
 
 // ── Back-to-top floating button ─────────────────────────────────────────────
