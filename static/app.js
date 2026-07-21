@@ -4091,7 +4091,14 @@ function renderAllOrgsTable(orgs) {
                 : `<span class="badge bg-secondary">${t('orgs.not_registered')}</span>`}
             </td>
             <td class="text-end fw-bold small">${o.ckan ? fmt(o.ckan.package_count) : '—'}</td>
-            <td class="text-center"><button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsByIdx(${i})" title="${t('contacts.view_contacts')}"><i class="bi bi-people"></i>${_contactSummary[o.label] ? '<span class="badge bg-primary rounded-pill ms-1">' + _contactSummary[o.label] + '</span>' : ''}</button></td>
+            <td class="text-center">${(() => {
+              // Contacts added directly against an unregistered (HRMS-only) org are saved
+              // under its raw HRMS code (see openPmEditNewForOrg), not its label -- and
+              // there's no CKAN slug to cross-reference through for those, unlike orgs that
+              // are also on the portal. Fall back to the code so the badge still finds them.
+              const cnt = _contactSummary[o.label] || _contactSummary[o.code] || 0;
+              return `<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsByIdx(${i})" title="${t('contacts.view_contacts')}"><i class="bi bi-people"></i>${cnt ? '<span class="badge bg-primary rounded-pill ms-1">' + cnt + '</span>' : ''}</button>`;
+            })()}</td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -6752,7 +6759,11 @@ function _commOrgSearch(q) {
 function _commContactPick(i) {
   const c = _commContactSearchResults[i];
   if (!c) return;
-  _commOrgSet(c.org_code, c.org_label);
+  // Contacts are keyed by HRMS org_code/label; communications must be keyed by the
+  // CKAN slug (what the org panel filters by), or this comm silently won't show up
+  // there. Resolve through the same alias map _orgCodeMatches uses, when available.
+  const ckanCode = (_ckanByHrms && _ckanByHrms.get(c.org_code)) || c.org_code;
+  _commOrgSet(ckanCode, c.org_label);
   onCommOrgInput(_commContactLabel(c));
 }
 function _pmOrgRenderTags() {

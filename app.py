@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import json
+import unicodedata
 from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
@@ -3686,6 +3687,18 @@ def organizations():
     })
 
 
+def _norm_org_text(s):
+    """Accent/case/punctuation-insensitive key for matching an HRMS org label
+    against a CKAN org title (e.g. 'ΥΠΟΥΡΓΕΙΟ ΜΕΤΑΝΑΣΤΕΥΣΗΣ ΚΑΙ ΑΣΥΛΟΥ' vs
+    'Υπουργείο Μετανάστευσης και Ασύλου')."""
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFD", str(s).strip())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^\w\s]", " ", s.lower())
+    return re.sub(r"\s+", " ", s).strip()
+
+
 @app.route("/api/organizations/<org_name>")
 def organization_detail(org_name):
     headers = {"User-Agent": "DataGovGR-Dashboard/1.0"}
@@ -3805,6 +3818,17 @@ def organization_detail(org_name):
     # Communications summary for this org
     try:
         comms = Communication.query.filter(Communication.org_name == org_name).all()
+        if not comms:
+            # org_name is a free-text field (see models.Communication) -- some rows
+            # were saved with an HRMS org code/label picked via a contact instead of
+            # the CKAN slug, so the exact match above misses them. Only worth the
+            # full-table scan when the fast path found nothing.
+            org_title_key = _norm_org_text(result["org"]["title"])
+            if org_title_key:
+                comms = [
+                    c for c in Communication.query.filter(Communication.org_title.isnot(None)).all()
+                    if _norm_org_text(c.org_title) == org_title_key
+                ]
         status_counts = {}
         latest_date = None
         for c in comms:
