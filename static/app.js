@@ -525,6 +525,9 @@ const TRANSLATIONS = {
     'contacts.ignore': 'Ignore',
     'userPanel.contact_file': 'Contact File',
     'userPanel.email_file': 'Email (file)',
+    'userPanel.org_file': 'Organization (file)',
+    'userPanel.org_portal': 'Organization (portal)',
+    'userPanel.org_mismatch': 'The contact file and the portal account disagree on this person\'s organization',
     'userPanel.no_contact_record': 'No contact record linked.',
     'userPanel.add_contact_record': 'Add contact record',
     'userPanel.registered': 'Registered',
@@ -1056,6 +1059,9 @@ const TRANSLATIONS = {
     'contacts.ignore': 'Παράβλεψη',
     'userPanel.contact_file': 'Αρχείο Επαφής',
     'userPanel.email_file': 'Email (αρχείο)',
+    'userPanel.org_file': 'Οργανισμός (αρχείο)',
+    'userPanel.org_portal': 'Οργανισμός (πύλη)',
+    'userPanel.org_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς τον οργανισμό αυτού του ατόμου',
     'userPanel.no_contact_record': 'Δεν υπάρχει συνδεδεμένη εγγραφή επαφής.',
     'userPanel.add_contact_record': 'Προσθήκη εγγραφής επαφής',
     'userPanel.registered': 'Εγγραφή',
@@ -5132,6 +5138,13 @@ function _renderOrgContactsPanel() {
     const roleCls   = _portalRoleClass(m);
     const hasFile   = !!m.contact_id;
     const displayName = esc(_pmDisplayName(m));
+    // Surface both org sources side by side -- they can legitimately disagree
+    // (e.g. an account with no CKAN org membership whose contact file still
+    // ties it to one), which is exactly the case this panel now also matches on.
+    const fileOrgLabel   = (m.contact_org_codes || []).map(o => o.label || o.code).join(', ');
+    const portalOrgLabel = m.org_name ? (m.org_title || m.org_name) : t('userPanel.no_organization');
+    const orgsDiffer = hasFile && fileOrgLabel &&
+      !(m.contact_org_codes || []).some(o => _orgCodeMatches(o.code || '', m.org_name || ''));
     return `
     <div class="card mb-2 border" style="${hasFile ? '' : 'border-style:dashed!important;opacity:.8'}">
       <div class="card-body py-2 px-3">
@@ -5143,6 +5156,9 @@ function _renderOrgContactsPanel() {
               <span class="badge rounded-pill ms-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db"><i class="bi bi-globe2 me-1"></i>Portal</span>
               ${hasFile ? `<span class="badge rounded-pill ms-1" style="font-size:.65rem;background:#e6f4ea;color:#188038"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : ''}
             </div>
+            ${hasFile ? `<div class="small ${orgsDiffer ? 'text-warning' : 'text-muted'}"${orgsDiffer ? ` title="${t('userPanel.org_mismatch')}"` : ''}>
+              ${orgsDiffer ? '<i class="bi bi-exclamation-triangle-fill me-1"></i>' : ''}${t('userPanel.org_file')}: ${esc(fileOrgLabel || '—')} &middot; ${t('userPanel.org_portal')}: ${esc(portalOrgLabel)}
+            </div>` : ''}
             ${hasFile && m.contact_position ? `<div class="text-muted small">${esc(m.contact_position)}</div>` : ''}
             ${m.email ? `<div class="small"><i class="bi bi-envelope me-1 text-muted"></i><a href="mailto:${esc(m.email)}">${esc(m.email)}</a></div>` : ''}
             ${hasFile && m.contact_tel    ? `<div class="small"><i class="bi bi-telephone me-1 text-muted"></i><a href="tel:${esc(m.contact_tel)}">${esc(m.contact_tel)}</a></div>` : ''}
@@ -5558,6 +5574,7 @@ function renderUserPanel(u) {
       ${c ? `<dl class="row g-1 small mb-0">
         <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.first_name')}</dt><dd class="col-7 mb-1">${c.first_name ? esc(c.first_name) : '—'}</dd>
         <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.last_name')}</dt><dd class="col-7 mb-1">${c.last_name ? esc(c.last_name) : '—'}</dd>
+        ${(c.org_codes || []).length ? `<dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.org_file')}</dt><dd class="col-7 mb-1">${esc((c.org_codes || []).map(o => o.label || o.code).join(', '))}</dd>` : ''}
         ${c.email ? `<dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.email_file')}</dt><dd class="col-7 mb-1"><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></dd>` : ''}
         ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.position')}</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
         ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.tel')}</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a></dd>` : ''}
