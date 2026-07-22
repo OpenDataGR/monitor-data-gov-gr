@@ -7742,6 +7742,18 @@ function _initLiveMap() {
     maxZoom: 19, subdomains: 'abcd',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   }).addTo(_liveMap);
+
+  // Leaflet measures its container once at init, but this runs very early
+  // (straight from DOMContentLoaded) -- web fonts loading, the stat cards
+  // above it resolving, a sidebar toggle, etc. can all still resize this
+  // container afterward, and Leaflet never re-checks on its own. Unlike the
+  // geo-insights map (hidden tab-pane -> shown.bs.tab is the one trigger that
+  // matters there), there's no single event to hook here, so a ResizeObserver
+  // catches whichever one actually fires instead of guessing.
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => _liveMap.invalidateSize())
+      .observe(document.getElementById('liveVisitorsMap'));
+  }
 }
 
 function _updateLiveMapMarkers(visits) {

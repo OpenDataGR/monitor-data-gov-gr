@@ -189,6 +189,35 @@ class _SharedCache:
                 print(f"[{self._name}] Redis write error, local-only for now: {exc}")
 
 
+class _SharedQueryCache:
+    """Like _SharedCache, but for a cache keyed by an open-ended set of query
+    strings (e.g. one entry per Matomo report+params combination) rather than
+    a small fixed set of named fields -- so there's no defaults dict to
+    validate keys against. Same Redis-backed-with-local-fallback reasoning."""
+    def __init__(self, name):
+        self._name = f"cache:{name}"
+        self._local: dict = {}
+
+    def get(self, key):
+        client = _redis_client()
+        if client is not None:
+            try:
+                raw = client.hget(self._name, key)
+                return json.loads(raw) if raw is not None else None
+            except Exception as exc:
+                print(f"[{self._name}] Redis read error, falling back to local: {exc}")
+        return self._local.get(key)
+
+    def set(self, key, value):
+        self._local[key] = value
+        client = _redis_client()
+        if client is not None:
+            try:
+                client.hset(self._name, key, json.dumps(value))
+            except Exception as exc:
+                print(f"[{self._name}] Redis write error, local-only for now: {exc}")
+
+
 # Used for the HVD/DCAT-AP/GeoDCAT SHACL-validation pools (ProcessPoolExecutor
 # below) instead of the default fork start method. background_worker.py is
 # multi-threaded by the time a check runs (the background-loop thread is
@@ -5923,7 +5952,11 @@ def portal_members_all():
 
 # ── Matomo Analytics ─────────────────────────────────────────────────────────
 
-_MATOMO_CACHE: dict = {}
+# Shared for the same reason as _pm_cache/_dataset_formats_cache: a plain
+# per-process dict meant each of the 6 web workers independently re-queried
+# Matomo on its own first hit for a given report+params combination, instead
+# of sharing one hour-long cached result.
+_MATOMO_CACHE = _SharedQueryCache("matomo")
 _MATOMO_CACHE_TTL = 3600  # 1 hour
 
 
@@ -5945,7 +5978,7 @@ def _matomo_get(method: str, params: dict):
     data = r.json()
     if isinstance(data, dict) and data.get("result") == "error":
         raise RuntimeError(data.get("message", "Matomo API error"))
-    _MATOMO_CACHE[key] = {"data": data, "ts": time.time()}
+    _MATOMO_CACHE.set(key, {"data": data, "ts": time.time()})
     return data
 
 
