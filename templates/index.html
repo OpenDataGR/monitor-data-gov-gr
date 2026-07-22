@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <script>
+    (function () {
+      var saved = localStorage.getItem('theme');
+      var theme = saved === 'dark' || saved === 'light' ? saved
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-bs-theme', theme);
+    })();
+  </script>
   <!-- r1 -->
   <title>data.gov.gr Monitor{% if git_sha %} · {{ git_sha }}{% endif %}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>">
@@ -98,6 +106,34 @@
     .comm-group-row:hover { background-color: #eef1f4; }
     .comm-timeline-item:hover { background: rgba(0,0,0,.025); }
     .comm-timeline-item .comm-dot { position: absolute; left: 10px; top: 1.1rem; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 4px #f0f2f5; }
+
+    /* ── Dark theme ───────────────────────────────────────────────────── */
+    [data-bs-theme="dark"] body { background: #15181c; }
+    [data-bs-theme="dark"] .dashboard-sidebar { background: #1e2226; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+    [data-bs-theme="dark"] .dashboard-sidebar .nav-link { color: #adb5bd; }
+    [data-bs-theme="dark"] .dashboard-sidebar .nav-link:hover { background: rgba(255,255,255,.06); }
+    [data-bs-theme="dark"] .dashboard-sidebar .nav-link.active { color: #6ea8fe; background: rgba(110,168,254,.12); }
+    [data-bs-theme="dark"] .sidebar-divider { background: rgba(255,255,255,.1); }
+    [data-bs-theme="dark"] .sidebar-toggle-btn { color: #adb5bd; }
+    [data-bs-theme="dark"] .sidebar-toggle-btn:hover { background: rgba(255,255,255,.06); }
+    [data-bs-theme="dark"] .card, [data-bs-theme="dark"] .stat-card { box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+    [data-bs-theme="dark"] .stat-row-sm .stat-card { box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+    [data-bs-theme="dark"] .table th { color: #adb5bd; }
+    [data-bs-theme="dark"] .spinner-overlay { background: rgba(15,17,20,.75); }
+    [data-bs-theme="dark"] .back-to-top-btn:hover { background: #1a73d6; }
+    [data-bs-theme="dark"] .comm-timeline::before { background: rgba(255,255,255,.12); }
+    [data-bs-theme="dark"] .comm-timeline-day { color: #adb5bd; }
+    [data-bs-theme="dark"] .comm-timeline-day:hover,
+    [data-bs-theme="dark"] .comm-timeline-item:hover { background: rgba(255,255,255,.05); }
+    [data-bs-theme="dark"] .comm-timeline-item .comm-dot { box-shadow: 0 0 0 4px #15181c; }
+    [data-bs-theme="dark"] .comm-group-row { background-color: rgba(255,255,255,.035); }
+    [data-bs-theme="dark"] .comm-group-row:hover { background-color: rgba(255,255,255,.07); }
+    [data-bs-theme="dark"] #pmEditContactType option.type-spacer { border-top-color: rgba(255,255,255,.15); }
+    [data-bs-theme="dark"] .bg-white { background-color: var(--bs-tertiary-bg, #2b3035) !important; }
+    /* Light basemap tiles read as a jarring white rectangle on a dark page --
+       invert them (markers/popups live in other Leaflet panes, unaffected). */
+    [data-bs-theme="dark"] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); }
+    [data-bs-theme="dark"] .leaflet-container { background: #1a1d20; }
   </style>
 </head>
 <body>
@@ -172,6 +208,9 @@
         <i class="bi bi-box-arrow-right me-sm-1"></i><span class="d-none d-sm-inline" data-i18n="nav.sign_out">Sign out</span>
       </a>
       {% endif %}
+      <button id="themeToggleBtn" type="button" class="btn btn-outline-light btn-sm" onclick="toggleTheme()" data-i18n-title="nav.toggle_theme" title="Toggle dark mode">
+        <i class="bi" id="themeToggleIcon"></i>
+      </button>
       <div class="btn-group btn-group-sm" role="group">
         <button id="langEl" type="button" class="btn btn-outline-light active" onclick="setLang('el')">ΕΛ</button>
         <button id="langEn" type="button" class="btn btn-outline-light" onclick="setLang('en')">EN</button>
@@ -407,7 +446,9 @@
         <div class="col-12 col-lg-5">
           <div class="card p-4 h-100">
             <h6 class="fw-semibold mb-3"><i class="bi bi-bar-chart me-2 text-primary"></i><span data-i18n="health.uptime_24h">Uptime Last 24h</span></h6>
-            <canvas id="uptimeChart"></canvas>
+            <div style="position:relative;height:280px">
+              <canvas id="uptimeChart"></canvas>
+            </div>
           </div>
         </div>
       </div>

@@ -33,6 +33,7 @@ const TRANSLATIONS = {
     'nav.admin_panel': 'Admin Panel',
     'nav.sign_out': 'Sign out',
     'nav.menu': 'Menu',
+    'nav.toggle_theme': 'Toggle dark mode',
     'sidebar.toggle': 'Collapse sidebar',
     'token.missing': 'API token not configured.',
     'token.desc': 'Dataset queries and quality checks need one. Set DATAGOVGR_TOKEN in your environment or',
@@ -591,6 +592,7 @@ const TRANSLATIONS = {
     'nav.admin_panel': 'Πίνακας Διαχείρισης',
     'nav.sign_out': 'Αποσύνδεση',
     'nav.menu': 'Μενού',
+    'nav.toggle_theme': 'Εναλλαγή σκοτεινού θέματος',
     'sidebar.toggle': 'Σύμπτυξη μενού',
     'token.missing': 'Το API token δεν έχει ρυθμιστεί.',
     'token.desc': 'Τα ερωτήματα συνόλων δεδομένων και οι ποιοτικοί έλεγχοι το χρειάζονται. Ορίστε DATAGOVGR_TOKEN στο περιβάλλον σας ή',
@@ -1166,6 +1168,54 @@ function setLang(lang) {
   if (typeof _catalogLoaded !== 'undefined' && _catalogLoaded) { loadCatalog(); }
 }
 
+// ── Dark theme ───────────────────────────────────────────────────────────────
+function _isDarkTheme() { return document.documentElement.getAttribute('data-bs-theme') === 'dark'; }
+function _chartGridColor() { return _isDarkTheme() ? 'rgba(255,255,255,.08)' : '#f0f0f0'; }
+function _chartTextColor() { return _isDarkTheme() ? '#adb5bd' : '#6c757d'; }
+
+function applyThemeIcon() {
+  const icon = document.getElementById('themeToggleIcon');
+  if (icon) icon.className = 'bi ' + (_isDarkTheme() ? 'bi-sun' : 'bi-moon-stars');
+}
+
+function _applyChartTheme(chart) {
+  if (!chart) return;
+  const grid = _chartGridColor(), text = _chartTextColor();
+  // Only the two main axes get theme-aware colors; per-axis brand colors
+  // (e.g. the traffic chart's orange downloads axis) are left alone.
+  ['x', 'y'].forEach(ax => {
+    const scale = chart.options.scales && chart.options.scales[ax];
+    if (!scale) return;
+    if (scale.grid) scale.grid.color = grid;
+    if (scale.ticks) scale.ticks.color = text;
+  });
+  if (chart.options.plugins && chart.options.plugins.legend && chart.options.plugins.legend.display !== false) {
+    chart.options.plugins.legend.labels = { ...(chart.options.plugins.legend.labels || {}), color: text };
+  }
+  chart.update();
+}
+
+function refreshChartsForTheme() {
+  [
+    typeof _uptimeChart !== 'undefined' && _uptimeChart,
+    typeof _rtChart !== 'undefined' && _rtChart,
+    typeof _statsChart !== 'undefined' && _statsChart,
+    typeof _trafficChart !== 'undefined' && _trafficChart,
+    typeof _catalogFormatChart !== 'undefined' && _catalogFormatChart,
+  ].forEach(_applyChartTheme);
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-bs-theme', theme);
+  localStorage.setItem('theme', theme);
+  applyThemeIcon();
+  refreshChartsForTheme();
+}
+
+function toggleTheme() {
+  setTheme(_isDarkTheme() ? 'light' : 'dark');
+}
+
 // ── Shared destructive-action confirmation modal ────────────────────────────
 // One modal (#dangerConfirmModal), reused by every "delete this record"
 // action instead of each tab rolling its own plain confirm() -- gives
@@ -1498,11 +1548,12 @@ function renderUptimeChart(summary) {
       }]
     },
     options: {
-      responsive: true, maintainAspectRatio: true,
+      responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false } },
+      layout: { padding: { bottom: 4 } },
       scales: {
-        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f0f0f0' } },
-        x: { grid: { display: false }, ticks: { font: { size: 11 } } }
+        y: { min: 0, max: 100, ticks: { callback: v => v + '%', color: _chartTextColor() }, grid: { color: _chartGridColor() } },
+        x: { grid: { display: false }, ticks: { font: { size: 11 }, color: _chartTextColor(), autoSkip: false, maxRotation: 40, minRotation: 0 } }
       }
     }
   });
@@ -1740,7 +1791,7 @@ async function _loadStatsFormatChart() {
       data: { labels, datasets: [{ data: counts, backgroundColor: palette }] },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } },
+        plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 }, color: _chartTextColor() } } },
       },
     });
   } catch (e) {
@@ -1936,10 +1987,10 @@ async function loadResponseTimeChart() {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom' } },
+        plugins: { legend: { position: 'bottom', labels: { color: _chartTextColor() } } },
         scales: {
-          x: { type: 'time', time: { tooltipFormat: 'dd/MM HH:mm' }, grid: { color: '#f0f0f0' } },
-          y: { min: 0, ticks: { callback: v => v + ' ms' }, grid: { color: '#f0f0f0' } }
+          x: { type: 'time', time: { tooltipFormat: 'dd/MM HH:mm' }, grid: { color: _chartGridColor() }, ticks: { color: _chartTextColor() } },
+          y: { min: 0, ticks: { callback: v => v + ' ms', color: _chartTextColor() }, grid: { color: _chartGridColor() } }
         }
       }
     });
@@ -2067,15 +2118,15 @@ function _renderStatsChart(history, growth) {
     data: { datasets },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom' } },
+      plugins: { legend: { position: 'bottom', labels: { color: _chartTextColor() } } },
       scales: {
         x: {
           type: 'time',
           time: { unit: 'week', tooltipFormat: 'dd/MM/yyyy', displayFormats: { week: 'dd/MM' } },
           min: rangeStart, max: rangeEnd,
-          grid: { color: '#f0f0f0' },
+          grid: { color: _chartGridColor() }, ticks: { color: _chartTextColor() },
         },
-        y: { min: 0, grid: { color: '#f0f0f0' } }
+        y: { min: 0, grid: { color: _chartGridColor() }, ticks: { color: _chartTextColor() } }
       }
     }
   });
@@ -2351,10 +2402,10 @@ function renderTrafficChart(history) {
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { position: 'bottom' } },
+      plugins: { legend: { position: 'bottom', labels: { color: _chartTextColor() } } },
       scales: {
-        x: { grid: { color: '#f0f0f0' }, ticks: { maxTicksLimit: 10, font: { size: 11 } } },
-        y: { min: 0, grid: { color: '#f0f0f0' }, ticks: { font: { size: 11 } }, title: { display: false } },
+        x: { grid: { color: _chartGridColor() }, ticks: { maxTicksLimit: 10, font: { size: 11 }, color: _chartTextColor() } },
+        y: { min: 0, grid: { color: _chartGridColor() }, ticks: { font: { size: 11 }, color: _chartTextColor() }, title: { display: false } },
         ...(hasDownloads ? {
           yDownloads: {
             position: 'right', min: 0,
@@ -7957,6 +8008,7 @@ function _startCommsLiveStream() {
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   applyI18n();
+  applyThemeIcon();
   initSidebar();
   loadOverview();
   setInterval(loadOverview, 60_000);  // auto-refresh overview every 60 s
