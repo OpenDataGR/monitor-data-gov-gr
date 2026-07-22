@@ -46,6 +46,13 @@ REQUEST_TIMEOUT = 15
 # across all worker processes instead of per-process.
 RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://").strip()
 
+# General-purpose Redis connection, separate from RATELIMIT_STORAGE_URI
+# (same Redis instance in practice, but that one has to be in flask-limiter's
+# expected URI form specifically). Used to back the cross-process caches in
+# app.py (_SharedCache) -- unset means those caches fall back to a plain
+# per-process dict, which is what local dev uses.
+REDIS_URL = os.environ.get("REDIS_URL", "").strip()
+
 # True only in the dedicated background_worker.py process (see deploy/
 # monitor-data-gov-gr-worker.service, which sets this env var) -- that process
 # owns the health-check/HVD/DCAT-AP/GeoDCAT background loop instead of it

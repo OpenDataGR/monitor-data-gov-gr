@@ -18,10 +18,11 @@ Live at `https://monitor.data.gov.gr/`.
 
 - **Backend**: Flask 3, SQLAlchemy (SQLite for local dev, PostgreSQL in production), gunicorn
 - **Frontend**: server-rendered Jinja2 templates + vanilla JS (no build step, no framework)
-- **RDF/SHACL validation**: `rdflib` + `pyshacl`, against the vendored [DCAT-AP-HVD shapes](https://github.com/SEMICeu/DCAT-AP) (`shacl/dcat-ap-hvd.shapes.ttl`)
+- **RDF/SHACL validation**: `rdflib` + `pyshacl`, against the vendored [DCAT-AP-HVD shapes](https://github.com/SEMICeu/DCAT-AP) (`shacl/dcat-ap-hvd.shapes.ttl`). The HVD/DCAT-AP/GeoDCAT crawls parallelize this real CPU-bound work across a `ProcessPoolExecutor` (spawn context, not the default fork -- see `_MP_SPAWN_CONTEXT` in app.py), not threads, since threads would all serialize on one core regardless of count (GIL)
 - **Email**: SendGrid (via SMTP)
 - **Excel export**: `openpyxl`
 - **Rate limiting**: Flask-Limiter, backed by Redis in production (`RATELIMIT_STORAGE_URI`) so limits are shared across gunicorn worker processes instead of counted per-process; falls back to in-memory if unset, which is fine for local dev
+- **Cross-process caching**: `_SharedCache` (app.py), backed by Redis in production (`REDIS_URL`) so the orgs/dataset-growth/geo-datasets/HRMS caches are shared across gunicorn workers instead of each process holding its own stale copy; falls back to a plain per-process dict if unset, which is what local dev uses
 
 ## Project layout
 

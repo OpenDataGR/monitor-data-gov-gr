@@ -9,6 +9,8 @@ load_dotenv(Path(__file__).parent / ".env")
 import time
 import threading
 import queue
+import multiprocessing
+import redis
 import requests
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -17,7 +19,7 @@ from email import policy as email_policy
 from email.parser import Parser as EmailParser
 from email.utils import parseaddr, getaddresses
 from html import unescape as html_unescape
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import io
 import secrets
@@ -116,6 +118,96 @@ limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["200 per
                    storage_uri=config.RATELIMIT_STORAGE_URI)
 
 db.init_app(app)
+
+_redis_conn = None
+_redis_conn_attempted = False
+
+
+def _redis_client():
+    """Lazily constructed, shared client for config.REDIS_URL. Returns None
+    if it's unset, which is what lets _SharedCache fall back to a plain
+    per-process dict -- local dev needs no Redis at all."""
+    global _redis_conn, _redis_conn_attempted
+    if not _redis_conn_attempted:
+        _redis_conn_attempted = True
+        if config.REDIS_URL:
+            _redis_conn = redis.from_url(config.REDIS_URL, decode_responses=True)
+    return _redis_conn
+
+
+class _SharedCache:
+    """Dict-like cache backed by Redis (config.REDIS_URL) so all 4 gunicorn
+    workers -- and background_worker.py, which is the only process that
+    actually refreshes most of these now -- see one consistent, shared value
+    instead of each process's own private in-memory copy going stale the
+    moment any other process updates it. That staleness was real: these
+    caches are only warmed from the DB once, at each process's own startup,
+    so a gunicorn worker that never independently refreshes one (true for
+    _dataset_growth_cache/_geo_datasets_cache since the background split)
+    would otherwise keep serving whatever it had at boot indefinitely.
+
+    Falls back to a plain per-process dict if Redis is unconfigured
+    (local dev) or errors at read/write time (treated as soft-fail, same as
+    everything else in this file that touches an external dependency --
+    worse consistency, not a crashed request).
+    """
+    def __init__(self, name, defaults):
+        self._name = f"cache:{name}"
+        self._defaults = defaults
+        self._local = dict(defaults)
+
+    def __getitem__(self, key):
+        if key not in self._defaults:
+            raise KeyError(key)
+        client = _redis_client()
+        if client is not None:
+            try:
+                raw = client.hget(self._name, key)
+                return json.loads(raw) if raw is not None else self._defaults[key]
+            except Exception as exc:
+                print(f"[{self._name}] Redis read error, falling back to local: {exc}")
+        return self._local.get(key, self._defaults[key])
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __setitem__(self, key, value):
+        if key not in self._defaults:
+            raise KeyError(key)
+        self._local[key] = value  # kept as the fallback mirror even when Redis is up
+        client = _redis_client()
+        if client is not None:
+            try:
+                client.hset(self._name, key, json.dumps(value))
+            except Exception as exc:
+                print(f"[{self._name}] Redis write error, local-only for now: {exc}")
+
+
+# Used for the HVD/DCAT-AP/GeoDCAT SHACL-validation pools (ProcessPoolExecutor
+# below) instead of the default fork start method. background_worker.py is
+# multi-threaded by the time a check runs (the background-loop thread is
+# already up), and forking a multi-threaded process is unsafe -- if another
+# thread holds a lock at the exact instant of fork, the child inherits it
+# already-held with no thread that will ever release it, and deadlocks the
+# moment it's needed. spawn starts each worker as a clean fresh interpreter
+# instead, at the cost of re-importing app.py (and re-parsing the SHACL shape
+# graphs) once per worker process -- fine, since pool workers are reused
+# across every dataset in a run, not re-spawned per dataset.
+_MP_SPAWN_CONTEXT = multiprocessing.get_context("spawn")
+
+
+def _is_main_process() -> bool:
+    """False inside a spawned ProcessPoolExecutor worker (see
+    _MP_SPAWN_CONTEXT) -- those re-import this whole module fresh, which
+    would otherwise also re-trigger the background-loop/SSE-poller startup
+    checks below in every single worker process. Neither actually needs to
+    run there: those pools only ever execute the pure _hvd_check_one /
+    _dcat_check_one / _geodcat_check_one functions."""
+    return multiprocessing.current_process().name == "MainProcess"
+
 
 with app.app_context():
     db.create_all()
@@ -1010,7 +1102,7 @@ def run_health_checks():
         db.session.commit()
 
 
-_HRMS_CACHE: dict = {"data": None, "fetched_at": 0.0}
+_HRMS_CACHE = _SharedCache("hrms", {"data": None, "fetched_at": 0.0})
 _HRMS_TTL = 24 * 3600  # refresh once per day
 
 # Canonical contact-type values (norm'd Greek or English → stored value)
@@ -1082,7 +1174,7 @@ def public_orgs():
 
 
 _ORGS_REFRESH_INTERVAL = 30 * 60  # refresh org cache every 30 minutes
-_orgs_cache: dict = {"data": None, "fetched_at": None, "enriching": False}
+_orgs_cache = _SharedCache("orgs", {"data": None, "fetched_at": None, "enriching": False})
 
 with app.app_context():
     # Warm the in-memory cache from the DB so a fresh process (e.g. after a deploy)
@@ -1340,8 +1432,9 @@ def _try_acquire_singleton_lock() -> bool:
 # copies of background_worker.py are ever briefly running at once (e.g.
 # during its own deploy restart), and also naturally excludes the Flask
 # dev-reloader's watcher process, since the debug/WERKZEUG_RUN_MAIN check
-# still runs first.
-if (app.debug or config.BACKGROUND_WORKER) and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true") and _try_acquire_singleton_lock():
+# still runs first. Also skipped entirely in a spawned ProcessPoolExecutor
+# worker (_is_main_process()) -- see its docstring.
+if _is_main_process() and (app.debug or config.BACKGROUND_WORKER) and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true") and _try_acquire_singleton_lock():
     threading.Thread(target=_background_loop, daemon=True).start()
 
 
@@ -1504,7 +1597,7 @@ def stats_history():
     return jsonify([r.to_dict() for r in rows])
 
 
-_dataset_growth_cache: dict = {"weeks": None, "fetched_at": None, "enriching": False}
+_dataset_growth_cache = _SharedCache("dataset_growth", {"weeks": None, "fetched_at": None, "enriching": False})
 _DATASET_GROWTH_REFRESH_INTERVAL = 24 * 3600  # rebuild once a day
 
 with app.app_context():
@@ -1596,7 +1689,7 @@ def stats_dataset_growth():
     })
 
 
-_geo_datasets_cache: dict = {"locations": None, "fetched_at": None, "enriching": False}
+_geo_datasets_cache = _SharedCache("geo_datasets", {"locations": None, "fetched_at": None, "enriching": False})
 _GEO_DATASETS_REFRESH_INTERVAL = 24 * 3600  # organizations' locations barely change; once a day is plenty
 
 with app.app_context():
@@ -2038,7 +2131,13 @@ _OPEN_LICENSE_MARKERS = (
 # Concept/service URI -> its parsed RDF graph (or None if unfetchable), kept
 # for the process lifetime. HVD category codes repeat across hundreds of
 # datasets, so after the first few checks this cache turns most lookups into
-# a dict hit instead of a fresh HTTP request.
+# a dict hit instead of a fresh HTTP request. Deliberately a plain
+# per-process dict, not _SharedCache -- _hvd_check_one runs inside
+# ProcessPoolExecutor workers (see _MP_SPAWN_CONTEXT), each with its own
+# independent copy of this, so a handful of common vocab URIs end up fetched
+# once per worker process rather than once total for the whole run. Small,
+# bounded cost (one-time per worker, not per dataset) not worth adding a
+# Redis round-trip to every one of the ~1,000+ per-dataset lookups to avoid.
 _hvd_vocab_cache: dict = {}
 _hvd_vocab_lock = threading.Lock()
 
@@ -2473,7 +2572,14 @@ def _do_run_hvd_check() -> None:
         _bump_hvd_progress(len(rows))
 
         newly_checked = []  # (name, metadata_modified, result-or-None-if-failed)
-        pool = ThreadPoolExecutor(max_workers=_HVD_CHECK_CONCURRENCY)
+        # ProcessPoolExecutor, not threads: _hvd_check_one's rdflib parsing
+        # and pyshacl validation are real CPU-bound work, not I/O -- threads
+        # would only ever run one of them at a time regardless of count
+        # (GIL), capping this at one core no matter how many vCPUs exist.
+        # Separate processes each get their own GIL, so this actually uses
+        # multiple cores. See _MP_SPAWN_CONTEXT's comment for why spawn, not
+        # the default fork.
+        pool = ProcessPoolExecutor(max_workers=_HVD_CHECK_CONCURRENCY, mp_context=_MP_SPAWN_CONTEXT)
         try:
             futures = {pool.submit(_hvd_check_one, d["name"]): d for d in to_fetch}
             for fut in as_completed(futures):
@@ -3012,7 +3118,11 @@ def _do_run_dcat_check() -> None:
         _bump_dcat_progress(len(rows))
 
         newly_checked = []
-        pool = ThreadPoolExecutor(max_workers=_DCAT_CHECK_CONCURRENCY)
+        # ProcessPoolExecutor, not threads -- same reasoning as the HVD check
+        # above: _dcat_check_one's parsing/validation is CPU-bound, so this
+        # is what actually spreads it across multiple cores instead of
+        # capping at one regardless of worker count.
+        pool = ProcessPoolExecutor(max_workers=_DCAT_CHECK_CONCURRENCY, mp_context=_MP_SPAWN_CONTEXT)
         try:
             futures = {pool.submit(_dcat_check_one, d["name"]): d for d in to_fetch}
             for fut in as_completed(futures):
@@ -3405,7 +3515,11 @@ def _do_run_geodcat_check() -> None:
         _bump_geodcat_progress(len(rows))
 
         newly_checked = []
-        pool = ThreadPoolExecutor(max_workers=_GEODCAT_CHECK_CONCURRENCY)
+        # ProcessPoolExecutor, not threads -- same reasoning as the HVD check
+        # above: _geodcat_check_one's parsing/validation is CPU-bound, so
+        # this is what actually spreads it across multiple cores instead of
+        # capping at one regardless of worker count.
+        pool = ProcessPoolExecutor(max_workers=_GEODCAT_CHECK_CONCURRENCY, mp_context=_MP_SPAWN_CONTEXT)
         try:
             futures = {pool.submit(_geodcat_check_one, d["name"]): d for d in to_fetch}
             for fut in as_completed(futures):
@@ -4524,8 +4638,10 @@ def _stream_poller_loop():
 # worker process, not one across the whole fleet. Skipped in the dedicated
 # background_worker.py process (config.BACKGROUND_WORKER): that process never
 # serves HTTP, so it would never have any subscribers -- starting this there
-# would just be a pointless extra DB poll every 3s for nothing.
-if (app.debug or not config.BACKGROUND_WORKER) and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
+# would just be a pointless extra DB poll every 3s for nothing. Also skipped
+# in a spawned ProcessPoolExecutor worker (_is_main_process()) for the same
+# reason as the background loop above.
+if _is_main_process() and (app.debug or not config.BACKGROUND_WORKER) and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
     threading.Thread(target=_stream_poller_loop, daemon=True).start()
 
 
