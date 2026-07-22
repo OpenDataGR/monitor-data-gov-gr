@@ -2025,7 +2025,10 @@ def datasets_search():
         return jsonify({"error": str(exc)}), 503
 
 
-_dataset_formats_cache: dict = {"data": None, "ts": 0}
+# Shared for the same reason as _pm_cache above: a plain per-process dict
+# meant each of the 6 gunicorn web workers independently re-queried CKAN's
+# facet search on its own first hit instead of sharing one hour-long result.
+_dataset_formats_cache = _SharedCache("dataset_formats", {"data": None, "ts": 0})
 
 
 @app.route("/api/datasets/formats")
