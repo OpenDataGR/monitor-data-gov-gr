@@ -21,6 +21,7 @@ Live at `https://monitor.data.gov.gr/`.
 - **RDF/SHACL validation**: `rdflib` + `pyshacl`, against the vendored [DCAT-AP-HVD shapes](https://github.com/SEMICeu/DCAT-AP) (`shacl/dcat-ap-hvd.shapes.ttl`)
 - **Email**: SendGrid (via SMTP)
 - **Excel export**: `openpyxl`
+- **Rate limiting**: Flask-Limiter, backed by Redis in production (`RATELIMIT_STORAGE_URI`) so limits are shared across gunicorn worker processes instead of counted per-process; falls back to in-memory if unset, which is fine for local dev
 
 ## Project layout
 

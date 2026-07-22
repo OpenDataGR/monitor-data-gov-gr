@@ -37,3 +37,11 @@ ENDPOINTS_TO_MONITOR = [
 
 CHECK_INTERVAL_SECONDS = 300   # 5 minutes
 REQUEST_TIMEOUT = 15
+
+# flask-limiter's storage backend. Defaults to its own in-memory store, which
+# under gunicorn means each worker process counts independently -- with N
+# workers the effective ceiling on things like login attempts is roughly N x
+# the configured limit, not the configured limit itself. Set to a shared
+# store (e.g. redis://localhost:6379) in production so limits are enforced
+# across all worker processes instead of per-process.
+RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://").strip()

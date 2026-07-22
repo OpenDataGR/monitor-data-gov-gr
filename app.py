@@ -108,10 +108,12 @@ if config.FLASK_SECRET_KEY:
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-# In-memory storage: limits are per gunicorn worker process, not shared across
-# workers. With N workers the effective ceiling is roughly N x the configured
-# limit — still a meaningful backstop against scripted abuse, just not exact.
-limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["200 per minute"])
+# storage_uri defaults to flask-limiter's own in-memory store (see
+# config.RATELIMIT_STORAGE_URI) if RATELIMIT_STORAGE_URI isn't set -- fine
+# for local dev, but production sets it to a shared store so limits are
+# enforced across all gunicorn worker processes instead of per-process.
+limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["200 per minute"],
+                   storage_uri=config.RATELIMIT_STORAGE_URI)
 
 db.init_app(app)
 
@@ -4461,8 +4463,19 @@ def _stream_poller_loop():
         inbound_baseline = db.session.query(db.func.max(InboundEmail.id)).scalar() or 0
         comm_baseline    = db.session.query(db.func.max(Communication.id)).scalar() or 0
 
+    last_logged_count = 0
     while True:
         time.sleep(3)
+
+        # Logged only on change, not every tick, so a slow climb toward this
+        # worker's thread ceiling shows up in the logs before it becomes an
+        # outage instead of only being inferrable after the fact.
+        with _stream_subscribers_lock:
+            current_count = len(_stream_subscribers)
+        if current_count != last_logged_count:
+            print(f"[comms-stream] open connections on this worker: {current_count}")
+            last_logged_count = current_count
+
         try:
             events = []
             with app.app_context():
