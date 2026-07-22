@@ -5713,7 +5713,13 @@ def portal_user_activity(username):
 
 # ── Portal Members (all orgs) ─────────────────────────────────────────────────
 
-_pm_cache: dict = {"data": None, "ts": 0, "loading": False, "error": None}
+# Shared (not a plain per-process dict): this crawl covers every org on the
+# portal and can take a while on a cold cache, and background_worker.py's
+# proactive refresh below (_PM_REFRESH_INTERVAL) runs in a separate process
+# from all 6 gunicorn web workers -- with a plain dict that refresh only ever
+# warmed its own copy, never any web worker's, so whichever worker a real
+# request happened to land on still did the full crawl itself the first time.
+_pm_cache = _SharedCache("portal_members", {"data": None, "ts": 0, "loading": False, "error": None})
 _PM_REFRESH_INTERVAL = 90 * 60  # refresh proactively before the 2h cache below goes stale
 
 
