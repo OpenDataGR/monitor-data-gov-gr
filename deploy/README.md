@@ -25,6 +25,17 @@ Practical effect: if you're checking why a scheduled check hasn't run, look
 at `journalctl -u monitor-data-gov-gr-worker`, not the main web service's log
 -- the web service's 4 workers no longer run that loop at all.
 
+To confirm the split is actually holding (only the worker process owns the
+loop, no gunicorn worker is also racing for it), check who holds the file
+lock behind it:
+
+```bash
+sudo lslocks | grep background_loop
+```
+
+Should show exactly one entry, `FLOCK WRITE`, held by `background_worker.py`'s
+PID -- never one of gunicorn's.
+
 ## Redis (rate-limit storage)
 
 Flask-Limiter is backed by Redis in production so rate limits (login
