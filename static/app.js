@@ -29,11 +29,7 @@ const TRANSLATIONS = {
     'page.title': 'data.gov.gr Monitor',
     'nav.last_check': 'Last check:',
     'nav.check_now': 'Check Now',
-    'nav.manual': 'Manual',
     'nav.admin_panel': 'Admin Panel',
-    'nav.sign_out': 'Sign out',
-    'nav.menu': 'Menu',
-    'nav.toggle_theme': 'Toggle dark mode',
     'sidebar.toggle': 'Collapse sidebar',
     'token.missing': 'API token not configured.',
     'token.desc': 'Dataset queries and quality checks need one. Set DATAGOVGR_TOKEN in your environment or',
@@ -44,16 +40,6 @@ const TRANSLATIONS = {
     'stat.organizations': 'Organizations',
     'stat.uptime': 'Portal Uptime (24h)',
     'tab.overview': 'Overview',
-    'tab.health': 'Health',
-    'tab.insights': 'Insights',
-    'tab.geo_insights': 'Geospatial Insights',
-    'tab.temporal_insights': 'Temporal Insights',
-    'tab.datasets': 'Dataset Totals',
-    'tab.traffic': 'Traffic',
-    'tab.quality': 'Quality',
-    'tab.organizations': 'Organizations',
-    'tab.communications': 'Communications',
-    'tab.contacts': 'Contacts',
     'contacts.title': 'Portal Members',
     'contacts.view_all': 'All',
     'contacts.view_by_org': 'By Organization',
@@ -488,8 +474,6 @@ const TRANSLATIONS = {
     'catalog.endpoints': 'Endpoints',
     'catalog.no_endpoints': 'No endpoint URLs listed.',
     'catalog.open_endpoint': 'Open endpoint',
-    'nav.change_password': 'Change Password',
-    'nav.edit_name': 'Edit name',
     'name.modal_title': 'Edit Name',
     'name.label': 'Name',
     'name.success': 'Name updated successfully.',
@@ -506,7 +490,6 @@ const TRANSLATIONS = {
     'pw.err_length': 'New password must be at least 8 characters.',
     'pw.err_mismatch': 'New passwords do not match.',
     'pw.err_generic': 'Failed to change password.',
-    'nav.manage_passkeys': 'Manage Passkeys',
     'passkey.modal_title': 'Manage Passkeys',
     'passkey.modal_hint': "A passkey lets you sign in with Touch ID, Windows Hello, or a security key instead of your password.",
     'passkey.nickname_label': 'Name this passkey',
@@ -526,7 +509,6 @@ const TRANSLATIONS = {
     'common.edit': 'Edit',
     'common.delete': 'Delete',
     'common.add': 'Add',
-    'common.back_to_top': 'Back to top',
     'common.cancel': 'Cancel',
     'common.save': 'Save',
     'common.clear': 'Clear',
@@ -588,11 +570,7 @@ const TRANSLATIONS = {
     'page.title': 'data.gov.gr Monitor',
     'nav.last_check': 'Τελευταίος έλεγχος:',
     'nav.check_now': 'Έλεγχος τώρα',
-    'nav.manual': 'Οδηγός',
     'nav.admin_panel': 'Πίνακας Διαχείρισης',
-    'nav.sign_out': 'Αποσύνδεση',
-    'nav.menu': 'Μενού',
-    'nav.toggle_theme': 'Εναλλαγή σκοτεινού θέματος',
     'sidebar.toggle': 'Σύμπτυξη μενού',
     'token.missing': 'Το API token δεν έχει ρυθμιστεί.',
     'token.desc': 'Τα ερωτήματα συνόλων δεδομένων και οι ποιοτικοί έλεγχοι το χρειάζονται. Ορίστε DATAGOVGR_TOKEN στο περιβάλλον σας ή',
@@ -603,16 +581,6 @@ const TRANSLATIONS = {
     'stat.organizations': 'Οργανισμοί',
     'stat.uptime': 'Διαθεσιμότητα Πύλης (24ω)',
     'tab.overview': 'Επισκόπηση',
-    'tab.health': 'Κατάσταση',
-    'tab.insights': 'Αναλύσεις',
-    'tab.geo_insights': 'Γεωχωρικές Αναλύσεις',
-    'tab.temporal_insights': 'Χρονικές Αναλύσεις',
-    'tab.datasets': 'Σύνολα Δεδομένων',
-    'tab.traffic': 'Επισκεψιμότητα',
-    'tab.quality': 'Ποιότητα',
-    'tab.organizations': 'Οργανισμοί',
-    'tab.communications': 'Επικοινωνίες',
-    'tab.contacts': 'Επαφές',
     'contacts.title': 'Μέλη Πύλης',
     'contacts.view_all': 'Όλα',
     'contacts.view_by_org': 'Ανά Οργανισμό',
@@ -1047,8 +1015,6 @@ const TRANSLATIONS = {
     'catalog.endpoints': 'Σημεία Πρόσβασης',
     'catalog.no_endpoints': 'Δεν υπάρχουν διαθέσιμα URL σημείων πρόσβασης.',
     'catalog.open_endpoint': 'Άνοιγμα σημείου πρόσβασης',
-    'nav.change_password': 'Αλλαγή Κωδικού',
-    'nav.edit_name': 'Επεξεργασία ονόματος',
     'name.modal_title': 'Επεξεργασία Ονόματος',
     'name.label': 'Όνομα',
     'name.success': 'Το όνομα ενημερώθηκε με επιτυχία.',
@@ -1065,7 +1031,6 @@ const TRANSLATIONS = {
     'pw.err_length': 'Ο νέος κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες.',
     'pw.err_mismatch': 'Οι νέοι κωδικοί δεν ταιριάζουν.',
     'pw.err_generic': 'Αποτυχία αλλαγής κωδικού.',
-    'nav.manage_passkeys': 'Διαχείριση Passkeys',
     'passkey.modal_title': 'Διαχείριση Passkeys',
     'passkey.modal_hint': 'Ένα passkey σας επιτρέπει να συνδέεστε με Touch ID, Windows Hello, ή κλειδί ασφαλείας αντί για τον κωδικό σας.',
     'passkey.nickname_label': 'Ονομασία passkey',
@@ -1085,7 +1050,6 @@ const TRANSLATIONS = {
     'common.edit': 'Επεξεργασία',
     'common.delete': 'Διαγραφή',
     'common.add': 'Προσθήκη',
-    'common.back_to_top': 'Επιστροφή στην κορυφή',
     'common.cancel': 'Ακύρωση',
     'common.save': 'Αποθήκευση',
     'common.clear': 'Εκκαθάριση',
@@ -1145,7 +1109,10 @@ const TRANSLATIONS = {
   }
 };
 let _lang = localStorage.getItem('lang') || 'el';
-function t(key) { return (TRANSLATIONS[_lang] && TRANSLATIONS[_lang][key]) || (TRANSLATIONS.en[key]) || key; }
+function t(key) {
+  return (TRANSLATIONS[_lang] && TRANSLATIONS[_lang][key]) || TRANSLATIONS.en[key]
+    || (I18N_SHARED[_lang] && I18N_SHARED[_lang][key]) || I18N_SHARED.en[key] || key;
+}
 function applyI18n() {
   document.getElementById('langEl').classList.toggle('active', _lang === 'el');
   document.getElementById('langEn').classList.toggle('active', _lang === 'en');
@@ -8010,6 +7977,16 @@ document.addEventListener('DOMContentLoaded', () => {
   applyI18n();
   applyThemeIcon();
   initSidebar();
+  // The admin panel is a separate standalone page with no account-modal
+  // markup or webauthn.js of its own -- its user-menu items deep-link back
+  // here with ?action=... instead of duplicating that logic there.
+  const _deepLinkAction = new URLSearchParams(location.search).get('action');
+  if (_deepLinkAction) {
+    history.replaceState(null, '', location.pathname);
+    if (_deepLinkAction === 'edit-name') openEditNameModal();
+    else if (_deepLinkAction === 'change-password') openChangePasswordModal();
+    else if (_deepLinkAction === 'manage-passkeys') openManagePasskeysModal();
+  }
   loadOverview();
   setInterval(loadOverview, 60_000);  // auto-refresh overview every 60 s
   loadLiveVisitors();

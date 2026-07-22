@@ -168,57 +168,7 @@
       <button class="btn btn-outline-light btn-sm px-2 px-sm-3" onclick="triggerCheck()" data-i18n-title="nav.check_now" title="Check Now">
         <i class="bi bi-arrow-clockwise me-sm-1"></i><span class="d-none d-sm-inline" data-i18n="nav.check_now">Check Now</span>
       </button>
-      <a href="{{ url_for('static', filename='manual.html') }}" target="_blank" class="btn btn-outline-light btn-sm px-2 px-sm-3" data-i18n-title="nav.manual" title="Manual">
-        <i class="bi bi-book me-sm-1"></i><span class="d-none d-sm-inline" data-i18n="nav.manual">Οδηγός</span>
-      </a>
-      {% if is_admin %}
-      <a href="{{ url_for('admin_users_page') }}" class="btn btn-outline-light btn-sm px-3" data-i18n-title="nav.admin_panel" title="Admin Panel">
-        <i class="bi bi-shield-lock"></i>
-      </a>
-      {% endif %}
-      {% if user_name %}
-      <div class="dropdown">
-        <button class="btn btn-outline-light btn-sm px-3 dropdown-toggle d-flex align-items-center gap-2" type="button"
-                data-bs-toggle="dropdown" aria-expanded="false">
-          <i class="bi bi-person-circle"></i>
-          <span class="d-none d-lg-inline" id="navUserName">{{ user_name }}</span>
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end">
-          <li>
-            <button type="button" class="dropdown-item" onclick="openEditNameModal()">
-              <i class="bi bi-pencil me-2"></i><span data-i18n="nav.edit_name">Edit name</span>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="dropdown-item" onclick="openChangePasswordModal()">
-              <i class="bi bi-key me-2"></i><span data-i18n="nav.change_password">Change Password</span>
-            </button>
-          </li>
-          <li id="managePasskeysNavItem" class="d-none">
-            <button type="button" class="dropdown-item" onclick="openManagePasskeysModal()">
-              <i class="bi bi-fingerprint me-2"></i><span data-i18n="nav.manage_passkeys">Manage Passkeys</span>
-            </button>
-          </li>
-          <li><hr class="dropdown-divider"></li>
-          <li>
-            <a class="dropdown-item" href="{{ url_for('logout') }}">
-              <i class="bi bi-box-arrow-right me-2"></i><span data-i18n="nav.sign_out">Sign out</span>
-            </a>
-          </li>
-        </ul>
-      </div>
-      {% else %}
-      <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm px-2 px-sm-3" data-i18n-title="nav.sign_out" title="Sign out">
-        <i class="bi bi-box-arrow-right me-sm-1"></i><span class="d-none d-sm-inline" data-i18n="nav.sign_out">Sign out</span>
-      </a>
-      {% endif %}
-      <button id="themeToggleBtn" type="button" class="btn btn-outline-light btn-sm" onclick="toggleTheme()" data-i18n-title="nav.toggle_theme" title="Toggle dark mode">
-        <i class="bi" id="themeToggleIcon"></i>
-      </button>
-      <div class="btn-group btn-group-sm" role="group">
-        <button id="langEl" type="button" class="btn btn-outline-light active" onclick="setLang('el')">ΕΛ</button>
-        <button id="langEn" type="button" class="btn btn-outline-light" onclick="setLang('en')">EN</button>
-      </div>
+      {% include "_header_controls.html" %}
     </div>
   </div>
 </nav>
@@ -1670,6 +1620,7 @@
   window.__ALLOWED_TABS__ = {{ allowed_tabs|tojson }};
 </script>
 <script src="{{ url_for('static', filename='webauthn.js') }}?v={{ build_date }}" defer></script>
+<script src="{{ url_for('static', filename='i18n_shared.js') }}?v={{ build_date }}" defer></script>
 <script src="{{ url_for('static', filename='app.js') }}?v={{ build_date }}" defer></script>
 
 <footer class="text-center text-muted py-3 mt-4" style="font-size:.8rem; border-top:1px solid #dee2e6;">

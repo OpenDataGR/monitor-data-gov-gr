@@ -770,7 +770,8 @@ def admin_users_page():
     if not session.get("is_admin"):
         return redirect(url_for("index"))
     return render_template("admin_users.html", current_user_id=session.get("user_id"),
-                           current_user_is_superadmin=session.get("is_superadmin", False))
+                           current_user_is_superadmin=session.get("is_superadmin", False),
+                           user_name=session.get("user_name"))
 
 
 @app.route("/api/users", methods=["GET", "POST"])

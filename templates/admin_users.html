@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <script>
+    (function () {
+      var saved = localStorage.getItem('theme');
+      var theme = saved === 'dark' || saved === 'light' ? saved
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-bs-theme', theme);
+    })();
+  </script>
   <title>Admin Panel — data.gov.gr Monitor</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
@@ -88,24 +96,50 @@
       .admin-sidebar-toggle-btn { display: none !important; }
       .admin-sidebar-backdrop.show { display: block; }
     }
+    .admin-content-box { background: #f8f9fa; }
+
+    /* ── Dark theme ───────────────────────────────────────────────────── */
+    [data-bs-theme="dark"] body { background: #15181c; }
+    [data-bs-theme="dark"] .admin-sidebar { background: #1e2226; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+    [data-bs-theme="dark"] .admin-nav .nav-link { color: #adb5bd; }
+    [data-bs-theme="dark"] .admin-nav .nav-link:not(.active):hover { background: rgba(255,255,255,.06); }
+    [data-bs-theme="dark"] .admin-sidebar-toggle-btn { color: #adb5bd; }
+    [data-bs-theme="dark"] .admin-sidebar-toggle-btn:hover { background: rgba(255,255,255,.06); }
+    [data-bs-theme="dark"] .card { box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+    [data-bs-theme="dark"] .back-to-top-btn:hover { background: #1a73d6; }
+    [data-bs-theme="dark"] .admin-content-box { background: rgba(255,255,255,.035); }
+    [data-bs-theme="dark"] .badge.bg-light { background-color: rgba(255,255,255,.1) !important; color: #dee2e6 !important; }
+    /* Quill's snow theme isn't theme-aware -- restyle it to match the rest of the dark UI. */
+    #massEmailMessageEditor { background: #fff; }
+    [data-bs-theme="dark"] #massEmailMessageEditor { background: #2b3035; color: #dee2e6; }
+    [data-bs-theme="dark"] .ql-toolbar.ql-snow { background: #2b3035; border-color: #495057 !important; }
+    [data-bs-theme="dark"] .ql-toolbar.ql-snow .ql-stroke { stroke: #dee2e6; }
+    [data-bs-theme="dark"] .ql-toolbar.ql-snow .ql-fill { fill: #dee2e6; }
+    [data-bs-theme="dark"] .ql-toolbar.ql-snow .ql-picker-label { color: #dee2e6; }
+    [data-bs-theme="dark"] .ql-container.ql-snow { border-color: #495057 !important; }
+    [data-bs-theme="dark"] .ql-snow .ql-picker-options { background: #2b3035; }
   </style>
 </head>
 <body>
-  <button class="back-to-top-btn" id="backToTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">
+  <button class="back-to-top-btn" id="backToTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" data-i18n-title="common.back_to_top" title="Back to top">
     <i class="bi bi-arrow-up"></i>
   </button>
 
-  <div class="top-header d-flex align-items-center justify-content-between">
+  <div class="top-header d-flex align-items-center justify-content-between flex-wrap gap-2">
     <div class="d-flex align-items-center gap-3">
-      <button class="btn btn-outline-light btn-sm d-md-none" id="adminSidebarMobileToggle" onclick="toggleAdminMobileSidebar()" title="Menu">
+      <button class="btn btn-outline-light btn-sm d-md-none" id="adminSidebarMobileToggle" onclick="toggleAdminMobileSidebar()" data-i18n-title="nav.menu" title="Menu">
         <i class="bi bi-list"></i>
       </button>
       <div>
         <a href="{{ url_for('index') }}" class="text-white-50 text-decoration-none small d-block mb-1">
-          <i class="bi bi-arrow-left me-1"></i>Back to dashboard
+          <i class="bi bi-arrow-left me-1"></i><span data-i18n="admin.back_to_dashboard">Back to dashboard</span>
         </a>
-        <div class="fw-bold fs-5"><i class="bi bi-shield-lock-fill me-2"></i>Admin Panel</div>
+        <div class="fw-bold fs-5"><i class="bi bi-shield-lock-fill me-2"></i><span data-i18n="admin.title">Admin Panel</span></div>
       </div>
+    </div>
+    <div class="d-flex align-items-center flex-wrap justify-content-end gap-2 gap-md-3 row-gap-2">
+      {% set standalone_header = True %}
+      {% include "_header_controls.html" %}
     </div>
   </div>
 
@@ -113,18 +147,18 @@
     <div class="admin-sidebar-backdrop" id="adminSidebarBackdrop" onclick="closeAdminMobileSidebar()"></div>
     <div class="d-flex align-items-start">
       <nav class="admin-sidebar" id="adminSidebar">
-        <button class="admin-sidebar-toggle-btn d-none d-md-flex" onclick="toggleAdminSidebar()" title="Collapse">
+        <button class="admin-sidebar-toggle-btn d-none d-md-flex" onclick="toggleAdminSidebar()" data-i18n-title="admin.collapse" title="Collapse">
           <i class="bi bi-chevron-left" id="adminSidebarToggleIcon"></i>
         </button>
         <div class="nav flex-column nav-pills admin-nav gap-1" role="tablist" aria-orientation="vertical" id="adminNavTabs">
           <button class="nav-link active text-start" data-bs-toggle="pill" data-bs-target="#panel-users" type="button">
-            <i class="bi bi-people-fill me-2"></i><span class="sidebar-label">Users</span>
+            <i class="bi bi-people-fill me-2"></i><span class="sidebar-label" data-i18n="admin.nav_users">Users</span>
           </button>
           <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-mass-email" type="button">
-            <i class="bi bi-megaphone me-2"></i><span class="sidebar-label">Mass Email</span>
+            <i class="bi bi-megaphone me-2"></i><span class="sidebar-label" data-i18n="admin.nav_mass_email">Mass Email</span>
           </button>
           <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-system" type="button">
-            <i class="bi bi-gear-fill me-2"></i><span class="sidebar-label">System</span>
+            <i class="bi bi-gear-fill me-2"></i><span class="sidebar-label" data-i18n="admin.nav_system">System</span>
           </button>
         </div>
       </nav>
@@ -135,23 +169,23 @@
           <!-- Users section -->
           <div class="tab-pane fade show active" id="panel-users">
             <div class="card p-4 mb-4">
-              <h6 class="fw-semibold mb-3">Invite a new user</h6>
+              <h6 class="fw-semibold mb-3" data-i18n="admin.invite_title">Invite a new user</h6>
               <form id="inviteForm" class="row g-2 align-items-end" onsubmit="return inviteUser(event)">
                 <div class="col-sm-4">
-                  <label class="form-label small mb-1">Email</label>
+                  <label class="form-label small mb-1" data-i18n="admin.email">Email</label>
                   <input type="email" id="inviteEmail" class="form-control form-control-sm" required>
                 </div>
                 <div class="col-sm-4">
-                  <label class="form-label small mb-1">Name</label>
+                  <label class="form-label small mb-1" data-i18n="admin.name">Name</label>
                   <input type="text" id="inviteName" class="form-control form-control-sm">
                 </div>
                 <div class="col-sm-2 form-check ms-1 mb-1">
                   <input type="checkbox" id="inviteAdmin" class="form-check-input">
-                  <label class="form-check-label small" for="inviteAdmin">Admin</label>
+                  <label class="form-check-label small" for="inviteAdmin" data-i18n="admin.admin_checkbox">Admin</label>
                 </div>
                 <div class="col-sm-2">
                   <button type="submit" class="btn btn-primary btn-sm w-100">
-                    <i class="bi bi-envelope-plus me-1"></i>Invite
+                    <i class="bi bi-envelope-plus me-1"></i><span data-i18n="admin.invite">Invite</span>
                   </button>
                 </div>
               </form>
@@ -159,7 +193,7 @@
             </div>
 
             <div class="card p-4">
-              <h6 class="fw-semibold mb-3">Users</h6>
+              <h6 class="fw-semibold mb-3" data-i18n="admin.nav_users">Users</h6>
               <div id="usersTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
             </div>
           </div>
@@ -167,42 +201,42 @@
           <!-- Mass Email section -->
           <div class="tab-pane fade" id="panel-mass-email">
             <div class="card p-4 mb-4">
-              <h6 class="fw-semibold mb-1"><i class="bi bi-megaphone me-2"></i>Compose</h6>
-              <p class="text-muted small mb-3">Send an announcement to some or all dashboard users.</p>
+              <h6 class="fw-semibold mb-1"><i class="bi bi-megaphone me-2"></i><span data-i18n="admin.compose">Compose</span></h6>
+              <p class="text-muted small mb-3" data-i18n="admin.compose_desc">Send an announcement to some or all dashboard users.</p>
               <div class="mb-2">
-                <label class="form-label small mb-1">Subject</label>
+                <label class="form-label small mb-1" data-i18n="admin.subject">Subject</label>
                 <input type="text" id="massEmailSubject" class="form-control form-control-sm">
               </div>
               <div class="mb-2">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                  <label class="form-label small mb-0">Message</label>
-                  <a href="#" class="small" id="massEmailHtmlToggleLink" onclick="toggleMassEmailHtmlSource();return false;">Edit as HTML</a>
+                  <label class="form-label small mb-0" data-i18n="admin.message">Message</label>
+                  <a href="#" class="small" id="massEmailHtmlToggleLink" data-i18n="admin.edit_as_html" onclick="toggleMassEmailHtmlSource();return false;">Edit as HTML</a>
                 </div>
                 <div id="massEmailQuillWrap">
-                  <div id="massEmailMessageEditor" style="background:#fff"></div>
+                  <div id="massEmailMessageEditor"></div>
                 </div>
                 <textarea id="massEmailHtmlSource" class="form-control form-control-sm d-none" rows="12" spellcheck="false" style="font-family:Consolas,Menlo,monospace;font-size:.8rem"></textarea>
               </div>
               <div class="d-flex justify-content-between align-items-center mb-2">
-                <label class="form-label small mb-0">Recipients</label>
+                <label class="form-label small mb-0" data-i18n="admin.recipients">Recipients</label>
                 <div>
-                  <a href="#" class="small" onclick="_setMassEmailRecipients(true);return false;">All</a>
+                  <a href="#" class="small" data-i18n="admin.all" onclick="_setMassEmailRecipients(true);return false;">All</a>
                   <span class="text-muted">/</span>
-                  <a href="#" class="small" onclick="_setMassEmailRecipients(false);return false;">None</a>
+                  <a href="#" class="small" data-i18n="admin.none" onclick="_setMassEmailRecipients(false);return false;">None</a>
                 </div>
               </div>
               <div id="massEmailRecipientList" class="mb-2" style="max-height:200px;overflow-y:auto;border:1px solid #dee2e6;border-radius:.375rem;padding:.5rem">
-                <p class="text-muted small mb-0">Loading users…</p>
+                <p class="text-muted small mb-0" data-i18n="admin.loading_users">Loading users…</p>
               </div>
               <div class="small text-muted mb-3" id="massEmailRecipientSummary"></div>
               <button type="button" class="btn btn-primary btn-sm" onclick="openMassEmailConfirm()">
-                <i class="bi bi-send me-1"></i>Send Mass Email
+                <i class="bi bi-send me-1"></i><span data-i18n="admin.send_mass_email">Send Mass Email</span>
               </button>
               <div id="massEmailResult" class="mt-2 small d-none"></div>
             </div>
 
             <div class="card p-4">
-              <h6 class="fw-semibold mb-3"><i class="bi bi-clock-history me-2"></i>Send History</h6>
+              <h6 class="fw-semibold mb-3"><i class="bi bi-clock-history me-2"></i><span data-i18n="admin.send_history">Send History</span></h6>
               <div id="massEmailHistory"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
             </div>
           </div>
@@ -210,16 +244,16 @@
           <!-- System section -->
           <div class="tab-pane fade" id="panel-system">
             <div class="card p-4 mb-4">
-              <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-check me-2"></i>Email Delivery</h6>
-              <p class="text-muted small mb-3">Send a test email to confirm the SendGrid configuration works end-to-end.</p>
+              <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-check me-2"></i><span data-i18n="admin.email_delivery">Email Delivery</span></h6>
+              <p class="text-muted small mb-3" data-i18n="admin.email_delivery_desc">Send a test email to confirm the SendGrid configuration works end-to-end.</p>
               <form class="row g-2 align-items-end" onsubmit="return sendTestEmail(event)">
                 <div class="col-sm-6">
-                  <label class="form-label small mb-1">Recipient</label>
+                  <label class="form-label small mb-1" data-i18n="admin.recipient">Recipient</label>
                   <input type="email" id="testEmailTo" class="form-control form-control-sm" required>
                 </div>
                 <div class="col-sm-3">
                   <button type="submit" class="btn btn-outline-primary btn-sm w-100">
-                    <i class="bi bi-send me-1"></i>Send Test Email
+                    <i class="bi bi-send me-1"></i><span data-i18n="admin.send_test_email">Send Test Email</span>
                   </button>
                 </div>
               </form>
@@ -227,58 +261,58 @@
             </div>
 
             <div class="card p-4 mb-4">
-              <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-x me-2"></i>Inbound Email Matching — Excluded Senders</h6>
-              <p class="text-muted small mb-3">Addresses or domains listed here are never treated as the "contact" for an auto-captured or forwarded email — useful for staff mailboxes and internal domains that would otherwise get mistaken for the external correspondent. A bare domain (no @) excludes every address on it.</p>
+              <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-x me-2"></i><span data-i18n="admin.excluded_title">Inbound Email Matching — Excluded Senders</span></h6>
+              <p class="text-muted small mb-3" data-i18n="admin.excluded_desc">Addresses or domains listed here are never treated as the "contact" for an auto-captured or forwarded email — useful for staff mailboxes and internal domains that would otherwise get mistaken for the external correspondent. A bare domain (no @) excludes every address on it.</p>
               <form class="row g-2 align-items-end mb-3" onsubmit="return addExcludedEmail(event)">
                 <div class="col-sm-6">
-                  <label class="form-label small mb-1">Address or domain</label>
+                  <label class="form-label small mb-1" data-i18n="admin.excluded_value_label">Address or domain</label>
                   <input type="text" id="excludedEmailValue" class="form-control form-control-sm" placeholder="user@domain.gr or domain.gr" required>
                 </div>
                 <div class="col-sm-3">
                   <button type="submit" class="btn btn-outline-primary btn-sm w-100">
-                    <i class="bi bi-plus-lg me-1"></i>Add
+                    <i class="bi bi-plus-lg me-1"></i><span data-i18n="admin.add">Add</span>
                   </button>
                 </div>
               </form>
               <div id="excludedEmailError" class="alert alert-danger small mb-3 d-none"></div>
               <table class="table table-sm mb-0">
-                <thead><tr><th>Value</th><th>Type</th><th></th></tr></thead>
-                <tbody id="excludedEmailsBody"><tr><td colspan="3" class="text-muted small">Loading…</td></tr></tbody>
+                <thead><tr><th data-i18n="admin.value">Value</th><th data-i18n="admin.type">Type</th><th></th></tr></thead>
+                <tbody id="excludedEmailsBody"><tr><td colspan="3" class="text-muted small" data-i18n="admin.loading">Loading…</td></tr></tbody>
               </table>
             </div>
 
             <div class="card p-4 mb-4">
-              <h6 class="fw-semibold mb-1"><i class="bi bi-patch-check me-2"></i>HVD Compliance Check Cache</h6>
-              <p class="text-muted small mb-3">Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.</p>
+              <h6 class="fw-semibold mb-1"><i class="bi bi-patch-check me-2"></i><span data-i18n="admin.hvd_cache_title">HVD Compliance Check Cache</span></h6>
+              <p class="text-muted small mb-3" data-i18n="admin.hvd_cache_desc">Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.</p>
               <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#hvdClearModal">
-                <i class="bi bi-trash me-1"></i>Clear HVD Check Cache
+                <i class="bi bi-trash me-1"></i><span data-i18n="admin.clear_hvd_cache">Clear HVD Check Cache</span>
               </button>
               <div id="hvdClearResult" class="mt-2 small d-none"></div>
             </div>
 
             <div class="card p-4 mb-4">
-              <h6 class="fw-semibold mb-1"><i class="bi bi-patch-check me-2"></i>DCAT-AP Compliance Check Cache</h6>
-              <p class="text-muted small mb-3">Clears the stored DCAT-AP + MDR vocabulary check results and the per-dataset cache (covers every dataset on the portal, not just HVD-tagged ones). The next run from the Quality tab will re-fetch and re-validate every dataset from scratch instead of reusing anything.</p>
+              <h6 class="fw-semibold mb-1"><i class="bi bi-patch-check me-2"></i><span data-i18n="admin.dcat_cache_title">DCAT-AP Compliance Check Cache</span></h6>
+              <p class="text-muted small mb-3" data-i18n="admin.dcat_cache_desc">Clears the stored DCAT-AP + MDR vocabulary check results and the per-dataset cache (covers every dataset on the portal, not just HVD-tagged ones). The next run from the Quality tab will re-fetch and re-validate every dataset from scratch instead of reusing anything.</p>
               <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#dcatClearModal">
-                <i class="bi bi-trash me-1"></i>Clear DCAT-AP Check Cache
+                <i class="bi bi-trash me-1"></i><span data-i18n="admin.clear_dcat_cache">Clear DCAT-AP Check Cache</span>
               </button>
               <div id="dcatClearResult" class="mt-2 small d-none"></div>
             </div>
 
             <div class="card p-4 mb-4">
-              <h6 class="fw-semibold mb-1"><i class="bi bi-geo-alt me-2"></i>GeoDCAT-AP Compliance Check Cache</h6>
-              <p class="text-muted small mb-3">Clears the stored GeoDCAT-AP check results and the per-dataset cache (covers geospatial-tagged datasets only). The next run from the Quality tab will re-fetch and re-validate every geospatial dataset from scratch instead of reusing anything.</p>
+              <h6 class="fw-semibold mb-1"><i class="bi bi-geo-alt me-2"></i><span data-i18n="admin.geodcat_cache_title">GeoDCAT-AP Compliance Check Cache</span></h6>
+              <p class="text-muted small mb-3" data-i18n="admin.geodcat_cache_desc">Clears the stored GeoDCAT-AP check results and the per-dataset cache (covers geospatial-tagged datasets only). The next run from the Quality tab will re-fetch and re-validate every geospatial dataset from scratch instead of reusing anything.</p>
               <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#geodcatClearModal">
-                <i class="bi bi-trash me-1"></i>Clear GeoDCAT-AP Check Cache
+                <i class="bi bi-trash me-1"></i><span data-i18n="admin.clear_geodcat_cache">Clear GeoDCAT-AP Check Cache</span>
               </button>
               <div id="geodcatClearResult" class="mt-2 small d-none"></div>
             </div>
 
             <div class="card p-4 border-danger">
-              <h6 class="fw-semibold mb-1 text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Danger Zone</h6>
-              <p class="text-muted small mb-3">Permanently delete all historical health checks and portal snapshots, then start a fresh check.</p>
+              <h6 class="fw-semibold mb-1 text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i><span data-i18n="admin.danger_zone">Danger Zone</span></h6>
+              <p class="text-muted small mb-3" data-i18n="admin.danger_zone_desc">Permanently delete all historical health checks and portal snapshots, then start a fresh check.</p>
               <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#resetModal">
-                <i class="bi bi-trash me-1"></i>Reset All Stats
+                <i class="bi bi-trash me-1"></i><span data-i18n="admin.reset_all_stats">Reset All Stats</span>
               </button>
             </div>
           </div>
@@ -293,21 +327,21 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content border-danger">
         <div class="modal-header bg-danger text-white border-0">
-          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>Reset Statistics</h5>
+          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i><span data-i18n="admin.reset_modal_title">Reset Statistics</span></h5>
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body pt-4">
-          <p class="fw-semibold text-danger mb-1">This action is irreversible.</p>
-          <p class="text-muted small mb-4">All historical health checks and portal snapshots will be permanently deleted.</p>
-          <label class="form-label small fw-semibold">Enter your password to confirm</label>
-          <input type="password" id="resetPassword" class="form-control form-control-sm" placeholder="Password"
+          <p class="fw-semibold text-danger mb-1" data-i18n="admin.irreversible">This action is irreversible.</p>
+          <p class="text-muted small mb-4" data-i18n="admin.reset_modal_desc">All historical health checks and portal snapshots will be permanently deleted.</p>
+          <label class="form-label small fw-semibold" data-i18n="admin.confirm_password">Enter your password to confirm</label>
+          <input type="password" id="resetPassword" class="form-control form-control-sm" data-i18n-ph="admin.password" placeholder="Password"
                  onkeydown="if(event.key==='Enter')confirmReset()">
-          <div id="resetError" class="text-danger small mt-2 d-none">Incorrect password.</div>
+          <div id="resetError" class="text-danger small mt-2 d-none" data-i18n="admin.incorrect_password">Incorrect password.</div>
         </div>
         <div class="modal-footer border-top">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
           <button type="button" class="btn btn-danger btn-sm" onclick="confirmReset()">
-            <i class="bi bi-trash me-1"></i>Delete all data
+            <i class="bi bi-trash me-1"></i><span data-i18n="admin.delete_all_data">Delete all data</span>
           </button>
         </div>
       </div>
@@ -319,17 +353,17 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content border-warning">
         <div class="modal-header bg-warning border-0">
-          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>Clear HVD Check Cache?</h5>
+          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i><span data-i18n="admin.hvd_clear_modal_title">Clear HVD Check Cache?</span></h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body pt-4">
-          <p class="fw-semibold mb-1">This deletes the stored results and per-dataset cache.</p>
-          <p class="text-muted small mb-0">The next run will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything — this can take several minutes.</p>
+          <p class="fw-semibold mb-1" data-i18n="admin.clear_modal_desc">This deletes the stored results and per-dataset cache.</p>
+          <p class="text-muted small mb-0" data-i18n="admin.hvd_clear_modal_note">The next run will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything — this can take several minutes.</p>
         </div>
         <div class="modal-footer border-top">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
           <button type="button" class="btn btn-warning btn-sm" onclick="confirmClearHvdCache()">
-            <i class="bi bi-trash me-1"></i>Clear Cache
+            <i class="bi bi-trash me-1"></i><span data-i18n="admin.clear_cache">Clear Cache</span>
           </button>
         </div>
       </div>
@@ -341,17 +375,17 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content border-warning">
         <div class="modal-header bg-warning border-0">
-          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>Clear DCAT-AP Check Cache?</h5>
+          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i><span data-i18n="admin.dcat_clear_modal_title">Clear DCAT-AP Check Cache?</span></h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body pt-4">
-          <p class="fw-semibold mb-1">This deletes the stored results and per-dataset cache.</p>
-          <p class="text-muted small mb-0">The next run will re-fetch and re-validate every dataset on the portal from scratch instead of reusing anything — this covers the full catalog and can take a long time.</p>
+          <p class="fw-semibold mb-1" data-i18n="admin.clear_modal_desc">This deletes the stored results and per-dataset cache.</p>
+          <p class="text-muted small mb-0" data-i18n="admin.dcat_clear_modal_note">The next run will re-fetch and re-validate every dataset on the portal from scratch instead of reusing anything — this covers the full catalog and can take a long time.</p>
         </div>
         <div class="modal-footer border-top">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
           <button type="button" class="btn btn-warning btn-sm" onclick="confirmClearDcatCache()">
-            <i class="bi bi-trash me-1"></i>Clear Cache
+            <i class="bi bi-trash me-1"></i><span data-i18n="admin.clear_cache">Clear Cache</span>
           </button>
         </div>
       </div>
@@ -363,17 +397,17 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content border-warning">
         <div class="modal-header bg-warning border-0">
-          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>Clear GeoDCAT-AP Check Cache?</h5>
+          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i><span data-i18n="admin.geodcat_clear_modal_title">Clear GeoDCAT-AP Check Cache?</span></h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body pt-4">
-          <p class="fw-semibold mb-1">This deletes the stored results and per-dataset cache.</p>
-          <p class="text-muted small mb-0">The next run will re-fetch and re-validate every geospatial-tagged dataset from scratch instead of reusing anything — this can take a long time.</p>
+          <p class="fw-semibold mb-1" data-i18n="admin.clear_modal_desc">This deletes the stored results and per-dataset cache.</p>
+          <p class="text-muted small mb-0" data-i18n="admin.geodcat_clear_modal_note">The next run will re-fetch and re-validate every geospatial-tagged dataset from scratch instead of reusing anything — this can take a long time.</p>
         </div>
         <div class="modal-footer border-top">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
           <button type="button" class="btn btn-warning btn-sm" onclick="confirmClearGeoDcatCache()">
-            <i class="bi bi-trash me-1"></i>Clear Cache
+            <i class="bi bi-trash me-1"></i><span data-i18n="admin.clear_cache">Clear Cache</span>
           </button>
         </div>
       </div>
@@ -386,23 +420,23 @@
       <div class="modal-content">
         <div class="modal-header border-bottom">
           <h5 class="modal-title fw-bold">
-            <i class="bi bi-ui-checks-grid me-2"></i>Tab access — <span id="tabsModalUserLabel"></span>
+            <i class="bi bi-ui-checks-grid me-2"></i><span data-i18n="admin.tab_access">Tab access</span> — <span id="tabsModalUserLabel"></span>
           </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body pt-3">
           <div class="form-check form-switch mb-3">
             <input class="form-check-input" type="checkbox" role="switch" id="tabsRestrictSwitch" onchange="_renderTabsChecklistState()">
-            <label class="form-check-label small fw-semibold" for="tabsRestrictSwitch">Restrict this user to specific tabs</label>
+            <label class="form-check-label small fw-semibold" for="tabsRestrictSwitch" data-i18n="admin.restrict_tabs">Restrict this user to specific tabs</label>
           </div>
-          <p class="text-muted small" id="tabsUnrestrictedHint">This user can see every tab, same as everyone else by default.</p>
+          <p class="text-muted small" id="tabsUnrestrictedHint" data-i18n="admin.unrestricted_hint">This user can see every tab, same as everyone else by default.</p>
           <div id="tabsChecklist" class="d-none"></div>
-          <p class="text-muted small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>Overview is always available.</p>
+          <p class="text-muted small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i><span data-i18n="admin.overview_always">Overview is always available.</span></p>
         </div>
         <div class="modal-footer border-top">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
           <button type="button" class="btn btn-primary btn-sm" onclick="saveTabsModal()">
-            <i class="bi bi-check me-1"></i>Save
+            <i class="bi bi-check me-1"></i><span data-i18n="admin.save">Save</span>
           </button>
         </div>
       </div>
@@ -414,17 +448,17 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content border-warning">
         <div class="modal-header bg-warning border-0">
-          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>Send Mass Email?</h5>
+          <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i><span data-i18n="admin.send_mass_email_modal_title">Send Mass Email?</span></h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body pt-4">
           <p class="fw-semibold mb-1" id="massEmailConfirmSummary"></p>
-          <p class="text-muted small mb-0">This sends immediately and cannot be recalled.</p>
+          <p class="text-muted small mb-0" data-i18n="admin.send_mass_email_modal_note">This sends immediately and cannot be recalled.</p>
         </div>
         <div class="modal-footer border-top">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
           <button type="button" class="btn btn-warning btn-sm" id="massEmailSendBtn" onclick="confirmMassEmail()">
-            <i class="bi bi-send me-1"></i>Send
+            <i class="bi bi-send me-1"></i><span data-i18n="admin.send">Send</span>
           </button>
         </div>
       </div>
@@ -441,10 +475,10 @@
         </div>
         <div class="modal-body pt-3">
           <p class="text-muted small mb-3" id="massEmailHistoryMeta"></p>
-          <div class="border rounded p-3" id="massEmailHistoryBody" style="background:#f8f9fa"></div>
+          <div class="border rounded p-3 admin-content-box" id="massEmailHistoryBody"></div>
         </div>
         <div class="modal-footer border-top">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.close">Close</button>
         </div>
       </div>
     </div>
@@ -452,6 +486,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+  <script src="{{ url_for('static', filename='i18n_shared.js') }}"></script>
   <script>
     // CSRF: same guarded fetch patch as app.js/webauthn.js -- this page is
     // fully standalone (loads neither), so it needs its own copy.
@@ -475,6 +510,229 @@
 
     const CURRENT_USER_ID = {{ current_user_id|tojson }};
     const CURRENT_USER_IS_SUPERADMIN = {{ current_user_is_superadmin|tojson }};
+
+    // ── i18n ───────────────────────────────────────────────────────────
+    // This page is standalone (loads neither app.js nor its TRANSLATIONS
+    // block) -- admin.* keys are only used here. nav.*/tab.*/common.* keys
+    // shared with the dashboard's header partial and tab-access checklist
+    // live in i18n_shared.js instead, so wording only changes in one place.
+    const TRANSLATIONS = {
+      en: {
+        'admin.back_to_dashboard': 'Back to dashboard', 'admin.title': 'Admin Panel', 'admin.collapse': 'Collapse',
+        'admin.nav_users': 'Users', 'admin.nav_mass_email': 'Mass Email', 'admin.nav_system': 'System',
+        'admin.invite_title': 'Invite a new user', 'admin.email': 'Email', 'admin.name': 'Name',
+        'admin.admin_checkbox': 'Admin', 'admin.invite': 'Invite',
+        'admin.compose': 'Compose', 'admin.compose_desc': 'Send an announcement to some or all dashboard users.',
+        'admin.subject': 'Subject', 'admin.message': 'Message',
+        'admin.edit_as_html': 'Edit as HTML', 'admin.apply_preview': 'Apply & preview',
+        'admin.recipients': 'Recipients', 'admin.all': 'All', 'admin.none': 'None',
+        'admin.loading_users': 'Loading users…', 'admin.no_users_yet': 'No users yet.',
+        'admin.recipients_selected': '{n} recipient(s) selected',
+        'admin.send_mass_email': 'Send Mass Email', 'admin.send_history': 'Send History',
+        'admin.subject_message_required': 'Subject and message are required.',
+        'admin.select_recipient': 'Select at least one recipient.',
+        'admin.send_confirm_summary': 'You are about to send this email to {n} recipient(s).',
+        'admin.send_mass_email_modal_title': 'Send Mass Email?',
+        'admin.send_mass_email_modal_note': 'This sends immediately and cannot be recalled.',
+        'admin.send': 'Send', 'admin.sent_to_recipients': 'Sent to {n} recipient(s).',
+        'admin.failed_to_send_n': '{n} failed to send.', 'admin.failed_to_send': 'Failed to send',
+        'admin.no_mass_emails_yet': 'No mass emails sent yet.',
+        'admin.col_sent': 'Sent', 'admin.col_sent_by': 'Sent by', 'admin.col_recipients': 'Recipients',
+        'admin.n_sent': '{a}/{b} sent', 'admin.n_failed': '({n} failed)',
+        'admin.view_message': 'View message',
+        'admin.sent_by_meta': 'Sent by {name} · {date} · {x}/{y} delivered',
+        'admin.close': 'Close', 'admin.unknown': 'unknown',
+        'admin.email_delivery': 'Email Delivery',
+        'admin.email_delivery_desc': 'Send a test email to confirm the SendGrid configuration works end-to-end.',
+        'admin.recipient': 'Recipient', 'admin.send_test_email': 'Send Test Email',
+        'admin.test_email_sent': 'Test email sent to {email}.',
+        'admin.excluded_title': 'Inbound Email Matching — Excluded Senders',
+        'admin.excluded_desc': 'Addresses or domains listed here are never treated as the "contact" for an auto-captured or forwarded email — useful for staff mailboxes and internal domains that would otherwise get mistaken for the external correspondent. A bare domain (no @) excludes every address on it.',
+        'admin.excluded_value_label': 'Address or domain', 'admin.add': 'Add',
+        'admin.value': 'Value', 'admin.type': 'Type', 'admin.loading': 'Loading…',
+        'admin.none_configured': 'None configured.', 'admin.failed_to_load': 'Failed to load: {err}',
+        'admin.domain_badge': 'Domain', 'admin.address_badge': 'Address',
+        'admin.hvd_cache_title': 'HVD Compliance Check Cache',
+        'admin.hvd_cache_desc': 'Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.',
+        'admin.clear_hvd_cache': 'Clear HVD Check Cache',
+        'admin.dcat_cache_title': 'DCAT-AP Compliance Check Cache',
+        'admin.dcat_cache_desc': 'Clears the stored DCAT-AP + MDR vocabulary check results and the per-dataset cache (covers every dataset on the portal, not just HVD-tagged ones). The next run from the Quality tab will re-fetch and re-validate every dataset from scratch instead of reusing anything.',
+        'admin.clear_dcat_cache': 'Clear DCAT-AP Check Cache',
+        'admin.geodcat_cache_title': 'GeoDCAT-AP Compliance Check Cache',
+        'admin.geodcat_cache_desc': 'Clears the stored GeoDCAT-AP check results and the per-dataset cache (covers geospatial-tagged datasets only). The next run from the Quality tab will re-fetch and re-validate every geospatial dataset from scratch instead of reusing anything.',
+        'admin.clear_geodcat_cache': 'Clear GeoDCAT-AP Check Cache',
+        'admin.danger_zone': 'Danger Zone',
+        'admin.danger_zone_desc': 'Permanently delete all historical health checks and portal snapshots, then start a fresh check.',
+        'admin.reset_all_stats': 'Reset All Stats',
+        'admin.reset_modal_title': 'Reset Statistics', 'admin.irreversible': 'This action is irreversible.',
+        'admin.reset_modal_desc': 'All historical health checks and portal snapshots will be permanently deleted.',
+        'admin.confirm_password': 'Enter your password to confirm', 'admin.password': 'Password',
+        'admin.incorrect_password': 'Incorrect password.', 'admin.cancel': 'Cancel',
+        'admin.delete_all_data': 'Delete all data',
+        'admin.hvd_clear_modal_title': 'Clear HVD Check Cache?',
+        'admin.clear_modal_desc': 'This deletes the stored results and per-dataset cache.',
+        'admin.hvd_clear_modal_note': 'The next run will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything — this can take several minutes.',
+        'admin.clear_cache': 'Clear Cache',
+        'admin.dcat_clear_modal_title': 'Clear DCAT-AP Check Cache?',
+        'admin.dcat_clear_modal_note': 'The next run will re-fetch and re-validate every dataset on the portal from scratch instead of reusing anything — this covers the full catalog and can take a long time.',
+        'admin.geodcat_clear_modal_title': 'Clear GeoDCAT-AP Check Cache?',
+        'admin.geodcat_clear_modal_note': 'The next run will re-fetch and re-validate every geospatial-tagged dataset from scratch instead of reusing anything — this can take a long time.',
+        'admin.tab_access': 'Tab access', 'admin.restrict_tabs': 'Restrict this user to specific tabs',
+        'admin.unrestricted_hint': 'This user can see every tab, same as everyone else by default.',
+        'admin.overview_always': 'Overview is always available.', 'admin.save': 'Save',
+        'admin.col_name': 'Name', 'admin.col_email': 'Email', 'admin.col_role': 'Role',
+        'admin.col_status': 'Status', 'admin.col_last_login': 'Last login', 'admin.col_last_active': 'Last active',
+        'admin.superadmin_tooltip': "Superadmin status can only be changed by editing the database directly",
+        'admin.cant_change_own_role': "You can't change your own role",
+        'admin.click_revoke_admin': 'Click to revoke admin', 'admin.click_make_admin': 'Click to make admin',
+        'admin.only_superadmin_roles': 'Only a superadmin can change roles',
+        'admin.superadmin_cant_delete': "Superadmin accounts can't be deleted",
+        'admin.cant_delete_own': "You can't delete your own account", 'admin.delete_tooltip': 'Delete',
+        'admin.only_superadmin_delete': 'Only a superadmin can delete users',
+        'admin.badge_superadmin': 'Superadmin', 'admin.badge_admin': 'Admin', 'admin.badge_user': 'User',
+        'admin.badge_active': 'Active', 'admin.badge_invited': 'Invited',
+        'admin.passkey_enabled_tooltip': "Passkey enabled -- this user has registered at least one passkey for sign-in",
+        'admin.resend_invite_tooltip': 'Resend invite / reset link',
+        'admin.admins_always_all_tabs': 'Admins always see every tab',
+        'admin.manage_tab_access': 'Manage tab access', 'admin.never': 'Never',
+        'admin.invite_sent': "Invite sent. If the email doesn't arrive, share this link directly: ",
+        'admin.failed_to_invite': 'Failed to invite user',
+        'admin.link_sent': 'Link sent. Fallback link: {link}', 'admin.failed': 'Failed',
+        'admin.confirm_remove_user': 'Remove this user? They will no longer be able to sign in.',
+        'admin.confirm_remove_exclusion': 'Remove this exclusion?', 'admin.failed_to_add': 'Failed to add',
+        'admin.check_running_cancel_first': 'A check is currently running — cancel it first.',
+        'admin.failed_to_clear_cache': 'Failed to clear cache', 'admin.cache_cleared': 'Cache cleared.',
+        'admin.all_data_cleared': 'All data cleared, fresh check started.',
+        'admin.reset_failed': 'Reset failed: {msg}',
+        'admin.write_announcement_ph': 'Write your announcement…',
+      },
+      el: {
+        'admin.back_to_dashboard': 'Επιστροφή στον πίνακα ελέγχου', 'admin.title': 'Πίνακας Διαχείρισης',
+        'admin.collapse': 'Σύμπτυξη',
+        'admin.nav_users': 'Χρήστες', 'admin.nav_mass_email': 'Μαζική Αποστολή', 'admin.nav_system': 'Σύστημα',
+        'admin.invite_title': 'Πρόσκληση νέου χρήστη', 'admin.email': 'Email', 'admin.name': 'Όνομα',
+        'admin.admin_checkbox': 'Διαχειριστής', 'admin.invite': 'Πρόσκληση',
+        'admin.compose': 'Σύνταξη', 'admin.compose_desc': 'Στείλτε μια ανακοίνωση σε μερικούς ή όλους τους χρήστες του dashboard.',
+        'admin.subject': 'Θέμα', 'admin.message': 'Μήνυμα',
+        'admin.edit_as_html': 'Επεξεργασία ως HTML', 'admin.apply_preview': 'Εφαρμογή & προεπισκόπηση',
+        'admin.recipients': 'Παραλήπτες', 'admin.all': 'Όλοι', 'admin.none': 'Κανένας',
+        'admin.loading_users': 'Φόρτωση χρηστών…', 'admin.no_users_yet': 'Δεν υπάρχουν χρήστες ακόμα.',
+        'admin.recipients_selected': 'Επιλεγμένοι παραλήπτες: {n}',
+        'admin.send_mass_email': 'Αποστολή Μαζικού Email', 'admin.send_history': 'Ιστορικό Αποστολών',
+        'admin.subject_message_required': 'Το θέμα και το μήνυμα είναι υποχρεωτικά.',
+        'admin.select_recipient': 'Επιλέξτε τουλάχιστον έναν παραλήπτη.',
+        'admin.send_confirm_summary': 'Πρόκειται να στείλετε αυτό το email σε {n} παραλήπτες.',
+        'admin.send_mass_email_modal_title': 'Αποστολή Μαζικού Email;',
+        'admin.send_mass_email_modal_note': 'Η αποστολή γίνεται άμεσα και δεν μπορεί να ανακληθεί.',
+        'admin.send': 'Αποστολή', 'admin.sent_to_recipients': 'Στάλθηκε σε {n} παραλήπτες.',
+        'admin.failed_to_send_n': '{n} απέτυχαν.', 'admin.failed_to_send': 'Αποτυχία αποστολής',
+        'admin.no_mass_emails_yet': 'Δεν έχουν σταλεί μαζικά email ακόμα.',
+        'admin.col_sent': 'Στάλθηκε', 'admin.col_sent_by': 'Απεστάλη από', 'admin.col_recipients': 'Παραλήπτες',
+        'admin.n_sent': '{a}/{b} απεστάλησαν', 'admin.n_failed': '({n} απέτυχαν)',
+        'admin.view_message': 'Προβολή μηνύματος',
+        'admin.sent_by_meta': 'Απεστάλη από {name} · {date} · παραδόθηκαν {x}/{y}',
+        'admin.close': 'Κλείσιμο', 'admin.unknown': 'άγνωστος',
+        'admin.email_delivery': 'Αποστολή Email',
+        'admin.email_delivery_desc': 'Στείλτε ένα δοκιμαστικό email για να επιβεβαιώσετε ότι η ρύθμιση SendGrid λειτουργεί σωστά από άκρη σε άκρη.',
+        'admin.recipient': 'Παραλήπτης', 'admin.send_test_email': 'Αποστολή Δοκιμαστικού Email',
+        'admin.test_email_sent': 'Το δοκιμαστικό email στάλθηκε στο {email}.',
+        'admin.excluded_title': 'Αντιστοίχιση Εισερχόμενων Email — Εξαιρούμενοι Αποστολείς',
+        'admin.excluded_desc': 'Οι διευθύνσεις ή τα domain που αναφέρονται εδώ δεν θεωρούνται ποτέ η "επαφή" για ένα αυτόματα καταγεγραμμένο ή προωθημένο email — χρήσιμο για mailbox προσωπικού και εσωτερικά domain που διαφορετικά θα μπερδεύονταν με τον εξωτερικό ανταποκριτή. Ένα domain χωρίς @ εξαιρεί κάθε διεύθυνση σε αυτό.',
+        'admin.excluded_value_label': 'Διεύθυνση ή domain', 'admin.add': 'Προσθήκη',
+        'admin.value': 'Τιμή', 'admin.type': 'Τύπος', 'admin.loading': 'Φόρτωση…',
+        'admin.none_configured': 'Δεν έχει οριστεί καμία εξαίρεση.',
+        'admin.failed_to_load': 'Αποτυχία φόρτωσης: {err}',
+        'admin.domain_badge': 'Domain', 'admin.address_badge': 'Διεύθυνση',
+        'admin.hvd_cache_title': 'Cache Ελέγχου Συμμόρφωσης HVD',
+        'admin.hvd_cache_desc': 'Καθαρίζει τα αποθηκευμένα αποτελέσματα ελέγχου SHACL για HVD και το cache ανά σύνολο δεδομένων. Η επόμενη εκτέλεση από την καρτέλα Ποιότητα θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε σύνολο δεδομένων με ετικέτα HVD.',
+        'admin.clear_hvd_cache': 'Καθαρισμός Cache Ελέγχου HVD',
+        'admin.dcat_cache_title': 'Cache Ελέγχου Συμμόρφωσης DCAT-AP',
+        'admin.dcat_cache_desc': 'Καθαρίζει τα αποθηκευμένα αποτελέσματα ελέγχου DCAT-AP + λεξιλογίου MDR και το cache ανά σύνολο δεδομένων (καλύπτει όλα τα σύνολα δεδομένων της πύλης, όχι μόνο τα HVD). Η επόμενη εκτέλεση από την καρτέλα Ποιότητα θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε σύνολο δεδομένων.',
+        'admin.clear_dcat_cache': 'Καθαρισμός Cache Ελέγχου DCAT-AP',
+        'admin.geodcat_cache_title': 'Cache Ελέγχου Συμμόρφωσης GeoDCAT-AP',
+        'admin.geodcat_cache_desc': 'Καθαρίζει τα αποθηκευμένα αποτελέσματα ελέγχου GeoDCAT-AP και το cache ανά σύνολο δεδομένων (καλύπτει μόνο γεωχωρικά σύνολα δεδομένων). Η επόμενη εκτέλεση από την καρτέλα Ποιότητα θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε γεωχωρικό σύνολο δεδομένων.',
+        'admin.clear_geodcat_cache': 'Καθαρισμός Cache Ελέγχου GeoDCAT-AP',
+        'admin.danger_zone': 'Επικίνδυνη Ζώνη',
+        'admin.danger_zone_desc': 'Διαγράφει οριστικά όλους τους ιστορικούς ελέγχους υγείας και τα στιγμιότυπα της πύλης, και ξεκινά νέο έλεγχο.',
+        'admin.reset_all_stats': 'Επαναφορά Όλων των Στατιστικών',
+        'admin.reset_modal_title': 'Επαναφορά Στατιστικών', 'admin.irreversible': 'Αυτή η ενέργεια είναι μη αναστρέψιμη.',
+        'admin.reset_modal_desc': 'Όλοι οι ιστορικοί έλεγχοι υγείας και τα στιγμιότυπα της πύλης θα διαγραφούν οριστικά.',
+        'admin.confirm_password': 'Εισάγετε τον κωδικό σας για επιβεβαίωση', 'admin.password': 'Κωδικός',
+        'admin.incorrect_password': 'Λανθασμένος κωδικός.', 'admin.cancel': 'Ακύρωση',
+        'admin.delete_all_data': 'Διαγραφή όλων των δεδομένων',
+        'admin.hvd_clear_modal_title': 'Καθαρισμός Cache Ελέγχου HVD;',
+        'admin.clear_modal_desc': 'Αυτό διαγράφει τα αποθηκευμένα αποτελέσματα και το cache ανά σύνολο δεδομένων.',
+        'admin.hvd_clear_modal_note': 'Η επόμενη εκτέλεση θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε σύνολο δεδομένων με ετικέτα HVD — αυτό μπορεί να διαρκέσει αρκετά λεπτά.',
+        'admin.clear_cache': 'Καθαρισμός Cache',
+        'admin.dcat_clear_modal_title': 'Καθαρισμός Cache Ελέγχου DCAT-AP;',
+        'admin.dcat_clear_modal_note': 'Η επόμενη εκτέλεση θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε σύνολο δεδομένων της πύλης — αυτό καλύπτει όλο τον κατάλογο και μπορεί να διαρκέσει πολλή ώρα.',
+        'admin.geodcat_clear_modal_title': 'Καθαρισμός Cache Ελέγχου GeoDCAT-AP;',
+        'admin.geodcat_clear_modal_note': 'Η επόμενη εκτέλεση θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε γεωχωρικό σύνολο δεδομένων — αυτό μπορεί να διαρκέσει πολλή ώρα.',
+        'admin.tab_access': 'Πρόσβαση καρτελών', 'admin.restrict_tabs': 'Περιορισμός αυτού του χρήστη σε συγκεκριμένες καρτέλες',
+        'admin.unrestricted_hint': 'Αυτός ο χρήστης βλέπει όλες τις καρτέλες, όπως όλοι οι υπόλοιποι, από προεπιλογή.',
+        'admin.overview_always': 'Η Επισκόπηση είναι πάντα διαθέσιμη.', 'admin.save': 'Αποθήκευση',
+        'admin.col_name': 'Όνομα', 'admin.col_email': 'Email', 'admin.col_role': 'Ρόλος',
+        'admin.col_status': 'Κατάσταση', 'admin.col_last_login': 'Τελευταία σύνδεση', 'admin.col_last_active': 'Τελευταία δραστηριότητα',
+        'admin.superadmin_tooltip': 'Η κατάσταση Superadmin μπορεί να αλλάξει μόνο απευθείας από τη βάση δεδομένων',
+        'admin.cant_change_own_role': 'Δεν μπορείτε να αλλάξετε τον δικό σας ρόλο',
+        'admin.click_revoke_admin': 'Κλικ για ανάκληση δικαιωμάτων διαχειριστή',
+        'admin.click_make_admin': 'Κλικ για ανάθεση δικαιωμάτων διαχειριστή',
+        'admin.only_superadmin_roles': 'Μόνο ένας superadmin μπορεί να αλλάξει ρόλους',
+        'admin.superadmin_cant_delete': 'Οι λογαριασμοί superadmin δεν μπορούν να διαγραφούν',
+        'admin.cant_delete_own': 'Δεν μπορείτε να διαγράψετε τον δικό σας λογαριασμό', 'admin.delete_tooltip': 'Διαγραφή',
+        'admin.only_superadmin_delete': 'Μόνο ένας superadmin μπορεί να διαγράψει χρήστες',
+        'admin.badge_superadmin': 'Superadmin', 'admin.badge_admin': 'Διαχειριστής', 'admin.badge_user': 'Χρήστης',
+        'admin.badge_active': 'Ενεργός', 'admin.badge_invited': 'Προσκεκλημένος',
+        'admin.passkey_enabled_tooltip': 'Ενεργοποιημένο Passkey -- ο χρήστης έχει καταχωρίσει τουλάχιστον ένα passkey για σύνδεση',
+        'admin.resend_invite_tooltip': 'Επαναποστολή πρόσκλησης / συνδέσμου επαναφοράς',
+        'admin.admins_always_all_tabs': 'Οι διαχειριστές βλέπουν πάντα όλες τις καρτέλες',
+        'admin.manage_tab_access': 'Διαχείριση πρόσβασης καρτελών', 'admin.never': 'Ποτέ',
+        'admin.invite_sent': "Η πρόσκληση στάλθηκε. Αν το email δεν φτάσει, μοιραστείτε απευθείας αυτόν τον σύνδεσμο: ",
+        'admin.failed_to_invite': 'Αποτυχία πρόσκλησης χρήστη',
+        'admin.link_sent': 'Ο σύνδεσμος στάλθηκε. Εναλλακτικός σύνδεσμος: {link}', 'admin.failed': 'Αποτυχία',
+        'admin.confirm_remove_user': 'Αφαίρεση αυτού του χρήστη; Δεν θα μπορεί πλέον να συνδεθεί.',
+        'admin.confirm_remove_exclusion': 'Αφαίρεση αυτής της εξαίρεσης;', 'admin.failed_to_add': 'Αποτυχία προσθήκης',
+        'admin.check_running_cancel_first': 'Ένας έλεγχος βρίσκεται ήδη σε εξέλιξη — ακυρώστε τον πρώτα.',
+        'admin.failed_to_clear_cache': 'Αποτυχία καθαρισμού cache', 'admin.cache_cleared': 'Το cache καθαρίστηκε.',
+        'admin.all_data_cleared': 'Όλα τα δεδομένα διαγράφηκαν, ξεκίνησε νέος έλεγχος.',
+        'admin.reset_failed': 'Η επαναφορά απέτυχε: {msg}',
+        'admin.write_announcement_ph': 'Γράψτε την ανακοίνωσή σας…',
+      },
+    };
+    let _lang = localStorage.getItem('lang') || 'el';
+    function t(key) {
+      return (TRANSLATIONS[_lang] && TRANSLATIONS[_lang][key]) || TRANSLATIONS.en[key]
+        || (I18N_SHARED[_lang] && I18N_SHARED[_lang][key]) || I18N_SHARED.en[key] || key;
+    }
+    function applyI18n() {
+      document.getElementById('langEl').classList.toggle('active', _lang === 'el');
+      document.getElementById('langEn').classList.toggle('active', _lang === 'en');
+      document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')); });
+      document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.getAttribute('data-i18n-ph')); });
+      document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.getAttribute('data-i18n-title')); });
+    }
+    function setLang(lang) {
+      _lang = lang;
+      localStorage.setItem('lang', lang);
+      applyI18n();
+      if (typeof massEmailQuill !== 'undefined') massEmailQuill.root.dataset.placeholder = t('admin.write_announcement_ph');
+      if (_usersCache.length) loadUsers();
+      if (_massEmailHistoryCache.length) loadMassEmailHistory();
+      loadExcludedEmails();
+    }
+
+    // ── Dark theme ───────────────────────────────────────────────────────
+    function _isDarkTheme() { return document.documentElement.getAttribute('data-bs-theme') === 'dark'; }
+    function applyThemeIcon() {
+      const icon = document.getElementById('themeToggleIcon');
+      if (icon) icon.className = 'bi ' + (_isDarkTheme() ? 'bi-sun' : 'bi-moon-stars');
+    }
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-bs-theme', theme);
+      localStorage.setItem('theme', theme);
+      applyThemeIcon();
+    }
+    function toggleTheme() { setTheme(_isDarkTheme() ? 'light' : 'dark'); }
 
     // ── Collapsible sidebar (same pattern as the main dashboard) ──────
     function initAdminSidebar() {
@@ -507,9 +765,9 @@
       return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
     function relTime(iso) {
-      if (!iso) return 'Never';
+      if (!iso) return t('admin.never');
       const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
-      return d.toLocaleString('el-GR');
+      return d.toLocaleString(_lang === 'el' ? 'el-GR' : 'en-GB');
     }
 
     let _usersCache = [];
@@ -522,50 +780,50 @@
         const users = await resp.json();
         _usersCache = users;
         renderMassEmailRecipients();
-        if (!users.length) { el.innerHTML = '<p class="text-muted text-center py-3">No users yet.</p>'; return; }
+        if (!users.length) { el.innerHTML = `<p class="text-muted text-center py-3">${t('admin.no_users_yet')}</p>`; return; }
         el.innerHTML = `
           <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
             <thead><tr>
-              <th>Name</th><th>Email</th><th>Role</th>${CURRENT_USER_IS_SUPERADMIN ? '<th>Status</th><th class="text-nowrap">Last login</th><th class="text-nowrap">Last active</th>' : ''}<th></th>
+              <th>${t('admin.col_name')}</th><th>${t('admin.col_email')}</th><th>${t('admin.col_role')}</th>${CURRENT_USER_IS_SUPERADMIN ? `<th>${t('admin.col_status')}</th><th class="text-nowrap">${t('admin.col_last_login')}</th><th class="text-nowrap">${t('admin.col_last_active')}</th>` : ''}<th></th>
             </tr></thead>
             <tbody>
               ${users.map(u => {
                 const isSelf = u.id === CURRENT_USER_ID;
                 const canManageRoles = CURRENT_USER_IS_SUPERADMIN && !isSelf;
                 const roleTitle = u.is_superadmin
-                  ? "Superadmin status can only be changed by editing the database directly"
-                  : (isSelf ? "You can't change your own role"
-                     : (CURRENT_USER_IS_SUPERADMIN ? (u.is_admin ? 'Click to revoke admin' : 'Click to make admin')
-                        : 'Only a superadmin can change roles'));
+                  ? t('admin.superadmin_tooltip')
+                  : (isSelf ? t('admin.cant_change_own_role')
+                     : (CURRENT_USER_IS_SUPERADMIN ? (u.is_admin ? t('admin.click_revoke_admin') : t('admin.click_make_admin'))
+                        : t('admin.only_superadmin_roles')));
                 const canDelete = CURRENT_USER_IS_SUPERADMIN && !isSelf && !u.is_superadmin;
-                const deleteTitle = u.is_superadmin ? "Superadmin accounts can't be deleted"
-                  : (isSelf ? "You can't delete your own account"
-                     : (CURRENT_USER_IS_SUPERADMIN ? "Delete" : "Only a superadmin can delete users"));
+                const deleteTitle = u.is_superadmin ? t('admin.superadmin_cant_delete')
+                  : (isSelf ? t('admin.cant_delete_own')
+                     : (CURRENT_USER_IS_SUPERADMIN ? t('admin.delete_tooltip') : t('admin.only_superadmin_delete')));
                 return `
                 <tr>
                   <td>${esc(u.name)}</td>
                   <td class="small">${esc(u.email)}</td>
                   <td>
                     ${u.is_superadmin
-                      ? `<span class="badge badge-superadmin" title="${roleTitle}">Superadmin</span>`
+                      ? `<span class="badge badge-superadmin" title="${roleTitle}">${t('admin.badge_superadmin')}</span>`
                       : `<button type="button" class="badge role-toggle ${u.is_admin ? 'badge-admin' : 'bg-secondary'}"
                                  ${canManageRoles ? `onclick="toggleAdmin(${u.id})"` : 'disabled'} title="${roleTitle}">
-                           ${u.is_admin ? 'Admin' : 'User'}
+                           ${u.is_admin ? t('admin.badge_admin') : t('admin.badge_user')}
                          </button>`}
                   </td>
                   ${CURRENT_USER_IS_SUPERADMIN ? `
                   <td>
-                    <span class="badge ${u.has_password ? 'badge-active' : 'badge-invited'}">${u.has_password ? 'Active' : 'Invited'}</span>
-                    ${u.has_passkey ? `<i class="bi bi-fingerprint text-primary ms-1" title="Passkey enabled -- this user has registered at least one passkey for sign-in"></i>` : ''}
+                    <span class="badge ${u.has_password ? 'badge-active' : 'badge-invited'}">${u.has_password ? t('admin.badge_active') : t('admin.badge_invited')}</span>
+                    ${u.has_passkey ? `<i class="bi bi-fingerprint text-primary ms-1" title="${t('admin.passkey_enabled_tooltip')}"></i>` : ''}
                   </td>
                   <td class="small text-muted text-nowrap">${relTime(u.last_login_at)}</td>
                   <td class="small text-muted text-nowrap">${relTime(u.last_active_at)}</td>` : ''}
                   <td class="text-end text-nowrap">
-                    <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="Resend invite / reset link" onclick="resendInvite(${u.id})"><i class="bi bi-envelope-arrow-up"></i></button>
+                    <button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="${t('admin.resend_invite_tooltip')}" onclick="resendInvite(${u.id})"><i class="bi bi-envelope-arrow-up"></i></button>
                     ${u.is_admin
-                      ? `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" disabled title="Admins always see every tab"><i class="bi bi-ui-checks-grid"></i></button>`
-                      : `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="Manage tab access" onclick="openTabsModal(${u.id})"><i class="bi bi-ui-checks-grid"></i></button>`}
+                      ? `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" disabled title="${t('admin.admins_always_all_tabs')}"><i class="bi bi-ui-checks-grid"></i></button>`
+                      : `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="${t('admin.manage_tab_access')}" onclick="openTabsModal(${u.id})"><i class="bi bi-ui-checks-grid"></i></button>`}
                     <button class="btn btn-outline-danger btn-sm py-0 px-2" ${canDelete ? `onclick="deleteUser(${u.id})"` : 'disabled'} title="${deleteTitle}"><i class="bi bi-trash"></i></button>
                   </td>
                 </tr>`;
@@ -580,7 +838,7 @@
 
     const massEmailQuill = new Quill('#massEmailMessageEditor', {
       theme: 'snow',
-      placeholder: 'Write your announcement…',
+      placeholder: t('admin.write_announcement_ph'),
       modules: {
         toolbar: [
           [{ header: [1, 2, false] }],
@@ -603,7 +861,7 @@
         sourceEl.value = massEmailQuill.root.innerHTML;
         wrap.classList.add('d-none');
         sourceEl.classList.remove('d-none');
-        link.textContent = 'Apply & preview';
+        link.textContent = t('admin.apply_preview');
       } else {
         // Leaving HTML mode: load the (possibly hand-edited/pasted) HTML back into
         // Quill via its clipboard parser, which normalizes it into proper formatting
@@ -613,7 +871,7 @@
         massEmailQuill.clipboard.dangerouslyPasteHTML(sourceEl.value);
         wrap.classList.remove('d-none');
         sourceEl.classList.add('d-none');
-        link.textContent = 'Edit as HTML';
+        link.textContent = t('admin.edit_as_html');
       }
       _massEmailHtmlMode = !_massEmailHtmlMode;
     }
@@ -621,7 +879,7 @@
     function renderMassEmailRecipients() {
       const el = document.getElementById('massEmailRecipientList');
       if (!_usersCache.length) {
-        el.innerHTML = '<p class="text-muted small mb-0">No users yet.</p>';
+        el.innerHTML = `<p class="text-muted small mb-0">${t('admin.no_users_yet')}</p>`;
         _updateMassEmailSummary();
         return;
       }
@@ -640,7 +898,7 @@
 
     function _updateMassEmailSummary() {
       const n = document.querySelectorAll('.mass-email-recipient:checked').length;
-      document.getElementById('massEmailRecipientSummary').textContent = `${n} recipient${n === 1 ? '' : 's'} selected`;
+      document.getElementById('massEmailRecipientSummary').textContent = t('admin.recipients_selected').replace('{n}', n);
     }
 
     let _massEmailModal = null;
@@ -654,18 +912,18 @@
       resultEl.classList.add('d-none');
       if (!subject || !hasMessage) {
         resultEl.className = 'mt-2 small text-danger';
-        resultEl.textContent = 'Subject and message are required.';
+        resultEl.textContent = t('admin.subject_message_required');
         resultEl.classList.remove('d-none');
         return;
       }
       if (!ids.length) {
         resultEl.className = 'mt-2 small text-danger';
-        resultEl.textContent = 'Select at least one recipient.';
+        resultEl.textContent = t('admin.select_recipient');
         resultEl.classList.remove('d-none');
         return;
       }
       document.getElementById('massEmailConfirmSummary').textContent =
-        `You are about to send this email to ${ids.length} recipient${ids.length === 1 ? '' : 's'}.`;
+        t('admin.send_confirm_summary').replace('{n}', ids.length);
       if (!_massEmailModal) _massEmailModal = new bootstrap.Modal(document.getElementById('massEmailModal'));
       _massEmailModal.show();
     }
@@ -708,13 +966,13 @@
           body: 'd=' + _b64enc({subject, message, user_ids: ids}),
         });
         const data = await _parseJsonResponse(resp);
-        if (!resp.ok) throw new Error(data.error || 'Failed to send');
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_send'));
         _massEmailModal.hide();
         document.getElementById('massEmailSubject').value = '';
         massEmailQuill.setText('');
         resultEl.className = 'mt-2 small text-success';
-        let msg = `Sent to ${data.sent} recipient${data.sent === 1 ? '' : 's'}.`;
-        if (data.failed && data.failed.length) msg += ` ${data.failed.length} failed to send.`;
+        let msg = t('admin.sent_to_recipients').replace('{n}', data.sent);
+        if (data.failed && data.failed.length) msg += ' ' + t('admin.failed_to_send_n').replace('{n}', data.failed.length);
         resultEl.textContent = msg;
         resultEl.classList.remove('d-none');
         loadMassEmailHistory();
@@ -737,14 +995,14 @@
         const logs = await resp.json();
         _massEmailHistoryCache = logs;
         if (!logs.length) {
-          el.innerHTML = '<p class="text-muted text-center py-3 mb-0">No mass emails sent yet.</p>';
+          el.innerHTML = `<p class="text-muted text-center py-3 mb-0">${t('admin.no_mass_emails_yet')}</p>`;
           return;
         }
         el.innerHTML = `
           <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
             <thead><tr>
-              <th>Sent</th><th>Subject</th><th>Sent by</th><th class="text-nowrap">Recipients</th><th></th>
+              <th>${t('admin.col_sent')}</th><th>${t('admin.subject')}</th><th>${t('admin.col_sent_by')}</th><th class="text-nowrap">${t('admin.col_recipients')}</th><th></th>
             </tr></thead>
             <tbody>
               ${logs.map((l, i) => `
@@ -753,11 +1011,11 @@
                   <td class="small">${esc(l.subject)}</td>
                   <td class="small">${esc(l.sent_by_name || '—')}</td>
                   <td class="small text-nowrap">
-                    ${l.success_count}/${l.recipient_count} sent
-                    ${l.failed_emails.length ? `<span class="text-danger" title="${esc(l.failed_emails.join(', '))}">(${l.failed_emails.length} failed)</span>` : ''}
+                    ${t('admin.n_sent').replace('{a}', l.success_count).replace('{b}', l.recipient_count)}
+                    ${l.failed_emails.length ? `<span class="text-danger" title="${esc(l.failed_emails.join(', '))}">${t('admin.n_failed').replace('{n}', l.failed_emails.length)}</span>` : ''}
                   </td>
                   <td class="text-end">
-                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="viewMassEmailLog(${i})" title="View message"><i class="bi bi-eye"></i></button>
+                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="viewMassEmailLog(${i})" title="${t('admin.view_message')}"><i class="bi bi-eye"></i></button>
                   </td>
                 </tr>`).join('')}
             </tbody>
@@ -774,8 +1032,9 @@
       const l = _massEmailHistoryCache[i];
       if (!l) return;
       document.getElementById('massEmailHistorySubject').textContent = l.subject;
-      document.getElementById('massEmailHistoryMeta').textContent =
-        `Sent by ${l.sent_by_name || 'unknown'} · ${relTime(l.sent_at)} · ${l.success_count}/${l.recipient_count} delivered`;
+      document.getElementById('massEmailHistoryMeta').textContent = t('admin.sent_by_meta')
+        .replace('{name}', l.sent_by_name || t('admin.unknown')).replace('{date}', relTime(l.sent_at))
+        .replace('{x}', l.success_count).replace('{y}', l.recipient_count);
       document.getElementById('massEmailHistoryBody').innerHTML = l.message_html;
       if (!_massEmailHistoryModal) _massEmailHistoryModal = new bootstrap.Modal(document.getElementById('massEmailHistoryModal'));
       _massEmailHistoryModal.show();
@@ -794,9 +1053,9 @@
           body: JSON.stringify({email, name, is_admin}),
         });
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Failed to invite user');
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_invite'));
         resultEl.className = 'mt-2 small alert alert-success';
-        resultEl.innerHTML = `Invite sent. If the email doesn't arrive, share this link directly: <a href="${data.invite_link}">${data.invite_link}</a>`;
+        resultEl.innerHTML = `${t('admin.invite_sent')}<a href="${data.invite_link}">${data.invite_link}</a>`;
         document.getElementById('inviteForm').reset();
         loadUsers();
       } catch (e) {
@@ -810,28 +1069,28 @@
     async function resendInvite(id) {
       const resp = await fetch(`../api/users/${id}/resend-invite`, {method: 'POST'});
       const data = await resp.json();
-      if (resp.ok) alert(`Link sent. Fallback link: ${data.invite_link}`);
-      else alert(data.error || 'Failed');
+      if (resp.ok) alert(t('admin.link_sent').replace('{link}', data.invite_link));
+      else alert(data.error || t('admin.failed'));
     }
 
     async function toggleAdmin(id) {
       const resp = await fetch(`../api/users/${id}/toggle-admin`, {method: 'POST'});
       const data = await resp.json();
       if (resp.ok) loadUsers();
-      else alert(data.error || 'Failed');
+      else alert(data.error || t('admin.failed'));
     }
 
     const TAB_DEFS = [
-      {key: 'comms',    label: 'Communications', icon: 'bi-envelope'},
-      {key: 'contacts', label: 'Contacts',        icon: 'bi-people'},
-      {key: 'orgs',     label: 'Organizations',   icon: 'bi-building'},
-      {key: 'health',   label: 'Health',          icon: 'bi-heart-pulse'},
-      {key: 'traffic',  label: 'Traffic',         icon: 'bi-bar-chart-line'},
-      {key: 'datasets', label: 'Dataset Totals',  icon: 'bi-database'},
-      {key: 'stats',    label: 'Insights',        icon: 'bi-graph-up'},
-      {key: 'geo-insights',      label: 'Geospatial Insights', icon: 'bi-geo-alt'},
-      {key: 'temporal-insights', label: 'Temporal Insights',   icon: 'bi-clock-history'},
-      {key: 'quality',  label: 'Quality',         icon: 'bi-shield-check'},
+      {key: 'comms',    labelKey: 'tab.communications', icon: 'bi-envelope'},
+      {key: 'contacts', labelKey: 'tab.contacts',        icon: 'bi-people'},
+      {key: 'orgs',     labelKey: 'tab.organizations',   icon: 'bi-building'},
+      {key: 'health',   labelKey: 'tab.health',          icon: 'bi-heart-pulse'},
+      {key: 'traffic',  labelKey: 'tab.traffic',         icon: 'bi-bar-chart-line'},
+      {key: 'datasets', labelKey: 'tab.datasets',        icon: 'bi-database'},
+      {key: 'stats',    labelKey: 'tab.insights',        icon: 'bi-graph-up'},
+      {key: 'geo-insights',      labelKey: 'tab.geo_insights',      icon: 'bi-geo-alt'},
+      {key: 'temporal-insights', labelKey: 'tab.temporal_insights', icon: 'bi-clock-history'},
+      {key: 'quality',  labelKey: 'tab.quality',   icon: 'bi-shield-check'},
     ];
     let _tabsModalUserId = null;
     let _tabsModal = null;
@@ -843,11 +1102,11 @@
       document.getElementById('tabsModalUserLabel').textContent = u.name;
       const restricted = Array.isArray(u.allowed_tabs);
       document.getElementById('tabsRestrictSwitch').checked = restricted;
-      document.getElementById('tabsChecklist').innerHTML = TAB_DEFS.map(t => `
+      document.getElementById('tabsChecklist').innerHTML = TAB_DEFS.map(td => `
         <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="${t.key}" id="tabChk-${t.key}"
-                 ${restricted && u.allowed_tabs.includes(t.key) ? 'checked' : ''}>
-          <label class="form-check-label" for="tabChk-${t.key}"><i class="bi ${t.icon} me-1"></i>${t.label}</label>
+          <input class="form-check-input" type="checkbox" value="${td.key}" id="tabChk-${td.key}"
+                 ${restricted && u.allowed_tabs.includes(td.key) ? 'checked' : ''}>
+          <label class="form-check-label" for="tabChk-${td.key}"><i class="bi ${td.icon} me-1"></i>${t(td.labelKey)}</label>
         </div>`).join('');
       _renderTabsChecklistState();
       if (!_tabsModal) _tabsModal = new bootstrap.Modal(document.getElementById('tabsModal'));
@@ -868,17 +1127,17 @@
         body: JSON.stringify({restricted, tabs}),
       });
       const data = await resp.json();
-      if (!resp.ok) { alert(data.error || 'Failed'); return; }
+      if (!resp.ok) { alert(data.error || t('admin.failed')); return; }
       _tabsModal.hide();
       loadUsers();
     }
 
     async function deleteUser(id) {
-      if (!confirm('Remove this user? They will no longer be able to sign in.')) return;
+      if (!confirm(t('admin.confirm_remove_user'))) return;
       const resp = await fetch(`../api/users/${id}/delete`, {method: 'POST'});
       const data = await resp.json();
       if (resp.ok) loadUsers();
-      else alert(data.error || 'Failed');
+      else alert(data.error || t('admin.failed'));
     }
 
     async function loadExcludedEmails() {
@@ -887,17 +1146,17 @@
         const resp = await fetch('../api/admin/excluded-emails');
         const rows = await resp.json();
         if (!Array.isArray(rows) || !rows.length) {
-          tbody.innerHTML = '<tr><td colspan="3" class="text-muted small">None configured.</td></tr>';
+          tbody.innerHTML = `<tr><td colspan="3" class="text-muted small">${t('admin.none_configured')}</td></tr>`;
           return;
         }
         tbody.innerHTML = rows.map(r => `
           <tr>
             <td class="small">${esc(r.value)}</td>
-            <td class="small">${r.is_domain ? '<span class="badge bg-secondary">Domain</span>' : '<span class="badge bg-light text-dark border">Address</span>'}</td>
+            <td class="small">${r.is_domain ? `<span class="badge bg-secondary">${t('admin.domain_badge')}</span>` : `<span class="badge bg-light text-dark border">${t('admin.address_badge')}</span>`}</td>
             <td class="text-end"><button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteExcludedEmail(${r.id})"><i class="bi bi-trash"></i></button></td>
           </tr>`).join('');
       } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="3" class="text-danger small">Failed to load: ${esc(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="3" class="text-danger small">${t('admin.failed_to_load').replace('{err}', esc(e.message))}</td></tr>`;
       }
     }
 
@@ -912,7 +1171,7 @@
           body: JSON.stringify({value: input.value.trim()}),
         });
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Failed to add');
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_add'));
         input.value = '';
         loadExcludedEmails();
       } catch (e) {
@@ -923,10 +1182,10 @@
     }
 
     async function deleteExcludedEmail(id) {
-      if (!confirm('Remove this exclusion?')) return;
+      if (!confirm(t('admin.confirm_remove_exclusion'))) return;
       const resp = await fetch(`../api/admin/excluded-emails/${id}/delete`, {method: 'POST'});
       if (resp.ok) loadExcludedEmails();
-      else { const d = await resp.json(); alert(d.error || 'Failed'); }
+      else { const d = await resp.json(); alert(d.error || t('admin.failed')); }
     }
 
     async function sendTestEmail(ev) {
@@ -940,9 +1199,9 @@
           body: JSON.stringify({to}),
         });
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Failed to send test email');
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_send'));
         resultEl.className = 'mt-2 small alert alert-success';
-        resultEl.textContent = `Test email sent to ${to}.`;
+        resultEl.textContent = t('admin.test_email_sent').replace('{email}', to);
       } catch (e) {
         resultEl.className = 'mt-2 small alert alert-danger';
         resultEl.textContent = e.message;
@@ -958,10 +1217,10 @@
       try {
         const resp = await fetch('../api/quality/hvd-check/clear', {method: 'POST'});
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Failed to clear cache');
-        if (data.cleared === false) throw new Error(data.reason === 'running' ? 'A check is currently running — cancel it first.' : 'Failed to clear cache');
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_clear_cache'));
+        if (data.cleared === false) throw new Error(data.reason === 'running' ? t('admin.check_running_cancel_first') : t('admin.failed_to_clear_cache'));
         resultEl.className = 'mt-2 small alert alert-success';
-        resultEl.textContent = 'Cache cleared.';
+        resultEl.textContent = t('admin.cache_cleared');
       } catch (e) {
         resultEl.className = 'mt-2 small alert alert-danger';
         resultEl.textContent = e.message;
@@ -976,10 +1235,10 @@
       try {
         const resp = await fetch('../api/quality/dcat-check/clear', {method: 'POST'});
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Failed to clear cache');
-        if (data.cleared === false) throw new Error(data.reason === 'running' ? 'A check is currently running — cancel it first.' : 'Failed to clear cache');
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_clear_cache'));
+        if (data.cleared === false) throw new Error(data.reason === 'running' ? t('admin.check_running_cancel_first') : t('admin.failed_to_clear_cache'));
         resultEl.className = 'mt-2 small alert alert-success';
-        resultEl.textContent = 'Cache cleared.';
+        resultEl.textContent = t('admin.cache_cleared');
       } catch (e) {
         resultEl.className = 'mt-2 small alert alert-danger';
         resultEl.textContent = e.message;
@@ -994,10 +1253,10 @@
       try {
         const resp = await fetch('../api/quality/geodcat-check/clear', {method: 'POST'});
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Failed to clear cache');
-        if (data.cleared === false) throw new Error(data.reason === 'running' ? 'A check is currently running — cancel it first.' : 'Failed to clear cache');
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_clear_cache'));
+        if (data.cleared === false) throw new Error(data.reason === 'running' ? t('admin.check_running_cancel_first') : t('admin.failed_to_clear_cache'));
         resultEl.className = 'mt-2 small alert alert-success';
-        resultEl.textContent = 'Cache cleared.';
+        resultEl.textContent = t('admin.cache_cleared');
       } catch (e) {
         resultEl.className = 'mt-2 small alert alert-danger';
         resultEl.textContent = e.message;
@@ -1022,19 +1281,21 @@
           method: 'POST', cache: 'no-store',
         });
         if (resp.status === 403) {
-          errEl.textContent = 'Incorrect password.';
+          errEl.textContent = t('admin.incorrect_password');
           errEl.classList.remove('d-none');
           document.getElementById('resetPassword').select();
           return;
         }
         if (!resp.ok) throw new Error(await resp.text());
         bootstrap.Modal.getOrCreateInstance(document.getElementById('resetModal')).hide();
-        alert('All data cleared, fresh check started.');
+        alert(t('admin.all_data_cleared'));
       } catch (e) {
-        alert('Reset failed: ' + e.message);
+        alert(t('admin.reset_failed').replace('{msg}', e.message));
       }
     }
 
+    applyI18n();
+    applyThemeIcon();
     loadUsers();
     loadMassEmailHistory();
     loadExcludedEmails();
