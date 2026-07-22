@@ -1388,9 +1388,12 @@ function debounce(fn, wait) {
 const debouncedFilterContactsTab  = debounce(() => filterContactsTab(),  200);
 const debouncedFilterOrgs         = debounce(() => filterOrgs(),         200);
 const debouncedFilterComms        = debounce(() => filterComms(),        200);
-const debouncedRenderHvdTable     = debounce(() => _renderHvdTable(),     200);
-const debouncedRenderDcatTable    = debounce(() => _renderDcatTable(),    200);
-const debouncedRenderGeoDcatTable = debounce(() => _renderGeoDcatTable(), 200);
+// Each also re-renders that check's summary cards, not just the table --
+// the cards' counts are faceted against the current search text too (see
+// _hvdCardCount and friends), so a search needs to refresh both.
+const debouncedRenderHvdTable     = debounce(() => { _renderHvdSummaryCards();     _renderHvdTable();     }, 200);
+const debouncedRenderDcatTable    = debounce(() => { _renderDcatSummaryCards();    _renderDcatTable();    }, 200);
+const debouncedRenderGeoDcatTable = debounce(() => { _renderGeoDcatSummaryCards(); _renderGeoDcatTable(); }, 200);
 
 // ── Today's Traffic ──────────────────────────────────────────────────────────
 async function loadTodayTraffic() {
@@ -2516,6 +2519,54 @@ const HVD_FILTER_PREDICATES = {
 // "Compliant" card explicitly asks for them, so it lifts that default hiding.
 const HVD_ISSUE_FILTER_KEYS = ['non_conforming', 'legal_citation_issue', 'no_api_access', 'license_missing', 'license_non_open', 'publisher_mismatch'];
 
+// Pure -- what _hvdActiveFilters would become if `key` were toggled right
+// now, without mutating it. Shared by the real toggle handler and by
+// _hvdCardCount's "what would this card show if I clicked it" preview, so
+// the two can never drift out of sync with each other.
+function _hvdFiltersIfToggled(key) {
+  const next = new Set(_hvdActiveFilters);
+  if (next.has(key)) {
+    next.delete(key);
+  } else {
+    next.add(key);
+    // license_missing/license_non_open are two values of the same field --
+    // a dataset can never match both, so selecting one clears the other.
+    if (key === 'license_missing')  next.delete('license_non_open');
+    if (key === 'license_non_open') next.delete('license_missing');
+    // "Compliant" means zero issues, so it can never match alongside any
+    // issue-flag filter (and vice versa) -- AND-combining them would always
+    // produce an empty result, so selecting one clears the other side.
+    if (key === 'compliant') HVD_ISSUE_FILTER_KEYS.forEach(k => next.delete(k));
+    else if (HVD_ISSUE_FILTER_KEYS.includes(key)) next.delete('compliant');
+  }
+  return next;
+}
+
+// Single source of truth for "which datasets are currently visible", shared
+// by the table render and by every summary card's count -- so a card's
+// number can never disagree with what the table underneath actually shows.
+function _hvdFilteredDatasets(filters) {
+  const source = _hvdLastResult?.datasets || [];
+  let list = filters.has('compliant') ? source : source.filter(d => d.flagged !== false);
+  if (filters.size) list = list.filter(d => [...filters].every(key => HVD_FILTER_PREDICATES[key](d)));
+  const q = _ns(show('hvdResultsSearchInput')?.value || '').trim();
+  if (q) list = list.filter(d => _ns(d.title).includes(q) || _ns(d.org_title || '').includes(q));
+  return list;
+}
+
+// A filterable card's count reflects the current search text and every
+// *other* active filter -- same "faceted search" convention as the Dataset
+// Catalog's filter cards -- so an unselected card previews "how many you'd
+// get if you added this one" and an already-selected card shows "how many
+// currently match" (the same set the table displays). Recomputed on every
+// filter toggle and on every (debounced) search keystroke, not just once
+// per check run, which is what made these numbers static before.
+function _hvdCardCount(key) {
+  if (key === null) return _hvdLastResult?.summary?.checked ?? 0;
+  const filters = _hvdActiveFilters.has(key) ? _hvdActiveFilters : _hvdFiltersIfToggled(key);
+  return _hvdFilteredDatasets(filters).length;
+}
+
 // Compliance = SHACL-shape-driven checks (structural conformance, legal
 // citation, API access). Metadata = checks the SHACL shapes themselves can't
 // express (license openness, publisher name vs. the real CKAN organization)
@@ -2524,17 +2575,16 @@ const HVD_ISSUE_FILTER_KEYS = ['non_conforming', 'legal_citation_issue', 'no_api
 function _renderHvdSummaryCards() {
   const s = _hvdLastResult.summary;
   const checkedCard = { key: null, value: s.checked, label: t('quality.hvd_checked'), bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' };
-  const flaggedCount = _hvdFlaggedCount();
   _hvdSummaryCards = [
     { ...checkedCard, group: 'compliance' },
-    { key: 'compliant', group: 'compliance', value: s.checked - flaggedCount, label: t('quality.hvd_compliant'), bg: 'bg-success bg-opacity-10', text: 'text-success', icon: 'bi-check-circle' },
-    { key: 'non_conforming',       group: 'compliance', value: s.checked - s.conforms, label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
-    { key: 'legal_citation_issue', group: 'compliance', value: s.legal_citation_issue, label: t('quality.hvd_legal_issue'),    bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
-    { key: 'no_api_access',        group: 'compliance', value: s.no_api_access,        label: t('quality.hvd_no_api'),         bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-hdd-network' },
+    { key: 'compliant', group: 'compliance', value: _hvdCardCount('compliant'), label: t('quality.hvd_compliant'), bg: 'bg-success bg-opacity-10', text: 'text-success', icon: 'bi-check-circle' },
+    { key: 'non_conforming',       group: 'compliance', value: _hvdCardCount('non_conforming'),       label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
+    { key: 'legal_citation_issue', group: 'compliance', value: _hvdCardCount('legal_citation_issue'), label: t('quality.hvd_legal_issue'),    bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
+    { key: 'no_api_access',        group: 'compliance', value: _hvdCardCount('no_api_access'),        label: t('quality.hvd_no_api'),         bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-hdd-network' },
     { ...checkedCard, group: 'metadata' },
-    { key: 'license_missing',    group: 'metadata', value: s.license_missing,    label: t('quality.hvd_license_missing'),   bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-file-earmark-x' },
-    { key: 'license_non_open',   group: 'metadata', value: s.license_non_open,   label: t('quality.hvd_license_non_open'),  bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-lock' },
-    { key: 'publisher_mismatch', group: 'metadata', value: s.publisher_mismatch,label: t('quality.hvd_publisher_mismatch'),bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-person-badge' },
+    { key: 'license_missing',    group: 'metadata', value: _hvdCardCount('license_missing'),    label: t('quality.hvd_license_missing'),   bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-file-earmark-x' },
+    { key: 'license_non_open',   group: 'metadata', value: _hvdCardCount('license_non_open'),   label: t('quality.hvd_license_non_open'),  bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-lock' },
+    { key: 'publisher_mismatch', group: 'metadata', value: _hvdCardCount('publisher_mismatch'), label: t('quality.hvd_publisher_mismatch'),bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-person-badge' },
   ];
   _renderHvdCardGroup('hvdComplianceSummary', _hvdSummaryCards.filter(c => c.group === 'compliance'), 'hvdComplianceTabDot');
   _renderHvdCardGroup('hvdMetadataSummary',   _hvdSummaryCards.filter(c => c.group === 'metadata'),   'hvdMetadataTabDot');
@@ -2554,20 +2604,7 @@ function _renderHvdCardGroup(elId, cards, tabDotId) {
 }
 
 function toggleHvdCardFilter(key) {
-  if (_hvdActiveFilters.has(key)) {
-    _hvdActiveFilters.delete(key);
-  } else {
-    _hvdActiveFilters.add(key);
-    // license_missing/license_non_open are two values of the same field --
-    // a dataset can never match both, so selecting one clears the other.
-    if (key === 'license_missing')  _hvdActiveFilters.delete('license_non_open');
-    if (key === 'license_non_open') _hvdActiveFilters.delete('license_missing');
-    // "Compliant" means zero issues, so it can never match alongside any
-    // issue-flag filter (and vice versa) -- AND-combining them would always
-    // produce an empty result, so selecting one clears the other side.
-    if (key === 'compliant') HVD_ISSUE_FILTER_KEYS.forEach(k => _hvdActiveFilters.delete(k));
-    else if (HVD_ISSUE_FILTER_KEYS.includes(key)) _hvdActiveFilters.delete('compliant');
-  }
+  _hvdActiveFilters = _hvdFiltersIfToggled(key);
   _renderHvdSummaryCards();
   _renderHvdTable();
 }
@@ -2854,20 +2891,9 @@ function _hvdTableHead(showOrg) {
 function _renderHvdTable() {
   const wrap = show('hvdTableWrap');
   if (!wrap) return;
-  const source = _hvdLastResult?.datasets || [];
-  // Compliant (zero-issue) datasets are hidden from the default view, same
-  // as before "Compliant" became a filter card -- but selecting it is an
-  // explicit ask to see them, so it lifts that default hiding.
-  const all = _hvdActiveFilters.has('compliant') ? source : source.filter(d => d.flagged !== false);
-  if (!all.length) { wrap.innerHTML = ''; return; }
+  if (!(_hvdLastResult?.datasets || []).length) { wrap.innerHTML = ''; return; }
 
-  let datasets = _hvdActiveFilters.size
-    ? all.filter(d => [..._hvdActiveFilters].every(key => HVD_FILTER_PREDICATES[key](d)))
-    : all;
-
-  const q = _ns(show('hvdResultsSearchInput')?.value || '').trim();
-  if (q) datasets = datasets.filter(d => _ns(d.title).includes(q) || _ns(d.org_title || '').includes(q));
-
+  const datasets = _hvdFilteredDatasets(_hvdActiveFilters);
   if (!datasets.length) {
     wrap.innerHTML = `<p class="text-muted small mb-0 mt-2">${esc(t('quality.hvd_filter_no_match'))}</p>`;
     return;
@@ -2997,13 +3023,31 @@ const DCAT_FILTER_PREDICATES = {
   structural_issue: d => d.structural_issue,
 };
 
+// Single source of truth for "which datasets are currently visible", shared
+// by the table render and by every summary card's count.
+function _dcatFilteredDatasets(filters) {
+  const source = _dcatLastResult?.datasets || [];
+  let list = filters.size ? source.filter(d => [...filters].every(key => DCAT_FILTER_PREDICATES[key](d))) : source;
+  const q = _ns(show('dcatResultsSearchInput')?.value || '').trim();
+  if (q) list = list.filter(d => _ns(d.title).includes(q) || _ns(d.org_title || '').includes(q));
+  return list;
+}
+
+// Faceted count: reflects the current search text and every *other* active
+// filter -- see _hvdCardCount's comment for the full reasoning.
+function _dcatCardCount(key) {
+  if (key === null) return _dcatLastResult?.summary?.checked ?? 0;
+  const filters = _dcatActiveFilters.has(key) ? _dcatActiveFilters : new Set([..._dcatActiveFilters, key]);
+  return _dcatFilteredDatasets(filters).length;
+}
+
 function _renderDcatSummaryCards() {
   const s = _dcatLastResult.summary;
   _dcatSummaryCards = [
     { key: null, value: s.checked, label: t('quality.hvd_checked'), bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' },
-    { key: 'non_conforming',   value: s.checked - s.conforms,   label: t('quality.hvd_non_conforming'),   bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
-    { key: 'structural_issue', value: s.structural_issue,       label: t('quality.dcat_structural_issue'), bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
-    { key: 'vocabulary_issue', value: s.vocabulary_issue,       label: t('quality.dcat_vocabulary_issue'), bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-tags' },
+    { key: 'non_conforming',   value: _dcatCardCount('non_conforming'),   label: t('quality.hvd_non_conforming'),   bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
+    { key: 'structural_issue', value: _dcatCardCount('structural_issue'), label: t('quality.dcat_structural_issue'), bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
+    { key: 'vocabulary_issue', value: _dcatCardCount('vocabulary_issue'), label: t('quality.dcat_vocabulary_issue'), bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-tags' },
   ];
   const prepared = _dcatSummaryCards.map(c => {
     const clickable = c.key !== null;
@@ -3261,16 +3305,9 @@ function _dcatTableHead(showOrg) {
 function _renderDcatTable() {
   const wrap = show('dcatTableWrap');
   if (!wrap) return;
-  const all = _dcatLastResult?.datasets || [];
-  if (!all.length) { wrap.innerHTML = ''; return; }
+  if (!(_dcatLastResult?.datasets || []).length) { wrap.innerHTML = ''; return; }
 
-  let datasets = _dcatActiveFilters.size
-    ? all.filter(d => [..._dcatActiveFilters].every(key => DCAT_FILTER_PREDICATES[key](d)))
-    : all;
-
-  const q = _ns(show('dcatResultsSearchInput')?.value || '').trim();
-  if (q) datasets = datasets.filter(d => _ns(d.title).includes(q) || _ns(d.org_title || '').includes(q));
-
+  const datasets = _dcatFilteredDatasets(_dcatActiveFilters);
   if (!datasets.length) {
     wrap.innerHTML = `<p class="text-muted small mb-0 mt-2">${esc(t('quality.hvd_filter_no_match'))}</p>`;
     return;
@@ -3366,11 +3403,29 @@ const GEODCAT_FILTER_PREDICATES = {
   non_conforming: d => !d.conforms,
 };
 
+// Single source of truth for "which datasets are currently visible", shared
+// by the table render and by every summary card's count.
+function _geodcatFilteredDatasets(filters) {
+  const source = _geodcatLastResult?.datasets || [];
+  let list = filters.size ? source.filter(d => [...filters].every(key => GEODCAT_FILTER_PREDICATES[key](d))) : source;
+  const q = _ns(show('geodcatResultsSearchInput')?.value || '').trim();
+  if (q) list = list.filter(d => _ns(d.title).includes(q) || _ns(d.org_title || '').includes(q));
+  return list;
+}
+
+// Faceted count: reflects the current search text and every *other* active
+// filter -- see _hvdCardCount's comment for the full reasoning.
+function _geodcatCardCount(key) {
+  if (key === null) return _geodcatLastResult?.summary?.checked ?? 0;
+  const filters = _geodcatActiveFilters.has(key) ? _geodcatActiveFilters : new Set([..._geodcatActiveFilters, key]);
+  return _geodcatFilteredDatasets(filters).length;
+}
+
 function _renderGeoDcatSummaryCards() {
   const s = _geodcatLastResult.summary;
   _geodcatSummaryCards = [
     { key: null, value: s.checked, label: t('quality.hvd_checked'), bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' },
-    { key: 'non_conforming', value: s.checked - s.conforms, label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10', text: 'text-danger', icon: 'bi-x-octagon' },
+    { key: 'non_conforming', value: _geodcatCardCount('non_conforming'), label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10', text: 'text-danger', icon: 'bi-x-octagon' },
   ];
   const prepared = _geodcatSummaryCards.map(c => {
     const clickable = c.key !== null;
@@ -3620,16 +3675,9 @@ function _geodcatTableHead(showOrg) {
 function _renderGeoDcatTable() {
   const wrap = show('geodcatTableWrap');
   if (!wrap) return;
-  const all = _geodcatLastResult?.datasets || [];
-  if (!all.length) { wrap.innerHTML = ''; return; }
+  if (!(_geodcatLastResult?.datasets || []).length) { wrap.innerHTML = ''; return; }
 
-  let datasets = _geodcatActiveFilters.size
-    ? all.filter(d => [..._geodcatActiveFilters].every(key => GEODCAT_FILTER_PREDICATES[key](d)))
-    : all;
-
-  const q = _ns(show('geodcatResultsSearchInput')?.value || '').trim();
-  if (q) datasets = datasets.filter(d => _ns(d.title).includes(q) || _ns(d.org_title || '').includes(q));
-
+  const datasets = _geodcatFilteredDatasets(_geodcatActiveFilters);
   if (!datasets.length) {
     wrap.innerHTML = `<p class="text-muted small mb-0 mt-2">${esc(t('quality.hvd_filter_no_match'))}</p>`;
     return;
