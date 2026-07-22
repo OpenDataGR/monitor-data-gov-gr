@@ -2476,6 +2476,31 @@ def _classify_shacl_results(results_graph: "rdflib.Graph"):
     return violations, warnings, legal_citation_issue, no_api_access
 
 
+def _fetch_dataset_rdf_graph(name: str, timeout: int) -> "rdflib.Graph":
+    """Fetches and parses one dataset's RDF/XML export, retrying once (after
+    a short pause) on any failure before giving up. Confirmed in practice
+    during a full recrawl: a batch of datasets failing to fetch on the first
+    pass all succeeded when the check was simply run again -- data.gov.gr
+    itself getting momentarily overwhelmed by the burst, not a real per
+    -dataset problem. One retry here means that self-heals automatically
+    instead of needing someone to notice and manually re-run the check."""
+    url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
+    last_exc = None
+    for attempt in range(2):
+        try:
+            r = requests.get(url, timeout=timeout,
+                              headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
+            r.raise_for_status()
+            graph = rdflib.Graph()
+            graph.parse(data=r.text, format="xml")
+            return graph
+        except Exception as exc:
+            last_exc = exc
+            if attempt == 0:
+                time.sleep(2)
+    raise last_exc
+
+
 def _hvd_check_one(name: str) -> dict:
     """Never raises -- returns {"name": name, "error": ...} instead of letting
     an exception cross the ProcessPoolExecutor process boundary. A malformed
@@ -2488,12 +2513,7 @@ def _hvd_check_one(name: str) -> dict:
     not risk leaving anything (this worker's own state, its vocab cache)
     corrupted for whatever other dataset the same pool worker checks next."""
     try:
-        url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
-        r = requests.get(url, timeout=_HVD_CHECK_TIMEOUT,
-                          headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
-        r.raise_for_status()
-        graph = rdflib.Graph()
-        graph.parse(data=r.text, format="xml")
+        graph = _fetch_dataset_rdf_graph(name, _HVD_CHECK_TIMEOUT)
         _augment_with_vocab(graph)
 
         conforms, results_graph, _ = pyshacl.validate(
@@ -3064,12 +3084,7 @@ def _classify_dcat_results(results_graph: "rdflib.Graph"):
 def _dcat_check_one(name: str) -> dict:
     """Never raises -- see _hvd_check_one's docstring for why."""
     try:
-        url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
-        r = requests.get(url, timeout=_DCAT_CHECK_TIMEOUT,
-                          headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
-        r.raise_for_status()
-        graph = rdflib.Graph()
-        graph.parse(data=r.text, format="xml")
+        graph = _fetch_dataset_rdf_graph(name, _DCAT_CHECK_TIMEOUT)
         _augment_with_dcat_vocab(graph)
 
         conforms, results_graph, _ = pyshacl.validate(
@@ -3455,12 +3470,7 @@ def _bump_geodcat_progress(completed: int) -> bool:
 def _geodcat_check_one(name: str) -> dict:
     """Never raises -- see _hvd_check_one's docstring for why."""
     try:
-        url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
-        r = requests.get(url, timeout=_GEODCAT_CHECK_TIMEOUT,
-                          headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
-        r.raise_for_status()
-        graph = rdflib.Graph()
-        graph.parse(data=r.text, format="xml")
+        graph = _fetch_dataset_rdf_graph(name, _GEODCAT_CHECK_TIMEOUT)
         _augment_with_dcat_vocab(graph)
 
         conforms, results_graph, _ = pyshacl.validate(
