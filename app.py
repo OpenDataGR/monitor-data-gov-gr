@@ -58,10 +58,13 @@ if _db_url.startswith("postgres://"):  # normalize legacy Heroku-style prefix
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # Sized against production's actual Postgres max_connections (100, 3 reserved
-# for superuser): 8 + 12 = 20 per gunicorn worker process, x4 workers = 80
-# max, leaving headroom under the 97 usable ceiling for psql/admin/anything
-# else on the same instance. Harmless for local SQLite dev too.
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_size": 8, "max_overflow": 12}
+# for superuser -- 97 usable). 7 long-lived processes now share that budget:
+# 6 gunicorn workers (-w 6) + background_worker.py's own main process --
+# spawned SHACL-check pool workers hold zero DB connections (see
+# _is_main_process gating above), so they don't factor in. 4 + 6 = 10 per
+# process x 7 = 70 max, comfortably under 97 with headroom for psql/admin/
+# anything else on the same instance. Harmless for local SQLite dev too.
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_size": 4, "max_overflow": 6}
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=14)  # absolute cap; see also the idle timeout in require_login
 if not config.FLASK_SECRET_KEY:
     # Falling back silently would mean a misconfigured production deploy
@@ -209,112 +212,113 @@ def _is_main_process() -> bool:
     return multiprocessing.current_process().name == "MainProcess"
 
 
-with app.app_context():
-    db.create_all()
-    # Inline migrations: add columns that db.create_all() won't add to existing tables
-    from sqlalchemy import text, inspect as sa_inspect
-    _insp = sa_inspect(db.engine)
-    _comm_cols = [c['name'] for c in _insp.get_columns('communications')]
-    if 'contact_person' not in _comm_cols:
-        db.session.execute(text('ALTER TABLE communications ADD COLUMN contact_person VARCHAR(200)'))
-        db.session.commit()
-    if 'medium' not in _comm_cols:
-        db.session.execute(text('ALTER TABLE communications ADD COLUMN medium VARCHAR(50)'))
-        db.session.commit()
-    if 'source' not in _comm_cols:
-        db.session.execute(text('ALTER TABLE communications ADD COLUMN source VARCHAR(20)'))
-        db.session.commit()
-    if 'case_id' not in _comm_cols:
-        db.session.execute(text('ALTER TABLE communications ADD COLUMN case_id INTEGER'))
-        db.session.commit()
-        # Backfill: every pre-existing communication becomes its own case
-        for _c in Communication.query.filter(Communication.case_id.is_(None)).all():
-            _case = Case(
-                org_name=_c.org_name,
-                org_title=_c.org_title,
-                subject=_c.subject,
-                status="Closed" if _c.status == "Uploaded" else "Open",
-                opened_at=_c.created_at,
-                closed_at=_c.created_at if _c.status == "Uploaded" else None,
-                created_at=_c.created_at,
-            )
-            db.session.add(_case)
-            db.session.flush()
-            _c.case_id = _case.id
-        db.session.commit()
-    _case_cols = [c['name'] for c in _insp.get_columns('cases')]
-    if 'deadline' not in _case_cols:
-        db.session.execute(text('ALTER TABLE cases ADD COLUMN deadline VARCHAR(10)'))
-        db.session.commit()
-    # Cleanup: a case whose last communication was deleted used to linger forever
-    # with zero entries, still counted in the Communications tab's Total/Open/
-    # Closed/stale summaries (communications_delete() now deletes the case itself
-    # once it goes to zero entries, but this sweeps up any that already went
-    # orphaned before that fix). Safe to run on every startup -- matches nothing
-    # once existing orphans are gone.
-    db.session.execute(text(
-        "DELETE FROM cases WHERE id NOT IN (SELECT DISTINCT case_id FROM communications WHERE case_id IS NOT NULL)"
-    ))
-    db.session.commit()
-    _contact_cols = [c['name'] for c in _insp.get_columns('org_contacts')]
-    if 'contact_type' not in _contact_cols:
-        db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN contact_type VARCHAR(200)'))
-        db.session.commit()
-    if 'mobile' not in _contact_cols:
-        db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN mobile VARCHAR(50)'))
-        db.session.commit()
-    if 'org_codes' not in _contact_cols:
-        db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN org_codes TEXT'))
-        db.session.commit()
-    if 'created_at' not in _contact_cols:
-        db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN created_at TIMESTAMP'))
-        db.session.commit()
-    # Renamed contact-type value: "Data Officer" -> "Data Governance Officer".
-    # Safe to run on every startup — after the first run no row contains the
-    # old substring anymore, so the WHERE clause matches nothing.
-    db.session.execute(text(
-        "UPDATE org_contacts SET contact_type = REPLACE(contact_type, 'Data Officer', 'Data Governance Officer') "
-        "WHERE contact_type LIKE '%Data Officer%'"
-    ))
-    db.session.commit()
-    # Renamed contact-type values: "Portal Administrator/Editor/User" -> "Org Administrator/Editor/Member".
-    # Same idempotent pattern as above.
-    for _old, _new in (
-        ("Portal Administrator", "Org Administrator"),
-        ("Portal Editor", "Org Editor"),
-        ("Portal User", "Org Member"),
-    ):
+if _is_main_process():
+    with app.app_context():
+        db.create_all()
+        # Inline migrations: add columns that db.create_all() won't add to existing tables
+        from sqlalchemy import text, inspect as sa_inspect
+        _insp = sa_inspect(db.engine)
+        _comm_cols = [c['name'] for c in _insp.get_columns('communications')]
+        if 'contact_person' not in _comm_cols:
+            db.session.execute(text('ALTER TABLE communications ADD COLUMN contact_person VARCHAR(200)'))
+            db.session.commit()
+        if 'medium' not in _comm_cols:
+            db.session.execute(text('ALTER TABLE communications ADD COLUMN medium VARCHAR(50)'))
+            db.session.commit()
+        if 'source' not in _comm_cols:
+            db.session.execute(text('ALTER TABLE communications ADD COLUMN source VARCHAR(20)'))
+            db.session.commit()
+        if 'case_id' not in _comm_cols:
+            db.session.execute(text('ALTER TABLE communications ADD COLUMN case_id INTEGER'))
+            db.session.commit()
+            # Backfill: every pre-existing communication becomes its own case
+            for _c in Communication.query.filter(Communication.case_id.is_(None)).all():
+                _case = Case(
+                    org_name=_c.org_name,
+                    org_title=_c.org_title,
+                    subject=_c.subject,
+                    status="Closed" if _c.status == "Uploaded" else "Open",
+                    opened_at=_c.created_at,
+                    closed_at=_c.created_at if _c.status == "Uploaded" else None,
+                    created_at=_c.created_at,
+                )
+                db.session.add(_case)
+                db.session.flush()
+                _c.case_id = _case.id
+            db.session.commit()
+        _case_cols = [c['name'] for c in _insp.get_columns('cases')]
+        if 'deadline' not in _case_cols:
+            db.session.execute(text('ALTER TABLE cases ADD COLUMN deadline VARCHAR(10)'))
+            db.session.commit()
+        # Cleanup: a case whose last communication was deleted used to linger forever
+        # with zero entries, still counted in the Communications tab's Total/Open/
+        # Closed/stale summaries (communications_delete() now deletes the case itself
+        # once it goes to zero entries, but this sweeps up any that already went
+        # orphaned before that fix). Safe to run on every startup -- matches nothing
+        # once existing orphans are gone.
         db.session.execute(text(
-            f"UPDATE org_contacts SET contact_type = REPLACE(contact_type, '{_old}', '{_new}') "
-            f"WHERE contact_type LIKE '%{_old}%'"
+            "DELETE FROM cases WHERE id NOT IN (SELECT DISTINCT case_id FROM communications WHERE case_id IS NOT NULL)"
         ))
         db.session.commit()
-    if db.engine.dialect.name == 'postgresql':
-        try:
-            db.session.execute(text('ALTER TABLE org_contacts ALTER COLUMN position TYPE TEXT'))
+        _contact_cols = [c['name'] for c in _insp.get_columns('org_contacts')]
+        if 'contact_type' not in _contact_cols:
+            db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN contact_type VARCHAR(200)'))
             db.session.commit()
-        except Exception:
-            db.session.rollback()
-    _user_cols = [c['name'] for c in _insp.get_columns('users')]
-    if 'allowed_tabs' not in _user_cols:
-        db.session.execute(text('ALTER TABLE users ADD COLUMN allowed_tabs TEXT'))
+        if 'mobile' not in _contact_cols:
+            db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN mobile VARCHAR(50)'))
+            db.session.commit()
+        if 'org_codes' not in _contact_cols:
+            db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN org_codes TEXT'))
+            db.session.commit()
+        if 'created_at' not in _contact_cols:
+            db.session.execute(text('ALTER TABLE org_contacts ADD COLUMN created_at TIMESTAMP'))
+            db.session.commit()
+        # Renamed contact-type value: "Data Officer" -> "Data Governance Officer".
+        # Safe to run on every startup — after the first run no row contains the
+        # old substring anymore, so the WHERE clause matches nothing.
+        db.session.execute(text(
+            "UPDATE org_contacts SET contact_type = REPLACE(contact_type, 'Data Officer', 'Data Governance Officer') "
+            "WHERE contact_type LIKE '%Data Officer%'"
+        ))
         db.session.commit()
-    if 'last_active_at' not in _user_cols:
-        db.session.execute(text('ALTER TABLE users ADD COLUMN last_active_at TIMESTAMP'))
-        db.session.commit()
-    if 'is_superadmin' not in _user_cols:
-        db.session.execute(text('ALTER TABLE users ADD COLUMN is_superadmin BOOLEAN NOT NULL DEFAULT FALSE'))
-        db.session.commit()
-    _inbound_cols = [c['name'] for c in _insp.get_columns('inbound_emails')]
-    if 'candidate_contact_ids' not in _inbound_cols:
-        db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN candidate_contact_ids TEXT'))
-        db.session.commit()
-    if 'detected_name' not in _inbound_cols:
-        db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN detected_name VARCHAR(200)'))
-        db.session.commit()
-    if 'detected_email' not in _inbound_cols:
-        db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN detected_email VARCHAR(320)'))
-        db.session.commit()
+        # Renamed contact-type values: "Portal Administrator/Editor/User" -> "Org Administrator/Editor/Member".
+        # Same idempotent pattern as above.
+        for _old, _new in (
+            ("Portal Administrator", "Org Administrator"),
+            ("Portal Editor", "Org Editor"),
+            ("Portal User", "Org Member"),
+        ):
+            db.session.execute(text(
+                f"UPDATE org_contacts SET contact_type = REPLACE(contact_type, '{_old}', '{_new}') "
+                f"WHERE contact_type LIKE '%{_old}%'"
+            ))
+            db.session.commit()
+        if db.engine.dialect.name == 'postgresql':
+            try:
+                db.session.execute(text('ALTER TABLE org_contacts ALTER COLUMN position TYPE TEXT'))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+        _user_cols = [c['name'] for c in _insp.get_columns('users')]
+        if 'allowed_tabs' not in _user_cols:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN allowed_tabs TEXT'))
+            db.session.commit()
+        if 'last_active_at' not in _user_cols:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN last_active_at TIMESTAMP'))
+            db.session.commit()
+        if 'is_superadmin' not in _user_cols:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN is_superadmin BOOLEAN NOT NULL DEFAULT FALSE'))
+            db.session.commit()
+        _inbound_cols = [c['name'] for c in _insp.get_columns('inbound_emails')]
+        if 'candidate_contact_ids' not in _inbound_cols:
+            db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN candidate_contact_ids TEXT'))
+            db.session.commit()
+        if 'detected_name' not in _inbound_cols:
+            db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN detected_name VARCHAR(200)'))
+            db.session.commit()
+        if 'detected_email' not in _inbound_cols:
+            db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN detected_email VARCHAR(320)'))
+            db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -1176,14 +1180,17 @@ def public_orgs():
 _ORGS_REFRESH_INTERVAL = 30 * 60  # refresh org cache every 30 minutes
 _orgs_cache = _SharedCache("orgs", {"data": None, "fetched_at": None, "enriching": False})
 
-with app.app_context():
-    # Warm the in-memory cache from the DB so a fresh process (e.g. after a deploy)
-    # serves last_updated dates immediately instead of showing blanks until a full
-    # CKAN re-pagination completes.
-    _orgs_row = OrgsCache.query.get(1)
-    if _orgs_row:
-        _orgs_cache["data"]       = _orgs_row.data()
-        _orgs_cache["fetched_at"] = _orgs_row.fetched_at.isoformat()
+if _is_main_process():
+    with app.app_context():
+        # Warm the in-memory cache from the DB so a fresh process (e.g. after a deploy)
+        # serves last_updated dates immediately instead of showing blanks until a full
+        # CKAN re-pagination completes. Skipped in a spawned SHACL-check pool worker --
+        # it never reads _orgs_cache, so there's nothing to warm and no reason to hold
+        # a DB connection open for it.
+        _orgs_row = OrgsCache.query.get(1)
+        if _orgs_row:
+            _orgs_cache["data"]       = _orgs_row.data()
+            _orgs_cache["fetched_at"] = _orgs_row.fetched_at.isoformat()
 
 
 def _save_orgs_cache(data: list) -> None:
@@ -1600,13 +1607,15 @@ def stats_history():
 _dataset_growth_cache = _SharedCache("dataset_growth", {"weeks": None, "fetched_at": None, "enriching": False})
 _DATASET_GROWTH_REFRESH_INTERVAL = 24 * 3600  # rebuild once a day
 
-with app.app_context():
-    # Warm the in-memory cache from the DB so a fresh process serves the last known
-    # series immediately instead of blocking on a full CKAN re-pagination.
-    _row = DatasetGrowthCache.query.get(1)
-    if _row:
-        _dataset_growth_cache["weeks"]      = _row.weeks()
-        _dataset_growth_cache["fetched_at"] = _row.fetched_at.isoformat()
+if _is_main_process():
+    with app.app_context():
+        # Warm the in-memory cache from the DB so a fresh process serves the last known
+        # series immediately instead of blocking on a full CKAN re-pagination. Skipped
+        # in a spawned SHACL-check pool worker, same reasoning as the orgs cache above.
+        _row = DatasetGrowthCache.query.get(1)
+        if _row:
+            _dataset_growth_cache["weeks"]      = _row.weeks()
+            _dataset_growth_cache["fetched_at"] = _row.fetched_at.isoformat()
 
 
 def _save_dataset_growth(weeks: list) -> None:
@@ -1692,11 +1701,14 @@ def stats_dataset_growth():
 _geo_datasets_cache = _SharedCache("geo_datasets", {"locations": None, "fetched_at": None, "enriching": False})
 _GEO_DATASETS_REFRESH_INTERVAL = 24 * 3600  # organizations' locations barely change; once a day is plenty
 
-with app.app_context():
-    _geo_row = GeoDatasetsCache.query.get(1)
-    if _geo_row:
-        _geo_datasets_cache["locations"]  = _geo_row.data()
-        _geo_datasets_cache["fetched_at"] = _geo_row.fetched_at.isoformat()
+if _is_main_process():
+    # Warm the in-memory cache from the DB, same reasoning as the orgs/dataset-growth
+    # caches above -- and skipped in a spawned SHACL-check pool worker for the same reason.
+    with app.app_context():
+        _geo_row = GeoDatasetsCache.query.get(1)
+        if _geo_row:
+            _geo_datasets_cache["locations"]  = _geo_row.data()
+            _geo_datasets_cache["fetched_at"] = _geo_row.fetched_at.isoformat()
 
 
 def _save_geo_datasets_cache(locations: list) -> None:
