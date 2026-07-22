@@ -104,8 +104,10 @@
     .comm-timeline-item { position: relative; padding: .6rem .75rem .6rem 40px; border-radius: 8px; }
     .comm-group-row { background-color: #f6f8fa; }
     .comm-group-row:hover { background-color: #eef1f4; }
+    .comm-group-row-warn { background-color: #fff3e0; }
     .comm-timeline-item:hover { background: rgba(0,0,0,.025); }
     .comm-timeline-item .comm-dot { position: absolute; left: 10px; top: 1.1rem; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 4px #f0f2f5; }
+    .filter-summary-panel { background: #f8f9fa; border: 1px solid rgba(0,0,0,.06); }
 
     /* ── Dark theme ───────────────────────────────────────────────────── */
     [data-bs-theme="dark"] body { background: #15181c; }
@@ -128,6 +130,8 @@
     [data-bs-theme="dark"] .comm-timeline-item .comm-dot { box-shadow: 0 0 0 4px #15181c; }
     [data-bs-theme="dark"] .comm-group-row { background-color: rgba(255,255,255,.035); }
     [data-bs-theme="dark"] .comm-group-row:hover { background-color: rgba(255,255,255,.07); }
+    [data-bs-theme="dark"] .comm-group-row-warn { background-color: rgba(253,126,20,.15); }
+    [data-bs-theme="dark"] .filter-summary-panel { background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.1); }
     [data-bs-theme="dark"] #pmEditContactType option.type-spacer { border-top-color: rgba(255,255,255,.15); }
     [data-bs-theme="dark"] .bg-white { background-color: var(--bs-tertiary-bg, #2b3035) !important; }
     /* Light basemap tiles read as a jarring white rectangle on a dark page --
@@ -565,7 +569,7 @@
                        placeholder="Search datasets…" data-i18n-ph="catalog.search_ph" oninput="_catalogSearchDebounced()">
               </div>
             </div>
-            <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+            <div class="p-2 rounded-3 mb-3 filter-summary-panel">
               <div class="d-flex justify-content-between align-items-center">
                 <ul class="nav nav-underline small mb-2">
                   <li class="nav-item">
@@ -1049,7 +1053,7 @@
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
               </div>
             </div>
-            <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+            <div class="p-2 rounded-3 mb-3 filter-summary-panel">
               <div class="d-flex justify-content-between align-items-center">
                 <ul class="nav nav-underline small mb-2">
                   <li class="nav-item">
@@ -1128,7 +1132,7 @@
                 </button>
               </div>
             </div>
-            <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+            <div class="p-2 rounded-3 mb-3 filter-summary-panel">
               <div class="d-flex justify-content-between align-items-center">
                 <ul class="nav nav-underline small mb-2">
                   <li class="nav-item">
@@ -1324,7 +1328,7 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="inboundAttachId">
-        <div class="p-2 rounded-3 mb-3 small" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+        <div class="p-2 rounded-3 mb-3 small filter-summary-panel">
           <div><span class="text-muted" data-i18n="inbound.from">From</span>: <span id="inboundAttachFrom" class="fw-semibold"></span></div>
           <div><span class="text-muted" data-i18n="inbound.subject_label">Subject</span>: <span id="inboundAttachSubjectView"></span></div>
         </div>

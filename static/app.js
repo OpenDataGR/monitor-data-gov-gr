@@ -2786,7 +2786,7 @@ function _renderHvdCheck(result) {
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
   const cardsHtml = `
-    <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+    <div class="p-2 rounded-3 mb-3 filter-summary-panel">
       <div class="d-flex justify-content-between align-items-center">
         <ul class="nav nav-underline small mb-2">
           <li class="nav-item">
@@ -2987,7 +2987,7 @@ function _renderHvdTable() {
   const bodyRows = _hvdGroupsCache.map(([orgTitle, list], idx) => {
     const isExpanded = _hvdExpandedOrgs.has(orgTitle);
     const groupRow = `
-      <tr class="table-light" style="cursor:pointer" onclick="toggleHvdOrg(${idx})">
+      <tr class="comm-group-row" style="cursor:pointer" onclick="toggleHvdOrg(${idx})">
         <td colspan="7">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
@@ -3239,7 +3239,7 @@ function _renderDcatCheck(result) {
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
   const cardsHtml = `
-    <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+    <div class="p-2 rounded-3 mb-3 filter-summary-panel">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <span></span>
         <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1" onclick="clearDcatCardFilters()">
@@ -3394,7 +3394,7 @@ function _renderDcatTable() {
   const bodyRows = _dcatGroupsCache.map(([orgTitle, list], idx) => {
     const isExpanded = _dcatExpandedOrgs.has(orgTitle);
     const groupRow = `
-      <tr class="table-light" style="cursor:pointer" onclick="toggleDcatOrg(${idx})">
+      <tr class="comm-group-row" style="cursor:pointer" onclick="toggleDcatOrg(${idx})">
         <td colspan="4">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
@@ -3616,7 +3616,7 @@ function _renderGeoDcatCheck(result) {
     ? `<div class="alert alert-secondary small py-2 mb-3"><i class="bi bi-info-circle me-1"></i>${t('quality.hvd_partial_note').replace('{n}', fmt(s.checked)).replace('{total}', fmt(s.total))}</div>`
     : '';
   const cardsHtml = `
-    <div class="p-2 rounded-3 mb-3" style="background:#f8f9fa;border:1px solid rgba(0,0,0,.06)">
+    <div class="p-2 rounded-3 mb-3 filter-summary-panel">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <span></span>
         <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1" onclick="clearGeoDcatCardFilters()">
@@ -3764,7 +3764,7 @@ function _renderGeoDcatTable() {
   const bodyRows = _geodcatGroupsCache.map(([orgTitle, list], idx) => {
     const isExpanded = _geodcatExpandedOrgs.has(orgTitle);
     const groupRow = `
-      <tr class="table-light" style="cursor:pointer" onclick="toggleGeoDcatOrg(${idx})">
+      <tr class="comm-group-row" style="cursor:pointer" onclick="toggleGeoDcatOrg(${idx})">
         <td colspan="3">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
@@ -7019,8 +7019,8 @@ function renderContactsGrouped(rows) {
     const isExpanded = _contactsExpandedOrgs.has(g.slug);
     return `
     <div class="border rounded mb-2" ${isNone ? 'style="border-color:#fd7e14!important"' : ''}>
-      <div class="d-flex align-items-center justify-content-between px-3 py-2"
-           style="cursor:pointer;background:${isNone ? '#fff3e0' : '#f8f9fa'}" onclick="toggleContactsOrg('${esc(g.slug)}')">
+      <div class="d-flex align-items-center justify-content-between px-3 py-2 ${isNone ? 'comm-group-row-warn' : 'comm-group-row'}"
+           style="cursor:pointer" onclick="toggleContactsOrg('${esc(g.slug)}')">
         <div class="d-flex align-items-center gap-2">
           <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
           <i class="bi bi-${isNone ? 'person-slash text-warning' : 'building text-primary'}"></i>
