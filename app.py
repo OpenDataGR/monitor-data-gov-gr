@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 import time
 import threading
+import queue
 import requests
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -54,6 +55,11 @@ if _db_url.startswith("postgres://"):  # normalize legacy Heroku-style prefix
     _db_url = _db_url.replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# Sized against production's actual Postgres max_connections (100, 3 reserved
+# for superuser): 8 + 12 = 20 per gunicorn worker process, x4 workers = 80
+# max, leaving headroom under the 97 usable ceiling for psql/admin/anything
+# else on the same instance. Harmless for local SQLite dev too.
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_size": 8, "max_overflow": 12}
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=14)  # absolute cap; see also the idle timeout in require_login
 if not config.FLASK_SECRET_KEY:
     # Falling back silently would mean a misconfigured production deploy
@@ -4418,13 +4424,31 @@ def inbound_emails_list():
     return jsonify([e.to_dict() for e in q.limit(200).all()])
 
 
-@app.route("/api/communications/stream")
-def communications_stream():
-    """Server-Sent Events stream that pushes a notification the moment a new
-    inbound email needing review arrives, or a new Communication is logged --
-    by hand or auto-captured -- instead of the client polling for either. One
-    connection covers both so an open dashboard tab never needs more than
-    this single stream.
+_stream_subscribers = set()       # one queue.Queue per open SSE connection on this process
+_stream_subscribers_lock = threading.Lock()
+
+
+def _stream_poller_loop():
+    """Feeds /api/communications/stream. One instance per gunicorn worker
+    process -- not a cross-process singleton like _try_acquire_singleton_lock
+    above, since each worker serves its own independent set of open SSE
+    connections and there's nothing to coordinate across workers here.
+
+    Polls the DB once per tick no matter how many connections are open on
+    this process, then fans the same delta out to all of them. This replaces
+    the old design where every open tab ran an identical poll loop of its
+    own, so DB load scaled with open-connection count instead of worker
+    count -- at ~100 open tabs that was ~66 extra queries/sec just from
+    polling, on top of however many threads each connection separately tied
+    up for up to 55s.
+
+    Each baseline is the highest id that exists at all (any status/source),
+    not just the subset that gets announced -- ids only ever go up and rows
+    are never deleted, so this is guaranteed to never decrease. Baselining on
+    "highest *announced-worthy* id" instead would be wrong: resolving the
+    current highest-id pending email (or the highest id happening to be an
+    auto-captured Communication) would lower that number, making already-seen
+    older rows look new again and re-firing stale toasts.
 
     An auto-captured Communication that was already announced once as a
     pending inbound email (and only got created later once a human resolved
@@ -4432,29 +4456,16 @@ def communications_stream():
     underlying email -- accepted as harmless; the alternative would need
     tracking whether a resolved InboundEmail ever passed through
     pending_review, which its final state doesn't preserve.
-
-    Bounded to ~55s per connection so it can never pin a worker indefinitely --
-    the browser's EventSource auto-reconnects the instant the stream ends
-    (that's a normal, un-erroring close, not a failure), making this a
-    self-renewing "hanging poll" rather than a truly permanent connection.
-
-    Each per-connection baseline is the highest id that exists at all (any
-    status/source), not just the subset that gets announced -- ids only ever
-    go up and rows are never deleted, so this is guaranteed to never decrease
-    across reconnects. Baselining on "highest *announced-worthy* id" instead
-    would be wrong: resolving the current highest-id pending email (or the
-    highest id happening to be an auto-captured Communication) would lower
-    that number on the next reconnect, making already-seen older rows look
-    new again and re-firing stale toasts.
     """
-    def _events():
-        with app.app_context():
-            inbound_baseline = db.session.query(db.func.max(InboundEmail.id)).scalar() or 0
-            comm_baseline    = db.session.query(db.func.max(Communication.id)).scalar() or 0
-            deadline = time.time() + 55
-            while time.time() < deadline:
-                sent_anything = False
+    with app.app_context():
+        inbound_baseline = db.session.query(db.func.max(InboundEmail.id)).scalar() or 0
+        comm_baseline    = db.session.query(db.func.max(Communication.id)).scalar() or 0
 
+    while True:
+        time.sleep(3)
+        try:
+            events = []
+            with app.app_context():
                 new_inbound = InboundEmail.query.filter(InboundEmail.id > inbound_baseline).order_by(InboundEmail.id).all()
                 if new_inbound:
                     inbound_baseline = max(r.id for r in new_inbound)
@@ -4464,8 +4475,7 @@ def communications_stream():
                             {"id": r.id, "from_name": r.from_name or "", "from_email": r.from_email or "", "subject": r.subject or ""}
                             for r in pending_new
                         ])
-                        yield f"event: new_inbound_email\ndata: {payload}\n\n"
-                        sent_anything = True
+                        events.append(f"event: new_inbound_email\ndata: {payload}\n\n")
 
                 new_comms = Communication.query.filter(Communication.id > comm_baseline).order_by(Communication.id).all()
                 if new_comms:
@@ -4475,12 +4485,59 @@ def communications_stream():
                          "contact_person": r.contact_person or ""}
                         for r in new_comms
                     ])
-                    yield f"event: new_communication\ndata: {payload}\n\n"
-                    sent_anything = True
+                    events.append(f"event: new_communication\ndata: {payload}\n\n")
+        except Exception as exc:
+            print(f"[comms-stream] poller error: {exc}")
+            continue
 
-                if not sent_anything:
+        if events:
+            with _stream_subscribers_lock:
+                subscribers = list(_stream_subscribers)
+            for q in subscribers:
+                for evt in events:
+                    q.put(evt)
+
+
+# Gated the same way as the singleton background loop above (debug-reloader
+# check only, no file lock) -- unlike that loop, we want one of these per
+# worker process, not one across the whole fleet.
+if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    threading.Thread(target=_stream_poller_loop, daemon=True).start()
+
+
+@app.route("/api/communications/stream")
+def communications_stream():
+    """Server-Sent Events stream that pushes a notification the moment a new
+    inbound email needing review arrives, or a new Communication is logged --
+    by hand or auto-captured -- instead of the client polling for either. One
+    connection covers both so an open dashboard tab never needs more than
+    this single stream. The actual DB polling lives in _stream_poller_loop;
+    this route just registers a queue and relays whatever lands in it.
+
+    Bounded to ~55s per connection so it can never pin a worker indefinitely --
+    the browser's EventSource auto-reconnects the instant the stream ends
+    (that's a normal, un-erroring close, not a failure), making this a
+    self-renewing "hanging poll" rather than a truly permanent connection.
+    """
+    def _events():
+        q = queue.Queue()
+        with _stream_subscribers_lock:
+            _stream_subscribers.add(q)
+        try:
+            deadline = time.time() + 55
+            while True:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+                try:
+                    evt = q.get(timeout=min(remaining, 3))
+                except queue.Empty:
                     yield ": heartbeat\n\n"
-                time.sleep(3)
+                    continue
+                yield evt
+        finally:
+            with _stream_subscribers_lock:
+                _stream_subscribers.discard(q)
 
     return Response(_events(), mimetype="text/event-stream", headers={
         "Cache-Control": "no-cache",
