@@ -5,8 +5,25 @@ kept in the repo so a rebuild doesn't have to reverse-engineer them, and so
 changes made directly on the VM get backfilled here instead of silently
 drifting from what's documented.
 
-- `monitor-data-gov-gr.service` -> `/etc/systemd/system/monitor-data-gov-gr.service`
+- `monitor-data-gov-gr.service` -> `/etc/systemd/system/monitor-data-gov-gr.service` (gunicorn, serves HTTP)
+- `monitor-data-gov-gr-worker.service` -> `/etc/systemd/system/monitor-data-gov-gr-worker.service` (background_worker.py, no HTTP)
 - `nginx-monitor.conf` -> `/etc/nginx/sites-enabled/monitor`
+
+## Two processes, not one
+
+`app.py` is shared by both services, but only one of them actually runs the
+health-check/HVD/DCAT-AP/GeoDCAT background loop: whichever has
+`BACKGROUND_WORKER=1` set (`config.BACKGROUND_WORKER` in the code). This is
+deliberate -- those crawls do real CPU-bound RDF/SHACL work and a full
+DCAT-AP run can take hours, so running them inside one of the 4 gunicorn
+workers would have them compete for that worker's GIL with whatever live
+requests happen to land on it. `monitor-data-gov-gr-worker.service` runs
+`background_worker.py` instead, a process that imports `app.py` for its
+models/config/background-loop code but never binds a port or serves HTTP.
+
+Practical effect: if you're checking why a scheduled check hasn't run, look
+at `journalctl -u monitor-data-gov-gr-worker`, not the main web service's log
+-- the web service's 4 workers no longer run that loop at all.
 
 ## Redis (rate-limit storage)
 

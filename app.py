@@ -1330,10 +1330,18 @@ def _try_acquire_singleton_lock() -> bool:
         return False
 
 
-# Only start the background thread in the single process that wins the lock. This
-# also naturally excludes the Flask dev-reloader's watcher process, since the
-# debug/WERKZEUG_RUN_MAIN check still runs first.
-if (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true") and _try_acquire_singleton_lock():
+# In production this only starts in the dedicated background_worker.py process
+# (config.BACKGROUND_WORKER), never in the gunicorn workers that serve HTTP --
+# the HVD/DCAT-AP/GeoDCAT crawls this loop runs do real CPU-bound RDF/SHACL
+# work and can take hours, and would otherwise compete for that worker's GIL
+# with whatever live requests land on it. Local dev (app.debug) is unaffected
+# -- there's no separate worker process there, so it keeps running inline like
+# before. The file lock is kept as a defense-in-depth backstop in case two
+# copies of background_worker.py are ever briefly running at once (e.g.
+# during its own deploy restart), and also naturally excludes the Flask
+# dev-reloader's watcher process, since the debug/WERKZEUG_RUN_MAIN check
+# still runs first.
+if (app.debug or config.BACKGROUND_WORKER) and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true") and _try_acquire_singleton_lock():
     threading.Thread(target=_background_loop, daemon=True).start()
 
 
@@ -4513,8 +4521,11 @@ def _stream_poller_loop():
 
 # Gated the same way as the singleton background loop above (debug-reloader
 # check only, no file lock) -- unlike that loop, we want one of these per
-# worker process, not one across the whole fleet.
-if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+# worker process, not one across the whole fleet. Skipped in the dedicated
+# background_worker.py process (config.BACKGROUND_WORKER): that process never
+# serves HTTP, so it would never have any subscribers -- starting this there
+# would just be a pointless extra DB poll every 3s for nothing.
+if (app.debug or not config.BACKGROUND_WORKER) and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
     threading.Thread(target=_stream_poller_loop, daemon=True).start()
 
 

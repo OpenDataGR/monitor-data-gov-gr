@@ -1,0 +1,26 @@
+# Installed on the production VM at /etc/systemd/system/monitor-data-gov-gr-worker.service
+# After copying changes here to the VM: sudo systemctl daemon-reload && sudo systemctl restart monitor-data-gov-gr-worker
+#
+# Runs the health-check/HVD/DCAT-AP/GeoDCAT background loop in its own
+# process, separate from the 4 gunicorn workers in monitor-data-gov-gr.service
+# that handle live requests. Those crawls do real CPU-bound RDF/SHACL work and
+# can take hours (~22,000+ datasets for a full DCAT-AP run) -- running them
+# inside a gunicorn worker would have them compete for that worker's GIL with
+# whatever live requests land on it. This process never binds a port and
+# never serves HTTP; BACKGROUND_WORKER=1 is what tells app.py (via
+# config.BACKGROUND_WORKER) to start that loop here instead of in a web worker.
+[Unit]
+Description=Communication Dashboard - background worker (health checks, HVD/DCAT-AP/GeoDCAT crawls)
+After=network.target
+
+[Service]
+User=localadmin
+WorkingDirectory=/home/localadmin/monitor-data-gov-gr
+Environment=PYTHONUNBUFFERED=1
+Environment=BACKGROUND_WORKER=1
+ExecStart=/home/localadmin/monitor-data-gov-gr/venv/bin/python background_worker.py
+
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

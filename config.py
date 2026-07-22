@@ -45,3 +45,11 @@ REQUEST_TIMEOUT = 15
 # store (e.g. redis://localhost:6379) in production so limits are enforced
 # across all worker processes instead of per-process.
 RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://").strip()
+
+# True only in the dedicated background_worker.py process (see deploy/
+# monitor-data-gov-gr-worker.service, which sets this env var) -- that process
+# owns the health-check/HVD/DCAT-AP/GeoDCAT background loop instead of it
+# running inside a gunicorn worker, so those hours-long CPU-bound crawls never
+# compete for a request-serving worker's GIL. See the gating in app.py around
+# _background_loop and _stream_poller_loop for how this is used.
+BACKGROUND_WORKER = os.environ.get("BACKGROUND_WORKER", "") == "1"

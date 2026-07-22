@@ -24,5 +24,7 @@ jobs:
       - name: Reload service
         run: |
           pkill -TERM -u localadmin -f "gunicorn.*app:app" || true
+          pkill -TERM -u localadmin -f "python.*background_worker.py" || true
           sleep 15
-          systemctl is-active --quiet monitor-data-gov-gr && echo "Service restarted OK" || (journalctl -u monitor-data-gov-gr -n 30 --no-pager; exit 1)
+          systemctl is-active --quiet monitor-data-gov-gr && echo "Web service restarted OK" || (journalctl -u monitor-data-gov-gr -n 30 --no-pager; exit 1)
+          systemctl is-active --quiet monitor-data-gov-gr-worker && echo "Worker service restarted OK" || (journalctl -u monitor-data-gov-gr-worker -n 30 --no-pager; exit 1)

@@ -141,10 +141,10 @@ DATABASE_URL=postgresql://user:pass@host/dbname python migrate_sqlite_to_postgre
 Deployment is automated via GitHub Actions (`.github/workflows/deploy.yml`) on every push to `main`:
 
 1. A self-hosted runner on the production VM pulls the latest code and reinstalls dependencies.
-2. The running `gunicorn` process is sent `SIGTERM` and given a few seconds to exit.
-3. systemd (unit: `monitor-data-gov-gr`) restarts it; the workflow fails the deploy if the service isn't active afterwards.
+2. Both the `gunicorn` process and the background-worker process are sent `SIGTERM` and given a few seconds to exit.
+3. systemd (units: `monitor-data-gov-gr` and `monitor-data-gov-gr-worker`) restarts them; the workflow fails the deploy if either service isn't active afterwards.
 
-In production, gunicorn runs threaded worker processes behind an nginx reverse proxy. The systemd unit ([deploy/monitor-data-gov-gr.service](deploy/monitor-data-gov-gr.service)) and nginx site config ([deploy/nginx-monitor.conf](deploy/nginx-monitor.conf)) are the actual files installed on the VM (at `/etc/systemd/system/monitor-data-gov-gr.service` and `/etc/nginx/sites-enabled/monitor` respectively) — kept here so a server rebuild doesn't have to reverse-engineer them, and so changes made directly on the VM get backfilled into version control instead of silently drifting from what's documented. Anything that needs to stay consistent across requests regardless of which worker handles them (e.g. the HVD check's live progress) is backed by the database rather than in-process memory.
+In production, gunicorn runs threaded worker processes behind an nginx reverse proxy, and a separate `background_worker.py` process (own systemd unit, no HTTP) runs the health-check/HVD/DCAT-AP/GeoDCAT background loop instead of a gunicorn worker doing it — see [deploy/README.md](deploy/README.md) for why that's split out. The systemd units ([deploy/monitor-data-gov-gr.service](deploy/monitor-data-gov-gr.service), [deploy/monitor-data-gov-gr-worker.service](deploy/monitor-data-gov-gr-worker.service)) and nginx site config ([deploy/nginx-monitor.conf](deploy/nginx-monitor.conf)) are the actual files installed on the VM — kept here so a server rebuild doesn't have to reverse-engineer them, and so changes made directly on the VM get backfilled into version control instead of silently drifting from what's documented. Anything that needs to stay consistent across requests regardless of which worker handles them (e.g. the HVD check's live progress) is backed by the database rather than in-process memory.
 
 ## License
 
