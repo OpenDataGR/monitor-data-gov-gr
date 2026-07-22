@@ -2477,44 +2477,57 @@ def _classify_shacl_results(results_graph: "rdflib.Graph"):
 
 
 def _hvd_check_one(name: str) -> dict:
-    url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
-    r = requests.get(url, timeout=_HVD_CHECK_TIMEOUT,
-                      headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
-    r.raise_for_status()
-    graph = rdflib.Graph()
-    graph.parse(data=r.text, format="xml")
-    _augment_with_vocab(graph)
+    """Never raises -- returns {"name": name, "error": ...} instead of letting
+    an exception cross the ProcessPoolExecutor process boundary. A malformed
+    literal elsewhere in a dataset's RDF (or in a shared vocabulary resource
+    _augment_with_vocab merges in, cached per pool-worker-process) can make
+    rdflib/pyshacl raise while casting/validating -- confirmed against a real
+    dataset pulling in a shared vocab reference with a 5-digit-year xsd:date
+    ("52026-10-13") instead of a normal 4-digit one. Catching it here, not
+    just at the caller, means it can only ever fail *this* dataset's check --
+    not risk leaving anything (this worker's own state, its vocab cache)
+    corrupted for whatever other dataset the same pool worker checks next."""
+    try:
+        url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
+        r = requests.get(url, timeout=_HVD_CHECK_TIMEOUT,
+                          headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
+        r.raise_for_status()
+        graph = rdflib.Graph()
+        graph.parse(data=r.text, format="xml")
+        _augment_with_vocab(graph)
 
-    conforms, results_graph, _ = pyshacl.validate(
-        graph, shacl_graph=_HVD_SHAPES_TTL, shacl_graph_format="turtle",
-        advanced=True, inference="rdfs", debug=False,
-    )
-    violations, warnings, legal_citation_issue, no_api_access = _classify_shacl_results(results_graph)
+        conforms, results_graph, _ = pyshacl.validate(
+            graph, shacl_graph=_HVD_SHAPES_TTL, shacl_graph_format="turtle",
+            advanced=True, inference="rdfs", debug=False,
+        )
+        violations, warnings, legal_citation_issue, no_api_access = _classify_shacl_results(results_graph)
 
-    title = None
-    for t in graph.objects(None, _DCT_NS.title):
-        title = str(t)
-        break
-
-    publisher_name = None
-    for publisher in graph.objects(None, _DCT_NS.publisher):
-        name_lit = graph.value(publisher, _FOAF_NS.name)
-        if name_lit:
-            publisher_name = str(name_lit)
+        title = None
+        for t in graph.objects(None, _DCT_NS.title):
+            title = str(t)
             break
 
-    return {
-        "name":                 name,
-        "title":                title or name,
-        "publisher_name":       publisher_name or "",
-        "conforms":             conforms,
-        "violation_count":      len(violations),
-        "warning_count":        len(warnings),
-        "legal_citation_issue": legal_citation_issue,
-        "no_api_access":        no_api_access,
-        "license_status":       _license_status(graph),
-        "details":              _dedupe_shacl_details(violations + warnings),
-    }
+        publisher_name = None
+        for publisher in graph.objects(None, _DCT_NS.publisher):
+            name_lit = graph.value(publisher, _FOAF_NS.name)
+            if name_lit:
+                publisher_name = str(name_lit)
+                break
+
+        return {
+            "name":                 name,
+            "title":                title or name,
+            "publisher_name":       publisher_name or "",
+            "conforms":             conforms,
+            "violation_count":      len(violations),
+            "warning_count":        len(warnings),
+            "legal_citation_issue": legal_citation_issue,
+            "no_api_access":        no_api_access,
+            "license_status":       _license_status(graph),
+            "details":              _dedupe_shacl_details(violations + warnings),
+        }
+    except Exception as exc:
+        return {"name": name, "error": str(exc)}
 
 
 def _list_hvd_datasets() -> list:
@@ -2598,14 +2611,19 @@ def _do_run_hvd_check() -> None:
                 d = futures[fut]
                 try:
                     result = fut.result()
+                except Exception as exc:
+                    # _hvd_check_one itself never raises (see its docstring) --
+                    # this only catches the pool worker process dying outright.
+                    result = {"name": d["name"], "error": str(exc)}
+                if "error" in result:
+                    rows.append(result)
+                    newly_checked.append((d["name"], d["metadata_modified"], None))
+                else:
                     result["org_title"] = d.get("org_title", "")
                     result["publisher_mismatch"] = _publisher_mismatch(
                         result.get("publisher_name", ""), result["org_title"])
                     rows.append(result)
                     newly_checked.append((d["name"], d["metadata_modified"], result))
-                except Exception as exc:
-                    rows.append({"name": d["name"], "error": str(exc)})
-                    newly_checked.append((d["name"], d["metadata_modified"], None))
                 if _bump_hvd_progress(len(rows)):
                     cancelled = True
                     break
@@ -3044,34 +3062,38 @@ def _classify_dcat_results(results_graph: "rdflib.Graph"):
 
 
 def _dcat_check_one(name: str) -> dict:
-    url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
-    r = requests.get(url, timeout=_DCAT_CHECK_TIMEOUT,
-                      headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
-    r.raise_for_status()
-    graph = rdflib.Graph()
-    graph.parse(data=r.text, format="xml")
-    _augment_with_dcat_vocab(graph)
+    """Never raises -- see _hvd_check_one's docstring for why."""
+    try:
+        url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
+        r = requests.get(url, timeout=_DCAT_CHECK_TIMEOUT,
+                          headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
+        r.raise_for_status()
+        graph = rdflib.Graph()
+        graph.parse(data=r.text, format="xml")
+        _augment_with_dcat_vocab(graph)
 
-    conforms, results_graph, _ = pyshacl.validate(
-        graph, shacl_graph=_DCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
-    )
-    violations, warnings, vocabulary_issue, structural_issue = _classify_dcat_results(results_graph)
+        conforms, results_graph, _ = pyshacl.validate(
+            graph, shacl_graph=_DCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
+        )
+        violations, warnings, vocabulary_issue, structural_issue = _classify_dcat_results(results_graph)
 
-    title = None
-    for t in graph.objects(None, _DCT_NS.title):
-        title = str(t)
-        break
+        title = None
+        for t in graph.objects(None, _DCT_NS.title):
+            title = str(t)
+            break
 
-    return {
-        "name":             name,
-        "title":            title or name,
-        "conforms":         conforms,
-        "violation_count":  len(violations),
-        "warning_count":    len(warnings),
-        "vocabulary_issue": vocabulary_issue,
-        "structural_issue": structural_issue,
-        "details":          _dedupe_shacl_details(violations + warnings),
-    }
+        return {
+            "name":             name,
+            "title":            title or name,
+            "conforms":         conforms,
+            "violation_count":  len(violations),
+            "warning_count":    len(warnings),
+            "vocabulary_issue": vocabulary_issue,
+            "structural_issue": structural_issue,
+            "details":          _dedupe_shacl_details(violations + warnings),
+        }
+    except Exception as exc:
+        return {"name": name, "error": str(exc)}
 
 
 def _list_all_datasets() -> list:
@@ -3141,12 +3163,17 @@ def _do_run_dcat_check() -> None:
                 d = futures[fut]
                 try:
                     result = fut.result()
+                except Exception as exc:
+                    # _dcat_check_one itself never raises -- this only
+                    # catches the pool worker process dying outright.
+                    result = {"name": d["name"], "error": str(exc)}
+                if "error" in result:
+                    rows.append(result)
+                    newly_checked.append((d["name"], d["metadata_modified"], None))
+                else:
                     result["org_title"] = d.get("org_title", "")
                     rows.append(result)
                     newly_checked.append((d["name"], d["metadata_modified"], result))
-                except Exception as exc:
-                    rows.append({"name": d["name"], "error": str(exc)})
-                    newly_checked.append((d["name"], d["metadata_modified"], None))
                 if _bump_dcat_progress(len(rows)):
                     cancelled = True
                     break
@@ -3426,46 +3453,50 @@ def _bump_geodcat_progress(completed: int) -> bool:
 
 
 def _geodcat_check_one(name: str) -> dict:
-    url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
-    r = requests.get(url, timeout=_GEODCAT_CHECK_TIMEOUT,
-                      headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
-    r.raise_for_status()
-    graph = rdflib.Graph()
-    graph.parse(data=r.text, format="xml")
-    _augment_with_dcat_vocab(graph)
+    """Never raises -- see _hvd_check_one's docstring for why."""
+    try:
+        url = f"{config.PORTAL_BASE}/dataset/{name}.rdf"
+        r = requests.get(url, timeout=_GEODCAT_CHECK_TIMEOUT,
+                          headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
+        r.raise_for_status()
+        graph = rdflib.Graph()
+        graph.parse(data=r.text, format="xml")
+        _augment_with_dcat_vocab(graph)
 
-    conforms, results_graph, _ = pyshacl.validate(
-        graph, shacl_graph=_GEODCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
-    )
-    violations, warnings = [], []
-    for res in results_graph.subjects(rdflib.RDF.type, _SH_NS.ValidationResult):
-        sev   = results_graph.value(res, _SH_NS.resultSeverity)
-        msg   = results_graph.value(res, _SH_NS.resultMessage)
-        path  = results_graph.value(res, _SH_NS.resultPath)
-        comp  = results_graph.value(res, _SH_NS.sourceConstraintComponent)
-        path_s  = str(path) if path is not None else ""
-        raw_msg = str(msg) if msg else ""
-        entry = {
-            "severity":    "violation" if sev == _SH_NS.Violation else "warning",
-            "path":        path_s or None,
-            "message":     _friendly_dcat_message(path_s, comp, raw_msg),
-            "raw_message": raw_msg,
+        conforms, results_graph, _ = pyshacl.validate(
+            graph, shacl_graph=_GEODCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
+        )
+        violations, warnings = [], []
+        for res in results_graph.subjects(rdflib.RDF.type, _SH_NS.ValidationResult):
+            sev   = results_graph.value(res, _SH_NS.resultSeverity)
+            msg   = results_graph.value(res, _SH_NS.resultMessage)
+            path  = results_graph.value(res, _SH_NS.resultPath)
+            comp  = results_graph.value(res, _SH_NS.sourceConstraintComponent)
+            path_s  = str(path) if path is not None else ""
+            raw_msg = str(msg) if msg else ""
+            entry = {
+                "severity":    "violation" if sev == _SH_NS.Violation else "warning",
+                "path":        path_s or None,
+                "message":     _friendly_dcat_message(path_s, comp, raw_msg),
+                "raw_message": raw_msg,
+            }
+            (violations if sev == _SH_NS.Violation else warnings).append(entry)
+
+        title = None
+        for t in graph.objects(None, _DCT_NS.title):
+            title = str(t)
+            break
+
+        return {
+            "name":            name,
+            "title":           title or name,
+            "conforms":        conforms,
+            "violation_count": len(violations),
+            "warning_count":   len(warnings),
+            "details":         _dedupe_shacl_details(violations + warnings),
         }
-        (violations if sev == _SH_NS.Violation else warnings).append(entry)
-
-    title = None
-    for t in graph.objects(None, _DCT_NS.title):
-        title = str(t)
-        break
-
-    return {
-        "name":            name,
-        "title":           title or name,
-        "conforms":        conforms,
-        "violation_count": len(violations),
-        "warning_count":   len(warnings),
-        "details":         _dedupe_shacl_details(violations + warnings),
-    }
+    except Exception as exc:
+        return {"name": name, "error": str(exc)}
 
 
 def _list_geo_datasets() -> list:
@@ -3538,12 +3569,17 @@ def _do_run_geodcat_check() -> None:
                 d = futures[fut]
                 try:
                     result = fut.result()
+                except Exception as exc:
+                    # _geodcat_check_one itself never raises -- this only
+                    # catches the pool worker process dying outright.
+                    result = {"name": d["name"], "error": str(exc)}
+                if "error" in result:
+                    rows.append(result)
+                    newly_checked.append((d["name"], d["metadata_modified"], None))
+                else:
                     result["org_title"] = d.get("org_title", "")
                     rows.append(result)
                     newly_checked.append((d["name"], d["metadata_modified"], result))
-                except Exception as exc:
-                    rows.append({"name": d["name"], "error": str(exc)})
-                    newly_checked.append((d["name"], d["metadata_modified"], None))
                 if _bump_geodcat_progress(len(rows)):
                     cancelled = True
                     break
