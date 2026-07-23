@@ -472,11 +472,13 @@ const TRANSLATIONS = {
     'catalog.ckan_downloads_tooltip': 'Resource page views recorded by CKAN, all-time',
     'catalog.source_ckan': 'CKAN',
     'catalog.source_matomo': 'Matomo',
+    'catalog.loading_matomo': 'Loading Matomo stats…',
     'catalog.view_analytics': 'View detailed analytics',
     'catalog.analytics_title': 'Dataset Analytics',
     'catalog.analytics_over_time': 'Visits over time (last 30 days)',
     'catalog.analytics_countries': 'Visitor countries',
     'catalog.analytics_referrers': 'How visitors found this dataset',
+    'catalog.analytics_downloads': 'Downloads by resource',
     'catalog.analytics_no_data': 'Not enough data yet.',
     'catalog.analytics_visits': 'Visits',
     'catalog.analytics_unique_visitors': 'Unique visitors',
@@ -1030,11 +1032,13 @@ const TRANSLATIONS = {
     'catalog.ckan_downloads_tooltip': 'Προβολές σελίδας πόρων όπως καταγράφονται από το CKAN, συνολικά',
     'catalog.source_ckan': 'CKAN',
     'catalog.source_matomo': 'Matomo',
+    'catalog.loading_matomo': 'Φόρτωση στατιστικών Matomo…',
     'catalog.view_analytics': 'Προβολή αναλυτικών στοιχείων',
     'catalog.analytics_title': 'Αναλυτικά Στοιχεία Συνόλου Δεδομένων',
     'catalog.analytics_over_time': 'Επισκέψεις με την πάροδο του χρόνου (τελευταίες 30 ημέρες)',
     'catalog.analytics_countries': 'Χώρες επισκεπτών',
     'catalog.analytics_referrers': 'Πώς βρήκαν οι επισκέπτες αυτό το σύνολο δεδομένων',
+    'catalog.analytics_downloads': 'Λήψεις ανά πόρο',
     'catalog.analytics_no_data': 'Δεν υπάρχουν ακόμα αρκετά δεδομένα.',
     'catalog.analytics_visits': 'Επισκέψεις',
     'catalog.analytics_unique_visitors': 'Μοναδικοί επισκέπτες',
@@ -5909,13 +5913,9 @@ function renderDatasetPanel(d) {
         ${!isService ? `<span title="${esc(t('catalog.ckan_downloads_tooltip'))}"><i class="bi bi-download me-1"></i>${fmt(ckanResourceViews)}</span>` : ''}
         <span class="text-muted" style="font-size:.7em">${t('catalog.source_ckan')}</span>
       </div>
-      <div id="datasetStatsRow" class="d-flex flex-wrap align-items-center gap-3 mt-1 d-none">
-        <span title="${esc(t('catalog.stats_views_tooltip'))}"><i class="bi bi-eye me-1"></i><span id="datasetStatsViews">—</span></span>
-        <span title="${esc(t('catalog.stats_downloads_tooltip'))}"><i class="bi bi-download me-1"></i><span id="datasetStatsDownloads">—</span></span>
-        <span class="text-muted" style="font-size:.7em">${t('catalog.source_matomo')}</span>
-        <a href="#" class="small" onclick="openDatasetAnalyticsPanel('${esc(d.name)}','${esc(d.title)}');return false;">
-          <i class="bi bi-graph-up me-1"></i>${t('catalog.view_analytics')}
-        </a>
+      <div id="datasetStatsRow" class="d-flex flex-wrap align-items-center gap-2 mt-1">
+        <div class="spinner-border spinner-border-sm text-muted" style="width:.75rem;height:.75rem;border-width:2px"></div>
+        <span class="text-muted">${t('catalog.loading_matomo')}</span>
       </div>
     </div>
     ${d.notes ? `<p class="small">${esc(d.notes).replace(/\n/g, '<br>')}</p>` : ''}
@@ -5931,37 +5931,51 @@ function renderDatasetPanel(d) {
     <h6 class="fw-semibold small text-uppercase text-muted mb-2 mt-4">${t('catalog.related')}</h6>
     <div id="datasetRelated"><div class="text-center py-2 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>`;
   _loadRelatedDatasets(d.name, d.org_name);
-  _loadDatasetStats(d.name, d.resources || []);
+  _loadDatasetStats(d.name, d.title, d.resources || []);
 }
 
-async function _loadDatasetStats(name, resources) {
+async function _loadDatasetStats(name, title, resources) {
+  const row = document.getElementById('datasetStatsRow');
   try {
     const params = new URLSearchParams({ name });
     resources.forEach(r => { if (r.url) params.append('resource_url', r.url); });
     const data = await fetch(API_BASE + 'api/matomo/dataset-stats?' + params).then(r => r.json());
-    const row = document.getElementById('datasetStatsRow');
-    if (!row || data.error) return;  // Matomo not configured, or panel closed/replaced while fetching
-    document.getElementById('datasetStatsViews').textContent = fmt(data.unique_visitors);
-    document.getElementById('datasetStatsDownloads').textContent = fmt(data.downloads);
-    row.classList.remove('d-none');
-  } catch (e) { /* stats are a nice-to-have — fail silently */ }
+    if (!row) return;  // panel closed/replaced while fetching
+    if (data.error) { row.classList.add('d-none'); return; }  // Matomo not configured
+    row.innerHTML = `
+      <span title="${esc(t('catalog.stats_views_tooltip'))}"><i class="bi bi-eye me-1"></i>${fmt(data.unique_visitors)}</span>
+      <span title="${esc(t('catalog.stats_downloads_tooltip'))}"><i class="bi bi-download me-1"></i>${fmt(data.downloads)}</span>
+      <span class="text-muted" style="font-size:.7em">${t('catalog.source_matomo')}</span>
+      <a href="#" class="small" id="datasetAnalyticsLink">
+        <i class="bi bi-graph-up me-1"></i>${t('catalog.view_analytics')}
+      </a>`;
+    document.getElementById('datasetAnalyticsLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      openDatasetAnalyticsPanel(name, title, resources);
+    });
+  } catch (e) {
+    if (row) row.classList.add('d-none');  // stats are a nice-to-have — fail silently
+  }
 }
 
 // ── Dataset analytics offcanvas ──────────────────────────────────────────────
 let _datasetAnalyticsPanel = null;
 let _datasetAnalyticsChart = null;
 
-function openDatasetAnalyticsPanel(name, title) {
+function openDatasetAnalyticsPanel(name, title, resources) {
   if (!_datasetAnalyticsPanel) _datasetAnalyticsPanel = new bootstrap.Offcanvas(document.getElementById('datasetAnalyticsPanel'));
   _bringOffcanvasToFront('datasetAnalyticsPanel');
   document.getElementById('datasetAnalyticsSubtitle').textContent = title || '';
   document.getElementById('datasetAnalyticsBody').innerHTML =
     '<div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>';
   _datasetAnalyticsPanel.show();
-  fetch(API_BASE + 'api/matomo/dataset-analytics?name=' + encodeURIComponent(name))
+  const params = new URLSearchParams({ name });
+  (resources || []).forEach(r => { if (r.url) params.append('resource_url', r.url); });
+  const resourceNameByUrl = new Map((resources || []).filter(r => r.url).map(r => [r.url, r.name]));
+  fetch(API_BASE + 'api/matomo/dataset-analytics?' + params)
     .then(r => r.json())
-    .then(data => renderDatasetAnalytics(data))
-    .catch(() => renderDatasetAnalytics({ error: t('error') }));
+    .then(data => renderDatasetAnalytics(data, resourceNameByUrl))
+    .catch(() => renderDatasetAnalytics({ error: t('error') }, new Map()));
 }
 
 const _REFERRER_ICON = {
@@ -5972,13 +5986,14 @@ const _REFERRER_ICON = {
   'campaigns':        'bi-megaphone',
 };
 
-function renderDatasetAnalytics(data) {
+function renderDatasetAnalytics(data, resourceNameByUrl) {
   const body = document.getElementById('datasetAnalyticsBody');
   if (!body) return;  // panel closed while fetching
   if (data.error) {
     body.innerHTML = `<div class="alert alert-secondary small mb-0">${esc(data.error)}</div>`;
     return;
   }
+  resourceNameByUrl = resourceNameByUrl || new Map();
   const hasSeries = (data.time_series || []).some(pt => pt.visits || pt.unique_visitors);
   body.innerHTML = `
     <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.analytics_over_time')}</h6>
@@ -5996,11 +6011,20 @@ function renderDatasetAnalytics(data) {
       : `<p class="text-muted small mb-4">${t('catalog.analytics_no_data')}</p>`}
     <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.analytics_referrers')}</h6>
     ${(data.referrers || []).length
-      ? `<div class="list-group list-group-flush">${data.referrers.map(r => `
+      ? `<div class="list-group list-group-flush mb-4">${data.referrers.map(r => `
           <div class="list-group-item px-0 py-1 d-flex align-items-center gap-2 small">
             <i class="bi ${_REFERRER_ICON[(r.type || '').toLowerCase()] || 'bi-question-circle'} text-muted" style="width:20px"></i>
             <span class="flex-grow-1">${esc(r.type)}</span>
             <span class="text-muted mono">${fmt(r.visits)}</span>
+          </div>`).join('')}</div>`
+      : `<p class="text-muted small mb-4">${t('catalog.analytics_no_data')}</p>`}
+    <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.analytics_downloads')}</h6>
+    ${(data.downloads || []).length
+      ? `<div class="list-group list-group-flush">${data.downloads.map(dl => `
+          <div class="list-group-item px-0 py-1 d-flex align-items-center gap-2 small">
+            <i class="bi bi-file-earmark-arrow-down text-muted" style="width:20px"></i>
+            <span class="flex-grow-1 text-truncate" title="${esc(resourceNameByUrl.get(dl.url) || dl.url)}">${esc(resourceNameByUrl.get(dl.url) || dl.url)}</span>
+            <span class="text-muted mono">${fmt(dl.downloads)}</span>
           </div>`).join('')}</div>`
       : `<p class="text-muted small mb-0">${t('catalog.analytics_no_data')}</p>`}`;
 

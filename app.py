@@ -6271,18 +6271,26 @@ def matomo_dataset_stats():
     segment = "pageUrl==" + quote(page_url, safe="")
     try:
         with ThreadPoolExecutor(max_workers=2) as pool:
+            # period=range doesn't reliably compute nb_visits/nb_uniq_visitors
+            # at all once a segment is involved (the same Matomo quirk
+            # matomo_summary already works around for nb_uniq_visitors) --
+            # period=day does, so sum the daily buckets instead.
             summary_future = pool.submit(_matomo_get, "VisitsSummary.get", {
-                "period": "range", "date": f"{start},{end}", "segment": segment,
+                "period": "day", "date": f"{start},{end}", "segment": segment,
             })
             downloads_future = pool.submit(_matomo_get, "Actions.getDownloads", {
                 "period": "range", "date": f"{start},{end}", "segment": segment,
                 "flat": 1, "filter_limit": 1000,
             }) if resource_urls else None
-            summary = summary_future.result() or {}
+            summary_by_day = summary_future.result() or {}
             items = downloads_future.result() if downloads_future else None
 
-        visits          = summary.get("nb_visits", 0) or 0
-        unique_visitors = summary.get("nb_uniq_visitors", 0) or 0
+        visits, unique_visitors = 0, 0
+        if isinstance(summary_by_day, dict):
+            for day_stats in summary_by_day.values():
+                if isinstance(day_stats, dict):
+                    visits          += day_stats.get("nb_visits", 0) or 0
+                    unique_visitors += day_stats.get("nb_uniq_visitors", 0) or 0
 
         downloads = 0
         if isinstance(items, list):
@@ -6299,10 +6307,11 @@ def matomo_dataset_stats():
 
 @app.route("/api/matomo/dataset-analytics")
 def matomo_dataset_analytics():
-    """Views-over-time, visitor country, and referrer breakdown for a single
-    dataset -- the privacy-safe alternative to per-visitor identity (no IP,
-    no individual visit log): every number here is an aggregate across all
-    of a dataset's visitors, the same kind of rollup Matomo's own UI shows.
+    """Views-over-time, visitor country, referrer, and per-resource download
+    breakdown for a single dataset -- the privacy-safe alternative to
+    per-visitor identity (no IP, no individual visit log): every number
+    here is an aggregate across all of a dataset's visitors, the same kind
+    of rollup Matomo's own UI shows.
 
     Matomo's country/referrer reports aren't inherently page-scoped like
     Actions.getPageUrls, so this uses a segment (pageUrl==<dataset URL>) to
@@ -6319,6 +6328,7 @@ def matomo_dataset_analytics():
     name = (freq.args.get("name") or "").strip()
     if not name:
         return jsonify({"error": "name is required"}), 400
+    resource_urls = set(freq.args.getlist("resource_url"))
     start, end = _matomo_date_range(30)
     page_url = f"{config.PORTAL_BASE}/dataset/{name}"
     segment = "pageUrl==" + quote(page_url, safe="")
@@ -6327,7 +6337,7 @@ def matomo_dataset_analytics():
         # would only give ~4 points, and running all three concurrently
         # means the request takes as long as the slowest one instead of the
         # sum of all three.
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             series_future     = pool.submit(_matomo_get, "VisitsSummary.get", {
                 "period": "day", "date": f"{start},{end}", "segment": segment,
             })
@@ -6337,9 +6347,14 @@ def matomo_dataset_analytics():
             referrers_future  = pool.submit(_matomo_get, "Referrers.getReferrerType", {
                 "period": "range", "date": f"{start},{end}", "segment": segment,
             })
+            downloads_future  = pool.submit(_matomo_get, "Actions.getDownloads", {
+                "period": "range", "date": f"{start},{end}", "segment": segment,
+                "flat": 1, "filter_limit": 1000,
+            }) if resource_urls else None
             series_raw    = series_future.result()
             countries_raw = countries_future.result()
             referrers_raw = referrers_future.result()
+            downloads_raw = downloads_future.result() if downloads_future else None
 
         time_series = []
         if isinstance(series_raw, dict):
@@ -6369,7 +6384,21 @@ def matomo_dataset_analytics():
                     referrers.append({"type": r.get("label", ""), "visits": r.get("nb_visits", 0)})
         referrers.sort(key=lambda x: x["visits"], reverse=True)
 
-        return jsonify({"time_series": time_series, "countries": countries[:15], "referrers": referrers})
+        downloads = []
+        if isinstance(downloads_raw, list):
+            by_url = {}
+            for item in downloads_raw:
+                label = item.get("label", "")
+                url = label if label.startswith("http") else f"https://{label}"
+                if url in resource_urls:
+                    by_url[url] = by_url.get(url, 0) + (item.get("nb_visits", 0) or item.get("nb_hits", 0))
+            downloads = [{"url": url, "downloads": n} for url, n in by_url.items() if n]
+        downloads.sort(key=lambda x: x["downloads"], reverse=True)
+
+        return jsonify({
+            "time_series": time_series, "countries": countries[:15],
+            "referrers": referrers, "downloads": downloads,
+        })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 
