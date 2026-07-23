@@ -43,6 +43,11 @@ const TRANSLATIONS = {
     'contacts.title': 'Portal Members',
     'contacts.view_all': 'All',
     'contacts.view_by_org': 'By Organization',
+    'contacts.scope_unified': 'Unified',
+    'contacts.scope_portal': 'Portal Members',
+    'contacts.scope_file': 'File Contacts',
+    'contacts.col_portal': 'Portal account',
+    'contacts.no_portal_account': 'No portal account',
     'contacts.reload': 'Reload',
     'contacts.export_modal_title': 'Export Contacts',
     'contacts.export_modal_hint': 'Choose which columns to include.',
@@ -584,6 +589,11 @@ const TRANSLATIONS = {
     'contacts.title': 'Μέλη Πύλης',
     'contacts.view_all': 'Όλα',
     'contacts.view_by_org': 'Ανά Οργανισμό',
+    'contacts.scope_unified': 'Ενοποιημένη',
+    'contacts.scope_portal': 'Μέλη Πύλης',
+    'contacts.scope_file': 'Επαφές Αρχείου',
+    'contacts.col_portal': 'Λογαριασμός πύλης',
+    'contacts.no_portal_account': 'Χωρίς λογαριασμό πύλης',
     'contacts.reload': 'Ανανέωση',
     'contacts.export_modal_title': 'Εξαγωγή Επαφών',
     'contacts.export_modal_hint': 'Επιλέξτε ποιες στήλες θα συμπεριληφθούν.',
@@ -6801,6 +6811,7 @@ function clearContactsFilters() {
 }
 
 function filterContactsTab() {
+  if (_contactsScope === 'file') { filterFileContactsTab(); return; }
   if (!_portalMembersCache) return;
 
   const search = _ns(show('contactsSearch').value || '').trim();
@@ -6946,6 +6957,40 @@ function setContactsView(mode) {
   filterContactsTab();
 }
 
+// Unified = every portal account (enriched with any matched contact-file data) plus,
+// below it, the file contacts that have no matching portal account. Portal Members =
+// the same enriched portal-account table, minus that no-portal-account section (a pure
+// "what does the portal say" view). File Contacts = every org_contacts row regardless
+// of portal match, fetched separately via /api/contacts.
+let _contactsScope = 'unified';   // 'unified' | 'portal' | 'file'
+
+function setContactsScope(scope) {
+  _contactsScope = scope;
+  show('contactsScopeUnifiedBtn').className = 'btn btn-sm ' + (scope === 'unified' ? 'btn-primary' : 'btn-outline-primary');
+  show('contactsScopePortalBtn').className  = 'btn btn-sm ' + (scope === 'portal'  ? 'btn-primary' : 'btn-outline-primary');
+  show('contactsScopeFileBtn').className    = 'btn btn-sm ' + (scope === 'file'    ? 'btn-primary' : 'btn-outline-primary');
+
+  const isFile = scope === 'file';
+  show('contactsLayoutToggle').classList.toggle('d-none', isFile);
+  show('contactsFilterSummaryPanel').classList.toggle('d-none', isFile);
+  show('fileContactsView').classList.toggle('d-none', !isFile);
+  show('contactsFlatView').classList.toggle('d-none', isFile || _contactsViewMode !== 'flat');
+  show('contactsGroupedView').classList.toggle('d-none', isFile || _contactsViewMode !== 'grouped');
+
+  if (isFile) {
+    if (_fileContactsCache) filterFileContactsTab();
+    else loadFileContactsTab();
+    return;
+  }
+  renderUnmatchedContacts();
+  filterContactsTab();
+}
+
+function reloadContactsTab() {
+  if (_contactsScope === 'file') loadFileContactsTab(true);
+  else loadContactsTab(true);
+}
+
 let _contactsExpandedOrgs = new Set();
 let _contactsGroupSlugs   = [];  // slugs from the most recent renderContactsGrouped(), for Expand/Collapse All
 
@@ -7055,7 +7100,10 @@ function _syncUnmatchedCols() {
 
 function renderUnmatchedContacts() {
   const sec = show('pmUnmatchedSection');
-  if (!_pmUnmatched.length) { sec.classList.add('d-none'); return; }
+  // Only the Unified view mixes portal accounts with contacts that have none —
+  // Portal Members hides them (no portal account = out of scope) and File
+  // Contacts shows them itself, deduped in with the matched ones.
+  if (_contactsScope !== 'unified' || !_pmUnmatched.length) { sec.classList.add('d-none'); return; }
   sec.classList.remove('d-none');
   show('pmUnmatchedCount').textContent = _pmUnmatched.length;
   show('pmUnmatchedBody').innerHTML = _pmUnmatched.map((c, i) => {
@@ -7094,6 +7142,128 @@ function renderUnmatchedContacts() {
     </tr>`;
   }).join('');
   requestAnimationFrame(_syncUnmatchedCols);
+}
+
+// ── File Contacts view — every org_contacts row (Excel import / manual entry),
+// matched or not, independent of whether it also has a portal account. Backs
+// the "File Contacts" scope; fetched separately from the CKAN-driven
+// _portalMembersCache since it's the same data source contacts_import etc. use.
+let _fileContactsCache = null;
+
+async function loadFileContactsTab(force = false) {
+  if (_fileContactsCache && !force) { filterFileContactsTab(); return; }
+  show('fileContactsTableBody').innerHTML =
+    `<tr><td colspan="8" class="text-center py-5">
+       <div class="spinner-border text-primary mb-2"></div>
+     </td></tr>`;
+  try {
+    const resp = await fetch(API_BASE + 'api/contacts');
+    const data = await resp.json();
+    _fileContactsCache = Array.isArray(data) ? data : [];
+    filterFileContactsTab();
+  } catch (e) {
+    show('fileContactsTableBody').innerHTML =
+      `<tr><td colspan="8" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
+  }
+}
+
+function filterFileContactsTab() {
+  if (_contactsScope !== 'file') return;
+  if (!_fileContactsCache) { loadFileContactsTab(); return; }
+
+  const search = _ns(show('contactsSearch').value || '').trim();
+  let rows = _fileContactsCache;
+  if (search) rows = rows.filter(c =>
+    _ns(`${c.first_name || ''} ${c.last_name || ''}`).includes(search) ||
+    _ns(c.org_label   || '').includes(search) ||
+    _ns(c.position    || '').includes(search) ||
+    _ns(c.email       || '').includes(search)
+  );
+  renderFileContactsTab(rows);
+}
+
+function renderFileContactsTab(rows) {
+  show('contactsCount').innerHTML = rows.length < _fileContactsCache.length
+    ? `${rows.length} / ${_fileContactsCache.length}` : `${_fileContactsCache.length}`;
+
+  if (!rows.length) {
+    show('fileContactsTableBody').innerHTML =
+      `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+    return;
+  }
+
+  // A file contact counts as portal-linked if some portal-member row carries
+  // its id (set server-side by _do_fetch_portal_members's email match).
+  const portalByContactId = new Map();
+  for (const m of (_portalMembersCache || [])) {
+    if (m.contact_id && !portalByContactId.has(m.contact_id)) portalByContactId.set(m.contact_id, m);
+  }
+
+  show('fileContactsTableBody').innerHTML = rows.map((c, i) => {
+    const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
+    const posLine = c.position
+      ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(c.position)}">${esc(c.position)}</div>` : '';
+    const typeBadges = (c.contact_type || '').split(',').map(s => s.trim()).filter(Boolean)
+      .map(s => `<span class="badge me-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(s)}</span>`).join('');
+    const orgBadge = (c.org_label || c.org_code)
+      ? `<span class="badge bg-light text-dark border" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
+           title="${esc(c.org_label || c.org_code)}">${esc(c.org_label || c.org_code)}</span>` : '—';
+    const portalMatch = portalByContactId.get(c.id);
+    const portalBadge = portalMatch
+      ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db;cursor:pointer" title="${esc(t('contacts.has_portal_account'))}"
+           onclick="event.stopPropagation();openUserPanel('${esc(portalMatch.username)}')"><i class="bi bi-globe2 me-1"></i>${esc(portalMatch.username)}</span>`
+      : `<span class="text-muted small">${esc(t('contacts.no_portal_account'))}</span>`;
+    return `<tr>
+      <td class="text-muted small">${i + 1}</td>
+      <td style="max-width:200px">
+        <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
+        ${posLine}
+      </td>
+      <td style="max-width:180px">${orgBadge}</td>
+      <td>${typeBadges || '<span class="text-muted small">—</span>'}</td>
+      <td>${portalBadge}</td>
+      <td class="small" style="width:150px;max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
+        ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
+      </td>
+      <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
+        ${c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(c.tel)}</a>`
+                : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
+      </td>
+      <td onclick="event.stopPropagation()">
+        <div class="d-flex gap-1">
+          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('common.edit'))}"
+            onclick="openPmEditFileContact(${c.id})"><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('common.delete'))}"
+            onclick="deletePmContactRecord(${c.id}, ${portalMatch ? `'${esc(portalMatch.username)}'` : 'null'})"><i class="bi bi-trash"></i></button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openPmEditFileContact(id) {
+  const c = (_fileContactsCache || []).find(c => c.id === id);
+  if (!c) return;
+  const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || '(no name)';
+  show('pmEditTitle').textContent   = name + ' — ' + (c.org_label || c.org_code);
+  show('pmEditIcon').className      = 'bi bi-pencil me-2';
+  show('pmEditContactId').value     = c.id        || '';
+  show('pmEditUsername').value      = '';
+  show('pmEditEmail').value         = c.email     || '';
+  _pmEditOrgs = (c.org_codes && c.org_codes.length)
+    ? c.org_codes
+    : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
+  _pmOrgRenderTags();
+  show('pmEditFirstName').value     = c.first_name || '';
+  show('pmEditLastName').value      = c.last_name  || '';
+  show('pmEditPosition').value      = c.position   || '';
+  _pmSetContactType(c.contact_type || '');
+  show('pmEditTel').value           = c.tel    || '';
+  show('pmEditMobile').value        = c.mobile || '';
+  show('pmEditStatus').textContent  = '';
+  show('pmEditOrgRow').classList.remove('d-none');
+  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
+  _pmEditModal.show();
 }
 
 function _pmSetContactType(val) {
@@ -7325,6 +7495,7 @@ function deletePmContactRecord(contactId, username) {
         _pmSaveCache(_portalMembersCache || [], _pmUnmatched);
         renderUnmatchedContacts();
       }
+      if (_fileContactsCache) _fileContactsCache = _fileContactsCache.filter(c => c.id !== contactId);
       _allContacts = null; _allUnified = null;
       filterContactsTab();
       if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel();
@@ -7616,51 +7787,55 @@ async function savePmContact() {
   // Update the right cache depending on context
   const username   = show('pmEditUsername').value;
   const savedEmail = (data.email || '').toLowerCase().trim();
+  const applyToPortalRow = m => {
+    m.contact_id         = data.id;
+    m.contact_first_name = data.first_name || '';
+    m.contact_last_name  = data.last_name  || '';
+    m.contact_name       = `${data.first_name || ''} ${data.last_name || ''}`.trim();
+    m.contact_position   = data.position     || '';
+    m.contact_type       = data.contact_type || '';
+    m.contact_tel        = data.tel          || '';
+    m.contact_mobile     = data.mobile       || '';
+    m.contact_email      = data.email        || '';
+    m.contact_org_codes  = data.org_codes    || [];
+  };
+  // Already-matched file contacts opened from the File Contacts view carry no
+  // username (that field only gets set when the edit was opened from a portal
+  // row) — look them up by contact_id so editing them updates the linked
+  // portal row(s) in place instead of misfiling them as newly unmatched.
+  const existingPortalMatches = contactId && _portalMembersCache
+    ? _portalMembersCache.filter(m => String(m.contact_id) === String(contactId))
+    : [];
 
   if (username && _portalMembersCache) {
     // Editing a known portal member
-    _portalMembersCache.forEach(m => {
-      if (m.username === username) {
-        m.contact_id         = data.id;
-        m.contact_first_name = data.first_name || '';
-        m.contact_last_name  = data.last_name  || '';
-        m.contact_name       = `${data.first_name || ''} ${data.last_name || ''}`.trim();
-        m.contact_position   = data.position     || '';
-        m.contact_type       = data.contact_type || '';
-        m.contact_tel        = data.tel          || '';
-        m.contact_mobile     = data.mobile       || '';
-        m.contact_email      = data.email        || '';
-        m.contact_org_codes  = data.org_codes    || [];
-      }
-    });
+    _portalMembersCache.forEach(m => { if (m.username === username) applyToPortalRow(m); });
     filterContactsTab();
   } else if (!contactId && savedEmail && _portalMembersCache) {
     // New contact — check if email matches a portal member
     const matched = _portalMembersCache.filter(m => (m.email || '').toLowerCase() === savedEmail);
     if (matched.length) {
-      matched.forEach(m => {
-        m.contact_id         = data.id;
-        m.contact_first_name = data.first_name || '';
-        m.contact_last_name  = data.last_name  || '';
-        m.contact_name       = `${data.first_name || ''} ${data.last_name || ''}`.trim();
-        m.contact_position   = data.position     || '';
-        m.contact_type       = data.contact_type || '';
-        m.contact_tel        = data.tel          || '';
-        m.contact_mobile     = data.mobile       || '';
-        m.contact_email      = data.email        || '';
-        m.contact_org_codes  = data.org_codes    || [];
-      });
+      matched.forEach(applyToPortalRow);
       filterContactsTab();
     } else {
       _pmUnmatched.unshift(data);
       renderUnmatchedContacts();
     }
+  } else if (existingPortalMatches.length) {
+    existingPortalMatches.forEach(applyToPortalRow);
+    filterContactsTab();
   } else {
     // Editing an existing unmatched contact
     const idx = _pmUnmatched.findIndex(c => c.id === data.id);
     if (idx >= 0) _pmUnmatched[idx] = data;
     else _pmUnmatched.unshift(data);
     renderUnmatchedContacts();
+  }
+  if (_fileContactsCache) {
+    const fIdx = _fileContactsCache.findIndex(c => c.id === data.id);
+    if (fIdx >= 0) _fileContactsCache[fIdx] = data;
+    else _fileContactsCache.unshift(data);
+    if (_contactsScope === 'file') filterFileContactsTab();
   }
   _pmSaveCache(_portalMembersCache, _pmUnmatched);
   _pmEditModal.hide();

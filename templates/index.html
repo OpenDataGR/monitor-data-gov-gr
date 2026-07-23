@@ -1061,6 +1061,11 @@
                   <span class="text-muted fw-normal small ms-2" id="contactsCount"></span>
                 </h6>
                 <div class="btn-group btn-group-sm" role="group">
+                  <button id="contactsScopeUnifiedBtn" type="button" class="btn btn-primary" onclick="setContactsScope('unified')" data-i18n="contacts.scope_unified">Unified</button>
+                  <button id="contactsScopePortalBtn" type="button" class="btn btn-outline-primary" onclick="setContactsScope('portal')" data-i18n="contacts.scope_portal">Portal Members</button>
+                  <button id="contactsScopeFileBtn" type="button" class="btn btn-outline-primary" onclick="setContactsScope('file')" data-i18n="contacts.scope_file">File Contacts</button>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" id="contactsLayoutToggle">
                   <button id="contactsViewFlatBtn" type="button" class="btn btn-primary" onclick="setContactsView('flat')" data-i18n="contacts.view_all">All</button>
                   <button id="contactsViewGroupedBtn" type="button" class="btn btn-outline-primary" onclick="setContactsView('grouped')" data-i18n="contacts.view_by_org">By Organization</button>
                 </div>
@@ -1071,7 +1076,7 @@
                   placeholder="Search contacts…" data-i18n-ph="contacts.search_ph" oninput="debouncedFilterContactsTab()">
                 <button id="contactsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllContacts()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="contactsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllContacts()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
-                <button class="btn btn-outline-secondary btn-sm" id="contactsReloadBtn" onclick="loadContactsTab(true)">
+                <button class="btn btn-outline-secondary btn-sm" id="contactsReloadBtn" onclick="reloadContactsTab()">
                   <i class="bi bi-arrow-repeat me-1"></i><span data-i18n="contacts.reload">Reload</span>
                 </button>
                 <button class="btn btn-outline-primary btn-sm" onclick="openPmEditNew()">
@@ -1082,7 +1087,7 @@
                 </button>
               </div>
             </div>
-            <div class="p-2 rounded-3 mb-3 filter-summary-panel">
+            <div class="p-2 rounded-3 mb-3 filter-summary-panel" id="contactsFilterSummaryPanel">
               <div class="d-flex justify-content-between align-items-center">
                 <ul class="nav nav-underline small mb-2">
                   <li class="nav-item">
@@ -1155,6 +1160,25 @@
                   </thead>
                   <tbody id="pmUnmatchedBody"></tbody>
                 </table>
+              </div>
+            </div>
+            <div id="fileContactsView" class="d-none">
+              <div style="max-height:65vh;overflow-y:auto">
+              <table class="table table-hover table-sm align-middle mb-0" id="fileContactsTable">
+                <thead class="sticky-top bg-white"><tr>
+                  <th style="width:3rem">#</th>
+                  <th data-i18n="contacts.col_name">Name</th>
+                  <th data-i18n="contacts.col_org">Organization</th>
+                  <th data-i18n="contacts.col_role">Type</th>
+                  <th data-i18n="contacts.col_portal">Portal account</th>
+                  <th style="width:150px" data-i18n="contacts.email">Email</th>
+                  <th style="width:90px" data-i18n="contacts.col_tel">Tel</th>
+                  <th style="width:4rem"></th>
+                </tr></thead>
+                <tbody id="fileContactsTableBody">
+                  <tr><td colspan="8" class="text-center py-5 text-muted"><span data-i18n="contacts.tab_hint">Open this tab to load contacts.</span></td></tr>
+                </tbody>
+              </table>
               </div>
             </div>
           </div>
