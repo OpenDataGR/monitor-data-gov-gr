@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 from datetime import datetime, timedelta, timezone
 import io
 import secrets
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response
 from flask_compress import Compress
 from flask_wtf import CSRFProtect
@@ -2111,6 +2111,7 @@ def dataset_detail(name):
             "format":        res.get("format") or "",
             "url":           res.get("url") or "",
             "last_modified": res.get("last_modified") or res.get("created") or "",
+            "ckan_views":    (res.get("tracking_summary") or {}).get("total", 0),
         } for res in p.get("resources", [])]
 
         # Data services (DCAT-AP type "data-service") have no resources; instead
@@ -2141,6 +2142,7 @@ def dataset_detail(name):
             "is_hvd":            _is_hvd(p),
             "is_geospatial":     _is_geospatial(p),
             "harvest_source":    _harvest_source(p),
+            "ckan_views":        (p.get("tracking_summary") or {}).get("total", 0),
         })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
@@ -5983,6 +5985,22 @@ def _matomo_get(method: str, params: dict):
     return data
 
 
+def _matomo_site_created_date() -> str:
+    """All-time Matomo queries need an explicit start date -- Matomo has no
+    built-in "since the beginning" period, only fixed presets (day/week/
+    month/year) or an explicit range. Goes through _matomo_get so it's
+    cached for an hour like everything else, even though the value itself
+    never changes."""
+    try:
+        info = _matomo_get("SitesManager.getSiteFromId", {})
+        date = (info.get("ts_created") or "").split(" ")[0]
+        if date:
+            return date
+    except Exception:
+        pass
+    return "2015-01-01"  # data.gov.gr predates this -- safe fallback if the lookup ever fails
+
+
 def _matomo_date_range(days: int):
     end = datetime.now(timezone.utc)
     start = end - timedelta(days=days - 1)
@@ -6249,10 +6267,13 @@ def matomo_dataset_stats():
     if not name:
         return jsonify({"error": "name is required"}), 400
     resource_urls = set(freq.args.getlist("resource_url"))
-    days = min(int(freq.args.get("days", 30)), 365)
+    # Dataset pages don't get enough daily traffic for a 30-day window to mean
+    # much, so this always covers the dataset's full tracked history rather
+    # than a preset window like the Traffic tab's charts do.
+    start, end = _matomo_site_created_date(), datetime.now(timezone.utc).strftime("%Y-%m-%d")
     try:
-        pages = _matomo_flat_pages("Actions.getPageUrls", days,
-                                   {"flat": 1, "filter_limit": 300})
+        pages = _matomo_flat_pages("Actions.getPageUrls", 0,
+                                   {"flat": 1, "filter_limit": 300}, start=start, end=end)
         visits, unique_visitors = 0, 0
         target = f"/dataset/{name}"
         for page in pages:
@@ -6265,7 +6286,6 @@ def matomo_dataset_stats():
 
         downloads = 0
         if resource_urls:
-            start, end = _matomo_date_range(days)
             items = _matomo_get("Actions.getDownloads", {
                 "period": "range",
                 "date": f"{start},{end}",
@@ -6280,6 +6300,71 @@ def matomo_dataset_stats():
                         downloads += item.get("nb_visits", 0) or item.get("nb_hits", 0)
 
         return jsonify({"visits": visits, "unique_visitors": unique_visitors, "downloads": downloads})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.route("/api/matomo/dataset-analytics")
+def matomo_dataset_analytics():
+    """Views-over-time, visitor country, and referrer breakdown for a single
+    dataset -- the privacy-safe alternative to per-visitor identity (no IP,
+    no individual visit log): every number here is an aggregate across all
+    of a dataset's visitors, the same kind of rollup Matomo's own UI shows.
+
+    Matomo's country/referrer reports aren't inherently page-scoped like
+    Actions.getPageUrls, so this uses a segment (pageUrl==<dataset URL>) to
+    restrict an otherwise site-wide report to just this dataset's visits --
+    the standard Matomo technique for "analytics for one specific page"."""
+    if not config.MATOMO_TOKEN:
+        return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
+    name = (freq.args.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    start, end = _matomo_site_created_date(), datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    page_url = f"{config.PORTAL_BASE}/dataset/{name}"
+    segment = "pageUrl==" + quote(page_url, safe="")
+    try:
+        # Weekly buckets across the whole tracked history -- daily would be
+        # thousands of points for an old dataset; month loses too much shape
+        # for a newer one.
+        series_raw = _matomo_get("VisitsSummary.get", {
+            "period": "week", "date": f"{start},{end}", "segment": segment,
+        })
+        time_series = []
+        if isinstance(series_raw, dict):
+            for date_label, stats in sorted(series_raw.items()):
+                if isinstance(stats, dict):
+                    time_series.append({
+                        "date": date_label,
+                        "visits": stats.get("nb_visits", 0) or 0,
+                        "unique_visitors": stats.get("nb_uniq_visitors", 0) or 0,
+                    })
+
+        countries_raw = _matomo_get("UserCountry.getCountry", {
+            "period": "range", "date": f"{start},{end}", "segment": segment,
+        })
+        countries = []
+        if isinstance(countries_raw, list):
+            for c in countries_raw:
+                if c.get("nb_visits"):
+                    countries.append({
+                        "name": c.get("label", ""),
+                        "code": (c.get("code") or "").lower(),
+                        "visits": c.get("nb_visits", 0),
+                    })
+        countries.sort(key=lambda x: x["visits"], reverse=True)
+
+        referrers_raw = _matomo_get("Referrers.getReferrerType", {
+            "period": "range", "date": f"{start},{end}", "segment": segment,
+        })
+        referrers = []
+        if isinstance(referrers_raw, list):
+            for r in referrers_raw:
+                if r.get("nb_visits"):
+                    referrers.append({"type": r.get("label", ""), "visits": r.get("nb_visits", 0)})
+        referrers.sort(key=lambda x: x["visits"], reverse=True)
+
+        return jsonify({"time_series": time_series, "countries": countries[:15], "referrers": referrers})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 

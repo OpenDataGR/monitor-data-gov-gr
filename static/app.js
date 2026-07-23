@@ -466,8 +466,20 @@ const TRANSLATIONS = {
     'catalog.formats_title': 'Format Distribution',
     'catalog.formats_none': 'No format data available.',
     'catalog.formats_other': 'Other',
-    'catalog.stats_views_tooltip': 'Views in the last 30 days',
-    'catalog.stats_downloads_tooltip': 'Downloads in the last 30 days',
+    'catalog.stats_views_tooltip': 'People who viewed this dataset\'s page, all-time',
+    'catalog.stats_downloads_tooltip': 'Downloads, all-time',
+    'catalog.ckan_views_tooltip': 'Dataset page views recorded by CKAN, all-time',
+    'catalog.ckan_downloads_tooltip': 'Resource page views recorded by CKAN, all-time',
+    'catalog.source_ckan': 'CKAN',
+    'catalog.source_matomo': 'Matomo',
+    'catalog.view_analytics': 'View detailed analytics',
+    'catalog.analytics_title': 'Dataset Analytics',
+    'catalog.analytics_over_time': 'Visits over time',
+    'catalog.analytics_countries': 'Visitor countries',
+    'catalog.analytics_referrers': 'How visitors found this dataset',
+    'catalog.analytics_no_data': 'Not enough data yet.',
+    'catalog.analytics_visits': 'Visits',
+    'catalog.analytics_unique_visitors': 'Unique visitors',
     'catalog.filter_org_all': 'All organizations',
     'catalog.filter_format_all': 'All formats',
     'catalog.related': 'Related Datasets',
@@ -1012,8 +1024,20 @@ const TRANSLATIONS = {
     'catalog.formats_title': 'Κατανομή Μορφοτύπων',
     'catalog.formats_none': 'Δεν υπάρχουν διαθέσιμα δεδομένα μορφοτύπων.',
     'catalog.formats_other': 'Άλλα',
-    'catalog.stats_views_tooltip': 'Προβολές τις τελευταίες 30 ημέρες',
-    'catalog.stats_downloads_tooltip': 'Λήψεις τις τελευταίες 30 ημέρες',
+    'catalog.stats_views_tooltip': 'Άτομα που είδαν τη σελίδα αυτού του συνόλου δεδομένων, συνολικά',
+    'catalog.stats_downloads_tooltip': 'Λήψεις, συνολικά',
+    'catalog.ckan_views_tooltip': 'Προβολές σελίδας συνόλου δεδομένων όπως καταγράφονται από το CKAN, συνολικά',
+    'catalog.ckan_downloads_tooltip': 'Προβολές σελίδας πόρων όπως καταγράφονται από το CKAN, συνολικά',
+    'catalog.source_ckan': 'CKAN',
+    'catalog.source_matomo': 'Matomo',
+    'catalog.view_analytics': 'Προβολή αναλυτικών στοιχείων',
+    'catalog.analytics_title': 'Αναλυτικά Στοιχεία Συνόλου Δεδομένων',
+    'catalog.analytics_over_time': 'Επισκέψεις με την πάροδο του χρόνου',
+    'catalog.analytics_countries': 'Χώρες επισκεπτών',
+    'catalog.analytics_referrers': 'Πώς βρήκαν οι επισκέπτες αυτό το σύνολο δεδομένων',
+    'catalog.analytics_no_data': 'Δεν υπάρχουν ακόμα αρκετά δεδομένα.',
+    'catalog.analytics_visits': 'Επισκέψεις',
+    'catalog.analytics_unique_visitors': 'Μοναδικοί επισκέπτες',
     'catalog.filter_org_all': 'Όλοι οι οργανισμοί',
     'catalog.filter_format_all': 'Όλοι οι μορφότυποι',
     'catalog.related': 'Σχετικά Σύνολα Δεδομένων',
@@ -1179,6 +1203,7 @@ function refreshChartsForTheme() {
     typeof _statsChart !== 'undefined' && _statsChart,
     typeof _trafficChart !== 'undefined' && _trafficChart,
     typeof _catalogFormatChart !== 'undefined' && _catalogFormatChart,
+    typeof _datasetAnalyticsChart !== 'undefined' && _datasetAnalyticsChart,
   ].forEach(_applyChartTheme);
 }
 
@@ -5835,6 +5860,7 @@ function renderDatasetPanel(d) {
   idLink.classList.remove('d-none');
   const fmtDate = (s) => s ? esc(s.slice(0, 10)) : '—';
   const isService = d.type === 'data-service';
+  const ckanResourceViews = (d.resources || []).reduce((sum, r) => sum + (r.ckan_views || 0), 0);
 
   const tagsHtml = (d.tags || []).map(tag =>
     `<span class="badge bg-light text-dark border me-1 mb-1">${esc(tag)}</span>`
@@ -5877,9 +5903,20 @@ function renderDatasetPanel(d) {
       ${d.harvest_source ? `<span class="badge bg-info-subtle text-info-emphasis border" title="${esc(t('catalog.harvested_tooltip'))}"><i class="bi bi-cloud-arrow-down me-1"></i>${esc(d.harvest_source)}</span>` : ''}
       ${d.is_geospatial ? `<span class="badge bg-success-subtle text-success-emphasis border" title="${esc(t('catalog.geo_tooltip'))}"><i class="bi bi-geo-alt me-1"></i>${t('catalog.geo_full')}</span>` : ''}
     </div>
-    <div id="datasetStatsRow" class="d-flex gap-3 small text-muted mb-3 d-none">
-      <span title="${esc(t('catalog.stats_views_tooltip'))}"><i class="bi bi-eye me-1"></i><span id="datasetStatsViews">—</span></span>
-      <span title="${esc(t('catalog.stats_downloads_tooltip'))}"><i class="bi bi-download me-1"></i><span id="datasetStatsDownloads">—</span></span>
+    <div class="small text-muted mb-3">
+      <div class="d-flex flex-wrap align-items-center gap-3">
+        <span title="${esc(t('catalog.ckan_views_tooltip'))}"><i class="bi bi-eye me-1"></i>${fmt(d.ckan_views || 0)}</span>
+        ${!isService ? `<span title="${esc(t('catalog.ckan_downloads_tooltip'))}"><i class="bi bi-download me-1"></i>${fmt(ckanResourceViews)}</span>` : ''}
+        <span class="text-muted" style="font-size:.7em">${t('catalog.source_ckan')}</span>
+      </div>
+      <div id="datasetStatsRow" class="d-flex flex-wrap align-items-center gap-3 mt-1 d-none">
+        <span title="${esc(t('catalog.stats_views_tooltip'))}"><i class="bi bi-eye me-1"></i><span id="datasetStatsViews">—</span></span>
+        <span title="${esc(t('catalog.stats_downloads_tooltip'))}"><i class="bi bi-download me-1"></i><span id="datasetStatsDownloads">—</span></span>
+        <span class="text-muted" style="font-size:.7em">${t('catalog.source_matomo')}</span>
+        <a href="#" class="small" onclick="openDatasetAnalyticsPanel('${esc(d.name)}','${esc(d.title)}');return false;">
+          <i class="bi bi-graph-up me-1"></i>${t('catalog.view_analytics')}
+        </a>
+      </div>
     </div>
     ${d.notes ? `<p class="small">${esc(d.notes).replace(/\n/g, '<br>')}</p>` : ''}
     <div class="row g-2 small text-muted mb-3">
@@ -5899,15 +5936,97 @@ function renderDatasetPanel(d) {
 
 async function _loadDatasetStats(name, resources) {
   try {
-    const params = new URLSearchParams({ name, days: 30 });
+    const params = new URLSearchParams({ name });
     resources.forEach(r => { if (r.url) params.append('resource_url', r.url); });
     const data = await fetch(API_BASE + 'api/matomo/dataset-stats?' + params).then(r => r.json());
     const row = document.getElementById('datasetStatsRow');
     if (!row || data.error) return;  // Matomo not configured, or panel closed/replaced while fetching
-    document.getElementById('datasetStatsViews').textContent = fmt(data.visits);
+    document.getElementById('datasetStatsViews').textContent = fmt(data.unique_visitors);
     document.getElementById('datasetStatsDownloads').textContent = fmt(data.downloads);
     row.classList.remove('d-none');
   } catch (e) { /* stats are a nice-to-have — fail silently */ }
+}
+
+// ── Dataset analytics offcanvas ──────────────────────────────────────────────
+let _datasetAnalyticsPanel = null;
+let _datasetAnalyticsChart = null;
+
+function openDatasetAnalyticsPanel(name, title) {
+  if (!_datasetAnalyticsPanel) _datasetAnalyticsPanel = new bootstrap.Offcanvas(document.getElementById('datasetAnalyticsPanel'));
+  _bringOffcanvasToFront('datasetAnalyticsPanel');
+  document.getElementById('datasetAnalyticsSubtitle').textContent = title || '';
+  document.getElementById('datasetAnalyticsBody').innerHTML =
+    '<div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>';
+  _datasetAnalyticsPanel.show();
+  fetch(API_BASE + 'api/matomo/dataset-analytics?name=' + encodeURIComponent(name))
+    .then(r => r.json())
+    .then(data => renderDatasetAnalytics(data))
+    .catch(() => renderDatasetAnalytics({ error: t('error') }));
+}
+
+const _REFERRER_ICON = {
+  'direct entry':     'bi-arrow-right-circle',
+  'websites':         'bi-globe',
+  'search engines':   'bi-search',
+  'social networks':  'bi-share',
+  'campaigns':        'bi-megaphone',
+};
+
+function renderDatasetAnalytics(data) {
+  const body = document.getElementById('datasetAnalyticsBody');
+  if (!body) return;  // panel closed while fetching
+  if (data.error) {
+    body.innerHTML = `<div class="alert alert-secondary small mb-0">${esc(data.error)}</div>`;
+    return;
+  }
+  const hasSeries = (data.time_series || []).some(pt => pt.visits || pt.unique_visitors);
+  body.innerHTML = `
+    <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.analytics_over_time')}</h6>
+    ${hasSeries
+      ? `<div style="position:relative;height:220px" class="mb-4"><canvas id="datasetAnalyticsChart"></canvas></div>`
+      : `<p class="text-muted small mb-4">${t('catalog.analytics_no_data')}</p>`}
+    <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.analytics_countries')}</h6>
+    ${(data.countries || []).length
+      ? `<div class="list-group list-group-flush mb-4">${data.countries.map(c => `
+          <div class="list-group-item px-0 py-1 d-flex align-items-center gap-2 small">
+            <span class="fs-6" style="width:20px">${flagHtml(c.code)}</span>
+            <span class="flex-grow-1">${esc(c.name)}</span>
+            <span class="text-muted mono">${fmt(c.visits)}</span>
+          </div>`).join('')}</div>`
+      : `<p class="text-muted small mb-4">${t('catalog.analytics_no_data')}</p>`}
+    <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.analytics_referrers')}</h6>
+    ${(data.referrers || []).length
+      ? `<div class="list-group list-group-flush">${data.referrers.map(r => `
+          <div class="list-group-item px-0 py-1 d-flex align-items-center gap-2 small">
+            <i class="bi ${_REFERRER_ICON[(r.type || '').toLowerCase()] || 'bi-question-circle'} text-muted" style="width:20px"></i>
+            <span class="flex-grow-1">${esc(r.type)}</span>
+            <span class="text-muted mono">${fmt(r.visits)}</span>
+          </div>`).join('')}</div>`
+      : `<p class="text-muted small mb-0">${t('catalog.analytics_no_data')}</p>`}`;
+
+  if (!hasSeries) return;
+  const ctx = document.getElementById('datasetAnalyticsChart').getContext('2d');
+  if (_datasetAnalyticsChart) _datasetAnalyticsChart.destroy();
+  _datasetAnalyticsChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.time_series.map(pt => pt.date),
+      datasets: [
+        { label: t('catalog.analytics_visits'), data: data.time_series.map(pt => pt.visits),
+          borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.3, pointRadius: 1 },
+        { label: t('catalog.analytics_unique_visitors'), data: data.time_series.map(pt => pt.unique_visitors),
+          borderColor: '#20c997', backgroundColor: 'rgba(32,201,151,.08)', fill: true, tension: 0.3, pointRadius: 1 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 }, color: _chartTextColor() } } },
+      scales: {
+        x: { ticks: { font: { size: 9 }, maxTicksLimit: 8, color: _chartTextColor() }, grid: { color: _chartGridColor() } },
+        y: { min: 0, ticks: { font: { size: 10 }, color: _chartTextColor() }, grid: { color: _chartGridColor() } },
+      },
+    },
+  });
 }
 
 async function _loadRelatedDatasets(name, orgName) {
@@ -7996,6 +8115,14 @@ function _fadeLiveMapMarkers() {
   }
 }
 
+// Actual flag images (flag-icons lib) instead of Unicode flag emoji — regional-indicator
+// emoji don't render as flags on every OS/font (notably plain two-letter codes on Windows).
+function flagHtml(cc) {
+  return (cc && /^[a-z]{2}$/.test(cc) && cc !== 'xx')
+    ? `<span class="fi fi-${cc}" style="border-radius:2px"></span>`
+    : `<i class="bi bi-globe2 text-muted"></i>`;
+}
+
 async function loadLiveVisitors() {
   const el      = document.getElementById('liveVisitorsList');
   const countEl = document.getElementById('liveActiveCount');
@@ -8021,11 +8148,6 @@ async function loadLiveVisitors() {
       'car browser': 'bi-car-front', 'portable media player': 'bi-music-player-fill',
     };
     const deviceIconFor = (d) => deviceIcon[(d || '').toLowerCase()] || 'bi-question-circle';
-    // Actual flag images (flag-icons lib) instead of Unicode flag emoji — regional-indicator
-    // emoji don't render as flags on every OS/font (notably plain two-letter codes on Windows).
-    const flagHtml = (cc) => (cc && /^[a-z]{2}$/.test(cc) && cc !== 'xx')
-      ? `<span class="fi fi-${cc}" style="border-radius:2px"></span>`
-      : `<i class="bi bi-globe2 text-muted"></i>`;
     const nowSec = Date.now() / 1000;
     const relTime = (ts, fallback) => {
       if (!ts) return fallback || '';
