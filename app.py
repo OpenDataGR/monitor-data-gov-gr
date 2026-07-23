@@ -6259,14 +6259,14 @@ def matomo_dataset_stats():
         return jsonify({"error": "name is required"}), 400
     resource_urls = set(freq.args.getlist("resource_url"))
     # A pageUrl segment is unique per dataset, so Matomo never has it
-    # pre-archived -- every request forces an on-demand computation across
-    # the whole requested range. Querying all the way back to the site's
-    # creation date made that expensive enough to blow past the 20s request
-    # timeout outright for older/high-traffic datasets. 12 months is enough
-    # data to be a useful "recent activity" figure while staying fast; CKAN's
-    # tracking_summary alongside it (no live query, always instant) is what
-    # covers the genuine all-time count.
-    start, end = _matomo_date_range(365)
+    # pre-archived -- every request forces an on-demand computation that
+    # scans every visit to the whole portal in the requested range, not just
+    # this dataset's own (comparatively tiny) traffic. Even a 12-month
+    # window still blew the request timeout in practice; 30 days is what
+    # actually comes back reliably. CKAN's tracking_summary alongside this
+    # (no live query, always instant) is what covers the genuine all-time
+    # count.
+    start, end = _matomo_date_range(30)
     page_url = f"{config.PORTAL_BASE}/dataset/{name}"
     segment = "pageUrl==" + quote(page_url, safe="")
     try:
@@ -6309,26 +6309,27 @@ def matomo_dataset_analytics():
     restrict an otherwise site-wide report to just this dataset's visits --
     the standard Matomo technique for "analytics for one specific page".
 
-    Bounded to the last 12 months, same reasoning as dataset-stats: this
+    Bounded to the last 30 days, same reasoning as dataset-stats: this
     segment is unique per dataset, so Matomo can never have it pre-archived
-    -- querying the site's whole history on demand was slow enough to blow
-    past the request timeout outright for some datasets."""
+    -- every request scans every visit to the whole portal in the range,
+    not just this dataset's own traffic, and even a 12-month window still
+    blew the request timeout in practice."""
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
     name = (freq.args.get("name") or "").strip()
     if not name:
         return jsonify({"error": "name is required"}), 400
-    start, end = _matomo_date_range(365)
+    start, end = _matomo_date_range(30)
     page_url = f"{config.PORTAL_BASE}/dataset/{name}"
     segment = "pageUrl==" + quote(page_url, safe="")
     try:
-        # Weekly buckets are back on the table now that the range is bounded
-        # to a year (~52 points) instead of the site's whole history, and
-        # running all three concurrently means the request takes as long as
-        # the slowest one instead of the sum of all three.
+        # Daily buckets now that the range is bounded to 30 days -- weekly
+        # would only give ~4 points, and running all three concurrently
+        # means the request takes as long as the slowest one instead of the
+        # sum of all three.
         with ThreadPoolExecutor(max_workers=3) as pool:
             series_future     = pool.submit(_matomo_get, "VisitsSummary.get", {
-                "period": "week", "date": f"{start},{end}", "segment": segment,
+                "period": "day", "date": f"{start},{end}", "segment": segment,
             })
             countries_future  = pool.submit(_matomo_get, "UserCountry.getCountry", {
                 "period": "range", "date": f"{start},{end}", "segment": segment,
