@@ -6259,8 +6259,15 @@ def matomo_top_downloads():
 @app.route("/api/matomo/dataset-stats")
 def matomo_dataset_stats():
     """Page views and resource downloads for a single dataset, for the detail
-    panel. Reuses the same flat-page fetching already proven out in
-    top-datasets / top-downloads rather than a single-URL Matomo lookup."""
+    panel.
+
+    Scoped with a pageUrl segment rather than scanning Actions.getPageUrls'
+    site-wide top-N list (filter_limit=300) for a matching row -- with
+    thousands of dataset pages on the portal, anything below the top 300
+    (or top 1000, for downloads) silently came back as 0 even though it had
+    real traffic. The segment restricts the whole query to just this one
+    page's visits, so it's exact regardless of how that dataset ranks
+    against every other page on the site."""
     if not config.MATOMO_TOKEN:
         return jsonify({"error": "MATOMO_TOKEN not configured"}), 503
     name = (freq.args.get("name") or "").strip()
@@ -6271,33 +6278,30 @@ def matomo_dataset_stats():
     # much, so this always covers the dataset's full tracked history rather
     # than a preset window like the Traffic tab's charts do.
     start, end = _matomo_site_created_date(), datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    page_url = f"{config.PORTAL_BASE}/dataset/{name}"
+    segment = "pageUrl==" + quote(page_url, safe="")
     try:
-        pages = _matomo_flat_pages("Actions.getPageUrls", 0,
-                                   {"flat": 1, "filter_limit": 300}, start=start, end=end)
-        visits, unique_visitors = 0, 0
-        target = f"/dataset/{name}"
-        for page in pages:
-            label = page.get("label", "")
-            path = "/" + "/".join(p.strip().lstrip("/") for p in label.split(" > "))
-            if path.rstrip("/").lower() == target.lower():
-                visits = page.get("nb_visits", 0)
-                unique_visitors = page.get("nb_uniq_visitors", 0)
-                break
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            summary_future = pool.submit(_matomo_get, "VisitsSummary.get", {
+                "period": "range", "date": f"{start},{end}", "segment": segment,
+            })
+            downloads_future = pool.submit(_matomo_get, "Actions.getDownloads", {
+                "period": "range", "date": f"{start},{end}", "segment": segment,
+                "flat": 1, "filter_limit": 1000,
+            }) if resource_urls else None
+            summary = summary_future.result() or {}
+            items = downloads_future.result() if downloads_future else None
+
+        visits          = summary.get("nb_visits", 0) or 0
+        unique_visitors = summary.get("nb_uniq_visitors", 0) or 0
 
         downloads = 0
-        if resource_urls:
-            items = _matomo_get("Actions.getDownloads", {
-                "period": "range",
-                "date": f"{start},{end}",
-                "flat": 1,
-                "filter_limit": 1000,
-            })
-            if isinstance(items, list):
-                for item in items:
-                    label = item.get("label", "")
-                    url = label if label.startswith("http") else f"https://{label}"
-                    if url in resource_urls:
-                        downloads += item.get("nb_visits", 0) or item.get("nb_hits", 0)
+        if isinstance(items, list):
+            for item in items:
+                label = item.get("label", "")
+                url = label if label.startswith("http") else f"https://{label}"
+                if url in resource_urls:
+                    downloads += item.get("nb_visits", 0) or item.get("nb_hits", 0)
 
         return jsonify({"visits": visits, "unique_visitors": unique_visitors, "downloads": downloads})
     except Exception as exc:
@@ -6324,12 +6328,26 @@ def matomo_dataset_analytics():
     page_url = f"{config.PORTAL_BASE}/dataset/{name}"
     segment = "pageUrl==" + quote(page_url, safe="")
     try:
-        # Weekly buckets across the whole tracked history -- daily would be
-        # thousands of points for an old dataset; month loses too much shape
-        # for a newer one.
-        series_raw = _matomo_get("VisitsSummary.get", {
-            "period": "week", "date": f"{start},{end}", "segment": segment,
-        })
+        # A custom segment isn't pre-archived like Matomo's own site-wide
+        # reports are, so each of these three calls makes Matomo compute it
+        # on the fly -- monthly (not weekly) buckets for the time series cuts
+        # the number of on-demand period-archives way down for an old
+        # dataset, and running all three concurrently means the request
+        # takes as long as the slowest one instead of the sum of all three.
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            series_future     = pool.submit(_matomo_get, "VisitsSummary.get", {
+                "period": "month", "date": f"{start},{end}", "segment": segment,
+            })
+            countries_future  = pool.submit(_matomo_get, "UserCountry.getCountry", {
+                "period": "range", "date": f"{start},{end}", "segment": segment,
+            })
+            referrers_future  = pool.submit(_matomo_get, "Referrers.getReferrerType", {
+                "period": "range", "date": f"{start},{end}", "segment": segment,
+            })
+            series_raw    = series_future.result()
+            countries_raw = countries_future.result()
+            referrers_raw = referrers_future.result()
+
         time_series = []
         if isinstance(series_raw, dict):
             for date_label, stats in sorted(series_raw.items()):
@@ -6340,9 +6358,6 @@ def matomo_dataset_analytics():
                         "unique_visitors": stats.get("nb_uniq_visitors", 0) or 0,
                     })
 
-        countries_raw = _matomo_get("UserCountry.getCountry", {
-            "period": "range", "date": f"{start},{end}", "segment": segment,
-        })
         countries = []
         if isinstance(countries_raw, list):
             for c in countries_raw:
@@ -6354,9 +6369,6 @@ def matomo_dataset_analytics():
                     })
         countries.sort(key=lambda x: x["visits"], reverse=True)
 
-        referrers_raw = _matomo_get("Referrers.getReferrerType", {
-            "period": "range", "date": f"{start},{end}", "segment": segment,
-        })
         referrers = []
         if isinstance(referrers_raw, list):
             for r in referrers_raw:
