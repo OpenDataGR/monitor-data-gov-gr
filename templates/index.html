@@ -134,6 +134,12 @@
     [data-bs-theme="dark"] .filter-summary-panel { background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.1); }
     [data-bs-theme="dark"] #pmEditContactType option.type-spacer { border-top-color: rgba(255,255,255,.15); }
     [data-bs-theme="dark"] .bg-white { background-color: var(--bs-tertiary-bg, #2b3035) !important; }
+    /* Scoped to #commCaseInfo, not a blanket .bg-light override -- elsewhere
+       .bg-light is deliberately paired with .text-dark for neutral "tag"
+       badges (org names, unmatched-contact roles) that stay light-on-dark
+       regardless of theme; flipping .bg-light globally would make that
+       fixed dark text unreadable on a newly-dark background. */
+    [data-bs-theme="dark"] #commCaseInfo .bg-light { background-color: var(--bs-tertiary-bg, #2b3035) !important; }
     /* Light basemap tiles read as a jarring white rectangle on a dark page --
        invert them (markers/popups live in other Leaflet panes, unaffected). */
     [data-bs-theme="dark"] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); }
