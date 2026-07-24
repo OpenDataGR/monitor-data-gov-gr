@@ -6786,6 +6786,15 @@ function _pmDisplayName(m) {
   return fileName || m.display_name || m.username || '';
 }
 
+// Every row in this table is already a portal account, so a "Portal" badge
+// on every single one says nothing -- only whether it's ALSO matched to a
+// contact-file record varies, so that's the only badge worth showing here.
+function _pmFileBadge(m) {
+  return m.contact_id
+    ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="${esc(t('contacts.has_contact_file'))}"><i class="bi bi-file-earmark-person me-1"></i>File</span>`
+    : '';
+}
+
 function sortContacts(col) {
   if (_contactsSortCol === col) _contactsSortDir = _contactsSortDir === 'asc' ? 'desc' : 'asc';
   else { _contactsSortCol = col; _contactsSortDir = 'asc'; }
@@ -7070,9 +7079,7 @@ function filterContactsTab() {
             title="${esc(o.org_title || o.org_name)}">${esc(o.org_title || o.org_name)}</span>`
         ).join('') +
         (userOrgs.length > MAX_ORGS ? `<span class="text-muted small">+${userOrgs.length - MAX_ORGS}</span>` : '');
-    const presenceBadges =
-      `<span class="badge rounded-pill me-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('contacts.has_portal_account'))}"><i class="bi bi-globe2 me-1"></i>Portal</span>` +
-      (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="${esc(t('contacts.has_contact_file'))}"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
+    const presenceBadges = _pmFileBadge(m);
     return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
       <td class="text-muted small">${i + 1}</td>
       <td style="max-width:200px">
@@ -7244,9 +7251,7 @@ function renderContactsGrouped(rows) {
       const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
       const posLine   = m.contact_position
         ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
-      const presenceBadges =
-        `<span class="badge rounded-pill me-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('contacts.has_portal_account'))}"><i class="bi bi-globe2 me-1"></i>Portal</span>` +
-        (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="${esc(t('contacts.has_contact_file'))}"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
+      const presenceBadges = _pmFileBadge(m);
       return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
         <td style="max-width:200px">
           <span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${presenceBadges}
