@@ -66,6 +66,12 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # anything else on the same instance. Harmless for local SQLite dev too.
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_size": 4, "max_overflow": 6}
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=14)  # absolute cap; see also the idle timeout in require_login
+# Flask's default cookie name ("session") is shared by countless other Flask
+# apps -- on a WAF policy associated with 21+ sites (ours included), an
+# exclusion scoped to "a cookie named session" would silently weaken SQLi
+# inspection for every other app's same-named cookie too, not just this one.
+# A unique name lets any future WAF exclusion target only this app's cookie.
+app.config["SESSION_COOKIE_NAME"] = "monitor_session"
 if not config.FLASK_SECRET_KEY:
     # Falling back silently would mean a misconfigured production deploy
     # signs sessions with a key that's sitting in plain sight in this file --
@@ -517,6 +523,25 @@ def _purge_legacy_root_cookie(response):
             app.config["SESSION_COOKIE_NAME"], "", expires=0, path="/",
             secure=True, httponly=True, samesite="Lax",
         )
+    return response
+
+
+@app.after_request
+def _purge_legacy_session_cookie_name(response):
+    # SESSION_COOKIE_NAME was renamed off Flask's default ("session") so a WAF
+    # exclusion can target this app's session cookie by its own unique name,
+    # without also matching every other Flask app's identically-named
+    # "session" cookie on the same shared WAF policy (see git history for the
+    # 403-until-cookie-clear incident this fixed). Same accumulation risk as
+    # the legacy Path=/ cookie above -- browsers keep sending the old-named
+    # cookie forever unless it's actively expired. Safe to remove this once
+    # confident every regular user has hit the app at least once since the
+    # rename (the 14-day PERMANENT_SESSION_LIFETIME above is a reasonable
+    # floor to wait).
+    response.set_cookie(
+        "session", "", expires=0, path="/",
+        secure=bool(config.FLASK_SECRET_KEY), httponly=True, samesite="Lax",
+    )
     return response
 
 
