@@ -1122,6 +1122,35 @@
                 </div>
               </div>
             </div>
+            <div class="p-2 rounded-3 mb-3 filter-summary-panel d-none" id="fileContactsFilterSummaryPanel">
+              <div class="d-flex justify-content-between align-items-center">
+                <ul class="nav nav-underline small mb-2">
+                  <li class="nav-item">
+                    <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#fileContactsTypeSummaryPane" type="button">
+                      <i class="bi bi-tag me-1"></i><span data-i18n="contacts.col_type">Type</span>
+                      <span id="fileContactsTypeTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                  <li class="nav-item">
+                    <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#fileContactsLinkedSummaryPane" type="button">
+                      <i class="bi bi-globe2 me-1"></i><span data-i18n="contacts.col_portal">Portal account</span>
+                      <span id="fileContactsLinkedTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
+                </ul>
+                <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1 mb-2 flex-shrink-0" onclick="clearFileContactsFilters()">
+                  <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">Clear filters</span>
+                </button>
+              </div>
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="fileContactsTypeSummaryPane">
+                  <div id="fileContactsTypeSummary" class="row g-2"></div>
+                </div>
+                <div class="tab-pane fade" id="fileContactsLinkedSummaryPane">
+                  <div id="fileContactsLinkedSummary" class="row g-2"></div>
+                </div>
+              </div>
+            </div>
             <div id="contactsFlatView">
               <div style="max-height:65vh;overflow-y:auto">
               <table class="table table-hover align-middle mb-0" id="contactsTable">
@@ -1157,7 +1186,7 @@
                       <th style="width:3rem">#</th>
                       <th data-i18n="contacts.col_name">Name</th>
                       <th data-i18n="contacts.col_org">Organization</th>
-                      <th data-i18n="contacts.col_role">Type</th>
+                      <th data-i18n="contacts.col_type">Type</th>
                       <th data-i18n="contacts.col_state">State</th>
                       <th style="width:150px" data-i18n="contacts.email">Email</th>
                       <th style="width:90px" data-i18n="contacts.col_tel">Tel</th>
@@ -1169,23 +1198,17 @@
               </div>
             </div>
             <div id="fileContactsView" class="d-none">
-              <div style="max-height:65vh;overflow-y:auto">
-              <table class="table table-hover table-sm align-middle mb-0" id="fileContactsTable">
-                <thead class="sticky-top bg-white"><tr>
-                  <th style="width:3rem">#</th>
-                  <th data-i18n="contacts.col_name">Name</th>
-                  <th data-i18n="contacts.col_org">Organization</th>
-                  <th data-i18n="contacts.col_role">Type</th>
-                  <th data-i18n="contacts.col_portal">Portal account</th>
-                  <th style="width:150px" data-i18n="contacts.email">Email</th>
-                  <th style="width:90px" data-i18n="contacts.col_tel">Tel</th>
-                  <th style="width:4rem"></th>
-                </tr></thead>
-                <tbody id="fileContactsTableBody">
-                  <tr><td colspan="8" class="text-center py-5 text-muted"><span data-i18n="contacts.tab_hint">Open this tab to load contacts.</span></td></tr>
-                </tbody>
-              </table>
+              <div id="fileContactsFlatView">
+                <div style="max-height:65vh;overflow-y:auto">
+                <table class="table table-hover table-sm align-middle mb-0" id="fileContactsTable">
+                  <thead class="sticky-top bg-white"><tr></tr></thead>
+                  <tbody id="fileContactsTableBody">
+                    <tr><td colspan="8" class="text-center py-5 text-muted"><span data-i18n="contacts.tab_hint">Open this tab to load contacts.</span></td></tr>
+                  </tbody>
+                </table>
+                </div>
               </div>
+              <div id="fileContactsGroupedView" class="d-none"></div>
             </div>
           </div>
         </div>

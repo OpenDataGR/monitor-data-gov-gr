@@ -72,6 +72,7 @@ const TRANSLATIONS = {
     'contacts.export_filter_none': 'all portal members',
     'contacts.col_username': 'Username',
     'contacts.col_role': 'Role',
+    'contacts.col_type': 'Type',
     'contacts.col_state': 'State',
     'contacts.role_admin': 'Admin',
     'contacts.role_editor': 'Editor',
@@ -632,6 +633,7 @@ const TRANSLATIONS = {
     'contacts.export_filter_none': 'όλων των μελών πύλης',
     'contacts.col_username': 'Όνομα Χρήστη',
     'contacts.col_role': 'Ρόλος',
+    'contacts.col_type': 'Τύπος',
     'contacts.col_state': 'Κατάσταση',
     'contacts.role_admin': 'Διαχειριστής',
     'contacts.role_editor': 'Συντάκτης',
@@ -6157,7 +6159,7 @@ function renderUserPanel(u) {
         ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.position')}</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
         ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.tel')}</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a></dd>` : ''}
         ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.mobile')}</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a></dd>` : ''}
-        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.col_role')}</dt><dd class="col-7 mb-1">${
+        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.col_type')}</dt><dd class="col-7 mb-1">${
           c.contact_type.split(',').map(s => s.trim()).filter(Boolean)
             .map(s => `<span class="badge me-1 mb-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(_CONTACT_TYPE_I18N_KEY[s] ? t(_CONTACT_TYPE_I18N_KEY[s]) : s)}</span>`).join('')
         }</dd>` : ''}
@@ -6705,6 +6707,7 @@ async function loadContactsTab(force = false) {
       // so the Contacts tab may not be visible here.
       if (_isTabActive('tab-contacts')) {
         renderContactsSummary();
+        if (_fileContactsCache) renderFileContactsSummary();
         filterContactsTab();
         renderUnmatchedContacts();
       }
@@ -6762,6 +6765,7 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
     show('contactsReloadBtn').disabled = false;
     if (_isTabActive('tab-contacts')) {
       renderContactsSummary();
+      if (_fileContactsCache) renderFileContactsSummary();
       filterContactsTab();
       renderUnmatchedContacts();
     }
@@ -7097,6 +7101,18 @@ function setContactsView(mode) {
   show('contactsViewGroupedBtn').className = 'btn btn-sm ' + (mode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
   show('contactsExpandAllBtn').classList.toggle('d-none', mode !== 'grouped');
   show('contactsCollapseAllBtn').classList.toggle('d-none', mode !== 'grouped');
+  // The layout toggle is shared across all three scopes, but each scope has
+  // its own pair of flat/grouped containers -- only the active scope's pair
+  // should actually flip; the inactive scope's containers stay however
+  // setContactsScope last left them; filterContactsTab()/filterFileContactsTab()
+  // (below) re-show the right one for whichever scope is current.
+  if (_contactsScope === 'file') {
+    show('fileContactsFlatView').classList.toggle('d-none', mode !== 'flat');
+    show('fileContactsGroupedView').classList.toggle('d-none', mode !== 'grouped');
+  } else {
+    show('contactsFlatView').classList.toggle('d-none', mode !== 'flat');
+    show('contactsGroupedView').classList.toggle('d-none', mode !== 'grouped');
+  }
   filterContactsTab();
 }
 
@@ -7104,7 +7120,9 @@ function setContactsView(mode) {
 // below it, the file contacts that have no matching portal account. Portal Members =
 // the same enriched portal-account table, minus that no-portal-account section (a pure
 // "what does the portal say" view). File Contacts = every org_contacts row regardless
-// of portal match, fetched separately via /api/contacts.
+// of portal match, fetched separately via /api/contacts. All three share the same
+// All/By-Organization layout toggle and search box; each has its own filter-card
+// facets (Role/State vs Type/Portal-account) since the underlying data differs.
 let _contactsScope = 'unified';   // 'unified' | 'portal' | 'file'
 
 function setContactsScope(scope) {
@@ -7114,13 +7132,16 @@ function setContactsScope(scope) {
   show('contactsScopeFileBtn').className    = 'btn btn-sm ' + (scope === 'file'    ? 'btn-primary' : 'btn-outline-primary');
 
   const isFile = scope === 'file';
-  show('contactsLayoutToggle').classList.toggle('d-none', isFile);
   show('contactsFilterSummaryPanel').classList.toggle('d-none', isFile);
+  show('fileContactsFilterSummaryPanel').classList.toggle('d-none', !isFile);
   show('fileContactsView').classList.toggle('d-none', !isFile);
   show('contactsFlatView').classList.toggle('d-none', isFile || _contactsViewMode !== 'flat');
   show('contactsGroupedView').classList.toggle('d-none', isFile || _contactsViewMode !== 'grouped');
+  show('fileContactsFlatView').classList.toggle('d-none', !isFile || _contactsViewMode !== 'flat');
+  show('fileContactsGroupedView').classList.toggle('d-none', !isFile || _contactsViewMode !== 'grouped');
 
   if (isFile) {
+    renderFileContactsSummary();
     if (_fileContactsCache) filterFileContactsTab();
     else loadFileContactsTab();
     return;
@@ -7303,11 +7324,137 @@ async function loadFileContactsTab(force = false) {
     const resp = await fetch(API_BASE + 'api/contacts');
     const data = await resp.json();
     _fileContactsCache = Array.isArray(data) ? data : [];
+    renderFileContactsSummary();
     filterFileContactsTab();
   } catch (e) {
     show('fileContactsTableBody').innerHTML =
       `<tr><td colspan="8" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
   }
+}
+
+// A file contact counts as portal-linked if some portal-member row carries
+// its id (set server-side by _do_fetch_portal_members's email match).
+function _fileContactsPortalMap() {
+  const m = new Map();
+  for (const x of (_portalMembersCache || [])) {
+    if (x.contact_id && !m.has(x.contact_id)) m.set(x.contact_id, x);
+  }
+  return m;
+}
+
+let _fileContactsSortCol = 'name';
+let _fileContactsSortDir = 'asc';
+
+function sortFileContacts(col) {
+  if (_fileContactsSortCol === col) _fileContactsSortDir = _fileContactsSortDir === 'asc' ? 'desc' : 'asc';
+  else { _fileContactsSortCol = col; _fileContactsSortDir = 'asc'; }
+  filterFileContactsTab();
+}
+
+function _fileContactsSortArrow(col) {
+  if (_fileContactsSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
+  return _fileContactsSortDir === 'asc' ? ' ↑' : ' ↓';
+}
+
+// Type and Portal-link are independent, combinable facets -- same pattern as
+// the Unified/Portal Role+State cards. A file contact can hold several
+// contact_type values at once (comma-separated), so the Type facet filters
+// by "list includes this value" rather than exclusive equality.
+let _fileContactsTypeFilter   = null;  // e.g. 'Org Administrator', or null = every type
+let _fileContactsLinkedFilter = null;  // 'linked' | 'unlinked' | null
+let _fileContactsSummaryCards = [];
+
+const _FILE_CONTACT_TYPES = Object.keys(CONTACT_TYPE_CLS);
+const _FILE_CONTACT_TYPE_CARD = {
+  'Org Administrator':                { bg: 'bg-primary bg-opacity-10',   text: 'text-primary',   icon: 'bi-shield-check' },
+  'Org Editor':                       { bg: 'bg-success bg-opacity-10',   text: 'text-success',   icon: 'bi-pencil-square' },
+  'Org Member':                       { bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-person' },
+  'Data Governance Officer':          { bg: 'bg-info bg-opacity-10',      text: 'text-info',      icon: 'bi-clipboard-data' },
+  'Data Steward':                     { bg: 'bg-warning bg-opacity-10',   text: 'text-warning',   icon: 'bi-briefcase' },
+  'Κεντρικός Διαχειριστής Οργανισμού': { bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-award' },
+};
+
+function _fileContactsFilterIsActive(f) {
+  if (f.type === 'type')   return _fileContactsTypeFilter   === f.value;
+  if (f.type === 'linked') return _fileContactsLinkedFilter === f.value;
+  return false;
+}
+
+function _renderFileContactsFilterGroup(elId, indices, tabDotId) {
+  const prepared = indices.map(idx => {
+    const c = _fileContactsSummaryCards[idx];
+    return { ...c, active: _fileContactsFilterIsActive(c.filter), onclick: `setFileContactsFilter(${idx})` };
+  });
+  const hasActive = indices.some(idx => {
+    const f = _fileContactsSummaryCards[idx].filter;
+    return f.value !== null && _fileContactsFilterIsActive(f);
+  });
+  _renderFilterCardsGrid(elId, prepared, tabDotId, hasActive ? {} : null);
+}
+
+function renderFileContactsSummary() {
+  if (!_fileContactsCache) {
+    document.getElementById('fileContactsTypeSummary').innerHTML = '';
+    document.getElementById('fileContactsLinkedSummary').innerHTML = '';
+    return;
+  }
+  const portalByContactId = _fileContactsPortalMap();
+
+  // Each dimension's counts are scoped to the OTHER dimension's current
+  // selection (but not its own) -- same as the Unified/Portal Role+State cards.
+  const typeScopeRows = _fileContactsLinkedFilter
+    ? _fileContactsCache.filter(c => (portalByContactId.has(c.id) ? 'linked' : 'unlinked') === _fileContactsLinkedFilter)
+    : _fileContactsCache;
+  const linkedScopeRows = _fileContactsTypeFilter
+    ? _fileContactsCache.filter(c => (c.contact_type || '').split(',').map(s => s.trim()).includes(_fileContactsTypeFilter))
+    : _fileContactsCache;
+
+  const typeCounts = {};
+  _FILE_CONTACT_TYPES.forEach(ty => typeCounts[ty] = 0);
+  for (const c of typeScopeRows) {
+    for (const ty of (c.contact_type || '').split(',').map(s => s.trim()).filter(Boolean)) {
+      if (ty in typeCounts) typeCounts[ty]++;
+    }
+  }
+  let linkedCount = 0, unlinkedCount = 0;
+  for (const c of linkedScopeRows) {
+    if (portalByContactId.has(c.id)) linkedCount++; else unlinkedCount++;
+  }
+
+  _fileContactsSummaryCards = [
+    { filter: { type: 'type', value: null }, label: t('contacts.total'), value: typeScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+    ..._FILE_CONTACT_TYPES.map(ty => ({
+      filter: { type: 'type', value: ty },
+      label: _CONTACT_TYPE_I18N_KEY[ty] ? t(_CONTACT_TYPE_I18N_KEY[ty]) : ty,
+      value: typeCounts[ty],
+      ..._FILE_CONTACT_TYPE_CARD[ty],
+    })),
+    { filter: { type: 'linked', value: null },       label: t('contacts.total'),              value: linkedScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+    { filter: { type: 'linked', value: 'linked' },   label: t('contacts.has_portal_account'), value: linkedCount,   bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-globe2" },
+    { filter: { type: 'linked', value: 'unlinked' }, label: t('contacts.no_portal_account'),  value: unlinkedCount, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-file-earmark-person" },
+  ];
+
+  const typeIndices   = _fileContactsSummaryCards.map((_, i) => i).filter(i => _fileContactsSummaryCards[i].filter.type === 'type');
+  const linkedIndices = _fileContactsSummaryCards.map((_, i) => i).filter(i => _fileContactsSummaryCards[i].filter.type === 'linked');
+  _renderFileContactsFilterGroup('fileContactsTypeSummary',   typeIndices,   'fileContactsTypeTabDot');
+  _renderFileContactsFilterGroup('fileContactsLinkedSummary', linkedIndices, 'fileContactsLinkedTabDot');
+}
+
+function setFileContactsFilter(idx) {
+  const card = _fileContactsSummaryCards[idx];
+  if (!card) return;
+  const f = card.filter;
+  if (f.type === 'type') _fileContactsTypeFilter = (_fileContactsTypeFilter === f.value) ? null : f.value;
+  else if (f.type === 'linked') _fileContactsLinkedFilter = (_fileContactsLinkedFilter === f.value) ? null : f.value;
+  renderFileContactsSummary();
+  filterFileContactsTab();
+}
+
+function clearFileContactsFilters() {
+  _fileContactsTypeFilter = null;
+  _fileContactsLinkedFilter = null;
+  renderFileContactsSummary();
+  filterFileContactsTab();
 }
 
 function filterFileContactsTab() {
@@ -7322,49 +7469,102 @@ function filterFileContactsTab() {
     _ns(c.position    || '').includes(search) ||
     _ns(c.email       || '').includes(search)
   );
-  renderFileContactsTab(rows);
-}
 
-function renderFileContactsTab(rows) {
+  if (_fileContactsTypeFilter) {
+    rows = rows.filter(c => (c.contact_type || '').split(',').map(s => s.trim()).includes(_fileContactsTypeFilter));
+  }
+  const portalByContactId = _fileContactsPortalMap();
+  if (_fileContactsLinkedFilter) {
+    rows = rows.filter(c => (portalByContactId.has(c.id) ? 'linked' : 'unlinked') === _fileContactsLinkedFilter);
+  }
+
+  rows = [...rows].sort((a, b) => {
+    let av, bv;
+    switch (_fileContactsSortCol) {
+      case 'org':   av = _ns(a.org_label || a.org_code || ''); bv = _ns(b.org_label || b.org_code || ''); break;
+      case 'type':  av = _ns(a.contact_type || ''); bv = _ns(b.contact_type || ''); break;
+      case 'email': av = (a.email || '').toLowerCase(); bv = (b.email || '').toLowerCase(); break;
+      default:      av = _ns(`${a.first_name || ''} ${a.last_name || ''}`); bv = _ns(`${b.first_name || ''} ${b.last_name || ''}`);
+    }
+    if (av < bv) return _fileContactsSortDir === 'asc' ? -1 : 1;
+    if (av > bv) return _fileContactsSortDir === 'asc' ?  1 : -1;
+    return 0;
+  });
+
+  const th = (col, label, extraStyle = '') =>
+    `<th style="cursor:pointer;user-select:none;${extraStyle}" onclick="sortFileContacts('${col}')">${label}${_fileContactsSortArrow(col)}</th>`;
+  document.querySelector('#fileContactsTable thead tr').innerHTML =
+    `<th style="width:3rem">#</th>` +
+    th('name',  t('contacts.col_name'))   +
+    th('org',   t('contacts.col_org'))   +
+    th('type',  t('contacts.col_type'))  +
+    `<th>${t('contacts.col_portal')}</th>` +
+    th('email', t('contacts.email'), 'width:150px') +
+    `<th style="width:90px">${t('contacts.col_tel')}</th>` +
+    `<th style="width:4rem"></th>`;
+
   show('contactsCount').innerHTML = rows.length < _fileContactsCache.length
     ? `${rows.length} / ${_fileContactsCache.length}` : `${_fileContactsCache.length}`;
 
+  const flatDiv    = show('fileContactsFlatView');
+  const groupedDiv = show('fileContactsGroupedView');
+  if (_contactsViewMode === 'grouped') {
+    flatDiv.classList.add('d-none');
+    groupedDiv.classList.remove('d-none');
+    renderFileContactsGrouped(rows, portalByContactId);
+    return;
+  }
+  flatDiv.classList.remove('d-none');
+  groupedDiv.classList.add('d-none');
+  renderFileContactsTab(rows, portalByContactId);
+}
+
+function _fileContactPosLine(c) {
+  return c.position
+    ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(c.position)}">${esc(c.position)}</div>` : '';
+}
+function _fileContactTypeBadges(c) {
+  const badges = (c.contact_type || '').split(',').map(s => s.trim()).filter(Boolean)
+    .map(s => `<span class="badge me-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(_CONTACT_TYPE_I18N_KEY[s] ? t(_CONTACT_TYPE_I18N_KEY[s]) : s)}</span>`).join('');
+  return badges || '<span class="text-muted small">—</span>';
+}
+function _fileContactPortalBadge(c, portalByContactId) {
+  const m = portalByContactId.get(c.id);
+  return m
+    ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db;cursor:pointer" title="${esc(t('contacts.has_portal_account'))}"
+         onclick="event.stopPropagation();openUserPanel('${esc(m.username)}')"><i class="bi bi-globe2 me-1"></i>${esc(m.username)}</span>`
+    : `<span class="text-muted small">${esc(t('contacts.no_portal_account'))}</span>`;
+}
+function _fileContactActions(c, portalByContactId) {
+  const m = portalByContactId.get(c.id);
+  return `<div class="d-flex gap-1">
+      <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('common.edit'))}"
+        onclick="openPmEditFileContact(${c.id})"><i class="bi bi-pencil"></i></button>
+      <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('common.delete'))}"
+        onclick="deletePmContactRecord(${c.id}, ${m ? `'${esc(m.username)}'` : 'null'})"><i class="bi bi-trash"></i></button>
+    </div>`;
+}
+
+function renderFileContactsTab(rows, portalByContactId) {
   if (!rows.length) {
     show('fileContactsTableBody').innerHTML =
       `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
     return;
   }
-
-  // A file contact counts as portal-linked if some portal-member row carries
-  // its id (set server-side by _do_fetch_portal_members's email match).
-  const portalByContactId = new Map();
-  for (const m of (_portalMembersCache || [])) {
-    if (m.contact_id && !portalByContactId.has(m.contact_id)) portalByContactId.set(m.contact_id, m);
-  }
-
   show('fileContactsTableBody').innerHTML = rows.map((c, i) => {
     const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
-    const posLine = c.position
-      ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(c.position)}">${esc(c.position)}</div>` : '';
-    const typeBadges = (c.contact_type || '').split(',').map(s => s.trim()).filter(Boolean)
-      .map(s => `<span class="badge me-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(s)}</span>`).join('');
     const orgBadge = (c.org_label || c.org_code)
       ? `<span class="badge bg-light text-dark border" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
            title="${esc(c.org_label || c.org_code)}">${esc(c.org_label || c.org_code)}</span>` : '—';
-    const portalMatch = portalByContactId.get(c.id);
-    const portalBadge = portalMatch
-      ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db;cursor:pointer" title="${esc(t('contacts.has_portal_account'))}"
-           onclick="event.stopPropagation();openUserPanel('${esc(portalMatch.username)}')"><i class="bi bi-globe2 me-1"></i>${esc(portalMatch.username)}</span>`
-      : `<span class="text-muted small">${esc(t('contacts.no_portal_account'))}</span>`;
     return `<tr>
       <td class="text-muted small">${i + 1}</td>
       <td style="max-width:200px">
         <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
-        ${posLine}
+        ${_fileContactPosLine(c)}
       </td>
       <td style="max-width:180px">${orgBadge}</td>
-      <td>${typeBadges || '<span class="text-muted small">—</span>'}</td>
-      <td>${portalBadge}</td>
+      <td>${_fileContactTypeBadges(c)}</td>
+      <td>${_fileContactPortalBadge(c, portalByContactId)}</td>
       <td class="small" style="width:150px;max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
         ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
       </td>
@@ -7372,15 +7572,71 @@ function renderFileContactsTab(rows) {
         ${c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(c.tel)}</a>`
                 : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
       </td>
-      <td onclick="event.stopPropagation()">
-        <div class="d-flex gap-1">
-          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('common.edit'))}"
-            onclick="openPmEditFileContact(${c.id})"><i class="bi bi-pencil"></i></button>
-          <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('common.delete'))}"
-            onclick="deletePmContactRecord(${c.id}, ${portalMatch ? `'${esc(portalMatch.username)}'` : 'null'})"><i class="bi bi-trash"></i></button>
-        </div>
-      </td>
+      <td onclick="event.stopPropagation()">${_fileContactActions(c, portalByContactId)}</td>
     </tr>`;
+  }).join('');
+}
+
+function renderFileContactsGrouped(rows, portalByContactId) {
+  const groups = new Map();
+  rows.forEach(c => {
+    const orgCode  = c.org_code  || '__none__';
+    const orgLabel = c.org_label || c.org_code || '(no organization)';
+    if (!groups.has(orgCode)) groups.set(orgCode, { slug: orgCode, label: orgLabel, items: [] });
+    groups.get(orgCode).items.push(c);
+  });
+  const sorted = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, 'el'));
+  _contactsGroupSlugs = sorted.map(g => g.slug);
+  const el = show('fileContactsGroupedView');
+  if (!sorted.length) {
+    el.innerHTML = `<p class="text-muted text-center py-4">${t('contacts.no_results')}</p>`;
+    return;
+  }
+  el.innerHTML = sorted.map(g => {
+    const gId        = 'fcg_' + g.slug.replace(/\W/g, '_');
+    const isNone     = g.slug === '__none__';
+    const isExpanded = _contactsExpandedOrgs.has(g.slug);
+    return `
+    <div class="border rounded mb-2" ${isNone ? 'style="border-color:#fd7e14!important"' : ''}>
+      <div class="d-flex align-items-center justify-content-between px-3 py-2 ${isNone ? 'comm-group-row-warn' : 'comm-group-row'}"
+           style="cursor:pointer" onclick="toggleContactsOrg('${esc(g.slug)}')">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+          <i class="bi bi-${isNone ? 'person-slash text-warning' : 'building text-primary'}"></i>
+          <span class="fw-semibold small ${isNone ? 'text-warning-emphasis' : ''}">${esc(g.label)}</span>
+          <span class="badge ${isNone ? 'bg-warning text-dark' : 'bg-secondary'} rounded-pill">${g.items.length}</span>
+        </div>
+        ${g.slug !== '__none__' ? `<button class="btn btn-outline-primary btn-sm py-0 px-2" title="${esc(g.label)}"
+          onclick="event.stopPropagation();openOrgPanel('${esc(g.slug)}')">
+          <i class="bi bi-box-arrow-up-right"></i>
+        </button>` : ''}
+      </div>
+      <div id="${gId}" class="${isExpanded ? '' : 'd-none'} px-3">
+        <table class="table table-hover table-sm align-middle mb-0">
+          <tbody>
+            ${g.items.map(c => {
+              const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
+              return `<tr>
+                <td style="max-width:200px">
+                  <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
+                  ${_fileContactPosLine(c)}
+                </td>
+                <td>${_fileContactTypeBadges(c)}</td>
+                <td>${_fileContactPortalBadge(c, portalByContactId)}</td>
+                <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
+                  ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
+                </td>
+                <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
+                  ${c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(c.tel)}</a>`
+                          : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
+                </td>
+                <td onclick="event.stopPropagation()">${_fileContactActions(c, portalByContactId)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
   }).join('');
 }
 
