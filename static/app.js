@@ -7140,13 +7140,18 @@ function setContactsScope(scope) {
   show('fileContactsFlatView').classList.toggle('d-none', !isFile || _contactsViewMode !== 'flat');
   show('fileContactsGroupedView').classList.toggle('d-none', !isFile || _contactsViewMode !== 'grouped');
 
+  // Hides itself unless scope is 'unified' -- called unconditionally (not just
+  // in the non-file branch below) since switching TO 'file' previously left
+  // this section showing whatever visibility it already had, leaking a stale
+  // "contacts without portal account" table into the File Contacts view.
+  renderUnmatchedContacts();
+
   if (isFile) {
     renderFileContactsSummary();
     if (_fileContactsCache) filterFileContactsTab();
     else loadFileContactsTab();
     return;
   }
-  renderUnmatchedContacts();
   filterContactsTab();
 }
 
@@ -7332,14 +7337,40 @@ async function loadFileContactsTab(force = false) {
   }
 }
 
-// A file contact counts as portal-linked if some portal-member row carries
-// its id (set server-side by _do_fetch_portal_members's email match).
+// Contact-id map -- gives a specific portal member to badge/link to when one
+// exists, but is NOT the source of truth for "is this contact matched" (see
+// _fileContactIsLinked below for why).
 function _fileContactsPortalMap() {
   const m = new Map();
   for (const x of (_portalMembersCache || [])) {
     if (x.contact_id && !m.has(x.contact_id)) m.set(x.contact_id, x);
   }
   return m;
+}
+
+// All portal-member emails, lowercased -- the actual definition of "matched"
+// used everywhere else in this file (_do_fetch_portal_members's own
+// `unmatched` list, i.e. the "23" badge below the Unified view, is built the
+// same way: email-set membership, not contact_id). contact_id alone
+// undercounts: when two OrgContact rows share an email, the server's
+// contact_by_email dict only keeps the last one, so only that one contact
+// ever gets a contact_id stamped onto a portal-member row -- the other is
+// still correctly "matched" by email, just invisible to a contact_id lookup.
+// Matching this same email-based definition here (rather than a stricter,
+// more "precise" per-id one) is what keeps this view's counts consistent
+// with the rest of the app instead of quietly disagreeing with them.
+function _fileContactsPortalEmails() {
+  const s = new Set();
+  for (const x of (_portalMembersCache || [])) {
+    if (x.email) s.add(x.email.toLowerCase().trim());
+  }
+  return s;
+}
+
+function _fileContactIsLinked(c, portalByContactId, portalEmails) {
+  if (portalByContactId.has(c.id)) return true;
+  const e = (c.email || '').toLowerCase().trim();
+  return !!e && portalEmails.has(e);
 }
 
 let _fileContactsSortCol = 'name';
@@ -7399,11 +7430,12 @@ function renderFileContactsSummary() {
     return;
   }
   const portalByContactId = _fileContactsPortalMap();
+  const portalEmails      = _fileContactsPortalEmails();
 
   // Each dimension's counts are scoped to the OTHER dimension's current
   // selection (but not its own) -- same as the Unified/Portal Role+State cards.
   const typeScopeRows = _fileContactsLinkedFilter
-    ? _fileContactsCache.filter(c => (portalByContactId.has(c.id) ? 'linked' : 'unlinked') === _fileContactsLinkedFilter)
+    ? _fileContactsCache.filter(c => (_fileContactIsLinked(c, portalByContactId, portalEmails) ? 'linked' : 'unlinked') === _fileContactsLinkedFilter)
     : _fileContactsCache;
   const linkedScopeRows = _fileContactsTypeFilter
     ? _fileContactsCache.filter(c => (c.contact_type || '').split(',').map(s => s.trim()).includes(_fileContactsTypeFilter))
@@ -7418,7 +7450,7 @@ function renderFileContactsSummary() {
   }
   let linkedCount = 0, unlinkedCount = 0;
   for (const c of linkedScopeRows) {
-    if (portalByContactId.has(c.id)) linkedCount++; else unlinkedCount++;
+    if (_fileContactIsLinked(c, portalByContactId, portalEmails)) linkedCount++; else unlinkedCount++;
   }
 
   _fileContactsSummaryCards = [
@@ -7474,8 +7506,9 @@ function filterFileContactsTab() {
     rows = rows.filter(c => (c.contact_type || '').split(',').map(s => s.trim()).includes(_fileContactsTypeFilter));
   }
   const portalByContactId = _fileContactsPortalMap();
+  const portalEmails      = _fileContactsPortalEmails();
   if (_fileContactsLinkedFilter) {
-    rows = rows.filter(c => (portalByContactId.has(c.id) ? 'linked' : 'unlinked') === _fileContactsLinkedFilter);
+    rows = rows.filter(c => (_fileContactIsLinked(c, portalByContactId, portalEmails) ? 'linked' : 'unlinked') === _fileContactsLinkedFilter);
   }
 
   rows = [...rows].sort((a, b) => {
@@ -7511,12 +7544,12 @@ function filterFileContactsTab() {
   if (_contactsViewMode === 'grouped') {
     flatDiv.classList.add('d-none');
     groupedDiv.classList.remove('d-none');
-    renderFileContactsGrouped(rows, portalByContactId);
+    renderFileContactsGrouped(rows, portalByContactId, portalEmails);
     return;
   }
   flatDiv.classList.remove('d-none');
   groupedDiv.classList.add('d-none');
-  renderFileContactsTab(rows, portalByContactId);
+  renderFileContactsTab(rows, portalByContactId, portalEmails);
 }
 
 function _fileContactPosLine(c) {
@@ -7528,12 +7561,20 @@ function _fileContactTypeBadges(c) {
     .map(s => `<span class="badge me-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(_CONTACT_TYPE_I18N_KEY[s] ? t(_CONTACT_TYPE_I18N_KEY[s]) : s)}</span>`).join('');
   return badges || '<span class="text-muted small">—</span>';
 }
-function _fileContactPortalBadge(c, portalByContactId) {
+function _fileContactPortalBadge(c, portalByContactId, portalEmails) {
   const m = portalByContactId.get(c.id);
-  return m
-    ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db;cursor:pointer" title="${esc(t('contacts.has_portal_account'))}"
-         onclick="event.stopPropagation();openUserPanel('${esc(m.username)}')"><i class="bi bi-globe2 me-1"></i>${esc(m.username)}</span>`
-    : `<span class="text-muted small">${esc(t('contacts.no_portal_account'))}</span>`;
+  if (m) {
+    return `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db;cursor:pointer" title="${esc(t('contacts.has_portal_account'))}"
+         onclick="event.stopPropagation();openUserPanel('${esc(m.username)}')"><i class="bi bi-globe2 me-1"></i>${esc(m.username)}</span>`;
+  }
+  // Matched by email but no specific portal-member row carries this contact's
+  // id (another OrgContact shares the same email and won that slot server-side
+  // -- see _fileContactsPortalEmails) -- still linked, just not to one
+  // particular account we can deep-link to.
+  if (_fileContactIsLinked(c, portalByContactId, portalEmails)) {
+    return `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('contacts.has_portal_account'))}"><i class="bi bi-globe2 me-1"></i>${esc(t('contacts.has_portal_account'))}</span>`;
+  }
+  return `<span class="text-muted small">${esc(t('contacts.no_portal_account'))}</span>`;
 }
 function _fileContactActions(c, portalByContactId) {
   const m = portalByContactId.get(c.id);
@@ -7545,7 +7586,7 @@ function _fileContactActions(c, portalByContactId) {
     </div>`;
 }
 
-function renderFileContactsTab(rows, portalByContactId) {
+function renderFileContactsTab(rows, portalByContactId, portalEmails) {
   if (!rows.length) {
     show('fileContactsTableBody').innerHTML =
       `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
@@ -7564,7 +7605,7 @@ function renderFileContactsTab(rows, portalByContactId) {
       </td>
       <td style="max-width:180px">${orgBadge}</td>
       <td>${_fileContactTypeBadges(c)}</td>
-      <td>${_fileContactPortalBadge(c, portalByContactId)}</td>
+      <td>${_fileContactPortalBadge(c, portalByContactId, portalEmails)}</td>
       <td class="small" style="width:150px;max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
         ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
       </td>
@@ -7577,7 +7618,7 @@ function renderFileContactsTab(rows, portalByContactId) {
   }).join('');
 }
 
-function renderFileContactsGrouped(rows, portalByContactId) {
+function renderFileContactsGrouped(rows, portalByContactId, portalEmails) {
   const groups = new Map();
   rows.forEach(c => {
     const orgCode  = c.org_code  || '__none__';
@@ -7622,7 +7663,7 @@ function renderFileContactsGrouped(rows, portalByContactId) {
                   ${_fileContactPosLine(c)}
                 </td>
                 <td>${_fileContactTypeBadges(c)}</td>
-                <td>${_fileContactPortalBadge(c, portalByContactId)}</td>
+                <td>${_fileContactPortalBadge(c, portalByContactId, portalEmails)}</td>
                 <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
                   ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
                 </td>
