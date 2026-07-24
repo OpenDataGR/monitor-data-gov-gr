@@ -96,6 +96,8 @@ const TRANSLATIONS = {
     'contacts.unmatched_heading': 'Contacts without portal account',
     'contacts.has_portal_account': 'Has portal account',
     'contacts.has_contact_file': 'Has contact file entry',
+    'contacts.no_contact_file': 'No contact file entry',
+    'contacts.filter_group_file': 'File Info',
     'contacts.edit_contact_info': 'Edit contact info',
     'contacts.delete_contact_record': 'Delete contact record',
     'contacts.email_from_file': 'Email from contacts file: {email}',
@@ -656,6 +658,8 @@ const TRANSLATIONS = {
     'contacts.unmatched_heading': 'Επαφές χωρίς λογαριασμό πύλης',
     'contacts.has_portal_account': 'Έχει λογαριασμό πύλης',
     'contacts.has_contact_file': 'Έχει εγγραφή στο αρχείο επαφών',
+    'contacts.no_contact_file': 'Χωρίς εγγραφή στο αρχείο επαφών',
+    'contacts.filter_group_file': 'Στοιχεία Αρχείου',
     'contacts.edit_contact_info': 'Επεξεργασία στοιχείων επαφής',
     'contacts.delete_contact_record': 'Διαγραφή εγγραφής επαφής',
     'contacts.email_from_file': 'Email από το αρχείο επαφών: {email}',
@@ -6879,17 +6883,20 @@ function _dedupeContacts(rows) {
   return [...seen.values()];
 }
 
-// Role and State are independent, combinable facets (same reasoning as the
-// Dataset Catalog's Type/HVD/Harvested tabs) — a contact can be filtered by
-// role AND state at once, so each dimension gets its own filter value rather
-// than the old single _contactsActiveFilter that could only hold one.
+// Role, State, and File info are independent, combinable facets (same
+// reasoning as the Dataset Catalog's Type/HVD/Harvested tabs) — a contact can
+// be filtered by role AND state AND file-info presence at once, so each
+// dimension gets its own filter value rather than the old single
+// _contactsActiveFilter that could only hold one.
 let _contactsRoleFilter  = null;   // e.g. 'admin', or null = every role
 let _contactsStateFilter = null;   // e.g. 'active', or null = every state
+let _contactsFileFilter  = null;   // 'has' | 'none', or null = regardless of file info
 let _contactsSummaryCards = [];
 
 function _contactsFilterIsActive(f) {
   if (f.type === 'role')  return _contactsRoleFilter  === f.value;
   if (f.type === 'state') return _contactsStateFilter === f.value;
+  if (f.type === 'file')  return _contactsFileFilter  === f.value;
   return false;
 }
 
@@ -6919,21 +6926,30 @@ function renderContactsSummary() {
   if (!_portalMembersCache) {
     document.getElementById('contactsRoleSummary').innerHTML = '';
     document.getElementById('contactsStateSummary').innerHTML = '';
+    document.getElementById('contactsFileSummary').innerHTML = '';
     return;
   }
   const allRows = _dedupeContacts(_portalMembersCache);
+  const hasFile = m => !!m.contact_id;
 
-  // Each dimension's counts are scoped to the OTHER dimension's current
-  // selection (but not its own), same as the Dataset Catalog's Type/HVD/
-  // Harvested tabs — so picking "Admin" updates what State's numbers mean
-  // ("state breakdown among admins") instead of staying frozen at the
+  // Each dimension's counts are scoped to the OTHER two dimensions' current
+  // selections (but not its own), same as the Dataset Catalog's Type/HVD/
+  // Harvested tabs — so picking "Admin" updates what State's and File info's
+  // numbers mean ("breakdown among admins") instead of staying frozen at the
   // unfiltered total.
-  const roleScopeRows = _contactsStateFilter
-    ? allRows.filter(m => (m.state || 'active') === _contactsStateFilter)
-    : allRows;
-  const stateScopeRows = _contactsRoleFilter
-    ? allRows.filter(m => _contactsRoleFilter === 'sysadmin' ? m.sysadmin : (!m.sysadmin && m.capacity === _contactsRoleFilter))
-    : allRows;
+  const stateAndFileMatch = m =>
+    (!_contactsStateFilter || (m.state || 'active') === _contactsStateFilter) &&
+    (!_contactsFileFilter  || (hasFile(m) ? 'has' : 'none') === _contactsFileFilter);
+  const roleAndFileMatch = m =>
+    (!_contactsRoleFilter || (_contactsRoleFilter === 'sysadmin' ? m.sysadmin : (!m.sysadmin && m.capacity === _contactsRoleFilter))) &&
+    (!_contactsFileFilter || (hasFile(m) ? 'has' : 'none') === _contactsFileFilter);
+  const roleAndStateMatch = m =>
+    (!_contactsRoleFilter  || (_contactsRoleFilter === 'sysadmin' ? m.sysadmin : (!m.sysadmin && m.capacity === _contactsRoleFilter))) &&
+    (!_contactsStateFilter || (m.state || 'active') === _contactsStateFilter);
+
+  const roleScopeRows  = allRows.filter(stateAndFileMatch);
+  const stateScopeRows = allRows.filter(roleAndFileMatch);
+  const fileScopeRows  = allRows.filter(roleAndStateMatch);
 
   const roleCounts  = { admin: 0, editor: 0, member: 0, user: 0, sysadmin: 0 };
   for (const m of roleScopeRows) {
@@ -6945,11 +6961,15 @@ function renderContactsSummary() {
     const st = m.state || 'active';
     stateCounts[st] = (stateCounts[st] || 0) + 1;
   }
+  let fileHasCount = 0, fileNoneCount = 0;
+  for (const m of fileScopeRows) {
+    if (hasFile(m)) fileHasCount++; else fileNoneCount++;
+  }
 
   // Each dimension keeps its own "Total/All" card (a separate filter object,
   // and now also its own count — the size of ITS OWN scope, i.e. everyone
-  // matching the other dimension's filter) since clearing the Role filter
-  // and clearing the State filter are two independent actions.
+  // matching the other dimensions' filters) since clearing one facet's
+  // filter is an independent action from clearing another's.
   _contactsSummaryCards = [
     { filter: { type: 'role', value: null },       label: t('contacts.total'), value: roleScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
     { filter: { type: 'role', value: 'admin' },    label: t('contacts.role_admin'),    value: roleCounts.admin,    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-shield-check" },
@@ -6961,10 +6981,14 @@ function renderContactsSummary() {
     { filter: { type: 'state', value: 'active' },  label: t('contacts.state_active'),  value: stateCounts.active,  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-check-circle" },
     { filter: { type: 'state', value: 'pending' }, label: t('contacts.state_pending'), value: stateCounts.pending, bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-hourglass-split" },
     { filter: { type: 'state', value: 'deleted' }, label: t('contacts.state_deleted'), value: stateCounts.deleted, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-x-circle" },
+    { filter: { type: 'file', value: null },       label: t('contacts.total'),            value: fileScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+    { filter: { type: 'file', value: 'has' },      label: t('contacts.has_contact_file'), value: fileHasCount,        bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-file-earmark-person" },
+    { filter: { type: 'file', value: 'none' },     label: t('contacts.no_contact_file'),  value: fileNoneCount,       bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-file-earmark-x" },
   ];
 
   _renderContactsFilterGroup('contactsRoleSummary',  [0, 1, 2, 3, 4, 5], 'contactsRoleTabDot');
   _renderContactsFilterGroup('contactsStateSummary', [6, 7, 8, 9],       'contactsStateTabDot');
+  _renderContactsFilterGroup('contactsFileSummary',  [10, 11, 12],      'contactsFileTabDot');
 }
 
 function setContactsFilter(idx) {
@@ -6975,6 +6999,8 @@ function setContactsFilter(idx) {
     _contactsRoleFilter = (_contactsRoleFilter === f.value) ? null : f.value;
   } else if (f.type === 'state') {
     _contactsStateFilter = (_contactsStateFilter === f.value) ? null : f.value;
+  } else if (f.type === 'file') {
+    _contactsFileFilter = (_contactsFileFilter === f.value) ? null : f.value;
   }
   renderContactsSummary();
   filterContactsTab();
@@ -6983,6 +7009,7 @@ function setContactsFilter(idx) {
 function clearContactsFilters() {
   _contactsRoleFilter = null;
   _contactsStateFilter = null;
+  _contactsFileFilter = null;
   renderContactsSummary();
   filterContactsTab();
 }
@@ -7013,6 +7040,9 @@ function filterContactsTab() {
   }
   if (_contactsStateFilter) {
     rows = rows.filter(m => (m.state || 'active') === _contactsStateFilter);
+  }
+  if (_contactsFileFilter) {
+    rows = rows.filter(m => (m.contact_id ? 'has' : 'none') === _contactsFileFilter);
   }
 
   rows = [...rows].sort((a, b) => {

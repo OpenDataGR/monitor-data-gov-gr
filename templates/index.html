@@ -1107,6 +1107,12 @@
                       <span id="contactsStateTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
                     </button>
                   </li>
+                  <li class="nav-item">
+                    <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#contactsFileSummaryPane" type="button">
+                      <i class="bi bi-file-earmark-person me-1"></i><span data-i18n="contacts.filter_group_file">File Info</span>
+                      <span id="contactsFileTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                    </button>
+                  </li>
                 </ul>
                 <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1 mb-2 flex-shrink-0" onclick="clearContactsFilters()">
                   <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">Clear filters</span>
@@ -1118,6 +1124,9 @@
                 </div>
                 <div class="tab-pane fade" id="contactsStateSummaryPane">
                   <div id="contactsStateSummary" class="row g-2"></div>
+                </div>
+                <div class="tab-pane fade" id="contactsFileSummaryPane">
+                  <div id="contactsFileSummary" class="row g-2"></div>
                 </div>
               </div>
             </div>
