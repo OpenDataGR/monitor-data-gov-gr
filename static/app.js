@@ -40,7 +40,7 @@ const TRANSLATIONS = {
     'stat.organizations': 'Organizations',
     'stat.uptime': 'Portal Uptime (24h)',
     'tab.overview': 'Overview',
-    'contacts.title': 'Portal Members',
+    'contacts.title': 'Contacts',
     'contacts.view_all': 'All',
     'contacts.view_by_org': 'By Organization',
     'contacts.scope_portal': 'Portal Members',
@@ -600,7 +600,7 @@ const TRANSLATIONS = {
     'stat.organizations': 'Οργανισμοί',
     'stat.uptime': 'Διαθεσιμότητα Πύλης (24ω)',
     'tab.overview': 'Επισκόπηση',
-    'contacts.title': 'Μέλη Πύλης',
+    'contacts.title': 'Επαφές',
     'contacts.view_all': 'Όλα',
     'contacts.view_by_org': 'Ανά Οργανισμό',
     'contacts.scope_portal': 'Μέλη Πύλης',
@@ -7128,6 +7128,12 @@ function setContactsScope(scope) {
   show('contactsScopeFileBtn').className    = 'btn btn-sm ' + (scope === 'file'   ? 'btn-primary' : 'btn-outline-primary');
 
   const isFile = scope === 'file';
+  // "Add contact" always creates an org_contacts (file) record -- there's no
+  // way to create a portal account from this dashboard, CKAN owns that --
+  // so it only makes sense in File Contacts scope. Enriching an existing
+  // portal member with file info is done via that row's own edit pencil,
+  // not this toolbar button.
+  show('contactsAddBtn').classList.toggle('d-none', !isFile);
   show('contactsFilterSummaryPanel').classList.toggle('d-none', isFile);
   show('fileContactsFilterSummaryPanel').classList.toggle('d-none', !isFile);
   show('fileContactsView').classList.toggle('d-none', !isFile);
