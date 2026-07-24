@@ -6088,7 +6088,10 @@ function openUserPanel(username) {
   document.getElementById('userPanelBody').innerHTML =
     '<div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>';
   _userPanel.show();
-  fetch(API_BASE + 'api/portal-user/' + encodeURIComponent(username))
+  // Query param, not a path segment -- see the matching comment on the
+  // /api/portal-user route in app.py for why (WAF false positive on
+  // usernames that are personal emails ending in .com).
+  fetch(API_BASE + 'api/portal-user?username=' + encodeURIComponent(username))
     .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.error || r.status)))
     .then(data => renderUserPanel(data))
     .catch(err => {

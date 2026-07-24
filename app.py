@@ -388,7 +388,7 @@ _TAB_ROUTE_RULES = [
     ("/api/inbound-emails",        ("comms",)),
     ("/api/contacts",              ("contacts",)),
     ("/api/portal-members",        ("contacts",)),
-    ("/api/portal-user/",          ("contacts",)),
+    ("/api/portal-user",           ("contacts",)),
     # HRMS public-sector org list -- the canonical org picker/autocomplete
     # data source for creating a communication, adding a contact, AND the
     # Organizations tab's own "All Public Sector" view. Not orgs-exclusive.
@@ -5642,8 +5642,21 @@ def contacts_remove():
 
 # ── Portal User detail ───────────────────────────────────────────────────────
 
-@app.route("/api/portal-user/<username>")
-def portal_user_detail(username):
+@app.route("/api/portal-user")
+def portal_user_detail():
+    # Username is a query param, not a path segment -- a CKAN username that's
+    # a personal email (very common: gmail.com/hotmail.com/etc. accounts) ends
+    # in ".com", and Azure Application Gateway's WAF (shared across 21+ sites)
+    # runs a restricted-file-extension check against the request's last PATH
+    # segment specifically (CRS rule 920440 -- ".com" is on its list as a
+    # legacy DOS/Windows executable extension), blocking the request with an
+    # empty-body 403 before it ever reaches this route. Query-string values
+    # aren't inspected by that same basename-extension rule, so this sidesteps
+    # it entirely -- no WAF policy change needed, unlike the earlier session
+    # cookie false positive.
+    username = (freq.args.get("username") or "").strip()
+    if not username:
+        return jsonify({"error": "username is required"}), 400
     if not config.TOKEN:
         return jsonify({"error": "No API token configured"}), 503
     auth_headers = {"User-Agent": "DataGovGR-Dashboard/1.0", "Authorization": config.TOKEN}
