@@ -6795,6 +6795,16 @@ function _pmFileBadge(m) {
     : '';
 }
 
+// A portal member with no contact_id has no file record to edit -- clicking
+// the row action opens the same blank/pre-filled modal either way, but
+// showing "Edit" on a row with nothing to edit is backwards. Add when
+// there's no file record yet, Edit once one exists.
+function _pmEditOrAddButton(m, onclickExpr) {
+  return m.contact_id
+    ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('contacts.edit_contact_info'))}" onclick="${onclickExpr}"><i class="bi bi-pencil"></i></button>`
+    : `<button class="btn btn-outline-primary btn-sm py-0 px-1" title="${esc(t('userPanel.add_contact_record'))}" onclick="${onclickExpr}"><i class="bi bi-person-plus"></i></button>`;
+}
+
 function sortContacts(col) {
   if (_contactsSortCol === col) _contactsSortDir = _contactsSortDir === 'asc' ? 'desc' : 'asc';
   else { _contactsSortCol = col; _contactsSortDir = 'asc'; }
@@ -7100,8 +7110,7 @@ function filterContactsTab() {
       </td>
       <td onclick="event.stopPropagation()">
         <div class="d-flex gap-1">
-          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('contacts.edit_contact_info'))}"
-            onclick="openPmEdit(${i})"><i class="bi bi-pencil"></i></button>
+          ${_pmEditOrAddButton(m, `openPmEdit(${i})`)}
           ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('contacts.delete_contact_record'))}"
             onclick="deletePmContactRecord(${m.contact_id}, '${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
         </div>
@@ -7268,7 +7277,7 @@ function renderContactsGrouped(rows) {
         </td>
         <td onclick="event.stopPropagation()">
           <div class="d-flex gap-1">
-            <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('common.edit'))}" onclick="openPmEditByUsername('${esc(m.username)}')"><i class="bi bi-pencil"></i></button>
+            ${_pmEditOrAddButton(m, `openPmEditByUsername('${esc(m.username)}')`)}
             ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('common.delete'))}" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
           </div>
         </td>
