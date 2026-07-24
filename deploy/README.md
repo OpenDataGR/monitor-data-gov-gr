@@ -93,3 +93,86 @@ version, which self-healed on that process's next restart. Low-severity
 (worst case: refreshes just stop happening until someone flips it back),
 but not nothing. `redis-cli hset cache:<name> enriching false` clears it by
 hand if it's ever suspected to be stuck.
+
+## Azure Application Gateway (TLS termination + WAF) sits in front of nginx
+
+The `listen 80` block in `nginx-monitor.conf` is only half the picture --
+production traffic actually arrives over HTTPS/HTTP2, terminated by an
+**Azure Application Gateway v2** before it ever reaches this VM's nginx.
+That TLS/listener config isn't captured anywhere in this repo (unlike the
+systemd units and nginx config above) -- worth exporting and backfilling
+here if anyone gets a chance, since right now it's portal-only knowledge.
+What's confirmed so far (discovered while chasing the 403 below):
+
+- Resource group `MIN01-RG96` (subscription `MIN01`), tagged as hosting
+  `data.gov.gr`, `opengov.gr`, and other projects on the same Application
+  Gateway/WAF policy.
+- Application Gateway resource: `MIN01-RG96-AppGW`.
+- WAF policy: `WAFPolicyOTS` (Prevention mode), associated with 21+
+  sites/listeners -- **any WAF policy change here affects every one of
+  them, not just this dashboard.** If it's ever worth isolating this app's
+  WAF config entirely, Application Gateway supports per-listener WAF policy
+  overrides -- see whether `monitor.data.gov.gr`'s listener already has one
+  before assuming everything rides on the shared policy.
+- Diagnostic logs already flow to Log Analytics workspace
+  `mindigital-sentinel-law-01` (Sentinel), via the App Gateway's own
+  Diagnostic settings (`MinDigital-setByPolicy-sentinel-ws`) -- no setup
+  needed to query firewall logs, see below.
+
+### 403-until-cookie-clear (fixed 2026-07-24)
+
+**Symptom:** users would intermittently get a bare `403 Forbidden` (empty
+body, `server: Microsoft-Azure-Application-Gateway/v2` in the response
+headers) loading the dashboard, fixed only by clearing cookies (or working
+fine in an incognito window). Almost every user hit this eventually.
+
+**Root cause:** not `app.py`, not nginx -- confirmed via the App Gateway's
+own response headers (empty-body 403, no app-level JSON) and an incognito
+test (worked fine with no cookies). Azure App Gateway's WAF (OWASP CRS on
+`WAFPolicyOTS`) was blocking the request. Flask's session cookie is a
+compressed, signed, high-entropy blob (`itsdangerous`), and CRS rule
+**942450** ("SQL Hex Encoding Identified", pattern `\b0x[a-f\d]{3,}`)
+occasionally matches a substring inside it purely by chance -- pushing the
+per-request anomaly score over the blocking threshold enforced by rule
+**949110** ("Inbound Anomaly Score Exceeded"). Since each login generates a
+different, effectively-random token, this is a matter of chance per
+session rather than a deterministic bug -- explaining why it hit almost
+everyone eventually rather than a fixed set of accounts.
+
+Confirmed by querying `MIN01-RG96-AppGW`'s Logs blade (Log Analytics):
+
+```kql
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.NETWORK" and Category == "ApplicationGatewayFirewallLog"
+| where hostname_s == "monitor.data.gov.gr"
+| order by TimeGenerated desc
+| project TimeGenerated, action_s, ruleSetType_s, ruleSetVersion_s, ruleId_s, details_message_s, details_data_s, clientIp_s
+```
+
+**Fix, two parts:**
+
+1. **`app.py`** (commit `ea1ca01`): renamed the session cookie off Flask's
+   default name (`session`) to `monitor_session`, and added an
+   `after_request` hook to actively expire the old `session` cookie so it
+   stops accumulating in every user's `Cookie` header alongside the new
+   one. Renaming was necessary *before* adding a WAF exclusion -- `session`
+   is Flask's default cookie name, and since `WAFPolicyOTS` is shared
+   across 21+ sites, an exclusion scoped to "a cookie named `session`"
+   would have silently weakened SQLi inspection for every other Flask app
+   on the same policy, not just this one.
+2. **Azure WAF exclusion** (manual, not tracked in this repo):
+   `WAFPolicyOTS` -> Managed rules -> rule **942450** -> add an exclusion
+   row:
+   - Match variable: `Request Cookie Names`
+   - Operator: `Equals`
+   - Selector: `monitor_session`
+
+   A precedent for this exact pattern already existed on the same rule,
+   scoped to CKAN's own `ckan` cookie -- this just adds a second row to
+   that existing exclusion entry rather than creating a new one.
+
+**Note:** deploying the `app.py` rename logs out every currently-active
+session once, since the old `session` cookie stops being recognized the
+moment it ships -- expected, not a regression. The WAF exclusion should be
+added *after* that deploy is live, once real traffic is actually carrying
+the `monitor_session` cookie name.
