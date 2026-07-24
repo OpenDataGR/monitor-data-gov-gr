@@ -1067,8 +1067,7 @@
                   <span class="text-muted fw-normal small ms-2" id="contactsCount"></span>
                 </h6>
                 <div class="btn-group btn-group-sm" role="group">
-                  <button id="contactsScopeUnifiedBtn" type="button" class="btn btn-primary" onclick="setContactsScope('unified')" data-i18n="contacts.scope_unified">Unified</button>
-                  <button id="contactsScopePortalBtn" type="button" class="btn btn-outline-primary" onclick="setContactsScope('portal')" data-i18n="contacts.scope_portal">Portal Members</button>
+                  <button id="contactsScopePortalBtn" type="button" class="btn btn-primary" onclick="setContactsScope('portal')" data-i18n="contacts.scope_portal">Portal Members</button>
                   <button id="contactsScopeFileBtn" type="button" class="btn btn-outline-primary" onclick="setContactsScope('file')" data-i18n="contacts.scope_file">File Contacts</button>
                 </div>
                 <div class="btn-group btn-group-sm" role="group" id="contactsLayoutToggle">
@@ -1171,32 +1170,6 @@
               </div>
             </div>
             <div id="contactsGroupedView" class="d-none"></div>
-            <div id="pmUnmatchedSection" class="d-none mt-4">
-              <div class="d-flex align-items-center gap-2 mb-2 px-1">
-                <h6 class="mb-0 text-muted fw-semibold small text-uppercase ls-1" data-i18n="contacts.unmatched_heading">Contacts without portal account</h6>
-                <span id="pmUnmatchedCount" class="badge bg-secondary rounded-pill"></span>
-              </div>
-              <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0" id="pmUnmatchedTable">
-                  <colgroup id="pmUnmatchedColgroup">
-                    <col><col><col><col><col><col><col><col>
-                  </colgroup>
-                  <thead class="sticky-top bg-white">
-                    <tr>
-                      <th style="width:3rem">#</th>
-                      <th data-i18n="contacts.col_name">Name</th>
-                      <th data-i18n="contacts.col_org">Organization</th>
-                      <th data-i18n="contacts.col_type">Type</th>
-                      <th data-i18n="contacts.col_state">State</th>
-                      <th style="width:150px" data-i18n="contacts.email">Email</th>
-                      <th style="width:90px" data-i18n="contacts.col_tel">Tel</th>
-                      <th style="width:4rem"></th>
-                    </tr>
-                  </thead>
-                  <tbody id="pmUnmatchedBody"></tbody>
-                </table>
-              </div>
-            </div>
             <div id="fileContactsView" class="d-none">
               <div id="fileContactsFlatView">
                 <div style="max-height:65vh;overflow-y:auto">

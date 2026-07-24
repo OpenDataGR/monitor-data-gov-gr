@@ -43,7 +43,6 @@ const TRANSLATIONS = {
     'contacts.title': 'Portal Members',
     'contacts.view_all': 'All',
     'contacts.view_by_org': 'By Organization',
-    'contacts.scope_unified': 'Unified',
     'contacts.scope_portal': 'Portal Members',
     'contacts.scope_file': 'File Contacts',
     'contacts.col_portal': 'Portal account',
@@ -604,7 +603,6 @@ const TRANSLATIONS = {
     'contacts.title': 'Μέλη Πύλης',
     'contacts.view_all': 'Όλα',
     'contacts.view_by_org': 'Ανά Οργανισμό',
-    'contacts.scope_unified': 'Ενοποιημένη',
     'contacts.scope_portal': 'Μέλη Πύλης',
     'contacts.scope_file': 'Επαφές Αρχείου',
     'contacts.col_portal': 'Λογαριασμός πύλης',
@@ -6712,7 +6710,6 @@ async function loadContactsTab(force = false) {
         renderContactsSummary();
         if (_fileContactsCache) renderFileContactsSummary();
         filterContactsTab();
-        renderUnmatchedContacts();
       }
       if (_orgsLoaded) loadContactSummary();
       // Silently refresh in background if stale
@@ -6770,7 +6767,6 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
       renderContactsSummary();
       if (_fileContactsCache) renderFileContactsSummary();
       filterContactsTab();
-      renderUnmatchedContacts();
     }
     if (_orgsLoaded) loadContactSummary();
   } catch (e) {
@@ -7093,7 +7089,6 @@ function filterContactsTab() {
       </td>
     </tr>`;
   }).join('');
-  requestAnimationFrame(_syncUnmatchedCols);
 }
 
 let _contactsViewMode = 'flat';
@@ -7104,9 +7099,9 @@ function setContactsView(mode) {
   show('contactsViewGroupedBtn').className = 'btn btn-sm ' + (mode === 'grouped' ? 'btn-primary' : 'btn-outline-primary');
   show('contactsExpandAllBtn').classList.toggle('d-none', mode !== 'grouped');
   show('contactsCollapseAllBtn').classList.toggle('d-none', mode !== 'grouped');
-  // The layout toggle is shared across all three scopes, but each scope has
-  // its own pair of flat/grouped containers -- only the active scope's pair
-  // should actually flip; the inactive scope's containers stay however
+  // The layout toggle is shared across both scopes, but each has its own pair
+  // of flat/grouped containers -- only the active scope's pair should
+  // actually flip; the inactive scope's containers stay however
   // setContactsScope last left them; filterContactsTab()/filterFileContactsTab()
   // (below) re-show the right one for whichever scope is current.
   if (_contactsScope === 'file') {
@@ -7119,20 +7114,18 @@ function setContactsView(mode) {
   filterContactsTab();
 }
 
-// Unified = every portal account (enriched with any matched contact-file data) plus,
-// below it, the file contacts that have no matching portal account. Portal Members =
-// the same enriched portal-account table, minus that no-portal-account section (a pure
-// "what does the portal say" view). File Contacts = every org_contacts row regardless
-// of portal match, fetched separately via /api/contacts. All three share the same
-// All/By-Organization layout toggle and search box; each has its own filter-card
-// facets (Role/State vs Type/Portal-account) since the underlying data differs.
-let _contactsScope = 'unified';   // 'unified' | 'portal' | 'file'
+// Portal Members = every portal account, enriched with matched contact-file
+// data (position/tel/etc.) when a match exists by email. File Contacts =
+// every org_contacts row regardless of portal match, fetched separately via
+// /api/contacts. Both share the same All/By-Organization layout toggle and
+// search box; each has its own filter-card facets (Role/State vs
+// Type/Portal-account) since the underlying data differs.
+let _contactsScope = 'portal';   // 'portal' | 'file'
 
 function setContactsScope(scope) {
   _contactsScope = scope;
-  show('contactsScopeUnifiedBtn').className = 'btn btn-sm ' + (scope === 'unified' ? 'btn-primary' : 'btn-outline-primary');
-  show('contactsScopePortalBtn').className  = 'btn btn-sm ' + (scope === 'portal'  ? 'btn-primary' : 'btn-outline-primary');
-  show('contactsScopeFileBtn').className    = 'btn btn-sm ' + (scope === 'file'    ? 'btn-primary' : 'btn-outline-primary');
+  show('contactsScopePortalBtn').className  = 'btn btn-sm ' + (scope === 'portal' ? 'btn-primary' : 'btn-outline-primary');
+  show('contactsScopeFileBtn').className    = 'btn btn-sm ' + (scope === 'file'   ? 'btn-primary' : 'btn-outline-primary');
 
   const isFile = scope === 'file';
   show('contactsFilterSummaryPanel').classList.toggle('d-none', isFile);
@@ -7142,12 +7135,6 @@ function setContactsScope(scope) {
   show('contactsGroupedView').classList.toggle('d-none', isFile || _contactsViewMode !== 'grouped');
   show('fileContactsFlatView').classList.toggle('d-none', !isFile || _contactsViewMode !== 'flat');
   show('fileContactsGroupedView').classList.toggle('d-none', !isFile || _contactsViewMode !== 'grouped');
-
-  // Hides itself unless scope is 'unified' -- called unconditionally (not just
-  // in the non-file branch below) since switching TO 'file' previously left
-  // this section showing whatever visibility it already had, leaking a stale
-  // "contacts without portal account" table into the File Contacts view.
-  renderUnmatchedContacts();
 
   if (isFile) {
     renderFileContactsSummary();
@@ -7262,59 +7249,6 @@ let _pmRows = [];
 let _pmUnmatched = [];
 let _pmEditModal = null;
 let _pmEditOrgs  = [];  // [{code, label}, ...] — orgs selected in the edit modal
-
-function _syncUnmatchedCols() {
-  const srcThs = document.querySelectorAll('#contactsTable thead th');
-  const cols   = document.querySelectorAll('#pmUnmatchedColgroup col');
-  if (!srcThs.length || !cols.length) return;
-  srcThs.forEach((th, i) => { if (cols[i]) cols[i].style.width = th.offsetWidth + 'px'; });
-}
-
-function renderUnmatchedContacts() {
-  const sec = show('pmUnmatchedSection');
-  // Only the Unified view mixes portal accounts with contacts that have none —
-  // Portal Members hides them (no portal account = out of scope) and File
-  // Contacts shows them itself, deduped in with the matched ones.
-  if (_contactsScope !== 'unified' || !_pmUnmatched.length) { sec.classList.add('d-none'); return; }
-  sec.classList.remove('d-none');
-  show('pmUnmatchedCount').textContent = _pmUnmatched.length;
-  show('pmUnmatchedBody').innerHTML = _pmUnmatched.map((c, i) => {
-    const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
-    const posLine = c.position
-      ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(c.position)}">${esc(c.position)}</div>` : '';
-    const typeBadges = (c.contact_type || '').split(',').map(s => s.trim()).filter(Boolean)
-      .map(s => `<span class="badge me-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(s)}</span>`).join('');
-    const orgBadge = (c.org_label || c.org_code)
-      ? `<span class="badge bg-light text-dark border" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
-           title="${esc(c.org_label || c.org_code)}">${esc(c.org_label || c.org_code)}</span>` : '—';
-    return `<tr>
-      <td class="text-muted small">${i + 1}</td>
-      <td style="max-width:200px">
-        <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span> <span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="Has contact file entry"><i class="bi bi-file-earmark-person me-1"></i>File</span>
-        ${posLine}
-      </td>
-      <td style="max-width:180px">${orgBadge}</td>
-      <td>${typeBadges || '<span class="text-muted small">—</span>'}</td>
-      <td></td>
-      <td class="small" style="width:150px;max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
-        ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
-      </td>
-      <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
-        ${c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(c.tel)}</a>`
-                : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
-      </td>
-      <td onclick="event.stopPropagation()">
-        <div class="d-flex gap-1">
-          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Edit"
-            onclick="openPmEditUnmatched(${i})"><i class="bi bi-pencil"></i></button>
-          <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete"
-            onclick="deletePmContactRecord(${c.id}, null)"><i class="bi bi-trash"></i></button>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
-  requestAnimationFrame(_syncUnmatchedCols);
-}
 
 // ── File Contacts view — every org_contacts row (Excel import / manual entry),
 // matched or not, independent of whether it also has a portal account. Backs
@@ -7936,7 +7870,6 @@ function deletePmContactRecord(contactId, username) {
       } else {
         _pmUnmatched = _pmUnmatched.filter(c => c.id !== contactId);
         _pmSaveCache(_portalMembersCache || [], _pmUnmatched);
-        renderUnmatchedContacts();
       }
       if (_fileContactsCache) _fileContactsCache = _fileContactsCache.filter(c => c.id !== contactId);
       _allContacts = null; _allUnified = null;
@@ -8029,30 +7962,6 @@ function _pmFillFromExisting() {
   document.getElementById('pmEditOrgDropdown').classList.add('d-none');
   document.getElementById('pmEditEmailHint').classList.add('d-none');
   _pmExistingMatch = null;
-}
-
-function openPmEditUnmatched(idx) {
-  const c = _pmUnmatched[idx];
-  if (!c) return;
-  const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || '(no name)';
-  show('pmEditTitle').textContent   = name + ' — ' + (c.org_label || c.org_code);
-  show('pmEditIcon').className      = 'bi bi-pencil me-2';
-  show('pmEditContactId').value     = c.id        || '';
-  show('pmEditUsername').value      = '';
-  show('pmEditEmail').value         = c.email     || '';
-  _pmEditOrgs = (c.org_codes && c.org_codes.length)
-    ? c.org_codes
-    : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
-  _pmOrgRenderTags();
-  show('pmEditFirstName').value     = c.first_name || '';
-  show('pmEditLastName').value      = c.last_name  || '';
-  show('pmEditPosition').value      = c.position   || '';
-  _pmSetContactType(c.contact_type || '');
-  show('pmEditTel').value           = c.tel    || '';
-  show('pmEditMobile').value        = c.mobile || '';
-  show('pmEditStatus').textContent  = '';
-  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
-  _pmEditModal.show();
 }
 
 function openPmEditNew() {
@@ -8262,7 +8171,6 @@ async function savePmContact() {
       filterContactsTab();
     } else {
       _pmUnmatched.unshift(data);
-      renderUnmatchedContacts();
     }
   } else if (existingPortalMatches.length) {
     existingPortalMatches.forEach(applyToPortalRow);
@@ -8272,7 +8180,6 @@ async function savePmContact() {
     const idx = _pmUnmatched.findIndex(c => c.id === data.id);
     if (idx >= 0) _pmUnmatched[idx] = data;
     else _pmUnmatched.unshift(data);
-    renderUnmatchedContacts();
   }
   if (_fileContactsCache) {
     const fIdx = _fileContactsCache.findIndex(c => c.id === data.id);
