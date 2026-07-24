@@ -5926,13 +5926,19 @@ def _do_fetch_portal_members():
         unmatched = []
         try:
             with app.app_context():
-                all_contacts = OrgContact.query.all()
+                # Ordered so that when two OrgContact rows share an email (data-entry
+                # duplicates), the tie-break below is deterministic -- the most
+                # recently created row wins -- rather than depending on the DB's
+                # unspecified default return order, which could otherwise make the
+                # attached contact_id (and its position/tel/etc.) flip between
+                # refreshes for no visible reason.
+                all_contacts = OrgContact.query.order_by(OrgContact.id).all()
             member_emails = {m.get("email", "") for m in all_members if m.get("email")}
             contact_by_email = {}
             for c in all_contacts:
                 e = (c.email or "").lower().strip()
                 if e:
-                    contact_by_email[e] = c
+                    contact_by_email[e] = c  # last write (highest id) wins -- see ordering above
             for m in all_members:
                 c = contact_by_email.get(m.get("email", ""))
                 if c:

@@ -6792,9 +6792,15 @@ function sortContacts(col) {
   filterContactsTab();
 }
 
+// Shared by both sortable tables (Portal Members / File Contacts) -- each
+// keeps its own {sortCol, sortDir} state, only the arrow glyph logic is common.
+function _sortArrow(currentCol, currentDir, col) {
+  if (currentCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
+  return currentDir === 'asc' ? ' ↑' : ' ↓';
+}
+
 function _contactsSortArrow(col) {
-  if (_contactsSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
-  return _contactsSortDir === 'asc' ? ' ↑' : ' ↓';
+  return _sortArrow(_contactsSortCol, _contactsSortDir, col);
 }
 
 
@@ -6868,20 +6874,26 @@ function _contactsFilterIsActive(f) {
   return false;
 }
 
-// Renders a subset of _contactsSummaryCards (by original index, so
-// setContactsFilter(idx) keeps working unmodified) into one tab's row, plus
-// a dot on that tab's label if any card in it is the active filter — same
-// pattern as the Dataset Catalog's filter-card tabs.
-function _renderContactsFilterGroup(elId, indices, tabDotId) {
+// Renders a subset of a summary-cards array (by original index, so the
+// setter function keeps working unmodified) into one tab's row, plus a dot
+// on that tab's label if any card in it is the active filter — same pattern
+// as the Dataset Catalog's filter-card tabs. Shared by both the Role/State
+// facets (Portal Members) and the Type/Portal-account facets (File
+// Contacts), which otherwise duplicated this verbatim.
+function _renderFilterGroup(elId, indices, tabDotId, cardsArray, isActiveFn, setterFnName) {
   const prepared = indices.map(idx => {
-    const c = _contactsSummaryCards[idx];
-    return { ...c, active: _contactsFilterIsActive(c.filter), onclick: `setContactsFilter(${idx})` };
+    const c = cardsArray[idx];
+    return { ...c, active: isActiveFn(c.filter), onclick: `${setterFnName}(${idx})` };
   });
   const hasActive = indices.some(idx => {
-    const f = _contactsSummaryCards[idx].filter;
-    return f.value !== null && _contactsFilterIsActive(f);
+    const f = cardsArray[idx].filter;
+    return f.value !== null && isActiveFn(f);
   });
   _renderFilterCardsGrid(elId, prepared, tabDotId, hasActive ? {} : null);
+}
+
+function _renderContactsFilterGroup(elId, indices, tabDotId) {
+  _renderFilterGroup(elId, indices, tabDotId, _contactsSummaryCards, _contactsFilterIsActive, 'setContactsFilter');
 }
 
 function renderContactsSummary() {
@@ -7175,23 +7187,27 @@ function collapseAllContacts() {
   filterContactsTab();
 }
 
-function renderContactsGrouped(rows) {
+// Shared "group rows by organization, render as expandable cards" chrome for
+// both the Portal Members and File Contacts grouped views -- the card/
+// expand-collapse wrapper is identical between them; only how a row extracts
+// its org key/label and renders its own <tr> differs, so those are passed in.
+function _renderGroupedByOrg(containerId, gidPrefix, rows, getOrgKey, getOrgLabel, renderRow) {
   const groups = new Map();
-  rows.forEach(m => {
-    const orgName  = m.org_name  || '__none__';
-    const orgTitle = m.org_title || m.org_name || '(no organization)';
-    if (!groups.has(orgName)) groups.set(orgName, { slug: orgName, label: orgTitle, items: [] });
-    groups.get(orgName).items.push(m);
+  rows.forEach(row => {
+    const key   = getOrgKey(row)   || '__none__';
+    const label = getOrgLabel(row) || '(no organization)';
+    if (!groups.has(key)) groups.set(key, { slug: key, label, items: [] });
+    groups.get(key).items.push(row);
   });
   const sorted = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, 'el'));
   _contactsGroupSlugs = sorted.map(g => g.slug);
-  const el = show('contactsGroupedView');
+  const el = show(containerId);
   if (!sorted.length) {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('contacts.no_results')}</p>`;
     return;
   }
   el.innerHTML = sorted.map(g => {
-    const gId        = 'cg_' + g.slug.replace(/\W/g, '_');
+    const gId        = gidPrefix + g.slug.replace(/\W/g, '_');
     const isNone     = g.slug === '__none__';
     const isExpanded = _contactsExpandedOrgs.has(g.slug);
     return `
@@ -7211,44 +7227,48 @@ function renderContactsGrouped(rows) {
       </div>
       <div id="${gId}" class="${isExpanded ? '' : 'd-none'} px-3">
         <table class="table table-hover table-sm align-middle mb-0">
-          <tbody>
-            ${g.items.map((m, mi) => {
-              const state     = m.state || 'active';
-              const roleCls   = _portalRoleClass(m);
-              const roleLabel = _portalRoleLabel(m);
-              const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
-              const posLine   = m.contact_position
-                ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
-              const presenceBadges =
-                `<span class="badge rounded-pill me-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('contacts.has_portal_account'))}"><i class="bi bi-globe2 me-1"></i>Portal</span>` +
-                (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="${esc(t('contacts.has_contact_file'))}"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
-              return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
-                <td style="max-width:200px">
-                  <span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${presenceBadges}
-                  ${posLine}
-                </td>
-                <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
-                <td><span class="badge ${stateCls}">${esc(_contactStateLabel(state))}</span></td>
-                <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
-                  ${m.email ? `<a class="d-block text-truncate" href="mailto:${esc(m.email)}" title="${esc(m.email)}">${esc(m.email)}</a>` : ''}
-                  ${m.contact_email && m.contact_email !== m.email ? `<div class="text-muted text-truncate" style="font-size:.75em" title="${esc(m.contact_email)}"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>` : ''}
-                </td>
-                <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
-                  ${m.contact_tel ? `<a href="tel:${esc(m.contact_tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</a>` : ''}
-                </td>
-                <td onclick="event.stopPropagation()">
-                  <div class="d-flex gap-1">
-                    <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('common.edit'))}" onclick="openPmEditByUsername('${esc(m.username)}')"><i class="bi bi-pencil"></i></button>
-                    ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('common.delete'))}" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
-                  </div>
-                </td>
-              </tr>`;
-            }).join('')}
-          </tbody>
+          <tbody>${g.items.map(renderRow).join('')}</tbody>
         </table>
       </div>
     </div>`;
   }).join('');
+}
+
+function renderContactsGrouped(rows) {
+  _renderGroupedByOrg('contactsGroupedView', 'cg_', rows,
+    m => m.org_name, m => m.org_title || m.org_name,
+    m => {
+      const state     = m.state || 'active';
+      const roleCls   = _portalRoleClass(m);
+      const roleLabel = _portalRoleLabel(m);
+      const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
+      const posLine   = m.contact_position
+        ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
+      const presenceBadges =
+        `<span class="badge rounded-pill me-1" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('contacts.has_portal_account'))}"><i class="bi bi-globe2 me-1"></i>Portal</span>` +
+        (m.contact_id ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e6f4ea;color:#188038" title="${esc(t('contacts.has_contact_file'))}"><i class="bi bi-file-earmark-person me-1"></i>File</span>` : '');
+      return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
+        <td style="max-width:200px">
+          <span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${presenceBadges}
+          ${posLine}
+        </td>
+        <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
+        <td><span class="badge ${stateCls}">${esc(_contactStateLabel(state))}</span></td>
+        <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
+          ${m.email ? `<a class="d-block text-truncate" href="mailto:${esc(m.email)}" title="${esc(m.email)}">${esc(m.email)}</a>` : ''}
+          ${m.contact_email && m.contact_email !== m.email ? `<div class="text-muted text-truncate" style="font-size:.75em" title="${esc(m.contact_email)}"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>` : ''}
+        </td>
+        <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
+          ${m.contact_tel ? `<a href="tel:${esc(m.contact_tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</a>` : ''}
+        </td>
+        <td onclick="event.stopPropagation()">
+          <div class="d-flex gap-1">
+            <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('common.edit'))}" onclick="openPmEditByUsername('${esc(m.username)}')"><i class="bi bi-pencil"></i></button>
+            ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('common.delete'))}" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    });
 }
 
 let _pmRows = [];
@@ -7326,8 +7346,7 @@ function sortFileContacts(col) {
 }
 
 function _fileContactsSortArrow(col) {
-  if (_fileContactsSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
-  return _fileContactsSortDir === 'asc' ? ' ↑' : ' ↓';
+  return _sortArrow(_fileContactsSortCol, _fileContactsSortDir, col);
 }
 
 // Type and Portal-link are independent, combinable facets -- same pattern as
@@ -7355,15 +7374,7 @@ function _fileContactsFilterIsActive(f) {
 }
 
 function _renderFileContactsFilterGroup(elId, indices, tabDotId) {
-  const prepared = indices.map(idx => {
-    const c = _fileContactsSummaryCards[idx];
-    return { ...c, active: _fileContactsFilterIsActive(c.filter), onclick: `setFileContactsFilter(${idx})` };
-  });
-  const hasActive = indices.some(idx => {
-    const f = _fileContactsSummaryCards[idx].filter;
-    return f.value !== null && _fileContactsFilterIsActive(f);
-  });
-  _renderFilterCardsGrid(elId, prepared, tabDotId, hasActive ? {} : null);
+  _renderFilterGroup(elId, indices, tabDotId, _fileContactsSummaryCards, _fileContactsFilterIsActive, 'setFileContactsFilter');
 }
 
 function renderFileContactsSummary() {
@@ -7562,66 +7573,27 @@ function renderFileContactsTab(rows, portalByContactId, portalEmails) {
 }
 
 function renderFileContactsGrouped(rows, portalByContactId, portalEmails) {
-  const groups = new Map();
-  rows.forEach(c => {
-    const orgCode  = c.org_code  || '__none__';
-    const orgLabel = c.org_label || c.org_code || '(no organization)';
-    if (!groups.has(orgCode)) groups.set(orgCode, { slug: orgCode, label: orgLabel, items: [] });
-    groups.get(orgCode).items.push(c);
-  });
-  const sorted = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, 'el'));
-  _contactsGroupSlugs = sorted.map(g => g.slug);
-  const el = show('fileContactsGroupedView');
-  if (!sorted.length) {
-    el.innerHTML = `<p class="text-muted text-center py-4">${t('contacts.no_results')}</p>`;
-    return;
-  }
-  el.innerHTML = sorted.map(g => {
-    const gId        = 'fcg_' + g.slug.replace(/\W/g, '_');
-    const isNone     = g.slug === '__none__';
-    const isExpanded = _contactsExpandedOrgs.has(g.slug);
-    return `
-    <div class="border rounded mb-2" ${isNone ? 'style="border-color:#fd7e14!important"' : ''}>
-      <div class="d-flex align-items-center justify-content-between px-3 py-2 ${isNone ? 'comm-group-row-warn' : 'comm-group-row'}"
-           style="cursor:pointer" onclick="toggleContactsOrg('${esc(g.slug)}')">
-        <div class="d-flex align-items-center gap-2">
-          <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
-          <i class="bi bi-${isNone ? 'person-slash text-warning' : 'building text-primary'}"></i>
-          <span class="fw-semibold small ${isNone ? 'text-warning-emphasis' : ''}">${esc(g.label)}</span>
-          <span class="badge ${isNone ? 'bg-warning text-dark' : 'bg-secondary'} rounded-pill">${g.items.length}</span>
-        </div>
-        ${g.slug !== '__none__' ? `<button class="btn btn-outline-primary btn-sm py-0 px-2" title="${esc(g.label)}"
-          onclick="event.stopPropagation();openOrgPanel('${esc(g.slug)}')">
-          <i class="bi bi-box-arrow-up-right"></i>
-        </button>` : ''}
-      </div>
-      <div id="${gId}" class="${isExpanded ? '' : 'd-none'} px-3">
-        <table class="table table-hover table-sm align-middle mb-0">
-          <tbody>
-            ${g.items.map(c => {
-              const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
-              return `<tr>
-                <td style="max-width:200px">
-                  <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
-                  ${_fileContactPosLine(c)}
-                </td>
-                <td>${_fileContactTypeBadges(c)}</td>
-                <td>${_fileContactPortalBadge(c, portalByContactId, portalEmails)}</td>
-                <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
-                  ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
-                </td>
-                <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
-                  ${c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(c.tel)}</a>`
-                          : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
-                </td>
-                <td onclick="event.stopPropagation()">${_fileContactActions(c, portalByContactId)}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
-  }).join('');
+  _renderGroupedByOrg('fileContactsGroupedView', 'fcg_', rows,
+    c => c.org_code, c => c.org_label || c.org_code,
+    c => {
+      const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
+      return `<tr>
+        <td style="max-width:200px">
+          <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
+          ${_fileContactPosLine(c)}
+        </td>
+        <td>${_fileContactTypeBadges(c)}</td>
+        <td>${_fileContactPortalBadge(c, portalByContactId, portalEmails)}</td>
+        <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
+          ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
+        </td>
+        <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
+          ${c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(c.tel)}</a>`
+                  : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
+        </td>
+        <td onclick="event.stopPropagation()">${_fileContactActions(c, portalByContactId)}</td>
+      </tr>`;
+    });
 }
 
 function openPmEditFileContact(id) {
