@@ -2688,17 +2688,51 @@ function clearHvdCardFilters() {
   _renderHvdTable();
 }
 
-function _showHvdProgress(completed, total) {
-  show('hvdProgressWrap').classList.remove('d-none');
+// Shared by every long-running, incrementally-progressing operation on the
+// site (HVD/DCAT-AP/GeoDCAT-AP checks, the Contacts tab's cold portal-members
+// load) -- anything that can report {completed, total} as it goes, rather
+// than a plain indeterminate spinner for something that's just "still
+// fetching." Expects a "${prefix}ProgressWrap" containing "${prefix}ProgressBar"
+// / "${prefix}ProgressLabel" / "${prefix}ProgressPct" -- see _progressBarHtml
+// for a ready-made block using that convention.
+function _showProgressBar(prefix, completed, total) {
+  const wrap = document.getElementById(`${prefix}ProgressWrap`);
+  if (wrap) wrap.classList.remove('d-none');
   const pct = total ? Math.round((completed / total) * 100) : 0;
-  show('hvdProgressBar').style.width = pct + '%';
-  show('hvdProgressLabel').textContent = `${fmt(completed)} / ${fmt(total)}`;
-  show('hvdProgressPct').textContent = `${pct}%`;
+  const bar = document.getElementById(`${prefix}ProgressBar`);
+  if (bar) { bar.style.width = pct + '%'; bar.setAttribute('aria-valuenow', pct); }
+  const label = document.getElementById(`${prefix}ProgressLabel`);
+  if (label) label.textContent = `${fmt(completed)} / ${fmt(total)}`;
+  const pctEl = document.getElementById(`${prefix}ProgressPct`);
+  if (pctEl) pctEl.textContent = `${pct}%`;
 }
+
+function _hideProgressBar(prefix) {
+  document.getElementById(`${prefix}ProgressWrap`)?.classList.add('d-none');
+}
+
+// For operations whose progress UI is injected dynamically (rather than a
+// static block toggled with d-none, like the quality checks' markup in
+// index.html) -- same id convention, so _showProgressBar/_hideProgressBar
+// work on it unmodified.
+function _progressBarHtml(prefix, wrapClass = 'mb-3', wrapStyle = '') {
+  return `
+    <div id="${prefix}ProgressWrap" class="${wrapClass} d-none"${wrapStyle ? ` style="${wrapStyle}"` : ''}>
+      <div class="d-flex justify-content-between small text-muted mb-1">
+        <span id="${prefix}ProgressLabel"></span>
+        <span id="${prefix}ProgressPct"></span>
+      </div>
+      <div class="progress" style="height:6px">
+        <div id="${prefix}ProgressBar" class="progress-bar" role="progressbar" style="width:0%"></div>
+      </div>
+    </div>`;
+}
+
+function _showHvdProgress(completed, total) { _showProgressBar('hvd', completed, total); }
 
 function _resetHvdControls() {
   show('hvdCheckBtn').disabled = false;
-  show('hvdProgressWrap').classList.add('d-none');
+  _hideProgressBar('hvd');
   const cancelBtn = show('hvdCancelBtn');
   cancelBtn.classList.add('d-none');
   cancelBtn.disabled = false;
@@ -3143,17 +3177,11 @@ function clearDcatCardFilters() {
   _renderDcatTable();
 }
 
-function _showDcatProgress(completed, total) {
-  show('dcatProgressWrap').classList.remove('d-none');
-  const pct = total ? Math.round((completed / total) * 100) : 0;
-  show('dcatProgressBar').style.width = pct + '%';
-  show('dcatProgressLabel').textContent = `${fmt(completed)} / ${fmt(total)}`;
-  show('dcatProgressPct').textContent = `${pct}%`;
-}
+function _showDcatProgress(completed, total) { _showProgressBar('dcat', completed, total); }
 
 function _resetDcatControls() {
   show('dcatCheckBtn').disabled = false;
-  show('dcatProgressWrap').classList.add('d-none');
+  _hideProgressBar('dcat');
   const cancelBtn = show('dcatCancelBtn');
   cancelBtn.classList.add('d-none');
   cancelBtn.disabled = false;
@@ -3521,17 +3549,11 @@ function clearGeoDcatCardFilters() {
   _renderGeoDcatTable();
 }
 
-function _showGeoDcatProgress(completed, total) {
-  show('geodcatProgressWrap').classList.remove('d-none');
-  const pct = total ? Math.round((completed / total) * 100) : 0;
-  show('geodcatProgressBar').style.width = pct + '%';
-  show('geodcatProgressLabel').textContent = `${fmt(completed)} / ${fmt(total)}`;
-  show('geodcatProgressPct').textContent = `${pct}%`;
-}
+function _showGeoDcatProgress(completed, total) { _showProgressBar('geodcat', completed, total); }
 
 function _resetGeoDcatControls() {
   show('geodcatCheckBtn').disabled = false;
-  show('geodcatProgressWrap').classList.add('d-none');
+  _hideProgressBar('geodcat');
   const cancelBtn = show('geodcatCancelBtn');
   cancelBtn.classList.add('d-none');
   cancelBtn.disabled = false;
@@ -6744,15 +6766,11 @@ async function loadContactsTab(force = false) {
 
 // The slow part of a cold portal-members fetch is one organization_show call
 // per CKAN organization; the backend reports {done, total} as those complete
-// so this can be a real progress bar instead of a bare spinner.
+// so this can be a real progress bar (shared with the quality checks' —
+// see _showProgressBar) instead of a bare spinner.
 function _updateContactsLoadingProgress(progress) {
-  const bar = document.getElementById('contactsLoadingProgressBar');
-  if (!bar || !progress || !progress.total) return;
-  const pct = Math.min(100, Math.round((progress.done / progress.total) * 100));
-  bar.style.width = pct + '%';
-  bar.setAttribute('aria-valuenow', pct);
-  const text = document.getElementById('contactsLoadingText');
-  if (text) text.textContent = `${t('contacts.loading_portal')} (${progress.done}/${progress.total})`;
+  if (!progress || !progress.total) return;
+  _showProgressBar('pm', progress.done, progress.total);
 }
 
 async function _pollPortalMembers(attempt, silent = false, force = false) {
@@ -6765,10 +6783,8 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
     show('contactsTableBody').innerHTML =
       `<tr><td colspan="${cols}" class="text-center py-5">
          <div class="spinner-border text-primary mb-2"></div>
-         <div class="text-muted small mb-2" id="contactsLoadingText">${t('contacts.loading_portal')}</div>
-         <div class="progress mx-auto" style="max-width:280px;height:6px">
-           <div class="progress-bar" id="contactsLoadingProgressBar" role="progressbar" style="width:0%"></div>
-         </div>
+         <div class="text-muted small mb-2">${t('contacts.loading_portal')}</div>
+         ${_progressBarHtml('pm', 'mx-auto', 'max-width:280px')}
        </td></tr>`;
   }
 
