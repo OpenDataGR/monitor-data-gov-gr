@@ -2241,10 +2241,7 @@ def _save_hvd_check_cache(result: dict) -> None:
         db.session.commit()
 
 
-def _load_hvd_check_result():
-    with app.app_context():
-        row = HvdCheckCache.query.get(1)
-        return row.data() if row else None
+def _load_hvd_check_result(): return _load_check_result("hvd")
 
 
 # The running check bumps its progress (and its heartbeat) roughly every
@@ -2729,44 +2726,6 @@ def _do_run_hvd_check() -> None:
         _set_hvd_status(running=False, cancel_requested=False)
 
 
-@app.route("/api/quality/hvd-check", methods=["POST"])
-def start_hvd_check():
-    err = _require_admin()
-    if err:
-        return err
-    if _get_hvd_status()["running"]:
-        return jsonify({"started": False, "already_running": True})
-    _set_hvd_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
-                     cancel_requested=False, total=0, completed=0, error=None)
-    threading.Thread(target=_do_run_hvd_check, daemon=True).start()
-    return jsonify({"started": True})
-
-
-@app.route("/api/quality/hvd-check/cancel", methods=["POST"])
-def cancel_hvd_check():
-    err = _require_admin()
-    if err:
-        return err
-    if not _get_hvd_status()["running"]:
-        return jsonify({"cancelled": False, "reason": "not_running"})
-    _set_hvd_status(cancel_requested=True)
-    return jsonify({"cancelled": True})
-
-
-@app.route("/api/quality/hvd-check")
-def get_hvd_check():
-    status = _get_hvd_status()
-    return jsonify({
-        "running":    status["running"],
-        "started_at": status["started_at"],
-        "error":      status["error"],
-        "result":     _load_hvd_check_result(),
-        "total":      status["total"],
-        "completed":  status["completed"],
-        "cancelling": status["cancel_requested"],
-    })
-
-
 _HVD_EXPORT_PREDICATES = {
     "compliant":            lambda d: not d.get("flagged", True),
     "non_conforming":       lambda d: not d.get("conforms"),
@@ -2777,125 +2736,6 @@ _HVD_EXPORT_PREDICATES = {
     "publisher_mismatch":   lambda d: bool(d.get("publisher_mismatch")),
 }
 _HVD_LICENSE_STATUS_LABELS = {"missing": "Missing", "non_open": "Not confirmed open", "open": "Open"}
-
-
-@app.route("/api/quality/hvd-check/export")
-def hvd_check_export():
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
-
-    result = _load_hvd_check_result()
-    if not result:
-        return jsonify({"error": "No HVD check results to export yet."}), 404
-
-    datasets = result.get("datasets") or []
-
-    # Mirrors the on-screen summary-card filters and search box exactly, so
-    # exporting after narrowing the table down produces a file with just
-    # what's currently shown. Compliant (zero-issue) datasets are excluded
-    # by default, same as the on-screen table -- unless "compliant" itself
-    # is one of the active filters, which is an explicit ask to include them.
-    filters = [f for f in (freq.args.get("filters") or "").split(",") if f in _HVD_EXPORT_PREDICATES]
-    if "compliant" not in filters:
-        datasets = [d for d in datasets if d.get("flagged", True)]
-    if filters:
-        datasets = [d for d in datasets if all(_HVD_EXPORT_PREDICATES[f](d) for f in filters)]
-    q = _search_normalize((freq.args.get("q") or "").strip())
-    if q:
-        datasets = [
-            d for d in datasets
-            if q in _search_normalize(d.get("title", "")) or q in _search_normalize(d.get("org_title", ""))
-        ]
-    datasets = sorted(datasets, key=lambda d: (d.get("org_title") or "", -(d.get("violation_count") or 0)))
-
-    wb = Workbook()
-
-    summary_ws = wb.active
-    summary_ws.title = "Summary"
-    s = result.get("summary") or {}
-    summary_rows = [
-        ("Total HVD-tagged datasets", s.get("total")),
-        ("Checked", s.get("checked")),
-        ("Could not be fetched", s.get("failed_to_fetch")),
-        ("Reused from cache", s.get("reused_from_cache")),
-        ("Conforms to SHACL shapes", s.get("conforms")),
-        ("Legal citation issue", s.get("legal_citation_issue")),
-        ("No API access", s.get("no_api_access")),
-        ("License missing", s.get("license_missing")),
-        ("License not confirmed open", s.get("license_non_open")),
-        ("Publisher mismatch", s.get("publisher_mismatch")),
-        ("Run finished at", result.get("finished_at")),
-        ("Partial run (cancelled early)", "Yes" if result.get("partial") else "No"),
-    ]
-    hdr_font = Font(bold=True, color="FFFFFF")
-    hdr_fill = PatternFill("solid", fgColor="2563EB")
-    for row_idx, (label, value) in enumerate(summary_rows, 1):
-        summary_ws.cell(row_idx, 1, label).font = Font(bold=True)
-        summary_ws.cell(row_idx, 2, value)
-    summary_ws.column_dimensions["A"].width = 32
-    summary_ws.column_dimensions["B"].width = 24
-
-    ws = wb.create_sheet("Datasets")
-    columns = [
-        ("org_title",           "Organization",         lambda d: d.get("org_title") or ""),
-        ("title",               "Dataset",               lambda d: d.get("title") or d.get("name") or ""),
-        ("url",                 "URL",                   lambda d: f"{config.PORTAL_BASE}/dataset/{d.get('name', '')}"),
-        ("conforms",            "Conforms",              lambda d: "Yes" if d.get("conforms") else "No"),
-        ("violation_count",     "Violations",            lambda d: d.get("violation_count") or 0),
-        ("warning_count",       "Warnings",               lambda d: d.get("warning_count") or 0),
-        ("legal_citation_issue","Legal citation issue",  lambda d: "Yes" if d.get("legal_citation_issue") else "No"),
-        ("no_api_access",       "No API access",          lambda d: "Yes" if d.get("no_api_access") else "No"),
-        ("license_status",      "License status",         lambda d: _HVD_LICENSE_STATUS_LABELS.get(d.get("license_status"), d.get("license_status") or "")),
-        ("publisher_mismatch",  "Publisher mismatch",     lambda d: "Yes" if d.get("publisher_mismatch") else "No"),
-        ("issues",              "Issues",                lambda d: "\n".join(
-            f"[{v.get('severity')}] {v.get('message')}" + (f" (×{v['count']})" if v.get("count", 1) > 1 else "")
-            for v in d.get("details") or []
-        )),
-    ]
-    for col_idx, (_key, header, _getter) in enumerate(columns, 1):
-        cell = ws.cell(1, col_idx, header)
-        cell.font = hdr_font
-        cell.fill = hdr_fill
-        cell.alignment = Alignment(horizontal="center")
-
-    for ri, d in enumerate(datasets, 2):
-        for col_idx, (key, _header, getter) in enumerate(columns, 1):
-            cell = ws.cell(ri, col_idx, getter(d))
-            if key == "issues":
-                cell.alignment = Alignment(wrap_text=True, vertical="top")
-
-    for col in ws.columns:
-        width = max((len(str(cell.value or "").split("\n")[0]) for cell in col), default=0)
-        ws.column_dimensions[col[0].column_letter].width = min(width + 2, 60)
-
-    if datasets:
-        ws.auto_filter.ref = ws.dimensions
-        ws.freeze_panes = "A2"
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return send_file(
-        buf,
-        as_attachment=True,
-        download_name=f"hvd_compliance_{today}.xlsx",
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-
-
-@app.route("/api/quality/hvd-check/clear", methods=["POST"])
-def clear_hvd_check_cache():
-    err = _require_admin()
-    if err:
-        return err
-    if _get_hvd_status()["running"]:
-        return jsonify({"cleared": False, "reason": "running"})
-    HvdDatasetCheckCache.query.delete()
-    HvdCheckCache.query.delete()
-    db.session.commit()
-    _set_hvd_status(error=None, started_at=None, total=0, completed=0)
-    return jsonify({"cleared": True})
 
 
 # ── DCAT-AP compliance check (base DCAT-AP + MDR vocabulary SHACL) ──────────
@@ -2937,10 +2777,7 @@ def _save_dcat_check_cache(result: dict) -> None:
         db.session.commit()
 
 
-def _load_dcat_check_result():
-    with app.app_context():
-        row = DcatApCheckCache.query.get(1)
-        return row.data() if row else None
+def _load_dcat_check_result(): return _load_check_result("dcat")
 
 
 # Thin delegators to the shared implementation (_get/_set/_bump_check_status,
@@ -3217,155 +3054,11 @@ def _do_run_dcat_check() -> None:
         _set_dcat_status(running=False, cancel_requested=False)
 
 
-@app.route("/api/quality/dcat-check", methods=["POST"])
-def start_dcat_check():
-    err = _require_admin()
-    if err:
-        return err
-    if _get_dcat_status()["running"]:
-        return jsonify({"started": False, "already_running": True})
-    _set_dcat_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
-                      cancel_requested=False, total=0, completed=0, error=None)
-    threading.Thread(target=_do_run_dcat_check, daemon=True).start()
-    return jsonify({"started": True})
-
-
-@app.route("/api/quality/dcat-check/cancel", methods=["POST"])
-def cancel_dcat_check():
-    err = _require_admin()
-    if err:
-        return err
-    if not _get_dcat_status()["running"]:
-        return jsonify({"cancelled": False, "reason": "not_running"})
-    _set_dcat_status(cancel_requested=True)
-    return jsonify({"cancelled": True})
-
-
-@app.route("/api/quality/dcat-check")
-def get_dcat_check():
-    status = _get_dcat_status()
-    return jsonify({
-        "running":    status["running"],
-        "started_at": status["started_at"],
-        "error":      status["error"],
-        "result":     _load_dcat_check_result(),
-        "total":      status["total"],
-        "completed":  status["completed"],
-        "cancelling": status["cancel_requested"],
-    })
-
-
 _DCAT_EXPORT_PREDICATES = {
     "non_conforming":   lambda d: not d.get("conforms"),
     "vocabulary_issue": lambda d: bool(d.get("vocabulary_issue")),
     "structural_issue": lambda d: bool(d.get("structural_issue")),
 }
-
-
-@app.route("/api/quality/dcat-check/export")
-def dcat_check_export():
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
-
-    result = _load_dcat_check_result()
-    if not result:
-        return jsonify({"error": "No DCAT-AP check results to export yet."}), 404
-
-    datasets = result.get("datasets") or []
-    filters = [f for f in (freq.args.get("filters") or "").split(",") if f in _DCAT_EXPORT_PREDICATES]
-    if filters:
-        datasets = [d for d in datasets if all(_DCAT_EXPORT_PREDICATES[f](d) for f in filters)]
-    q = _search_normalize((freq.args.get("q") or "").strip())
-    if q:
-        datasets = [
-            d for d in datasets
-            if q in _search_normalize(d.get("title", "")) or q in _search_normalize(d.get("org_title", ""))
-        ]
-    datasets = sorted(datasets, key=lambda d: (d.get("org_title") or "", -(d.get("violation_count") or 0)))
-
-    wb = Workbook()
-
-    summary_ws = wb.active
-    summary_ws.title = "Summary"
-    s = result.get("summary") or {}
-    summary_rows = [
-        ("Total datasets",         s.get("total")),
-        ("Checked",                s.get("checked")),
-        ("Could not be fetched",   s.get("failed_to_fetch")),
-        ("Reused from cache",      s.get("reused_from_cache")),
-        ("Conforms to SHACL shapes", s.get("conforms")),
-        ("Vocabulary issues",      s.get("vocabulary_issue")),
-        ("Structural issues",      s.get("structural_issue")),
-        ("Run finished at",        result.get("finished_at")),
-        ("Partial run (cancelled early)", "Yes" if result.get("partial") else "No"),
-    ]
-    hdr_font = Font(bold=True, color="FFFFFF")
-    hdr_fill = PatternFill("solid", fgColor="2563EB")
-    for row_idx, (label, value) in enumerate(summary_rows, 1):
-        summary_ws.cell(row_idx, 1, label).font = Font(bold=True)
-        summary_ws.cell(row_idx, 2, value)
-    summary_ws.column_dimensions["A"].width = 32
-    summary_ws.column_dimensions["B"].width = 24
-
-    ws = wb.create_sheet("Flagged Datasets")
-    columns = [
-        ("org_title",          "Organization",     lambda d: d.get("org_title") or ""),
-        ("title",              "Dataset",          lambda d: d.get("title") or d.get("name") or ""),
-        ("url",                "URL",              lambda d: f"{config.PORTAL_BASE}/dataset/{d.get('name', '')}"),
-        ("conforms",           "Conforms",         lambda d: "Yes" if d.get("conforms") else "No"),
-        ("violation_count",    "Violations",       lambda d: d.get("violation_count") or 0),
-        ("warning_count",      "Warnings",         lambda d: d.get("warning_count") or 0),
-        ("vocabulary_issue",   "Vocabulary issue",  lambda d: "Yes" if d.get("vocabulary_issue") else "No"),
-        ("structural_issue",   "Structural issue",  lambda d: "Yes" if d.get("structural_issue") else "No"),
-        ("issues",             "Issues",           lambda d: "\n".join(
-            f"[{v.get('severity')}] {v.get('message')}" + (f" (×{v['count']})" if v.get("count", 1) > 1 else "")
-            for v in d.get("details") or []
-        )),
-    ]
-    for col_idx, (_key, header, _getter) in enumerate(columns, 1):
-        cell = ws.cell(1, col_idx, header)
-        cell.font = hdr_font
-        cell.fill = hdr_fill
-        cell.alignment = Alignment(horizontal="center")
-
-    for ri, d in enumerate(datasets, 2):
-        for col_idx, (key, _header, getter) in enumerate(columns, 1):
-            cell = ws.cell(ri, col_idx, getter(d))
-            if key == "issues":
-                cell.alignment = Alignment(wrap_text=True, vertical="top")
-
-    for col in ws.columns:
-        width = max((len(str(cell.value or "").split("\n")[0]) for cell in col), default=0)
-        ws.column_dimensions[col[0].column_letter].width = min(width + 2, 60)
-
-    if datasets:
-        ws.auto_filter.ref = ws.dimensions
-        ws.freeze_panes = "A2"
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return send_file(
-        buf,
-        as_attachment=True,
-        download_name=f"dcat_ap_compliance_{today}.xlsx",
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-
-
-@app.route("/api/quality/dcat-check/clear", methods=["POST"])
-def clear_dcat_check_cache():
-    err = _require_admin()
-    if err:
-        return err
-    if _get_dcat_status()["running"]:
-        return jsonify({"cleared": False, "reason": "running"})
-    DcatApDatasetCheckCache.query.delete()
-    DcatApCheckCache.query.delete()
-    db.session.commit()
-    _set_dcat_status(error=None, started_at=None, total=0, completed=0)
-    return jsonify({"cleared": True})
 
 
 # ── GeoDCAT-AP compliance check (geospatial extension SHACL) ────────────────
@@ -3396,10 +3089,7 @@ def _save_geodcat_check_cache(result: dict) -> None:
         db.session.commit()
 
 
-def _load_geodcat_check_result():
-    with app.app_context():
-        row = GeoDcatCheckCache.query.get(1)
-        return row.data() if row else None
+def _load_geodcat_check_result(): return _load_check_result("geodcat")
 
 
 # Thin delegators to the shared implementation (_get/_set/_bump_check_status,
@@ -3578,153 +3268,78 @@ def _do_run_geodcat_check() -> None:
         _set_geodcat_status(running=False, cancel_requested=False)
 
 
-@app.route("/api/quality/geodcat-check", methods=["POST"])
-def start_geodcat_check():
-    err = _require_admin()
-    if err:
-        return err
-    if _get_geodcat_status()["running"]:
-        return jsonify({"started": False, "already_running": True})
-    _set_geodcat_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
-                         cancel_requested=False, total=0, completed=0, error=None)
-    threading.Thread(target=_do_run_geodcat_check, daemon=True).start()
-    return jsonify({"started": True})
-
-
-@app.route("/api/quality/geodcat-check/cancel", methods=["POST"])
-def cancel_geodcat_check():
-    err = _require_admin()
-    if err:
-        return err
-    if not _get_geodcat_status()["running"]:
-        return jsonify({"cancelled": False, "reason": "not_running"})
-    _set_geodcat_status(cancel_requested=True)
-    return jsonify({"cancelled": True})
-
-
-@app.route("/api/quality/geodcat-check")
-def get_geodcat_check():
-    status = _get_geodcat_status()
-    return jsonify({
-        "running":    status["running"],
-        "started_at": status["started_at"],
-        "error":      status["error"],
-        "result":     _load_geodcat_check_result(),
-        "total":      status["total"],
-        "completed":  status["completed"],
-        "cancelling": status["cancel_requested"],
-    })
-
-
-@app.route("/api/quality/geodcat-check/export")
-def geodcat_check_export():
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
-
-    result = _load_geodcat_check_result()
-    if not result:
-        return jsonify({"error": "No GeoDCAT-AP check results to export yet."}), 404
-
-    datasets = result.get("datasets") or []
-    if (freq.args.get("filters") or "") == "non_conforming":
-        datasets = [d for d in datasets if not d.get("conforms")]
-    q = _search_normalize((freq.args.get("q") or "").strip())
-    if q:
-        datasets = [
-            d for d in datasets
-            if q in _search_normalize(d.get("title", "")) or q in _search_normalize(d.get("org_title", ""))
-        ]
-    datasets = sorted(datasets, key=lambda d: (d.get("org_title") or "", -(d.get("violation_count") or 0)))
-
-    wb = Workbook()
-    summary_ws = wb.active
-    summary_ws.title = "Summary"
-    s = result.get("summary") or {}
-    summary_rows = [
-        ("Total geospatial datasets", s.get("total")),
-        ("Checked",                   s.get("checked")),
-        ("Could not be fetched",      s.get("failed_to_fetch")),
-        ("Reused from cache",         s.get("reused_from_cache")),
-        ("Conforms to SHACL shapes",  s.get("conforms")),
-        ("Run finished at",           result.get("finished_at")),
-        ("Partial run (cancelled early)", "Yes" if result.get("partial") else "No"),
-    ]
-    hdr_font = Font(bold=True, color="FFFFFF")
-    hdr_fill = PatternFill("solid", fgColor="2563EB")
-    for row_idx, (label, value) in enumerate(summary_rows, 1):
-        summary_ws.cell(row_idx, 1, label).font = Font(bold=True)
-        summary_ws.cell(row_idx, 2, value)
-    summary_ws.column_dimensions["A"].width = 32
-    summary_ws.column_dimensions["B"].width = 24
-
-    ws = wb.create_sheet("Flagged Datasets")
-    columns = [
-        ("org_title",       "Organization", lambda d: d.get("org_title") or ""),
-        ("title",           "Dataset",      lambda d: d.get("title") or d.get("name") or ""),
-        ("url",             "URL",          lambda d: f"{config.PORTAL_BASE}/dataset/{d.get('name', '')}"),
-        ("conforms",        "Conforms",     lambda d: "Yes" if d.get("conforms") else "No"),
-        ("violation_count", "Violations",   lambda d: d.get("violation_count") or 0),
-        ("warning_count",   "Warnings",     lambda d: d.get("warning_count") or 0),
-        ("issues",          "Issues",       lambda d: "\n".join(
-            f"[{v.get('severity')}] {v.get('message')}" + (f" (×{v['count']})" if v.get("count", 1) > 1 else "")
-            for v in d.get("details") or []
-        )),
-    ]
-    for col_idx, (_key, header, _getter) in enumerate(columns, 1):
-        cell = ws.cell(1, col_idx, header)
-        cell.font = hdr_font
-        cell.fill = hdr_fill
-        cell.alignment = Alignment(horizontal="center")
-    for ri, d in enumerate(datasets, 2):
-        for col_idx, (key, _header, getter) in enumerate(columns, 1):
-            cell = ws.cell(ri, col_idx, getter(d))
-            if key == "issues":
-                cell.alignment = Alignment(wrap_text=True, vertical="top")
-    for col in ws.columns:
-        width = max((len(str(cell.value or "").split("\n")[0]) for cell in col), default=0)
-        ws.column_dimensions[col[0].column_letter].width = min(width + 2, 60)
-    if datasets:
-        ws.auto_filter.ref = ws.dimensions
-        ws.freeze_panes = "A2"
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return send_file(
-        buf, as_attachment=True,
-        download_name=f"geodcat_ap_compliance_{today}.xlsx",
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-
-
-@app.route("/api/quality/geodcat-check/clear", methods=["POST"])
-def clear_geodcat_check_cache():
-    err = _require_admin()
-    if err:
-        return err
-    if _get_geodcat_status()["running"]:
-        return jsonify({"cleared": False, "reason": "running"})
-    GeoDcatDatasetCheckCache.query.delete()
-    GeoDcatCheckCache.query.delete()
-    db.session.commit()
-    _set_geodcat_status(error=None, started_at=None, total=0, completed=0)
-    return jsonify({"cleared": True})
-
-
-# ── Shared quality-check status tracking ─────────────────────────────────────
+# ── Shared quality-check status tracking + routes ────────────────────────────
 # HVD/DCAT-AP/GeoDCAT-AP each had byte-identical get/set/bump-progress status
-# functions (only the model class and stale-after constant differed) --
-# consolidated here behind a small per-check config registry. Extended in
-# later stages (list_datasets/check_one/build_summary/cache models) as more
-# of the three pipelines gets unified behind it; for now just what the status
-# functions below need. The old _get/_set/_bump_X_status names stay as thin
-# delegators (see each check's own section) so none of their many existing
-# call sites (routes, the run loops) need to change in this pass.
+# functions and near-identical start/status/cancel/clear/export routes (only
+# the model classes, run function, and export column/row definitions
+# differed) -- consolidated here behind a per-check config registry. The old
+# per-check function names (_get_hvd_status, etc.) stay as thin delegators
+# (see each check's own section) so the run loop below -- not yet
+# consolidated, that's a later stage -- doesn't need to change in this pass.
+#
+# GeoDCAT-AP's export_predicates has one entry where the original code just
+# had a single hardcoded `filters == "non_conforming"` string check -- since
+# a generic export route needs one uniform filtering mechanism, giving it the
+# same predicate-dict shape as the other two here is the smallest change
+# that lets it fit; it produces identical filtering for the one case that
+# existed before.
 _QUALITY_CHECKS = {
-    "hvd":     {"status_model": HvdCheckStatus,    "stale_after": _HVD_CHECK_STALE_AFTER},
-    "dcat":    {"status_model": DcatApCheckStatus,  "stale_after": _DCAT_CHECK_STALE_AFTER},
-    "geodcat": {"status_model": GeoDcatCheckStatus, "stale_after": _GEODCAT_CHECK_STALE_AFTER},
+    "hvd": {
+        "status_model": HvdCheckStatus, "stale_after": _HVD_CHECK_STALE_AFTER,
+        "cache_model": HvdCheckCache, "dataset_cache_model": HvdDatasetCheckCache,
+        "run_fn": _do_run_hvd_check,
+        "export_predicates": _HVD_EXPORT_PREDICATES,
+        "export_default_exclude_compliant": True,
+        "export_no_results_label": "HVD",
+        "export_sheet_name": "Datasets",
+        "export_filename_prefix": "hvd_compliance",
+        "export_total_label": "Total HVD-tagged datasets",
+        "export_extra_summary_rows": [
+            ("Legal citation issue", "legal_citation_issue"),
+            ("No API access", "no_api_access"),
+            ("License missing", "license_missing"),
+            ("License not confirmed open", "license_non_open"),
+            ("Publisher mismatch", "publisher_mismatch"),
+        ],
+        "export_extra_columns": [
+            ("legal_citation_issue", "Legal citation issue", lambda d: "Yes" if d.get("legal_citation_issue") else "No"),
+            ("no_api_access",        "No API access",        lambda d: "Yes" if d.get("no_api_access") else "No"),
+            ("license_status",       "License status",       lambda d: _HVD_LICENSE_STATUS_LABELS.get(d.get("license_status"), d.get("license_status") or "")),
+            ("publisher_mismatch",   "Publisher mismatch",   lambda d: "Yes" if d.get("publisher_mismatch") else "No"),
+        ],
+    },
+    "dcat": {
+        "status_model": DcatApCheckStatus, "stale_after": _DCAT_CHECK_STALE_AFTER,
+        "cache_model": DcatApCheckCache, "dataset_cache_model": DcatApDatasetCheckCache,
+        "run_fn": _do_run_dcat_check,
+        "export_predicates": _DCAT_EXPORT_PREDICATES,
+        "export_default_exclude_compliant": False,
+        "export_no_results_label": "DCAT-AP",
+        "export_sheet_name": "Flagged Datasets",
+        "export_filename_prefix": "dcat_ap_compliance",
+        "export_total_label": "Total datasets",
+        "export_extra_summary_rows": [
+            ("Vocabulary issues", "vocabulary_issue"),
+            ("Structural issues", "structural_issue"),
+        ],
+        "export_extra_columns": [
+            ("vocabulary_issue", "Vocabulary issue", lambda d: "Yes" if d.get("vocabulary_issue") else "No"),
+            ("structural_issue", "Structural issue", lambda d: "Yes" if d.get("structural_issue") else "No"),
+        ],
+    },
+    "geodcat": {
+        "status_model": GeoDcatCheckStatus, "stale_after": _GEODCAT_CHECK_STALE_AFTER,
+        "cache_model": GeoDcatCheckCache, "dataset_cache_model": GeoDcatDatasetCheckCache,
+        "run_fn": _do_run_geodcat_check,
+        "export_predicates": {"non_conforming": lambda d: not d.get("conforms")},
+        "export_default_exclude_compliant": False,
+        "export_no_results_label": "GeoDCAT-AP",
+        "export_sheet_name": "Flagged Datasets",
+        "export_filename_prefix": "geodcat_ap_compliance",
+        "export_total_label": "Total geospatial datasets",
+        "export_extra_summary_rows": [],
+        "export_extra_columns": [],
+    },
 }
 
 
@@ -3778,6 +3393,180 @@ def _bump_check_progress(check_type: str, completed: int) -> bool:
         row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.session.commit()
         return row.cancel_requested
+
+
+def _load_check_result(check_type: str):
+    with app.app_context():
+        row = _QUALITY_CHECKS[check_type]["cache_model"].query.get(1)
+        return row.data() if row else None
+
+
+@app.route("/api/quality/<check_type>-check", methods=["POST"])
+def start_check(check_type):
+    cfg = _QUALITY_CHECKS.get(check_type)
+    if not cfg:
+        return jsonify({"error": "Unknown check type"}), 404
+    err = _require_admin()
+    if err:
+        return err
+    if _get_check_status(check_type)["running"]:
+        return jsonify({"started": False, "already_running": True})
+    _set_check_status(check_type, running=True, started_at=datetime.now(timezone.utc).isoformat(),
+                       cancel_requested=False, total=0, completed=0, error=None)
+    threading.Thread(target=cfg["run_fn"], daemon=True).start()
+    return jsonify({"started": True})
+
+
+@app.route("/api/quality/<check_type>-check/cancel", methods=["POST"])
+def cancel_check(check_type):
+    cfg = _QUALITY_CHECKS.get(check_type)
+    if not cfg:
+        return jsonify({"error": "Unknown check type"}), 404
+    err = _require_admin()
+    if err:
+        return err
+    if not _get_check_status(check_type)["running"]:
+        return jsonify({"cancelled": False, "reason": "not_running"})
+    _set_check_status(check_type, cancel_requested=True)
+    return jsonify({"cancelled": True})
+
+
+@app.route("/api/quality/<check_type>-check")
+def get_check(check_type):
+    cfg = _QUALITY_CHECKS.get(check_type)
+    if not cfg:
+        return jsonify({"error": "Unknown check type"}), 404
+    status = _get_check_status(check_type)
+    return jsonify({
+        "running":    status["running"],
+        "started_at": status["started_at"],
+        "error":      status["error"],
+        "result":     _load_check_result(check_type),
+        "total":      status["total"],
+        "completed":  status["completed"],
+        "cancelling": status["cancel_requested"],
+    })
+
+
+@app.route("/api/quality/<check_type>-check/export")
+def check_export(check_type):
+    cfg = _QUALITY_CHECKS.get(check_type)
+    if not cfg:
+        return jsonify({"error": "Unknown check type"}), 404
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    result = _load_check_result(check_type)
+    if not result:
+        return jsonify({"error": f"No {cfg['export_no_results_label']} check results to export yet."}), 404
+
+    datasets = result.get("datasets") or []
+
+    # Mirrors the on-screen summary-card filters and search box exactly, so
+    # exporting after narrowing the table down produces a file with just
+    # what's currently shown. HVD excludes compliant (zero-issue) datasets by
+    # default, same as its on-screen table -- unless "compliant" itself is an
+    # active filter, an explicit ask to include them; DCAT-AP/GeoDCAT-AP never
+    # excluded anything by default.
+    predicates = cfg["export_predicates"]
+    filters = [f for f in (freq.args.get("filters") or "").split(",") if f in predicates]
+    if cfg["export_default_exclude_compliant"] and "compliant" not in filters:
+        datasets = [d for d in datasets if d.get("flagged", True)]
+    if filters:
+        datasets = [d for d in datasets if all(predicates[f](d) for f in filters)]
+    q = _search_normalize((freq.args.get("q") or "").strip())
+    if q:
+        datasets = [
+            d for d in datasets
+            if q in _search_normalize(d.get("title", "")) or q in _search_normalize(d.get("org_title", ""))
+        ]
+    datasets = sorted(datasets, key=lambda d: (d.get("org_title") or "", -(d.get("violation_count") or 0)))
+
+    wb = Workbook()
+
+    summary_ws = wb.active
+    summary_ws.title = "Summary"
+    s = result.get("summary") or {}
+    summary_rows = [
+        (cfg["export_total_label"], s.get("total")),
+        ("Checked", s.get("checked")),
+        ("Could not be fetched", s.get("failed_to_fetch")),
+        ("Reused from cache", s.get("reused_from_cache")),
+        ("Conforms to SHACL shapes", s.get("conforms")),
+    ] + [(label, s.get(key)) for label, key in cfg["export_extra_summary_rows"]] + [
+        ("Run finished at", result.get("finished_at")),
+        ("Partial run (cancelled early)", "Yes" if result.get("partial") else "No"),
+    ]
+    hdr_font = Font(bold=True, color="FFFFFF")
+    hdr_fill = PatternFill("solid", fgColor="2563EB")
+    for row_idx, (label, value) in enumerate(summary_rows, 1):
+        summary_ws.cell(row_idx, 1, label).font = Font(bold=True)
+        summary_ws.cell(row_idx, 2, value)
+    summary_ws.column_dimensions["A"].width = 32
+    summary_ws.column_dimensions["B"].width = 24
+
+    ws = wb.create_sheet(cfg["export_sheet_name"])
+    columns = [
+        ("org_title",       "Organization", lambda d: d.get("org_title") or ""),
+        ("title",           "Dataset",      lambda d: d.get("title") or d.get("name") or ""),
+        ("url",             "URL",          lambda d: f"{config.PORTAL_BASE}/dataset/{d.get('name', '')}"),
+        ("conforms",        "Conforms",     lambda d: "Yes" if d.get("conforms") else "No"),
+        ("violation_count", "Violations",   lambda d: d.get("violation_count") or 0),
+        ("warning_count",   "Warnings",     lambda d: d.get("warning_count") or 0),
+    ] + list(cfg["export_extra_columns"]) + [
+        ("issues", "Issues", lambda d: "\n".join(
+            f"[{v.get('severity')}] {v.get('message')}" + (f" (×{v['count']})" if v.get("count", 1) > 1 else "")
+            for v in d.get("details") or []
+        )),
+    ]
+    for col_idx, (_key, header, _getter) in enumerate(columns, 1):
+        cell = ws.cell(1, col_idx, header)
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    for ri, d in enumerate(datasets, 2):
+        for col_idx, (key, _header, getter) in enumerate(columns, 1):
+            cell = ws.cell(ri, col_idx, getter(d))
+            if key == "issues":
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+    for col in ws.columns:
+        width = max((len(str(cell.value or "").split("\n")[0]) for cell in col), default=0)
+        ws.column_dimensions[col[0].column_letter].width = min(width + 2, 60)
+
+    if datasets:
+        ws.auto_filter.ref = ws.dimensions
+        ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"{cfg['export_filename_prefix']}_{today}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/api/quality/<check_type>-check/clear", methods=["POST"])
+def clear_check_cache(check_type):
+    cfg = _QUALITY_CHECKS.get(check_type)
+    if not cfg:
+        return jsonify({"error": "Unknown check type"}), 404
+    err = _require_admin()
+    if err:
+        return err
+    if _get_check_status(check_type)["running"]:
+        return jsonify({"cleared": False, "reason": "running"})
+    cfg["dataset_cache_model"].query.delete()
+    cfg["cache_model"].query.delete()
+    db.session.commit()
+    _set_check_status(check_type, error=None, started_at=None, total=0, completed=0)
+    return jsonify({"cleared": True})
 
 
 # ── EU Metadata Quality Assessment (MQA) score ──────────────────────────────
