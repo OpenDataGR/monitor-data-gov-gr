@@ -8,6 +8,7 @@
 if (!window.__csrfFetchPatched) {
   window.__csrfFetchPatched = true;
   const token = document.querySelector('meta[name="csrf-token"]')?.content;
+  const loginUrl = document.querySelector('meta[name="login-url"]')?.content;
   if (token) {
     const origFetch = window.fetch;
     window.fetch = function (input, init) {
@@ -18,7 +19,18 @@ if (!window.__csrfFetchPatched) {
         headers.set('X-CSRFToken', token);
         init = { ...init, headers };
       }
-      return origFetch(input, init);
+      return origFetch(input, init).then(resp => {
+        // Idle-session expiry (server-side, after 60 min) surfaces as a 401
+        // on whichever request happens to run next -- redirect once instead
+        // of leaving every open tab's periodic polling silently failing
+        // until a manual refresh. loginUrl is only rendered on authenticated
+        // pages, so this never fires on the login page itself.
+        if (loginUrl && resp.status === 401 && !window.__sessionExpiredRedirecting) {
+          window.__sessionExpiredRedirecting = true;
+          location.href = loginUrl + '?next=' + encodeURIComponent(location.pathname + location.search);
+        }
+        return resp;
+      });
     };
   }
 }
