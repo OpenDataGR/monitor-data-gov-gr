@@ -1222,12 +1222,12 @@
       return false;
     }
 
-    async function confirmClearHvdCache() {
-      bootstrap.Modal.getOrCreateInstance(document.getElementById('hvdClearModal')).hide();
-      const resultEl = document.getElementById('hvdClearResult');
+    async function _confirmClearCache(modalId, endpoint, resultElId) {
+      bootstrap.Modal.getOrCreateInstance(document.getElementById(modalId)).hide();
+      const resultEl = document.getElementById(resultElId);
       resultEl.classList.add('d-none');
       try {
-        const resp = await fetch('../api/quality/hvd-check/clear', {method: 'POST'});
+        const resp = await fetch(endpoint, {method: 'POST'});
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || t('admin.failed_to_clear_cache'));
         if (data.cleared === false) throw new Error(data.reason === 'running' ? t('admin.check_running_cancel_first') : t('admin.failed_to_clear_cache'));
@@ -1240,41 +1240,9 @@
       resultEl.classList.remove('d-none');
     }
 
-    async function confirmClearDcatCache() {
-      bootstrap.Modal.getOrCreateInstance(document.getElementById('dcatClearModal')).hide();
-      const resultEl = document.getElementById('dcatClearResult');
-      resultEl.classList.add('d-none');
-      try {
-        const resp = await fetch('../api/quality/dcat-check/clear', {method: 'POST'});
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_clear_cache'));
-        if (data.cleared === false) throw new Error(data.reason === 'running' ? t('admin.check_running_cancel_first') : t('admin.failed_to_clear_cache'));
-        resultEl.className = 'mt-2 small alert alert-success';
-        resultEl.textContent = t('admin.cache_cleared');
-      } catch (e) {
-        resultEl.className = 'mt-2 small alert alert-danger';
-        resultEl.textContent = e.message;
-      }
-      resultEl.classList.remove('d-none');
-    }
-
-    async function confirmClearGeoDcatCache() {
-      bootstrap.Modal.getOrCreateInstance(document.getElementById('geodcatClearModal')).hide();
-      const resultEl = document.getElementById('geodcatClearResult');
-      resultEl.classList.add('d-none');
-      try {
-        const resp = await fetch('../api/quality/geodcat-check/clear', {method: 'POST'});
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_clear_cache'));
-        if (data.cleared === false) throw new Error(data.reason === 'running' ? t('admin.check_running_cancel_first') : t('admin.failed_to_clear_cache'));
-        resultEl.className = 'mt-2 small alert alert-success';
-        resultEl.textContent = t('admin.cache_cleared');
-      } catch (e) {
-        resultEl.className = 'mt-2 small alert alert-danger';
-        resultEl.textContent = e.message;
-      }
-      resultEl.classList.remove('d-none');
-    }
+    function confirmClearHvdCache() { _confirmClearCache('hvdClearModal', '../api/quality/hvd-check/clear', 'hvdClearResult'); }
+    function confirmClearDcatCache() { _confirmClearCache('dcatClearModal', '../api/quality/dcat-check/clear', 'dcatClearResult'); }
+    function confirmClearGeoDcatCache() { _confirmClearCache('geodcatClearModal', '../api/quality/geodcat-check/clear', 'geodcatClearResult'); }
 
     function _b64enc(obj) {
       // Encode any object as a base64 string so WAF rules cannot inspect field values.
