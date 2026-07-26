@@ -2247,64 +2247,24 @@ def _load_hvd_check_result():
         return row.data() if row else None
 
 
-def _hvd_status_row() -> HvdCheckStatus:
-    row = HvdCheckStatus.query.get(1)
-    if not row:
-        row = HvdCheckStatus(id=1, running=False, total=0, completed=0, cancel_requested=False)
-        db.session.add(row)
-        db.session.commit()
-    return row
-
-
-# The running check bumps its progress (and this heartbeat) roughly every
+# The running check bumps its progress (and its heartbeat) roughly every
 # time one dataset finishes -- bounded well under a minute even in the worst
 # case (one _HVD_CHECK_TIMEOUT-limited fetch plus SHACL validation). If the
 # worker that started a run dies (e.g. a deploy restart mid-run), nothing
 # ever touches the heartbeat again, so a long silence reliably means
-# "abandoned", not "still working" -- self-heal here rather than leaving
-# every future run blocked looking like one is perpetually in progress.
+# "abandoned", not "still working" -- self-heal (see _get_check_status)
+# rather than leaving every future run blocked looking like one is
+# perpetually in progress.
 _HVD_CHECK_STALE_AFTER = 10 * 60
 
 
-def _get_hvd_status() -> dict:
-    with app.app_context():
-        row = _hvd_status_row()
-        if row.running and row.updated_at:
-            stale = (datetime.now(timezone.utc).replace(tzinfo=None) - row.updated_at).total_seconds() > _HVD_CHECK_STALE_AFTER
-            if stale:
-                row.running          = False
-                row.cancel_requested = False
-                row.error            = "Abandoned run (the worker that started it never finished, likely a restart)."
-                db.session.commit()
-        return {
-            "running":          row.running,
-            "started_at":       row.started_at,
-            "total":            row.total,
-            "completed":        row.completed,
-            "cancel_requested": row.cancel_requested,
-            "error":            row.error,
-        }
-
-
-def _set_hvd_status(**fields) -> None:
-    with app.app_context():
-        row = _hvd_status_row()
-        for key, value in fields.items():
-            setattr(row, key, value)
-        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.session.commit()
-
-
-def _bump_hvd_progress(completed: int) -> bool:
-    """Updates the shared completed count and heartbeat, and returns whether
-    cancellation has been requested -- in one DB round trip, since this is
-    called once per dataset (~1,105 times a run) from the check loop."""
-    with app.app_context():
-        row = _hvd_status_row()
-        row.completed  = completed
-        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.session.commit()
-        return row.cancel_requested
+# Thin delegators to the shared implementation (_get/_set/_bump_check_status,
+# defined later in this file, in the "Shared quality-check status tracking"
+# section) -- kept under their original names since routes and the run loop
+# below call them by these names throughout.
+def _get_hvd_status() -> dict: return _get_check_status("hvd")
+def _set_hvd_status(**fields) -> None: _set_check_status("hvd", **fields)
+def _bump_hvd_progress(completed: int) -> bool: return _bump_check_progress("hvd", completed)
 
 
 
@@ -2983,51 +2943,13 @@ def _load_dcat_check_result():
         return row.data() if row else None
 
 
-def _dcat_status_row() -> DcatApCheckStatus:
-    row = DcatApCheckStatus.query.get(1)
-    if not row:
-        row = DcatApCheckStatus(id=1, running=False, total=0, completed=0, cancel_requested=False)
-        db.session.add(row)
-        db.session.commit()
-    return row
-
-
-def _get_dcat_status() -> dict:
-    with app.app_context():
-        row = _dcat_status_row()
-        if row.running and row.updated_at:
-            stale = (datetime.now(timezone.utc).replace(tzinfo=None) - row.updated_at).total_seconds() > _DCAT_CHECK_STALE_AFTER
-            if stale:
-                row.running          = False
-                row.cancel_requested = False
-                row.error            = "Abandoned run (the worker that started it never finished, likely a restart)."
-                db.session.commit()
-        return {
-            "running":          row.running,
-            "started_at":       row.started_at,
-            "total":            row.total,
-            "completed":        row.completed,
-            "cancel_requested": row.cancel_requested,
-            "error":            row.error,
-        }
-
-
-def _set_dcat_status(**fields) -> None:
-    with app.app_context():
-        row = _dcat_status_row()
-        for key, value in fields.items():
-            setattr(row, key, value)
-        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.session.commit()
-
-
-def _bump_dcat_progress(completed: int) -> bool:
-    with app.app_context():
-        row = _dcat_status_row()
-        row.completed  = completed
-        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.session.commit()
-        return row.cancel_requested
+# Thin delegators to the shared implementation (_get/_set/_bump_check_status,
+# defined later in this file, in the "Shared quality-check status tracking"
+# section) -- kept under their original names since routes and the run loop
+# below call them by these names throughout.
+def _get_dcat_status() -> dict: return _get_check_status("dcat")
+def _set_dcat_status(**fields) -> None: _set_check_status("dcat", **fields)
+def _bump_dcat_progress(completed: int) -> bool: return _bump_check_progress("dcat", completed)
 
 
 # Every property the base DCAT-AP + MDR vocabulary shapes (and GeoDCAT-AP's
@@ -3480,51 +3402,13 @@ def _load_geodcat_check_result():
         return row.data() if row else None
 
 
-def _geodcat_status_row() -> GeoDcatCheckStatus:
-    row = GeoDcatCheckStatus.query.get(1)
-    if not row:
-        row = GeoDcatCheckStatus(id=1, running=False, total=0, completed=0, cancel_requested=False)
-        db.session.add(row)
-        db.session.commit()
-    return row
-
-
-def _get_geodcat_status() -> dict:
-    with app.app_context():
-        row = _geodcat_status_row()
-        if row.running and row.updated_at:
-            stale = (datetime.now(timezone.utc).replace(tzinfo=None) - row.updated_at).total_seconds() > _GEODCAT_CHECK_STALE_AFTER
-            if stale:
-                row.running          = False
-                row.cancel_requested = False
-                row.error            = "Abandoned run (the worker that started it never finished, likely a restart)."
-                db.session.commit()
-        return {
-            "running":          row.running,
-            "started_at":       row.started_at,
-            "total":            row.total,
-            "completed":        row.completed,
-            "cancel_requested": row.cancel_requested,
-            "error":            row.error,
-        }
-
-
-def _set_geodcat_status(**fields) -> None:
-    with app.app_context():
-        row = _geodcat_status_row()
-        for key, value in fields.items():
-            setattr(row, key, value)
-        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.session.commit()
-
-
-def _bump_geodcat_progress(completed: int) -> bool:
-    with app.app_context():
-        row = _geodcat_status_row()
-        row.completed  = completed
-        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.session.commit()
-        return row.cancel_requested
+# Thin delegators to the shared implementation (_get/_set/_bump_check_status,
+# defined later in this file, in the "Shared quality-check status tracking"
+# section) -- kept under their original names since routes and the run loop
+# below call them by these names throughout.
+def _get_geodcat_status() -> dict: return _get_check_status("geodcat")
+def _set_geodcat_status(**fields) -> None: _set_check_status("geodcat", **fields)
+def _bump_geodcat_progress(completed: int) -> bool: return _bump_check_progress("geodcat", completed)
 
 
 def _geodcat_check_one(name: str) -> dict:
@@ -3826,6 +3710,74 @@ def clear_geodcat_check_cache():
     db.session.commit()
     _set_geodcat_status(error=None, started_at=None, total=0, completed=0)
     return jsonify({"cleared": True})
+
+
+# ── Shared quality-check status tracking ─────────────────────────────────────
+# HVD/DCAT-AP/GeoDCAT-AP each had byte-identical get/set/bump-progress status
+# functions (only the model class and stale-after constant differed) --
+# consolidated here behind a small per-check config registry. Extended in
+# later stages (list_datasets/check_one/build_summary/cache models) as more
+# of the three pipelines gets unified behind it; for now just what the status
+# functions below need. The old _get/_set/_bump_X_status names stay as thin
+# delegators (see each check's own section) so none of their many existing
+# call sites (routes, the run loops) need to change in this pass.
+_QUALITY_CHECKS = {
+    "hvd":     {"status_model": HvdCheckStatus,    "stale_after": _HVD_CHECK_STALE_AFTER},
+    "dcat":    {"status_model": DcatApCheckStatus,  "stale_after": _DCAT_CHECK_STALE_AFTER},
+    "geodcat": {"status_model": GeoDcatCheckStatus, "stale_after": _GEODCAT_CHECK_STALE_AFTER},
+}
+
+
+def _check_status_row(check_type: str):
+    model = _QUALITY_CHECKS[check_type]["status_model"]
+    row = model.query.get(1)
+    if not row:
+        row = model(id=1, running=False, total=0, completed=0, cancel_requested=False)
+        db.session.add(row)
+        db.session.commit()
+    return row
+
+
+def _get_check_status(check_type: str) -> dict:
+    with app.app_context():
+        row = _check_status_row(check_type)
+        if row.running and row.updated_at:
+            stale_after = _QUALITY_CHECKS[check_type]["stale_after"]
+            stale = (datetime.now(timezone.utc).replace(tzinfo=None) - row.updated_at).total_seconds() > stale_after
+            if stale:
+                row.running          = False
+                row.cancel_requested = False
+                row.error            = "Abandoned run (the worker that started it never finished, likely a restart)."
+                db.session.commit()
+        return {
+            "running":          row.running,
+            "started_at":       row.started_at,
+            "total":            row.total,
+            "completed":        row.completed,
+            "cancel_requested": row.cancel_requested,
+            "error":            row.error,
+        }
+
+
+def _set_check_status(check_type: str, **fields) -> None:
+    with app.app_context():
+        row = _check_status_row(check_type)
+        for key, value in fields.items():
+            setattr(row, key, value)
+        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
+
+def _bump_check_progress(check_type: str, completed: int) -> bool:
+    """Updates the shared completed count and heartbeat, and returns whether
+    cancellation has been requested -- in one DB round trip, since this is
+    called once per dataset from each check's run loop."""
+    with app.app_context():
+        row = _check_status_row(check_type)
+        row.completed  = completed
+        row.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+        return row.cancel_requested
 
 
 # ── EU Metadata Quality Assessment (MQA) score ──────────────────────────────
