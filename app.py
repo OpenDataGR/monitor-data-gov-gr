@@ -5792,7 +5792,7 @@ def portal_user_activity(username):
 # from all 6 gunicorn web workers -- with a plain dict that refresh only ever
 # warmed its own copy, never any web worker's, so whichever worker a real
 # request happened to land on still did the full crawl itself the first time.
-_pm_cache = _SharedCache("portal_members", {"data": None, "ts": 0, "loading": False, "error": None})
+_pm_cache = _SharedCache("portal_members", {"data": None, "ts": 0, "loading": False, "error": None, "progress": None})
 _PM_REFRESH_INTERVAL = 90 * 60  # refresh proactively before the 2h cache below goes stale
 
 
@@ -5878,13 +5878,16 @@ def _do_fetch_portal_members():
             return []
 
         raw_members: list = []
+        total_orgs = len(org_list)
+        _pm_cache["progress"] = {"done": 0, "total": total_orgs}
         with ThreadPoolExecutor(max_workers=20) as pool:
             futs = {pool.submit(_fetch_org_members, org): org for org in org_list}
-            for fut in as_completed(futs):
+            for i, fut in enumerate(as_completed(futs), start=1):
                 try:
                     raw_members.extend(fut.result())
                 except Exception:
                     pass
+                _pm_cache["progress"] = {"done": i, "total": total_orgs}
 
         # Step 3 – enrich org members with user_info (no extra API calls)
         all_members = []
@@ -5972,6 +5975,7 @@ def _do_fetch_portal_members():
         _pm_cache["error"] = str(exc)
     finally:
         _pm_cache["loading"] = False
+        _pm_cache["progress"] = None
 
 
 @app.route("/api/portal-members", methods=["GET", "POST"])
@@ -5994,7 +5998,7 @@ def portal_members_all():
     if not _pm_cache["loading"]:
         threading.Thread(target=_do_fetch_portal_members, daemon=True).start()
 
-    return jsonify({"loading": True, "members": [], "total": 0}), 202
+    return jsonify({"loading": True, "members": [], "total": 0, "progress": _pm_cache["progress"]}), 202
 
 
 # ── Matomo Analytics ─────────────────────────────────────────────────────────

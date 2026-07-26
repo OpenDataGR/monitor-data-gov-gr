@@ -6730,6 +6730,19 @@ async function loadContactsTab(force = false) {
   _pollPortalMembers(0, false, force);
 }
 
+// The slow part of a cold portal-members fetch is one organization_show call
+// per CKAN organization; the backend reports {done, total} as those complete
+// so this can be a real progress bar instead of a bare spinner.
+function _updateContactsLoadingProgress(progress) {
+  const bar = document.getElementById('contactsLoadingProgressBar');
+  if (!bar || !progress || !progress.total) return;
+  const pct = Math.min(100, Math.round((progress.done / progress.total) * 100));
+  bar.style.width = pct + '%';
+  bar.setAttribute('aria-valuenow', pct);
+  const text = document.getElementById('contactsLoadingText');
+  if (text) text.textContent = `${t('contacts.loading_portal')} (${progress.done}/${progress.total})`;
+}
+
 async function _pollPortalMembers(attempt, silent = false, force = false) {
   const cols = 8;
   const MAX = 40;   // give up after ~200 s
@@ -6740,7 +6753,10 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
     show('contactsTableBody').innerHTML =
       `<tr><td colspan="${cols}" class="text-center py-5">
          <div class="spinner-border text-primary mb-2"></div>
-         <div class="text-muted small">${t('contacts.loading_portal')}</div>
+         <div class="text-muted small mb-2" id="contactsLoadingText">${t('contacts.loading_portal')}</div>
+         <div class="progress mx-auto" style="max-width:280px;height:6px">
+           <div class="progress-bar" id="contactsLoadingProgressBar" role="progressbar" style="width:0%"></div>
+         </div>
        </td></tr>`;
   }
 
@@ -6751,6 +6767,7 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
     const data = await resp.json();
 
     if (resp.status === 202) {
+      if (!silent) _updateContactsLoadingProgress(data.progress);
       if (attempt < MAX) {
         _pmPollTimer = setTimeout(() => _pollPortalMembers(attempt + 1, silent, force), INTERVAL);
       } else if (!silent) {
