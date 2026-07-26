@@ -2230,17 +2230,7 @@ _HVD_CHECK_TIMEOUT = 30
 # next run re-populates everything with the new/fixed shape.
 _HVD_CHECK_VERSION = 4
 
-def _save_hvd_check_cache(result: dict) -> None:
-    with app.app_context():
-        row = HvdCheckCache.query.get(1)
-        if not row:
-            row = HvdCheckCache(id=1, data_json="{}")
-            db.session.add(row)
-        row.data_json  = json.dumps(result)
-        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.session.commit()
-
-
+def _save_hvd_check_cache(result: dict) -> None: _save_check_cache("hvd", result)
 def _load_hvd_check_result(): return _load_check_result("hvd")
 
 
@@ -2604,126 +2594,31 @@ def _list_hvd_datasets() -> list:
     return items
 
 
-def _do_run_hvd_check() -> None:
-    cancelled = False
-    try:
-        datasets = _list_hvd_datasets()
-        _set_hvd_status(total=len(datasets))
+# The two hooks below are HVD's contribution to the shared _do_run_check
+# engine (see the "Shared quality-check status tracking + routes" section):
+# every checked dataset (cache-reused or freshly fetched) needs its
+# publisher_mismatch recomputed against the *current* org_title (an org
+# rename shouldn't require a full re-check to be reflected), and HVD keeps
+# every checked dataset -- not just non-conforming ones -- so the UI can
+# offer a "show compliant datasets" toggle, with `flagged` marking which
+# ones actually have an issue (DCAT-AP/GeoDCAT-AP only ever show flagged
+# datasets, so they don't need either of these).
+def _hvd_augment_row(result: dict, d: dict) -> None:
+    result["org_title"] = d.get("org_title", "")
+    result["publisher_mismatch"] = _publisher_mismatch(result.get("publisher_name", ""), result["org_title"])
 
-        with app.app_context():
-            cached_rows = {row.name: row for row in HvdDatasetCheckCache.query.all()}
 
-        # A dataset is reused as-is only if we have a previously *successful*
-        # result, from the current check version, AND CKAN's metadata_modified
-        # hasn't changed since then -- otherwise (new, previously failed,
-        # actually modified, or cached under an older schema/logic version)
-        # it's re-fetched and re-validated for real.
-        to_fetch, rows = [], []
-        for d in datasets:
-            row = cached_rows.get(d["name"])
-            cached = row.result() if (row and row.result_json) else None
-            if (cached and isinstance(cached, dict) and cached.get("_cache_version") == _HVD_CHECK_VERSION
-                    and row.metadata_modified == d["metadata_modified"]):
-                cached_result = cached["result"]
-                cached_result["org_title"] = d.get("org_title", "")
-                cached_result["publisher_mismatch"] = _publisher_mismatch(
-                    cached_result.get("publisher_name", ""), cached_result["org_title"])
-                rows.append(cached_result)
-            else:
-                to_fetch.append(d)
-        _bump_hvd_progress(len(rows))
+def _hvd_finalize_datasets(checked: list) -> list:
+    for r in checked:
+        r["flagged"] = bool(
+            r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] != "open"
+            or not r["conforms"] or r["publisher_mismatch"]
+        )
+    checked.sort(key=lambda r: (not r["flagged"], -r["violation_count"]))
+    return checked
 
-        newly_checked = []  # (name, metadata_modified, result-or-None-if-failed)
-        # ProcessPoolExecutor, not threads: _hvd_check_one's rdflib parsing
-        # and pyshacl validation are real CPU-bound work, not I/O -- threads
-        # would only ever run one of them at a time regardless of count
-        # (GIL), capping this at one core no matter how many vCPUs exist.
-        # Separate processes each get their own GIL, so this actually uses
-        # multiple cores. See _MP_SPAWN_CONTEXT's comment for why spawn, not
-        # the default fork.
-        pool = ProcessPoolExecutor(max_workers=_HVD_CHECK_CONCURRENCY, mp_context=_MP_SPAWN_CONTEXT)
-        try:
-            futures = {pool.submit(_hvd_check_one, d["name"]): d for d in to_fetch}
-            for fut in as_completed(futures):
-                d = futures[fut]
-                try:
-                    result = fut.result()
-                except Exception as exc:
-                    # _hvd_check_one itself never raises (see its docstring) --
-                    # this only catches the pool worker process dying outright.
-                    result = {"name": d["name"], "error": str(exc)}
-                if "error" in result:
-                    rows.append(result)
-                    newly_checked.append((d["name"], d["metadata_modified"], None))
-                else:
-                    result["org_title"] = d.get("org_title", "")
-                    result["publisher_mismatch"] = _publisher_mismatch(
-                        result.get("publisher_name", ""), result["org_title"])
-                    rows.append(result)
-                    newly_checked.append((d["name"], d["metadata_modified"], result))
-                if _bump_hvd_progress(len(rows)):
-                    cancelled = True
-                    break
-        finally:
-            # Drop any not-yet-started work immediately; already-running
-            # requests in other threads finish on their own (Python can't
-            # forcibly kill a thread mid-request) but their results are
-            # simply not collected -- don't block the cancel on them.
-            pool.shutdown(wait=False, cancel_futures=True)
 
-        if newly_checked:
-            with app.app_context():
-                for name, mtime, result in newly_checked:
-                    row = HvdDatasetCheckCache.query.get(name)
-                    if not row:
-                        row = HvdDatasetCheckCache(name=name)
-                        db.session.add(row)
-                    row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                    if result is not None:
-                        # Only overwrite on success -- a transient fetch
-                        # failure shouldn't erase a known-good cached result;
-                        # leaving metadata_modified stale means it's simply
-                        # retried again next run instead of wrongly reused.
-                        row.metadata_modified = mtime
-                        row.result_json = json.dumps({"_cache_version": _HVD_CHECK_VERSION, "result": result})
-                db.session.commit()
-
-        checked = [r for r in rows if "error" not in r]
-        failed  = [r for r in rows if "error" in r]
-        summary = {
-            "total":                len(datasets),
-            "checked":              len(checked),
-            "failed_to_fetch":      len(failed),
-            "reused_from_cache":    len(datasets) - len(to_fetch),
-            "conforms":             sum(1 for r in checked if r["conforms"]),
-            "legal_citation_issue": sum(1 for r in checked if r["legal_citation_issue"]),
-            "no_api_access":        sum(1 for r in checked if r["no_api_access"]),
-            "license_missing":      sum(1 for r in checked if r["license_status"] == "missing"),
-            "license_non_open":     sum(1 for r in checked if r["license_status"] == "non_open"),
-            "publisher_mismatch":   sum(1 for r in checked if r["publisher_mismatch"]),
-        }
-        # Every checked dataset is kept (not just non-compliant ones) so the
-        # UI can offer a "show compliant datasets" toggle -- `flagged` marks
-        # which ones actually have an issue, and drives the default (flagged-
-        # only) view as well as the summary-card filters.
-        for r in checked:
-            r["flagged"] = bool(
-                r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] != "open"
-                or not r["conforms"] or r["publisher_mismatch"]
-            )
-        checked.sort(key=lambda r: (not r["flagged"], -r["violation_count"]))
-        result = {
-            "summary":     summary,
-            "datasets":    checked,
-            "partial":     cancelled,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-        }
-        _save_hvd_check_cache(result)
-        _set_hvd_status(error=None)
-    except Exception as exc:
-        _set_hvd_status(error=str(exc))
-    finally:
-        _set_hvd_status(running=False, cancel_requested=False)
+def _do_run_hvd_check() -> None: _do_run_check("hvd")
 
 
 _HVD_EXPORT_PREDICATES = {
@@ -2766,17 +2661,7 @@ _DCAT_CHECK_VERSION = 2  # bumped: vocabulary augmentation now dereferences vcar
 _DCAT_CHECK_STALE_AFTER = 10 * 60
 
 
-def _save_dcat_check_cache(result: dict) -> None:
-    with app.app_context():
-        row = DcatApCheckCache.query.get(1)
-        if not row:
-            row = DcatApCheckCache(id=1, data_json="{}")
-            db.session.add(row)
-        row.data_json  = json.dumps(result)
-        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.session.commit()
-
-
+def _save_dcat_check_cache(result: dict) -> None: _save_check_cache("dcat", result)
 def _load_dcat_check_result(): return _load_check_result("dcat")
 
 
@@ -2963,95 +2848,7 @@ def _list_all_datasets() -> list:
     return items
 
 
-def _do_run_dcat_check() -> None:
-    cancelled = False
-    try:
-        datasets = _list_all_datasets()
-        _set_dcat_status(total=len(datasets))
-
-        with app.app_context():
-            cached_rows = {row.name: row for row in DcatApDatasetCheckCache.query.all()}
-
-        to_fetch, rows = [], []
-        for d in datasets:
-            row = cached_rows.get(d["name"])
-            cached = row.result() if (row and row.result_json) else None
-            if (cached and isinstance(cached, dict) and cached.get("_cache_version") == _DCAT_CHECK_VERSION
-                    and row.metadata_modified == d["metadata_modified"]):
-                cached_result = cached["result"]
-                cached_result["org_title"] = d.get("org_title", "")
-                rows.append(cached_result)
-            else:
-                to_fetch.append(d)
-        _bump_dcat_progress(len(rows))
-
-        newly_checked = []
-        # ProcessPoolExecutor, not threads -- same reasoning as the HVD check
-        # above: _dcat_check_one's parsing/validation is CPU-bound, so this
-        # is what actually spreads it across multiple cores instead of
-        # capping at one regardless of worker count.
-        pool = ProcessPoolExecutor(max_workers=_DCAT_CHECK_CONCURRENCY, mp_context=_MP_SPAWN_CONTEXT)
-        try:
-            futures = {pool.submit(_dcat_check_one, d["name"]): d for d in to_fetch}
-            for fut in as_completed(futures):
-                d = futures[fut]
-                try:
-                    result = fut.result()
-                except Exception as exc:
-                    # _dcat_check_one itself never raises -- this only
-                    # catches the pool worker process dying outright.
-                    result = {"name": d["name"], "error": str(exc)}
-                if "error" in result:
-                    rows.append(result)
-                    newly_checked.append((d["name"], d["metadata_modified"], None))
-                else:
-                    result["org_title"] = d.get("org_title", "")
-                    rows.append(result)
-                    newly_checked.append((d["name"], d["metadata_modified"], result))
-                if _bump_dcat_progress(len(rows)):
-                    cancelled = True
-                    break
-        finally:
-            pool.shutdown(wait=False, cancel_futures=True)
-
-        if newly_checked:
-            with app.app_context():
-                for name, mtime, result in newly_checked:
-                    row = DcatApDatasetCheckCache.query.get(name)
-                    if not row:
-                        row = DcatApDatasetCheckCache(name=name)
-                        db.session.add(row)
-                    row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                    if result is not None:
-                        row.metadata_modified = mtime
-                        row.result_json = json.dumps({"_cache_version": _DCAT_CHECK_VERSION, "result": result})
-                db.session.commit()
-
-        checked = [r for r in rows if "error" not in r]
-        failed  = [r for r in rows if "error" in r]
-        summary = {
-            "total":             len(datasets),
-            "checked":           len(checked),
-            "failed_to_fetch":   len(failed),
-            "reused_from_cache": len(datasets) - len(to_fetch),
-            "conforms":          sum(1 for r in checked if r["conforms"]),
-            "vocabulary_issue":  sum(1 for r in checked if r["vocabulary_issue"]),
-            "structural_issue":  sum(1 for r in checked if r["structural_issue"]),
-        }
-        flagged = [r for r in checked if not r["conforms"]]
-        flagged.sort(key=lambda r: -r["violation_count"])
-        result = {
-            "summary":     summary,
-            "datasets":    flagged,
-            "partial":     cancelled,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-        }
-        _save_dcat_check_cache(result)
-        _set_dcat_status(error=None)
-    except Exception as exc:
-        _set_dcat_status(error=str(exc))
-    finally:
-        _set_dcat_status(running=False, cancel_requested=False)
+def _do_run_dcat_check() -> None: _do_run_check("dcat")
 
 
 _DCAT_EXPORT_PREDICATES = {
@@ -3078,17 +2875,7 @@ _GEODCAT_CHECK_VERSION = 1
 _GEODCAT_CHECK_STALE_AFTER = 10 * 60
 
 
-def _save_geodcat_check_cache(result: dict) -> None:
-    with app.app_context():
-        row = GeoDcatCheckCache.query.get(1)
-        if not row:
-            row = GeoDcatCheckCache(id=1, data_json="{}")
-            db.session.add(row)
-        row.data_json  = json.dumps(result)
-        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.session.commit()
-
-
+def _save_geodcat_check_cache(result: dict) -> None: _save_check_cache("geodcat", result)
 def _load_geodcat_check_result(): return _load_check_result("geodcat")
 
 
@@ -3179,93 +2966,7 @@ def _list_geo_datasets() -> list:
     return items
 
 
-def _do_run_geodcat_check() -> None:
-    cancelled = False
-    try:
-        datasets = _list_geo_datasets()
-        _set_geodcat_status(total=len(datasets))
-
-        with app.app_context():
-            cached_rows = {row.name: row for row in GeoDcatDatasetCheckCache.query.all()}
-
-        to_fetch, rows = [], []
-        for d in datasets:
-            row = cached_rows.get(d["name"])
-            cached = row.result() if (row and row.result_json) else None
-            if (cached and isinstance(cached, dict) and cached.get("_cache_version") == _GEODCAT_CHECK_VERSION
-                    and row.metadata_modified == d["metadata_modified"]):
-                cached_result = cached["result"]
-                cached_result["org_title"] = d.get("org_title", "")
-                rows.append(cached_result)
-            else:
-                to_fetch.append(d)
-        _bump_geodcat_progress(len(rows))
-
-        newly_checked = []
-        # ProcessPoolExecutor, not threads -- same reasoning as the HVD check
-        # above: _geodcat_check_one's parsing/validation is CPU-bound, so
-        # this is what actually spreads it across multiple cores instead of
-        # capping at one regardless of worker count.
-        pool = ProcessPoolExecutor(max_workers=_GEODCAT_CHECK_CONCURRENCY, mp_context=_MP_SPAWN_CONTEXT)
-        try:
-            futures = {pool.submit(_geodcat_check_one, d["name"]): d for d in to_fetch}
-            for fut in as_completed(futures):
-                d = futures[fut]
-                try:
-                    result = fut.result()
-                except Exception as exc:
-                    # _geodcat_check_one itself never raises -- this only
-                    # catches the pool worker process dying outright.
-                    result = {"name": d["name"], "error": str(exc)}
-                if "error" in result:
-                    rows.append(result)
-                    newly_checked.append((d["name"], d["metadata_modified"], None))
-                else:
-                    result["org_title"] = d.get("org_title", "")
-                    rows.append(result)
-                    newly_checked.append((d["name"], d["metadata_modified"], result))
-                if _bump_geodcat_progress(len(rows)):
-                    cancelled = True
-                    break
-        finally:
-            pool.shutdown(wait=False, cancel_futures=True)
-
-        if newly_checked:
-            with app.app_context():
-                for name, mtime, result in newly_checked:
-                    row = GeoDcatDatasetCheckCache.query.get(name)
-                    if not row:
-                        row = GeoDcatDatasetCheckCache(name=name)
-                        db.session.add(row)
-                    row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                    if result is not None:
-                        row.metadata_modified = mtime
-                        row.result_json = json.dumps({"_cache_version": _GEODCAT_CHECK_VERSION, "result": result})
-                db.session.commit()
-
-        checked = [r for r in rows if "error" not in r]
-        failed  = [r for r in rows if "error" in r]
-        summary = {
-            "total":             len(datasets),
-            "checked":           len(checked),
-            "failed_to_fetch":   len(failed),
-            "reused_from_cache": len(datasets) - len(to_fetch),
-            "conforms":          sum(1 for r in checked if r["conforms"]),
-        }
-        flagged = [r for r in checked if not r["conforms"]]
-        flagged.sort(key=lambda r: -r["violation_count"])
-        result = {
-            "summary":     summary,
-            "datasets":    flagged,
-            "partial":     cancelled,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-        }
-        _save_geodcat_check_cache(result)
-        _set_geodcat_status(error=None)
-    except Exception as exc:
-        _set_geodcat_status(error=str(exc))
-    finally:
-        _set_geodcat_status(running=False, cancel_requested=False)
+def _do_run_geodcat_check() -> None: _do_run_check("geodcat")
 
 
 # ── Shared quality-check status tracking + routes ────────────────────────────
@@ -3283,11 +2984,31 @@ def _do_run_geodcat_check() -> None:
 # same predicate-dict shape as the other two here is the smallest change
 # that lets it fit; it produces identical filtering for the one case that
 # existed before.
+def _default_augment_row(result: dict, d: dict) -> None:
+    result["org_title"] = d.get("org_title", "")
+
+
+def _nonconforming_finalize_datasets(checked: list) -> list:
+    flagged = [r for r in checked if not r["conforms"]]
+    flagged.sort(key=lambda r: -r["violation_count"])
+    return flagged
+
+
 _QUALITY_CHECKS = {
     "hvd": {
         "status_model": HvdCheckStatus, "stale_after": _HVD_CHECK_STALE_AFTER,
         "cache_model": HvdCheckCache, "dataset_cache_model": HvdDatasetCheckCache,
         "run_fn": _do_run_hvd_check,
+        "list_datasets": _list_hvd_datasets, "check_one": _hvd_check_one,
+        "check_version": _HVD_CHECK_VERSION, "concurrency": _HVD_CHECK_CONCURRENCY,
+        "augment_row": _hvd_augment_row, "finalize_datasets": _hvd_finalize_datasets,
+        "summary_flag_fields": [
+            ("legal_citation_issue", lambda r: r["legal_citation_issue"]),
+            ("no_api_access",        lambda r: r["no_api_access"]),
+            ("license_missing",      lambda r: r["license_status"] == "missing"),
+            ("license_non_open",     lambda r: r["license_status"] == "non_open"),
+            ("publisher_mismatch",   lambda r: r["publisher_mismatch"]),
+        ],
         "export_predicates": _HVD_EXPORT_PREDICATES,
         "export_default_exclude_compliant": True,
         "export_no_results_label": "HVD",
@@ -3312,6 +3033,13 @@ _QUALITY_CHECKS = {
         "status_model": DcatApCheckStatus, "stale_after": _DCAT_CHECK_STALE_AFTER,
         "cache_model": DcatApCheckCache, "dataset_cache_model": DcatApDatasetCheckCache,
         "run_fn": _do_run_dcat_check,
+        "list_datasets": _list_all_datasets, "check_one": _dcat_check_one,
+        "check_version": _DCAT_CHECK_VERSION, "concurrency": _DCAT_CHECK_CONCURRENCY,
+        "augment_row": _default_augment_row, "finalize_datasets": _nonconforming_finalize_datasets,
+        "summary_flag_fields": [
+            ("vocabulary_issue", lambda r: r["vocabulary_issue"]),
+            ("structural_issue", lambda r: r["structural_issue"]),
+        ],
         "export_predicates": _DCAT_EXPORT_PREDICATES,
         "export_default_exclude_compliant": False,
         "export_no_results_label": "DCAT-AP",
@@ -3331,6 +3059,10 @@ _QUALITY_CHECKS = {
         "status_model": GeoDcatCheckStatus, "stale_after": _GEODCAT_CHECK_STALE_AFTER,
         "cache_model": GeoDcatCheckCache, "dataset_cache_model": GeoDcatDatasetCheckCache,
         "run_fn": _do_run_geodcat_check,
+        "list_datasets": _list_geo_datasets, "check_one": _geodcat_check_one,
+        "check_version": _GEODCAT_CHECK_VERSION, "concurrency": _GEODCAT_CHECK_CONCURRENCY,
+        "augment_row": _default_augment_row, "finalize_datasets": _nonconforming_finalize_datasets,
+        "summary_flag_fields": [],
         "export_predicates": {"non_conforming": lambda d: not d.get("conforms")},
         "export_default_exclude_compliant": False,
         "export_no_results_label": "GeoDCAT-AP",
@@ -3399,6 +3131,126 @@ def _load_check_result(check_type: str):
     with app.app_context():
         row = _QUALITY_CHECKS[check_type]["cache_model"].query.get(1)
         return row.data() if row else None
+
+
+def _save_check_cache(check_type: str, result: dict) -> None:
+    with app.app_context():
+        model = _QUALITY_CHECKS[check_type]["cache_model"]
+        row = model.query.get(1)
+        if not row:
+            row = model(id=1, data_json="{}")
+            db.session.add(row)
+        row.data_json  = json.dumps(result)
+        row.fetched_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.session.commit()
+
+
+def _do_run_check(check_type: str) -> None:
+    cfg = _QUALITY_CHECKS[check_type]
+    cancelled = False
+    try:
+        datasets = cfg["list_datasets"]()
+        _set_check_status(check_type, total=len(datasets))
+
+        with app.app_context():
+            cached_rows = {row.name: row for row in cfg["dataset_cache_model"].query.all()}
+
+        # A dataset is reused as-is only if we have a previously *successful*
+        # result, from the current check version, AND CKAN's metadata_modified
+        # hasn't changed since then -- otherwise (new, previously failed,
+        # actually modified, or cached under an older schema/logic version)
+        # it's re-fetched and re-validated for real.
+        to_fetch, rows = [], []
+        for d in datasets:
+            row = cached_rows.get(d["name"])
+            cached = row.result() if (row and row.result_json) else None
+            if (cached and isinstance(cached, dict) and cached.get("_cache_version") == cfg["check_version"]
+                    and row.metadata_modified == d["metadata_modified"]):
+                cached_result = cached["result"]
+                cfg["augment_row"](cached_result, d)
+                rows.append(cached_result)
+            else:
+                to_fetch.append(d)
+        _bump_check_progress(check_type, len(rows))
+
+        newly_checked = []  # (name, metadata_modified, result-or-None-if-failed)
+        # ProcessPoolExecutor, not threads: check_one's rdflib parsing and
+        # pyshacl validation are real CPU-bound work, not I/O -- threads
+        # would only ever run one of them at a time regardless of count
+        # (GIL), capping this at one core no matter how many vCPUs exist.
+        # Separate processes each get their own GIL, so this actually uses
+        # multiple cores. See _MP_SPAWN_CONTEXT's comment for why spawn, not
+        # the default fork.
+        pool = ProcessPoolExecutor(max_workers=cfg["concurrency"], mp_context=_MP_SPAWN_CONTEXT)
+        try:
+            futures = {pool.submit(cfg["check_one"], d["name"]): d for d in to_fetch}
+            for fut in as_completed(futures):
+                d = futures[fut]
+                try:
+                    result = fut.result()
+                except Exception as exc:
+                    # check_one itself never raises (see its docstring) --
+                    # this only catches the pool worker process dying outright.
+                    result = {"name": d["name"], "error": str(exc)}
+                if "error" in result:
+                    rows.append(result)
+                    newly_checked.append((d["name"], d["metadata_modified"], None))
+                else:
+                    cfg["augment_row"](result, d)
+                    rows.append(result)
+                    newly_checked.append((d["name"], d["metadata_modified"], result))
+                if _bump_check_progress(check_type, len(rows)):
+                    cancelled = True
+                    break
+        finally:
+            # Drop any not-yet-started work immediately; already-running
+            # requests in other threads finish on their own (Python can't
+            # forcibly kill a thread mid-request) but their results are
+            # simply not collected -- don't block the cancel on them.
+            pool.shutdown(wait=False, cancel_futures=True)
+
+        if newly_checked:
+            with app.app_context():
+                for name, mtime, result in newly_checked:
+                    dataset_cache_model = cfg["dataset_cache_model"]
+                    row = dataset_cache_model.query.get(name)
+                    if not row:
+                        row = dataset_cache_model(name=name)
+                        db.session.add(row)
+                    row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    if result is not None:
+                        # Only overwrite on success -- a transient fetch
+                        # failure shouldn't erase a known-good cached result;
+                        # leaving metadata_modified stale means it's simply
+                        # retried again next run instead of wrongly reused.
+                        row.metadata_modified = mtime
+                        row.result_json = json.dumps({"_cache_version": cfg["check_version"], "result": result})
+                db.session.commit()
+
+        checked = [r for r in rows if "error" not in r]
+        failed  = [r for r in rows if "error" in r]
+        summary = {
+            "total":             len(datasets),
+            "checked":           len(checked),
+            "failed_to_fetch":   len(failed),
+            "reused_from_cache": len(datasets) - len(to_fetch),
+            "conforms":          sum(1 for r in checked if r["conforms"]),
+        }
+        for key, predicate in cfg["summary_flag_fields"]:
+            summary[key] = sum(1 for r in checked if predicate(r))
+
+        result = {
+            "summary":     summary,
+            "datasets":    cfg["finalize_datasets"](checked),
+            "partial":     cancelled,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _save_check_cache(check_type, result)
+        _set_check_status(check_type, error=None)
+    except Exception as exc:
+        _set_check_status(check_type, error=str(exc))
+    finally:
+        _set_check_status(check_type, running=False, cancel_requested=False)
 
 
 @app.route("/api/quality/<check_type>-check", methods=["POST"])
