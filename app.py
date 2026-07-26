@@ -1417,20 +1417,24 @@ def _background_loop():
             # against the DB-backed status, not an in-memory flag, since an
             # admin's manual run may have been started from either gunicorn
             # worker process, not necessarily this one.
+            #
+            # Spawned as its own thread rather than run inline -- this used to
+            # run inline on the (mistaken) assumption that ~1,100 HVD-tagged
+            # datasets is small enough to be quick, but it's exactly as
+            # network/CPU-bound as the DCAT-AP/GeoDCAT-AP checks below, and a
+            # slow run (many changed datasets, portal latency) blocked
+            # run_health_checks() -- and every other scheduled refresh in this
+            # loop -- for however long it took, producing hours-long gaps in
+            # the health-check history.
             if not _get_hvd_status()["running"]:
-                try:
-                    _set_hvd_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
-                                     cancel_requested=False, total=0, completed=0, error=None)
-                    _do_run_hvd_check()
-                except Exception as exc:
-                    print(f"[hvd-check] refresh error: {exc}")
+                _set_hvd_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
+                                 cancel_requested=False, total=0, completed=0, error=None)
+                threading.Thread(target=_do_run_hvd_check, daemon=True).start()
             last_hvd_check_refresh = time.time()
         if time.time() - last_dcat_check_refresh >= _DCAT_CHECK_REFRESH_INTERVAL:
-            # Spawned as its own thread rather than run inline like the HVD
-            # check above: a full DCAT-AP run covers ~22,000+ datasets (vs.
-            # ~1,100 HVD-tagged ones) and can take hours on a first run --
-            # running it inline here would block health checks and every
-            # other scheduled refresh in this loop for that whole duration.
+            # Spawned as its own thread rather than run inline -- same
+            # reasoning as the HVD check above: a full DCAT-AP run covers
+            # ~22,000+ datasets and can take hours on a first run.
             if not _get_dcat_status()["running"]:
                 _set_dcat_status(running=True, started_at=datetime.now(timezone.utc).isoformat(),
                                   cancel_requested=False, total=0, completed=0, error=None)
