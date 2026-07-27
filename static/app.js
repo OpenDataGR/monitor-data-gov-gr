@@ -6775,20 +6775,19 @@ function _updateContactsLoadingProgress(progress) {
   _showProgressBar('pm', progress.done, progress.total);
 }
 
+// Purely warms _portalMembersCache (the full raw per-membership list --
+// Comms contact picker, org panel, user panel, edit/save syncing all depend
+// on holding this in full) plus its localStorage mirror. Deliberately never
+// touches #contactsTableBody itself -- the visible table has its own
+// independent cold-load/retry/progress handling in loadPortalMembersTab,
+// which hits the exact same underlying _pm_cache; having both this function
+// AND that one write into the same DOM element raced against each other
+// (whichever resolved last won, sometimes leaving a stale row behind).
 async function _pollPortalMembers(attempt, silent = false, force = false) {
-  const cols = 8;
   const MAX = 40;   // give up after ~200 s
   const INTERVAL = 5000;
 
-  if (attempt === 0 && !silent) {
-    show('contactsReloadBtn').disabled = true;
-    show('contactsTableBody').innerHTML =
-      `<tr><td colspan="${cols}" class="text-center py-5">
-         <div class="spinner-border text-primary mb-2"></div>
-         <div class="text-muted small mb-2">${t('contacts.loading_portal')}</div>
-         ${_progressBarHtml('pm', 'mx-auto', 'max-width:280px')}
-       </td></tr>`;
-  }
+  if (attempt === 0 && !silent) show('contactsReloadBtn').disabled = true;
 
   try {
     // POST forces the server to bypass its own 2-hour cache and recompute
@@ -6800,12 +6799,9 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
     const data = await resp.json();
 
     if (resp.status === 202) {
-      if (!silent) _updateContactsLoadingProgress(data.progress);
       if (attempt < MAX) {
         _pmPollTimer = setTimeout(() => _pollPortalMembers(attempt + 1, silent, force), INTERVAL);
       } else if (!silent) {
-        show('contactsTableBody').innerHTML =
-          `<tr><td colspan="${cols}" class="text-center text-danger py-4">Timed out waiting for portal data.</td></tr>`;
         show('contactsReloadBtn').disabled = false;
       }
       return;
@@ -6823,11 +6819,7 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
     }
     if (_orgsLoaded) loadContactSummary();
   } catch (e) {
-    if (!silent) {
-      show('contactsTableBody').innerHTML =
-        `<tr><td colspan="${cols}" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
-      show('contactsReloadBtn').disabled = false;
-    }
+    if (!silent) show('contactsReloadBtn').disabled = false;
   }
 }
 
@@ -7152,16 +7144,31 @@ function _portalMembersMaybeAutoLoadMore() {
   if (rect.top < window.innerHeight && rect.bottom >= 0) _portalMembersLoadMoreTrigger();
 }
 
-async function loadPortalMembersTab(append = false) {
+const _PM_LOAD_MAX_ATTEMPTS = 40;   // give up after ~200s, same budget as _pollPortalMembers
+const _PM_LOAD_RETRY_MS     = 5000;
+let _pmLoadRetryTimer = null;
+
+// attempt only applies to a fresh (non-append) load -- _pm_cache backing
+// this table is the SAME server-side cache loadContactsTab's full=1 poll
+// warms, so a cold response here is common (whichever of the two requests
+// happens to lose the race against _do_fetch_portal_members finishing),
+// not exceptional; retry with the shared progress bar instead of dead-ending.
+async function loadPortalMembersTab(append = false, attempt = 0) {
   if (_contactsScope !== 'portal') return;
+  if (_pmLoadRetryTimer) { clearTimeout(_pmLoadRetryTimer); _pmLoadRetryTimer = null; }
   if (!append) _pmStart = 0;
   const sentinelBefore = document.getElementById('contactsLoadMoreSentinel');
   if (append) {
     _pmLoadingMore = true;
     if (sentinelBefore) sentinelBefore.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}`;
-  } else {
+  } else if (attempt === 0) {
     if (_pmObserver) _pmObserver.disconnect();
-    show('contactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>`;
+    show('contactsTableBody').innerHTML =
+      `<tr><td colspan="8" class="text-center py-5">
+         <div class="spinner-border text-primary mb-2"></div>
+         <div class="text-muted small mb-2">${t('contacts.loading_portal')}</div>
+         ${_progressBarHtml('pm', 'mx-auto', 'max-width:280px')}
+       </td></tr>`;
   }
   try {
     const params = _pmQueryParams();
@@ -7170,11 +7177,14 @@ async function loadPortalMembersTab(append = false) {
     const resp = await fetch(API_BASE + 'api/portal-members?' + params.toString());
     const data = await resp.json();
     if (resp.status === 202) {
-      // _pm_cache is cold -- shouldn't normally happen here since
-      // loadContactsTab's own full=1 poll already warms it server-side
-      // before this ever fires, but guard anyway.
-      if (!append) show('contactsTableBody').innerHTML =
-        `<tr><td colspan="8" class="text-center py-5 text-muted">${t('contacts.loading_portal')}</td></tr>`;
+      if (append) return;  // can't happen (append never fires while cold, see guards below), but stay safe
+      _updateContactsLoadingProgress(data.progress);
+      if (attempt < _PM_LOAD_MAX_ATTEMPTS) {
+        _pmLoadRetryTimer = setTimeout(() => loadPortalMembersTab(false, attempt + 1), _PM_LOAD_RETRY_MS);
+      } else {
+        show('contactsTableBody').innerHTML =
+          `<tr><td colspan="8" class="text-center text-danger py-4">Timed out waiting for portal data.</td></tr>`;
+      }
       return;
     }
     _pmTotalCount = data.count || 0;
@@ -7237,17 +7247,39 @@ const _pmGroupLoading = new Set(); // slugs currently fetching
 function _pmGroupSlug(orgCode) { return orgCode || '__none__'; }
 function _pmSlugToOrgParam(slug) { return slug === '__none__' ? '' : slug; }
 
-async function _loadPortalMembersGroups() {
+let _pmGroupsRetryTimer = null;
+
+// Same cold-cache retry reasoning as loadPortalMembersTab -- group_by=org
+// hits the identical _pm_cache, so it can just as easily race a 202 while
+// _do_fetch_portal_members is still running; without a retry this silently
+// rendered "no results" forever instead of ever showing real groups.
+async function _loadPortalMembersGroups(attempt = 0) {
   if (_contactsScope !== 'portal') return;
+  if (_pmGroupsRetryTimer) { clearTimeout(_pmGroupsRetryTimer); _pmGroupsRetryTimer = null; }
   const el = show('contactsGroupedView');
-  el.innerHTML = `<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>`;
+  if (attempt === 0) {
+    el.innerHTML = `<div class="text-center py-4"><div class="spinner-border text-primary mb-2"></div>
+      <div class="text-muted small mb-2">${t('contacts.loading_portal')}</div>
+      ${_progressBarHtml('pm', 'mx-auto', 'max-width:280px')}</div>`;
+  }
   try {
     const params = _pmQueryParams();
     params.set('group_by', 'org');
     const resp = await fetch(API_BASE + 'api/portal-members?' + params.toString());
     const data = await resp.json();
+    if (resp.status === 202) {
+      _updateContactsLoadingProgress(data.progress);
+      if (attempt < _PM_LOAD_MAX_ATTEMPTS) {
+        _pmGroupsRetryTimer = setTimeout(() => _loadPortalMembersGroups(attempt + 1), _PM_LOAD_RETRY_MS);
+      } else {
+        el.innerHTML = `<div class="alert alert-danger mb-0">Timed out waiting for portal data.</div>`;
+      }
+      return;
+    }
     _pmGroups = data.groups || [];
     _pmGroupsLoaded = true;
+    const total = _pmGroups.reduce((sum, g) => sum + (g.count || 0), 0);
+    show('contactsCount').innerHTML = `${total}`;
     _renderPortalMembersGroups();
   } catch (e) {
     el.innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
