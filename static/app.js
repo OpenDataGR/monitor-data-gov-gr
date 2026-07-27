@@ -7156,17 +7156,20 @@ const _PM_LOAD_MAX_ATTEMPTS = 40;   // give up after ~200s, same budget as _poll
 const _PM_LOAD_RETRY_MS     = 5000;
 let _pmLoadRetryTimer = null;
 
-// Bumped by every fresh (non-append) load -- loadPortalMembersTab and
-// _loadPortalMembersGroups share this because they also share the same
-// progress-bar DOM ids (see _progressBarHtml('pm', ...)). Switching scope
-// away and back (or toggling flat/grouped) cancels a *pending* retry timer,
-// but an already in-flight fetch from the old load has no way to be
-// aborted -- if that stale response (captured an earlier, lower progress
-// count) arrives *after* a newer load already rendered a higher one, the
-// bar visibly jumps backward. Each in-flight call captures the generation
-// active when it started and checks it again once the response lands;
-// a mismatch means a newer load has since taken over, so this response
-// is just discarded instead of applied.
+// Bumped ONLY when a load truly (re)starts from scratch (attempt 0,
+// non-append) -- loadPortalMembersTab and _loadPortalMembersGroups share
+// this because they also share the same progress-bar DOM ids (see
+// _progressBarHtml('pm', ...)). A retry continuation (attempt > 0) does
+// NOT bump it -- it inherits the generation its own attempt-0 call minted,
+// threaded through the `generation` parameter below, and just compares
+// against it. Bumping on every non-append call (an earlier version of
+// this fix did) was itself buggy: a stale retry timer left over from a
+// chain that should have died when scope changed away can still fire
+// later if the user switches back to Portal before its 5s delay elapses --
+// the top-of-function scope check passes again by then, so that stale
+// continuation would bump the counter itself, invalidating the *real*
+// fresh load's own in-flight request by comparison and silently killing
+// the progress bar it was about to show.
 let _pmLoadGeneration = 0;
 
 // attempt only applies to a fresh (non-append) load -- _pm_cache backing
@@ -7174,11 +7177,13 @@ let _pmLoadGeneration = 0;
 // warms, so a cold response here is common (whichever of the two requests
 // happens to lose the race against _do_fetch_portal_members finishing),
 // not exceptional; retry with the shared progress bar instead of dead-ending.
-async function loadPortalMembersTab(append = false, attempt = 0) {
+// `generation` is only ever passed internally, by this function's own retry
+// setTimeout -- omit it to mint a fresh one.
+async function loadPortalMembersTab(append = false, attempt = 0, generation = null) {
   if (_contactsScope !== 'portal') return;
   if (_pmLoadRetryTimer) { clearTimeout(_pmLoadRetryTimer); _pmLoadRetryTimer = null; }
   if (!append) _pmStart = 0;
-  const myGeneration = append ? _pmLoadGeneration : ++_pmLoadGeneration;
+  const myGeneration = (!append && attempt === 0) ? ++_pmLoadGeneration : (generation ?? _pmLoadGeneration);
   const sentinelBefore = document.getElementById('contactsLoadMoreSentinel');
   if (append) {
     _pmLoadingMore = true;
@@ -7203,7 +7208,7 @@ async function loadPortalMembersTab(append = false, attempt = 0) {
       if (append) return;  // can't happen (append never fires while cold, see guards below), but stay safe
       _updateContactsLoadingProgress(data.progress);
       if (attempt < _PM_LOAD_MAX_ATTEMPTS) {
-        _pmLoadRetryTimer = setTimeout(() => loadPortalMembersTab(false, attempt + 1), _PM_LOAD_RETRY_MS);
+        _pmLoadRetryTimer = setTimeout(() => loadPortalMembersTab(false, attempt + 1, myGeneration), _PM_LOAD_RETRY_MS);
       } else {
         show('contactsTableBody').innerHTML =
           `<tr><td colspan="8" class="text-center text-danger py-4">Timed out waiting for portal data.</td></tr>`;
@@ -7276,10 +7281,14 @@ let _pmGroupsRetryTimer = null;
 // hits the identical _pm_cache, so it can just as easily race a 202 while
 // _do_fetch_portal_members is still running; without a retry this silently
 // rendered "no results" forever instead of ever showing real groups.
-async function _loadPortalMembersGroups(attempt = 0) {
+// `generation` is only ever passed internally, by this function's own
+// retry setTimeout -- see loadPortalMembersTab's matching comment for why
+// a retry continuation (attempt > 0) must inherit it rather than re-read
+// the shared counter.
+async function _loadPortalMembersGroups(attempt = 0, generation = null) {
   if (_contactsScope !== 'portal') return;
   if (_pmGroupsRetryTimer) { clearTimeout(_pmGroupsRetryTimer); _pmGroupsRetryTimer = null; }
-  const myGeneration = attempt === 0 ? ++_pmLoadGeneration : _pmLoadGeneration;
+  const myGeneration = attempt === 0 ? ++_pmLoadGeneration : (generation ?? _pmLoadGeneration);
   const el = show('contactsGroupedView');
   if (attempt === 0) {
     el.innerHTML = `<div class="text-center py-4"><div class="spinner-border text-primary mb-2"></div>
@@ -7295,7 +7304,7 @@ async function _loadPortalMembersGroups(attempt = 0) {
     if (resp.status === 202) {
       _updateContactsLoadingProgress(data.progress);
       if (attempt < _PM_LOAD_MAX_ATTEMPTS) {
-        _pmGroupsRetryTimer = setTimeout(() => _loadPortalMembersGroups(attempt + 1), _PM_LOAD_RETRY_MS);
+        _pmGroupsRetryTimer = setTimeout(() => _loadPortalMembersGroups(attempt + 1, myGeneration), _PM_LOAD_RETRY_MS);
       } else {
         el.innerHTML = `<div class="alert alert-danger mb-0">Timed out waiting for portal data.</div>`;
       }
