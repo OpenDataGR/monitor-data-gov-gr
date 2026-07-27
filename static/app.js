@@ -6784,11 +6784,20 @@ async function loadContactsTab(force = false) {
 // as those complete so this can be a real progress bar (shared with the
 // quality checks' — see _showProgressBar). The brief phase: 'orgs' step
 // beforehand (organization_list + user_list) has no meaningful done/total
-// of its own, so it stays a bare spinner (the static text already shown
-// alongside it) rather than a progress bar stuck at 0%.
+// of its own -- fall back to the header KPI's own org count as a
+// placeholder total instead of leaving the bar hidden for however long that
+// step takes. Checked here (re-run on every 5s retry, not just the first
+// attempt) rather than once at the very start of the cold-load: on a page
+// opened straight to #contacts, this whole chain can fire before
+// loadOverview()'s own fetch has resolved, so _kpiOrgCount may still be
+// null the very first time -- re-checking on every retry means it's picked
+// up as soon as it becomes available instead of being missed for good.
 function _updateContactsLoadingProgress(progress) {
-  if (!progress || progress.phase !== 'members' || !progress.total) return;
-  _showProgressBar('pm', progress.done, progress.total);
+  if (progress && progress.phase === 'members' && progress.total) {
+    _showProgressBar('pm', progress.done, progress.total);
+  } else if (_kpiOrgCount) {
+    _showProgressBar('pm', 0, _kpiOrgCount);
+  }
 }
 
 // Purely warms _portalMembersCache (the full raw per-membership list --
