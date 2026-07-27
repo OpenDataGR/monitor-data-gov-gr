@@ -123,7 +123,7 @@ function buildQueryString() {
 
 function updateResolvedUrl() {
   if (!currentRoute) return;
-  document.getElementById('apiResolvedUrl').textContent = resolvePath() + buildQueryString();
+  document.getElementById('apiResolvedUrl').textContent = location.origin + resolvePath() + buildQueryString();
 }
 
 function showBuilderError(msg) {

@@ -28,6 +28,12 @@
       display: inline-flex; align-items: center; gap: 6px; margin-top: 14px;
       font-size: 0.85rem; font-weight: 600;
     }
+    .api-base-url {
+      display: flex; align-items: center; gap: 8px; margin-top: 14px;
+      font-size: 0.85rem;
+    }
+    .api-base-url > span { color: var(--api-text-faint); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .api-base-url code { background: var(--api-surface-2); border: 1px solid var(--api-border-soft); border-radius: 6px; padding: 3px 8px; }
   </style>
 </head>
 <body>
@@ -52,6 +58,13 @@
   <div class="api-hero">
     <h2 data-i18n="apidocs.h1">Backend API reference</h2>
     <p data-i18n="apidocs.intro">Every route this dashboard's own frontend calls. All of it sits behind your session login — nothing here is a separate public API, and nothing you can reach through it is more than what you can already do in the dashboard itself.</p>
+    <div class="api-base-url">
+      <span data-i18n="apidocs.base_url">Base URL</span>
+      <code id="apiBaseUrl" class="api-mono"></code>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="apiBaseUrlCopyBtn" data-i18n-title="apidocs.copy" title="Copy">
+        <i class="bi bi-clipboard"></i>
+      </button>
+    </div>
   </div>
 
   <div class="api-shell">
@@ -85,6 +98,7 @@
         'apidocs.search_ph': 'Filter routes…', 'apidocs.routes_label': 'Routes',
         'apidocs.no_results': 'No routes match your search.',
         'apidocs.load_error': 'Could not load the route list: {msg}',
+        'apidocs.base_url': 'Base URL', 'apidocs.copy': 'Copy', 'apidocs.copied': 'Copied!',
       },
       el: {
         'apidocs.back_to_dashboard': 'Επιστροφή στον πίνακα ελέγχου', 'apidocs.title': 'Οδηγός API',
@@ -94,6 +108,7 @@
         'apidocs.search_ph': 'Φιλτράρισμα endpoints…', 'apidocs.routes_label': 'Endpoints',
         'apidocs.no_results': 'Δεν βρέθηκαν endpoints.',
         'apidocs.load_error': 'Αποτυχία φόρτωσης της λίστας: {msg}',
+        'apidocs.base_url': 'Base URL', 'apidocs.copy': 'Αντιγραφή', 'apidocs.copied': 'Αντιγράφηκε!',
       },
     };
     let _lang = localStorage.getItem('lang') || 'el';
@@ -120,6 +135,16 @@
 
     applyI18n();
     applyThemeIcon();
+
+    document.getElementById('apiBaseUrl').textContent = location.origin;
+    document.getElementById('apiBaseUrlCopyBtn').addEventListener('click', function () {
+      navigator.clipboard.writeText(location.origin).then(() => {
+        const btn = this;
+        const original = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check2"></i>';
+        setTimeout(() => { btn.innerHTML = original; }, 1200);
+      });
+    });
 
     apiFetchMeta().then(data => {
       apiRenderBrowser({
