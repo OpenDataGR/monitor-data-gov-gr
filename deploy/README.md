@@ -36,9 +36,9 @@ sudo lslocks | grep background_loop
 Should show exactly one entry, `FLOCK WRITE`, held by `background_worker.py`'s
 PID -- never one of gunicorn's.
 
-## Redis (rate-limit storage + shared caches + sessions)
+## Redis (rate-limit storage + shared caches + sessions + comms-stream fanout)
 
-Redis backs three independent things in production, all optional and all
+Redis backs four independent things in production, all optional and all
 falling back to a per-process/in-memory equivalent if unset -- none of them
 need Redis for local dev:
 
@@ -62,6 +62,17 @@ need Redis for local dev:
   this exists. Only activates when `REDIS_URL` is set; falls back to
   Flask's default signed-cookie session otherwise (fine for local dev, not
   for production -- see that section).
+- **Communications-tab SSE fanout** (`REDIS_URL`, same var again; app.py,
+  `_stream_poller_loop`/`_stream_subscriber_relay_loop`): without Redis,
+  every gunicorn worker independently polls the DB every 3s for new inbound
+  emails/communications to push to open `/api/communications/stream`
+  connections -- correct, but DB load scales with worker count (4x in
+  production) for no benefit, since all 4 workers poll the exact same rows.
+  With Redis, only `background_worker.py` polls the DB, publishing each
+  event to the `comms_stream_events` Pub/Sub channel; the 4 web workers
+  subscribe to that channel instead and relay messages straight into their
+  own local SSE connections, cutting DB polling to 1x for the whole fleet.
+  Falls back cleanly to per-worker polling if `REDIS_URL` is unset.
 
 Not captured in a repo file since it's just a package install + env vars,
 not a config file to copy:

@@ -4323,20 +4323,48 @@ def inbound_emails_list():
 _stream_subscribers = set()       # one queue.Queue per open SSE connection on this process
 _stream_subscribers_lock = threading.Lock()
 
+_COMMS_STREAM_CHANNEL = "comms_stream_events"  # Redis Pub/Sub channel used by the fanout below
+
+
+def _stream_broadcast_local(events):
+    """Fan events out to this process's own open SSE connections."""
+    if not events:
+        return
+    with _stream_subscribers_lock:
+        subscribers = list(_stream_subscribers)
+    for q in subscribers:
+        for evt in events:
+            q.put(evt)
+
 
 def _stream_poller_loop():
-    """Feeds /api/communications/stream. One instance per gunicorn worker
-    process -- not a cross-process singleton like _try_acquire_singleton_lock
-    above, since each worker serves its own independent set of open SSE
-    connections and there's nothing to coordinate across workers here.
+    """Polls the DB for new inbound emails / communications and delivers the
+    resulting SSE events to /api/communications/stream connections.
 
-    Polls the DB once per tick no matter how many connections are open on
-    this process, then fans the same delta out to all of them. This replaces
-    the old design where every open tab ran an identical poll loop of its
-    own, so DB load scaled with open-connection count instead of worker
-    count -- at ~100 open tabs that was ~66 extra queries/sec just from
-    polling, on top of however many threads each connection separately tied
-    up for up to 55s.
+    Runs in one of two roles depending on whether config.REDIS_URL is set
+    (see the startup gates below):
+
+    - Redis configured: starts ONLY in the dedicated background_worker.py
+      process, as the sole DB poller for the whole fleet -- it publishes
+      each event to _COMMS_STREAM_CHANNEL instead of delivering locally,
+      since that process never serves HTTP and has no local SSE connections
+      anyway. Every gunicorn worker instead runs
+      _stream_subscriber_relay_loop, which relays published events into its
+      own local subscriber queues. This cuts DB polling from once per
+      gunicorn worker (4x in production) down to once for the whole fleet.
+    - Redis unconfigured (local dev, or Redis down): runs in every worker
+      process independently and delivers straight to that process's own
+      local subscribers -- the original, pre-Pub/Sub design, kept as a
+      correctness-preserving fallback since there's no shared channel to
+      coordinate through.
+
+    Polls the DB once per tick no matter how many connections (local, in the
+    no-Redis role) exist, then fans the same delta out. This replaced an
+    older design where every open tab ran an identical poll loop of its own,
+    so DB load scaled with open-connection count instead of worker count --
+    at ~100 open tabs that was ~66 extra queries/sec just from polling, on
+    top of however many threads each connection separately tied up for up
+    to 55s.
 
     Each baseline is the highest id that exists at all (any status/source),
     not just the subset that gets announced -- ids only ever go up and rows
@@ -4353,6 +4381,7 @@ def _stream_poller_loop():
     tracking whether a resolved InboundEmail ever passed through
     pending_review, which its final state doesn't preserve.
     """
+    client = _redis_client()
     with app.app_context():
         inbound_baseline = db.session.query(db.func.max(InboundEmail.id)).scalar() or 0
         comm_baseline    = db.session.query(db.func.max(Communication.id)).scalar() or 0
@@ -4361,14 +4390,17 @@ def _stream_poller_loop():
     while True:
         time.sleep(3)
 
-        # Logged only on change, not every tick, so a slow climb toward this
+        # Logged only on change, not every tick, so a slow climb toward a
         # worker's thread ceiling shows up in the logs before it becomes an
-        # outage instead of only being inferrable after the fact.
-        with _stream_subscribers_lock:
-            current_count = len(_stream_subscribers)
-        if current_count != last_logged_count:
-            print(f"[comms-stream] open connections on this worker: {current_count}")
-            last_logged_count = current_count
+        # outage instead of only being inferrable after the fact. Meaningless
+        # in the Redis-publish role (this process never has local
+        # subscribers), so skipped there.
+        if client is None:
+            with _stream_subscribers_lock:
+                current_count = len(_stream_subscribers)
+            if current_count != last_logged_count:
+                print(f"[comms-stream] open connections on this worker: {current_count}")
+                last_logged_count = current_count
 
         try:
             events = []
@@ -4397,24 +4429,86 @@ def _stream_poller_loop():
             print(f"[comms-stream] poller error: {exc}")
             continue
 
-        if events:
-            with _stream_subscribers_lock:
-                subscribers = list(_stream_subscribers)
-            for q in subscribers:
+        if not events:
+            continue
+        if client is not None:
+            try:
                 for evt in events:
-                    q.put(evt)
+                    client.publish(_COMMS_STREAM_CHANNEL, evt)
+            except Exception as exc:
+                print(f"[comms-stream] publish error: {exc}")
+        else:
+            _stream_broadcast_local(events)
 
 
-# Gated the same way as the singleton background loop above (debug-reloader
-# check only, no file lock) -- unlike that loop, we want one of these per
-# worker process, not one across the whole fleet. Skipped in the dedicated
-# background_worker.py process (config.BACKGROUND_WORKER): that process never
-# serves HTTP, so it would never have any subscribers -- starting this there
-# would just be a pointless extra DB poll every 3s for nothing. Also skipped
-# in a spawned ProcessPoolExecutor worker (_is_main_process()) for the same
-# reason as the background loop above.
-if _is_main_process() and (app.debug or not config.BACKGROUND_WORKER) and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
+def _stream_subscriber_relay_loop():
+    """Companion to _stream_poller_loop's Redis-publish role: subscribes to
+    _COMMS_STREAM_CHANNEL and relays each published event into this gunicorn
+    worker's own local _stream_subscribers queues, exactly like
+    _stream_poller_loop's local-delivery branch would have done itself.
+    Started only when Redis is configured (see the gates below) -- otherwise
+    each worker runs _stream_poller_loop directly instead, polling the DB
+    itself as before.
+
+    Reconnects with a short backoff on any Redis error (dropped connection,
+    restart, etc.) rather than letting the thread die silently -- a
+    permanently-dead relay thread would look identical to "no new comms
+    right now", which is much harder to notice than a log line every few
+    seconds.
+    """
+    client = _redis_client()
+    last_logged_count = 0
+    while True:
+        try:
+            pubsub = client.pubsub()
+            pubsub.subscribe(_COMMS_STREAM_CHANNEL)
+            print("[comms-stream] subscribed to Redis channel")
+            for message in pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+                with _stream_subscribers_lock:
+                    current_count = len(_stream_subscribers)
+                if current_count != last_logged_count:
+                    print(f"[comms-stream] open connections on this worker: {current_count}")
+                    last_logged_count = current_count
+                _stream_broadcast_local([message["data"]])
+        except Exception as exc:
+            print(f"[comms-stream] relay error, reconnecting in 3s: {exc}")
+            time.sleep(3)
+
+
+# Gate A: the singleton DB-poller-and-publisher role. Same process selection
+# as the background loop's gate above (background_worker.py in production,
+# the single dev process under app.debug) -- only meaningful when Redis is
+# configured, since that's what lets one process's polling reach every
+# gunicorn worker's connections. No extra file-lock guard the way
+# _try_acquire_singleton_lock protects _background_loop: a brief
+# double-publish during a deploy overlap just means a duplicate toast
+# client-side (already an accepted, harmless outcome -- see the "second
+# toast for the same email" note in _stream_poller_loop's docstring), not a
+# correctness problem worth extra machinery for.
+if (_is_main_process() and (app.debug or config.BACKGROUND_WORKER)
+        and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true")
+        and _redis_client() is not None):
     threading.Thread(target=_stream_poller_loop, daemon=True).start()
+
+# Gate B/C: the per-worker role that actually delivers to this process's own
+# SSE connections. Skipped entirely in background_worker.py -- that process
+# never serves HTTP, so it never has local subscribers to deliver to
+# regardless of which sub-role would otherwise apply. Also skipped in a
+# spawned ProcessPoolExecutor worker (_is_main_process()) for the same
+# reason as the background loop above.
+if (_is_main_process() and (app.debug or not config.BACKGROUND_WORKER)
+        and (not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true")):
+    if _redis_client() is not None:
+        # Redis configured: relay from the single publisher in Gate A
+        # instead of every worker polling the DB itself.
+        threading.Thread(target=_stream_subscriber_relay_loop, daemon=True).start()
+    else:
+        # No Redis (local dev, or Redis down): fall back to the original
+        # per-worker behavior -- this worker polls the DB and delivers
+        # locally, same as every other worker independently doing the same.
+        threading.Thread(target=_stream_poller_loop, daemon=True).start()
 
 
 @app.route("/api/communications/stream")
