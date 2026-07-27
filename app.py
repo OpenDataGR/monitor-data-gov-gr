@@ -27,6 +27,7 @@ from urllib.parse import urlparse, quote
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response
 from flask_compress import Compress
 from flask_wtf import CSRFProtect
+from flask_session import Session as _FlaskSession
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -118,6 +119,42 @@ if config.FLASK_SECRET_KEY:
     app.config["SESSION_COOKIE_PATH"] = urlparse(config.PUBLIC_BASE_URL).path or "/"
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+# Server-side sessions (Redis-backed) instead of Flask's default signed
+# cookie, which puts the entire serialized session payload in the cookie
+# itself. That payload is exactly what tripped Azure WAF's SQLi-family
+# rules (942210, previously 942450 -- see deploy/README.md's
+# "403-until-cookie-clear" section): a compressed/signed blob whose bytes
+# occasionally spell a substring like "or"/"and"/"between" purely by
+# coincidence, and the more the app stashes in session[...] over time, the
+# more bytes there are for that to happen in. Excluding one WAF rule at a
+# time after each new false positive doesn't fix that; this does, because
+# the cookie becomes a small fixed-size random ID (unrelated to how much
+# session data exists) instead of the data itself.
+# Only enabled when Redis is actually configured (production) -- local dev
+# has no Redis and falls back to Flask's default cookie session unchanged.
+# Note this makes Redis a hard dependency for staying logged in: if Redis
+# is unreachable, session reads/writes fail outright rather than silently
+# degrading (unlike _SharedCache's read-through-cache pattern elsewhere in
+# this file), same tradeoff as RATELIMIT_STORAGE_URI already accepts.
+if config.REDIS_URL:
+    try:
+        _session_redis_client = redis.from_url(config.REDIS_URL)  # raw bytes -- flask_session msgpack-decodes them itself
+        _session_redis_client.ping()
+        app.config["SESSION_TYPE"] = "redis"
+        app.config["SESSION_REDIS"] = _session_redis_client
+        app.config["SESSION_KEY_PREFIX"] = "flask_session:"
+        app.config["SESSION_PERMANENT"] = True
+        # Deprecated in flask-session 0.8 (one-time startup warning, flagged
+        # for removal in a future minor release) but still the only guard
+        # against an attacker setting an arbitrary chosen session id via a
+        # forged cookie (classic session fixation) -- worth the warning
+        # until flask-session ships a replacement mechanism.
+        app.config["SESSION_USE_SIGNER"] = True
+        _FlaskSession(app)
+    except Exception as exc:
+        print(f"WARNING: could not connect to Redis for server-side sessions, "
+              f"falling back to signed-cookie sessions: {exc}", file=sys.stderr)
 
 # storage_uri defaults to flask-limiter's own in-memory store (see
 # config.RATELIMIT_STORAGE_URI) if RATELIMIT_STORAGE_URI isn't set -- fine
@@ -637,6 +674,23 @@ def require_login():
     return redirect(url_for("login", next=freq.script_root + freq.path))
 
 
+def _regenerate_session_id():
+    """Rotates the session's server-side storage id on login.
+
+    Only meaningful under the Redis-backed server-side session (see the
+    SESSION_TYPE setup above) -- the default signed-cookie session has no
+    separate id to rotate, so this is a no-op there. Without it, a session
+    id an attacker got a victim to adopt beforehand (e.g. by planting a
+    cookie via some other flaw) would still be valid to read after the
+    victim actually logs in under it -- classic session fixation. The old
+    signed-cookie session never had this risk since the whole payload lived
+    in the cookie itself, with nothing server-side to fixate.
+    """
+    regenerate = getattr(app.session_interface, "regenerate", None)
+    if regenerate:
+        regenerate(session)
+
+
 @app.route("/login", methods=["GET", "POST"])
 @limiter.limit("10 per minute")
 def login():
@@ -652,6 +706,7 @@ def login():
         pw    = freq.form.get("password", "")
         user  = User.query.filter_by(email=email).first()
         if user and user.password_hash and check_password_hash(user.password_hash, pw):
+            _regenerate_session_id()
             session.permanent      = True
             session["user_id"]    = user.id
             session["user_name"]  = user.name or user.email
@@ -724,6 +779,7 @@ def webauthn_login_complete():
 
     cred_row.sign_count = verification.new_sign_count
     cred_row.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    _regenerate_session_id()
     session.permanent      = True
     session["user_id"]    = user.id
     session["user_name"]  = user.name or user.email
@@ -773,6 +829,7 @@ def set_password():
                 user.last_login_at = now
                 token.used_at = now
                 db.session.commit()
+                _regenerate_session_id()
                 session.permanent      = True
                 session["user_id"]    = user.id
                 session["user_name"]  = user.name or user.email
