@@ -9,6 +9,9 @@
 <a href="{{ url_for('static', filename='manual.html') }}" target="_blank" class="btn btn-outline-light btn-sm px-2 px-sm-3" data-i18n-title="nav.manual" title="Manual">
   <i class="bi bi-book me-sm-1"></i><span class="d-none d-sm-inline" data-i18n="nav.manual">Οδηγός</span>
 </a>
+<a href="{{ url_for('api_docs_page') }}" class="btn btn-outline-light btn-sm px-2" data-i18n-title="nav.api" title="API">
+  <i class="bi bi-plug"></i>
+</a>
 {% if is_admin %}
 <a href="{{ url_for('admin_users_page') }}" class="btn btn-outline-light btn-sm px-3" data-i18n-title="nav.admin_panel" title="Admin Panel">
   <i class="bi bi-shield-lock"></i>

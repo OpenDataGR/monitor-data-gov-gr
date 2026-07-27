@@ -7,6 +7,7 @@
 const I18N_SHARED = {
   en: {
     'nav.manual': 'Manual',
+    'nav.api': 'API',
     'nav.menu': 'Menu',
     'nav.sign_out': 'Sign out',
     'nav.edit_name': 'Edit name',
@@ -27,6 +28,7 @@ const I18N_SHARED = {
   },
   el: {
     'nav.manual': 'Οδηγός',
+    'nav.api': 'API',
     'nav.menu': 'Μενού',
     'nav.sign_out': 'Αποσύνδεση',
     'nav.edit_name': 'Επεξεργασία ονόματος',
