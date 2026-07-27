@@ -5734,32 +5734,47 @@ def _do_fetch_portal_members():
 
         # Step 2 – fetch org memberships in parallel
         def _fetch_org_members(org):
-            try:
-                if isinstance(org, str):
-                    slug, title = org, org
-                else:
-                    slug  = org.get("name", "")
-                    title = org.get("title") or org.get("display_name") or slug
-                if not slug:
-                    return []
-                r2 = requests.get(
-                    f"{config.PORTAL_BASE}/api/3/action/organization_show",
-                    params={"id": slug, "include_users": True},
-                    headers=auth_headers, timeout=12,
-                )
-                d = r2.json()
-                if d.get("success"):
-                    return [
-                        {
-                            "org_name":  slug,
-                            "org_title": title,
-                            "username":  u.get("name", ""),
-                            "capacity":  u.get("capacity", "member"),
-                        }
-                        for u in (d["result"].get("users") or [])
-                    ]
-            except Exception:
-                pass
+            if isinstance(org, str):
+                slug, title = org, org
+            else:
+                slug  = org.get("name", "")
+                title = org.get("title") or org.get("display_name") or slug
+            if not slug:
+                return []
+            # organization_show occasionally times out or errors transiently
+            # under this fetch's own concurrency (20 orgs in flight at once,
+            # 12s timeout each) -- silently returning [] on the very first
+            # failure used to just drop that org's members from the whole
+            # snapshot. Since Step 4 below still adds anyone not found in an
+            # org as a bare "User, no org", a transient failure here didn't
+            # error out visibly -- it just made that org's members flip to
+            # looking like plain unaffiliated users for that one fetch cycle,
+            # and the overall total count jitter by however many orgs failed.
+            # Only noticeable on a full re-fetch (Reload button, or the 2h/
+            # 90min cache expiring), which is exactly why it looked like it
+            # was "repeating after a few reloads." Retry before giving up.
+            for attempt in range(3):
+                try:
+                    r2 = requests.get(
+                        f"{config.PORTAL_BASE}/api/3/action/organization_show",
+                        params={"id": slug, "include_users": True},
+                        headers=auth_headers, timeout=12,
+                    )
+                    d = r2.json()
+                    if d.get("success"):
+                        return [
+                            {
+                                "org_name":  slug,
+                                "org_title": title,
+                                "username":  u.get("name", ""),
+                                "capacity":  u.get("capacity", "member"),
+                            }
+                            for u in (d["result"].get("users") or [])
+                        ]
+                except Exception:
+                    pass
+                if attempt < 2:
+                    time.sleep(0.5 * (attempt + 1))
             return []
 
         raw_members: list = []
