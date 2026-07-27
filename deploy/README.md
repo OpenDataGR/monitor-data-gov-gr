@@ -36,6 +36,74 @@ sudo lslocks | grep background_loop
 Should show exactly one entry, `FLOCK WRITE`, held by `background_worker.py`'s
 PID -- never one of gunicorn's.
 
+## Deploy pipeline (GitHub Actions, self-hosted runner)
+
+`.github/workflows/deploy.yml` runs *on the VM itself* (a self-hosted
+runner, not a GitHub-hosted one) on every push to `main`: `git pull`,
+regenerate `build_date.txt`, `pip install -r requirements.txt`, then
+`pkill` both the gunicorn and `background_worker.py` processes and let
+systemd restart them, waiting 15s before checking `systemctl is-active`
+on both services. If either isn't active, the job dumps the last 30
+`journalctl` lines for that service and fails -- so a red run always means
+a service failed to come back up with the new code, not a git/network
+problem.
+
+### Boot-loop from a half-committed change + systemd rate-limit lockout (2026-07-28)
+
+**Symptom:** a push's deploy run failed at "Reload service" with gunicorn's
+arbiter raising `HaltServer: 'Worker failed to boot.'` -- repeatedly, across
+several consecutive deploy attempts, with systemd's own restart counter
+climbing each time (`Scheduled restart job, restart counter is at 14`, then
+`16`). The *actual* underlying exception wasn't visible in the log tail
+GitHub Actions captured -- only gunicorn's own secondary
+`HaltServer`/`sys.exit(run())` traceback, several lines below where the
+real one would have been.
+
+**Root cause, two layered problems:**
+1. `app.py` was committed importing a new `ApiToken` model
+   (`from models import ..., ApiToken`) for an in-progress, not-yet-finished
+   feature -- but the matching `ApiToken` class in `models.py` never got
+   added to that same commit. A blanket `git add app.py` staged whatever
+   was in the working tree at commit time, including half-finished edits
+   unrelated to the actual fix being committed. Result: `ImportError` at
+   module load, on every single worker, every time.
+2. Because the broken code kept getting deployed and immediately crashing
+   across multiple consecutive `pkill` + restart cycles, systemd's own
+   restart rate-limiting (`StartLimitBurst`/`StartLimitIntervalSec`, systemd
+   service defaults) eventually tripped: `Start request repeated too
+   quickly`. Once that fires, systemd refuses to even *attempt* starting
+   the service again until manually cleared -- meaning later deploy runs
+   kept failing identically even after the actual code was fixed, because
+   the service was never actually given a chance to start with the fixed
+   code.
+
+**Fix:**
+```bash
+# 1. Push a commit with BOTH halves of the fix together (the missing
+#    model, plus reverting any other half-finished config change that
+#    had been swept in with it -- see commit c5c36de).
+# 2. Clear the rate-limit lockout so the next start attempt is a real one:
+sudo systemctl reset-failed monitor-data-gov-gr monitor-data-gov-gr-worker
+sudo systemctl start monitor-data-gov-gr monitor-data-gov-gr-worker
+sudo systemctl status monitor-data-gov-gr --no-pager
+```
+
+**Lesson for next time:**
+- Before committing, check `git status`/`git diff` on every file about to
+  be staged -- especially when more than one feature/fix is being worked
+  on in the same session and might have edits sitting in the same file's
+  working tree at once. `git add <file>` stages *everything* currently in
+  that file, not just the change you meant to commit.
+- If a deploy run fails with `HaltServer`/boot errors, the GH Actions log
+  tail often only shows gunicorn's *secondary* exception (its own
+  `sys.exit`/arbiter unwind), not the actual root-cause traceback. Get the
+  real one directly: `sudo journalctl -u monitor-data-gov-gr -n 100
+  --no-pager | grep -B2 -A25 Traceback`.
+- If several consecutive deploy attempts all fail identically even after
+  what looks like a real fix, check for `Start request repeated too
+  quickly` in the log -- that means systemd stopped trying altogether, and
+  `systemctl reset-failed` is needed before the next attempt means anything.
+
 ## Redis (rate-limit storage + shared caches + sessions + comms-stream fanout)
 
 Redis backs four independent things in production, all optional and all
