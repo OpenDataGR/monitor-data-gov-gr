@@ -105,14 +105,6 @@ Compress(app)
 # default (1 hour) would 400 a perfectly normal session that's just been
 # open in a browser tab for a while.
 app.config["WTF_CSRF_TIME_LIMIT"] = None
-# Checked explicitly in require_login() below instead of automatically on
-# every request -- CSRF protection exists to stop a malicious page from
-# silently riding the browser's own cookie into a state-changing request;
-# an Authorization: Bearer <api token> request can't happen that way (the
-# calling script has to know and set the header itself), so it doesn't need
-# or get a CSRF check, while a cookie-session request still gets exactly the
-# same enforcement it always has.
-app.config["WTF_CSRF_CHECK_DEFAULT"] = False
 csrf = CSRFProtect(app)
 
 # Production-only cookie hardening, gated on a real FLASK_SECRET_KEY being set

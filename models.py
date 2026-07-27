@@ -318,6 +318,34 @@ class WebAuthnCredential(db.Model):
         }
 
 
+class ApiToken(db.Model):
+    """A personal access token for calling the API without a browser session
+    (Authorization: Bearer <raw token>) -- see require_login() in app.py.
+    Carries exactly the permissions of the user who created it (their own
+    is_admin/allowed_tabs), never a separately scoped subset. Only token_hash
+    is stored; the raw value is shown once at creation and never again."""
+    __tablename__ = "api_tokens"
+
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    token_hash   = db.Column(db.String(64), unique=True, nullable=False, index=True)  # sha256 hex digest
+    label        = db.Column(db.String(100), nullable=False)
+    created_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    last_used_at = db.Column(db.DateTime)
+    revoked_at   = db.Column(db.DateTime)
+
+    user = db.relationship("User", backref=db.backref("api_tokens", cascade="all, delete-orphan"))
+
+    def to_dict(self):
+        return {
+            "id":           self.id,
+            "label":        self.label,
+            "created_at":   self.created_at.isoformat() if self.created_at else None,
+            "last_used_at": self.last_used_at.isoformat() if self.last_used_at else None,
+            "revoked":      self.revoked_at is not None,
+        }
+
+
 class MassEmailLog(db.Model):
     """A record of one admin-sent mass email, for the Mass Email tab's send history.
     sent_by_user_id is deliberately a plain column (no ForeignKey) -- deleting the
