@@ -36,24 +36,32 @@ sudo lslocks | grep background_loop
 Should show exactly one entry, `FLOCK WRITE`, held by `background_worker.py`'s
 PID -- never one of gunicorn's.
 
-## Redis (rate-limit storage + shared caches)
+## Redis (rate-limit storage + shared caches + sessions)
 
-Redis backs two independent things in production, both optional and both
-falling back to a per-process/in-memory equivalent if unset -- neither
-needs Redis for local dev:
+Redis backs three independent things in production, all optional and all
+falling back to a per-process/in-memory equivalent if unset -- none of them
+need Redis for local dev:
 
 - **Flask-Limiter** (`RATELIMIT_STORAGE_URI`): rate limits (login attempts,
   password reset requests, etc.) are shared across all 4 gunicorn worker
   processes instead of counted independently per process -- see the
   `RATELIMIT_STORAGE_URI` comment in `config.py`.
 - **`_SharedCache`** (`REDIS_URL`, app.py): backs `_orgs_cache`,
-  `_dataset_growth_cache`, `_geo_datasets_cache`, and `_HRMS_CACHE`. These
-  used to be plain per-process dicts, warmed from the DB once at each
+  `_dataset_growth_cache`, `_geo_datasets_cache`, `_HRMS_CACHE`, and
+  `_pm_cache` (the Contacts tab's Portal Members data, CKAN-derived). These
+  used to be plain per-process dicts, warmed from the DB/CKAN once at each
   process's own startup -- fine for the one process that actually refreshes
-  a given cache, stale forever for the other 3 that don't. Backing them with
-  Redis means all 4 web workers (and background_worker.py) read and write
-  the same shared value, so a refresh from any one process is immediately
-  visible to the others instead of only to itself.
+  a given cache, stale (or independently, differently stale) forever for the
+  other 3 that don't. Backing them with Redis means all 4 web workers (and
+  background_worker.py) read and write the same shared value, so a refresh
+  from any one process is immediately visible to the others instead of only
+  to itself. See "`REDIS_URL` was never actually set" below for what it
+  looks like when this env var is missing.
+- **Flask-Session** (`REDIS_URL`, same var as `_SharedCache` above): server-
+  side session storage -- see "403-until-cookie-clear" further down for why
+  this exists. Only activates when `REDIS_URL` is set; falls back to
+  Flask's default signed-cookie session otherwise (fine for local dev, not
+  for production -- see that section).
 
 Not captured in a repo file since it's just a package install + env vars,
 not a config file to copy:
@@ -93,6 +101,59 @@ version, which self-healed on that process's next restart. Low-severity
 (worst case: refreshes just stop happening until someone flips it back),
 but not nothing. `redis-cli hset cache:<name> enriching false` clears it by
 hand if it's ever suspected to be stuck.
+
+### `REDIS_URL` was never actually set (found 2026-07-27)
+
+**Symptom:** while building server-paginated infinite scroll for the
+Contacts tab's Portal Members view (search/filter/sort/group-by all moved
+from "fetch once per session, filter client-side" to "hit the server on
+every change"), the numbers shown became wildly inconsistent between
+requests that should have been identical: an org's member count in the
+grouped view would read differently a few requests apart with no filter
+change in between (777, then 657, then 459 for the same "no organization"
+bucket), and a group's aggregate count would disagree with what its own
+expand-fetch returned (count said 1, expanded rows showed 0, or in another
+case, the "no organization" group's expand showed the *entire* member
+list). None of this reproduced with a single-process Flask test client --
+only in production.
+
+**Root cause:** `.env` had `RATELIMIT_STORAGE_URI=redis://localhost:6379`
+(so Flask-Limiter correctly shared rate-limit state across workers) but
+**no `REDIS_URL` line at all**. `_SharedCache` (see above) silently falls
+back to a plain per-process dict when `REDIS_URL` is unset -- no error, no
+log line, it just quietly works "fine" as long as nothing depends on cross-
+process consistency. That held for the caches it originally backed
+(`_orgs_cache` etc., each refreshed by one process and read occasionally),
+but `_pm_cache` (Portal Members) started being *read on every keystroke* in
+this same round of work -- and each of the 4 gunicorn workers had spent
+however long since its own last restart running an independent
+`_do_fetch_portal_members()` against CKAN, each with its own chance of a
+handful of `organization_show` calls timing out (see the retry-with-
+backoff note in `_fetch_org_members`, app.py). Round-robin request routing
+meant two requests seconds apart from the same browser session could land
+on two different workers, each confidently returning its own, differently-
+incomplete snapshot -- explaining both the flip-flopping counts and the
+count-vs-rows disagreements, without any of it being a logic bug in the
+pagination/dedup code itself.
+
+**Fix:** add the missing line and restart both services so they pick it up:
+
+```bash
+echo "REDIS_URL=redis://localhost:6379" >> monitor-data-gov-gr/.env
+sudo systemctl restart monitor-data-gov-gr.service monitor-data-gov-gr-worker.service
+```
+
+Verify with `redis-cli KEYS "cache:*"` -- `cache:orgs`/`cache:dataset_growth`/
+`cache:geo_datasets` should appear within seconds of the restart, and
+`cache:portal_members` within a couple of minutes (once
+`_do_fetch_portal_members()` completes its first post-restart run).
+
+**Lesson for next time:** `_SharedCache`'s silent per-process fallback is
+the right default (a missing env var shouldn't crash the app), but it also
+means a misconfigured `REDIS_URL` produces *no signal at all* short of the
+symptom above -- worth spot-checking `redis-cli KEYS "cache:*"` after any
+`.env` change or migration to a new VM, rather than assuming it's wired up
+correctly just because Redis itself responds to `PING`.
 
 ## Azure Application Gateway (TLS termination + WAF) sits in front of nginx
 
