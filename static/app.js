@@ -7502,7 +7502,15 @@ function setContactsScope(scope) {
     _fileContactsSyncView();
     return;
   }
-  filterContactsTab();
+  // _pmSyncView() reuses already-loaded data for the active layout instead
+  // of refetching -- mirrors _fileContactsSyncView() above. Calling
+  // filterContactsTab()/filterPortalMembersTab() here instead (an earlier
+  // version of this did) unconditionally resets _pmFlatLoaded/_pmCache/etc
+  // first, so switching back to this scope always re-showed the cold-load
+  // spinner and progress bar even when the data was already sitting there
+  // loaded from before.
+  renderContactsSummary();
+  _pmSyncView();
 }
 
 function reloadContactsTab() {
