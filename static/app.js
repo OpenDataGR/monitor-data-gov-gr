@@ -7497,6 +7497,34 @@ function _pmGroupedCountLabel() {
 // invalidating anything -- used when just toggling All/By-Organization, as
 // opposed to filterPortalMembersTab() below, which is for when the actual
 // result set has changed. Mirrors _fileContactsSyncView.
+// Re-renders the flat table straight from _pmCache (already-fetched data,
+// no network call) -- used when _pmFlatLoaded is true but the DOM itself
+// was wiped out from under it (see the hidden.bs.tab listener up top: it
+// clears #contactsTableBody whenever the Contacts tab is hidden, as a
+// DOM-size optimization written back when this table always did a full
+// rebuild on every visit anyway). _pmSyncView's reuse path skips that
+// rebuild now, so without this, coming back to the tab left the table
+// permanently blank -- header and summary cards still correct (untouched
+// by that wipe), but no rows, and the scroll sentinel (also untouched, now
+// visible since the "table" reads as empty) firing an append fetch into
+// nothing.
+function _pmRenderRowsFromCache() {
+  _pmRenderHeader();
+  const rowsHtml = _pmCache.map((m, i) => _pmRowHtml(m, i + 1)).join('');
+  document.getElementById('contactsTableBody').innerHTML = rowsHtml
+    || `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+  const sentinel = document.getElementById('contactsLoadMoreSentinel');
+  if (sentinel) {
+    if (_pmStart < _pmTotalCount) {
+      sentinel.innerHTML = '';
+      _ensurePortalMembersObserver().observe(sentinel);
+    } else {
+      _ensurePortalMembersObserver().unobserve(sentinel);
+      sentinel.innerHTML = _pmTotalCount ? t('catalog.end_of_results') : '';
+    }
+  }
+}
+
 function _pmSyncView() {
   if (_contactsViewMode === 'grouped') {
     if (_pmGroupsLoaded) { _renderPortalMembersGroups(); _pmGroupedCountLabel(); }
@@ -7505,6 +7533,7 @@ function _pmSyncView() {
     loadPortalMembersTab(false);
   } else {
     _pmFlatCountLabel();
+    if (!document.getElementById('contactsTableBody').children.length) _pmRenderRowsFromCache();
   }
 }
 
