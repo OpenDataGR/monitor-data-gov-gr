@@ -25,7 +25,7 @@ import io
 import secrets
 import hashlib
 from urllib.parse import urlparse, quote
-from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response
+from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response, g
 from flask_compress import Compress
 from flask_wtf import CSRFProtect
 from flask_session import Session as _FlaskSession
@@ -105,6 +105,13 @@ Compress(app)
 # default (1 hour) would 400 a perfectly normal session that's just been
 # open in a browser tab for a while.
 app.config["WTF_CSRF_TIME_LIMIT"] = None
+# Checked explicitly in require_login() instead of automatically on every
+# request -- that's what lets a Bearer-token-authenticated request skip the
+# check entirely while a cookie-session request still gets exactly the same
+# enforcement it always had (require_login() calls csrf.protect() itself
+# for every non-token-authenticated request, public pre-login pages
+# included -- see that function for the full reasoning).
+app.config["WTF_CSRF_CHECK_DEFAULT"] = False
 csrf = CSRFProtect(app)
 
 # Production-only cookie hardening, gated on a real FLASK_SECRET_KEY being set
@@ -655,9 +662,92 @@ def _session_idle_seconds():
         return 0
 
 
+def _hash_api_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _generate_api_token() -> str:
+    return "dgm_" + secrets.token_urlsafe(32)
+
+
+def _authenticate_api_token():
+    """Bearer-token auth for scripted/independent API callers (see
+    /api/tokens below) -- returns the matching User and bumps that token's
+    last_used_at, or None if there's no usable Authorization header. A
+    token carries exactly the permissions of the user who created it,
+    nothing separately scoped, so populating `session` from it (see
+    require_login()) makes every existing session.get("is_admin")/
+    session.get("allowed_tabs") check downstream work unchanged."""
+    auth = freq.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    raw = auth[len("Bearer "):].strip()
+    if not raw:
+        return None
+    token = ApiToken.query.filter_by(token_hash=_hash_api_token(raw), revoked_at=None).first()
+    if not token:
+        return None
+    token.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.session.commit()
+    return token.user
+
+
+@app.after_request
+def _skip_session_cookie_for_token_auth(response):
+    """A Bearer-token request populates flask.session (see
+    _authenticate_api_token/require_login) purely so downstream permission
+    checks work unchanged -- it was never meant to also hand back a
+    browser-storable session cookie. Without this, session.modified being
+    True (from those writes) would make Flask set one anyway, and per
+    SESSION_REFRESH_EACH_REQUEST (Flask's own default, True) it would keep
+    being refreshed on every subsequent token-authenticated request even if
+    nothing were written -- letting a script's cookie jar end up
+    independently authenticated even after the token that created it is
+    revoked. Runs after the view (unlike setting this inline in
+    require_login), so it also catches a session write the view itself
+    might make, not just the ones require_login makes up front."""
+    if g.get("api_token_auth"):
+        session.permanent = False
+        session.modified = False
+    return response
+
+
 @app.before_request
 def require_login():
-    if freq.path in _PUBLIC_PATHS or freq.path.startswith("/static/"):
+    if freq.path.startswith("/static/"):
+        return
+
+    token_user = _authenticate_api_token()
+    if token_user:
+        # Same session keys a cookie login sets, so everything downstream
+        # (is_admin checks, _tab_route_check, etc.) works unchanged -- see
+        # _authenticate_api_token's docstring.
+        session["user_id"]      = token_user.id
+        session["user_name"]    = token_user.name or token_user.email
+        session["user_email"]   = token_user.email
+        session["is_admin"]     = token_user.is_admin
+        session["is_superadmin"] = token_user.is_superadmin
+        session["allowed_tabs"] = token_user.allowed_tabs
+        g.api_token_auth = True
+        _touch_last_active(token_user.id)
+        if not _tab_route_check(freq.path, _session_allowed_tabs()):
+            return jsonify({"error": "Forbidden"}), 403
+        # No csrf.protect() here on purpose -- CSRF protection exists to stop
+        # a malicious page from silently riding the browser's own cookie
+        # into a state-changing request. A Bearer token can't be attached
+        # that way (the caller has to know it and set the header itself),
+        # so it isn't vulnerable to what CSRF protection defends against.
+        return
+
+    # Every other request -- cookie-authenticated or not authenticated at
+    # all yet, including the pre-login pages themselves (/login,
+    # /forgot-password, etc., all of which submit a real csrf_token field
+    # today) -- gets exactly the check Flask-WTF used to run automatically
+    # before WTF_CSRF_CHECK_DEFAULT was turned off below. apply_exemptions
+    # still honors @csrf.exempt (the inbound-email webhook).
+    csrf.protect(apply_exemptions=True)
+
+    if freq.path in _PUBLIC_PATHS:
         return
     user_id = session.get("user_id")
     if user_id:
@@ -880,6 +970,38 @@ def api_console_page():
 @app.route("/api/_meta/routes")
 def api_meta_routes():
     return jsonify({"categories": api_docs_data.build_route_meta(app.url_map)})
+
+
+@app.route("/api/tokens", methods=["GET"])
+def api_tokens_list():
+    """Every user manages only their own tokens -- there's no admin view of
+    other users' tokens, same as no one else can see your password."""
+    tokens = (ApiToken.query.filter_by(user_id=session["user_id"])
+              .order_by(ApiToken.created_at.desc()).all())
+    return jsonify([t.to_dict() for t in tokens])
+
+
+@app.route("/api/tokens", methods=["POST"])
+def api_tokens_create():
+    body = _decode_payload()
+    label = (body.get("label") or "").strip()
+    if not label:
+        return jsonify({"error": "label is required"}), 400
+    raw = _generate_api_token()
+    token = ApiToken(user_id=session["user_id"], token_hash=_hash_api_token(raw), label=label)
+    db.session.add(token)
+    db.session.commit()
+    d = token.to_dict()
+    d["token"] = raw  # only ever returned here -- the hash can't be reversed afterward
+    return jsonify(d), 201
+
+
+@app.route("/api/tokens/<int:token_id>/revoke", methods=["POST"])
+def api_tokens_revoke(token_id):
+    token = ApiToken.query.filter_by(id=token_id, user_id=session["user_id"]).first_or_404()
+    token.revoked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/users", methods=["GET", "POST"])

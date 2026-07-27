@@ -35,6 +35,26 @@
     }
     .api-base-url > span { color: var(--api-text-faint); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
     .api-base-url code { background: var(--api-surface-2); border: 1px solid var(--api-border-soft); border-radius: 6px; padding: 3px 8px; }
+
+    .api-auth-card {
+      margin: 20px 32px 8px;
+      padding: 18px 22px;
+      border: 1px solid var(--api-border);
+      border-radius: 10px;
+      background: var(--api-surface-2);
+      max-width: 900px;
+    }
+    .api-auth-card h3 { font-family: var(--api-mono); font-size: 1rem; margin: 0 0 8px; }
+    .api-auth-card p { color: var(--api-text-muted); font-size: 0.85rem; margin: 0; }
+    .api-token-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .api-token-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 12px; border-radius: 8px; background: var(--bs-body-bg);
+      border: 1px solid var(--api-border-soft);
+    }
+    .api-token-row.api-token-revoked { opacity: 0.55; }
+    .api-token-label { font-weight: 600; font-size: 0.88rem; margin-right: 6px; }
+    .api-token-meta { font-size: 0.75rem; color: var(--api-text-faint); margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -68,6 +88,21 @@
     </div>
   </div>
 
+  <div class="api-auth-card">
+    <h3 data-i18n="apidocs.auth_title">Authentication</h3>
+    <p data-i18n="apidocs.auth_intro">Every route above is authenticated the same way you're authenticated right now — a session cookie. To call this API independently of a browser (a script, a cron job, anything outside the dashboard), create a personal token below and send it as "Authorization: Bearer &lt;token&gt;" instead. A token has exactly your own permissions, nothing more.</p>
+
+    <div id="apiTokensList" class="api-token-list"></div>
+
+    <form id="apiTokenCreateForm" class="d-flex flex-wrap gap-2 align-items-center mt-3">
+      <input type="text" id="apiTokenLabel" class="form-control form-control-sm" style="max-width:280px"
+             data-i18n-ph="apidocs.token_label_ph" placeholder="What's this token for?" required>
+      <button type="submit" class="btn btn-sm btn-primary" data-i18n="apidocs.create_token">Create token</button>
+    </form>
+
+    <div id="apiNewTokenReveal" class="d-none mt-3"></div>
+  </div>
+
   <div class="api-shell">
     <aside class="api-sidebar">
       <div class="api-search-box">
@@ -90,6 +125,34 @@
   <script src="{{ url_for('static', filename='i18n_shared.js') }}?v={{ build_date }}"></script>
   <script src="{{ url_for('static', filename='api_shared.js') }}?v={{ build_date }}"></script>
   <script>
+    // CSRF: same guarded fetch patch as app.js/webauthn.js/api_console.js --
+    // this page didn't need it while it only ever made GET requests, but
+    // the token create/revoke buttons below are real POST calls.
+    if (!window.__csrfFetchPatched) {
+      window.__csrfFetchPatched = true;
+      const _csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+      const _loginUrl  = document.querySelector('meta[name="login-url"]')?.content;
+      if (_csrfToken) {
+        const _origFetch = window.fetch;
+        window.fetch = function (input, init) {
+          init = init || {};
+          const method = (init.method || 'GET').toUpperCase();
+          if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+            const headers = new Headers(init.headers || {});
+            headers.set('X-CSRFToken', _csrfToken);
+            init = { ...init, headers };
+          }
+          return _origFetch(input, init).then(resp => {
+            if (_loginUrl && resp.status === 401 && !window.__sessionExpiredRedirecting) {
+              window.__sessionExpiredRedirecting = true;
+              location.href = _loginUrl + '?next=' + encodeURIComponent(location.pathname + location.search);
+            }
+            return resp;
+          });
+        };
+      }
+    }
+
     const TRANSLATIONS = {
       en: {
         'apidocs.back_to_dashboard': 'Back to dashboard', 'apidocs.title': 'API Reference',
@@ -101,6 +164,22 @@
         'apidocs.load_error': 'Could not load the route list: {msg}',
         'apidocs.base_url': 'Base URL', 'apidocs.copy': 'Copy', 'apidocs.copied': 'Copied!',
         'apidocs.try_it': 'Try it',
+        'apidocs.auth_title': 'Authentication',
+        'apidocs.auth_intro': "Every route above is authenticated the same way you're authenticated right now — a session cookie. To call this API independently of a browser (a script, a cron job, anything outside the dashboard), create a personal token below and send it as \"Authorization: Bearer <token>\" instead. A token has exactly your own permissions, nothing more.",
+        'apidocs.token_label_ph': "What's this token for?",
+        'apidocs.create_token': 'Create token',
+        'apidocs.no_tokens': "You haven't created any tokens yet.",
+        'apidocs.tokens_load_error': 'Could not load your tokens: {msg}',
+        'apidocs.never': 'never',
+        'apidocs.token_last_used': 'Last used {when}',
+        'apidocs.token_created_on': 'Created {when}',
+        'apidocs.token_revoked': 'Revoked',
+        'apidocs.revoke': 'Revoke',
+        'apidocs.confirm_revoke': 'Revoke "{label}"? Anything still using this token will stop working immediately.',
+        'apidocs.label_required': 'Give this token a label first.',
+        'apidocs.new_token_warning': "Copy this token now — you won't be able to see it again.",
+        'apidocs.create_failed': 'Could not create the token: {msg}',
+        'apidocs.revoke_failed': 'Could not revoke the token: {msg}',
       },
       el: {
         'apidocs.back_to_dashboard': 'Επιστροφή στον πίνακα ελέγχου', 'apidocs.title': 'Οδηγός API',
@@ -112,6 +191,22 @@
         'apidocs.load_error': 'Αποτυχία φόρτωσης της λίστας: {msg}',
         'apidocs.base_url': 'Base URL', 'apidocs.copy': 'Αντιγραφή', 'apidocs.copied': 'Αντιγράφηκε!',
         'apidocs.try_it': 'Δοκιμή',
+        'apidocs.auth_title': 'Πιστοποίηση ταυτότητας',
+        'apidocs.auth_intro': 'Κάθε endpoint παραπάνω πιστοποιείται με τον ίδιο τρόπο που είστε συνδεδεμένοι τώρα — ένα session cookie. Για να καλέσετε αυτό το API ανεξάρτητα από browser (script, cron job, οτιδήποτε εκτός του dashboard), δημιουργήστε ένα προσωπικό token παρακάτω και στείλτε το ως "Authorization: Bearer <token>". Ένα token έχει ακριβώς τα δικαιώματα του λογαριασμού σας, τίποτα παραπάνω.',
+        'apidocs.token_label_ph': 'Για τι χρησιμεύει αυτό το token;',
+        'apidocs.create_token': 'Δημιουργία token',
+        'apidocs.no_tokens': 'Δεν έχετε δημιουργήσει κανένα token ακόμα.',
+        'apidocs.tokens_load_error': 'Αποτυχία φόρτωσης των tokens: {msg}',
+        'apidocs.never': 'ποτέ',
+        'apidocs.token_last_used': 'Τελευταία χρήση {when}',
+        'apidocs.token_created_on': 'Δημιουργήθηκε {when}',
+        'apidocs.token_revoked': 'Ανακλήθηκε',
+        'apidocs.revoke': 'Ανάκληση',
+        'apidocs.confirm_revoke': 'Ανάκληση "{label}"; Οτιδήποτε χρησιμοποιεί ακόμα αυτό το token θα σταματήσει να λειτουργεί αμέσως.',
+        'apidocs.label_required': 'Δώστε πρώτα μια περιγραφή σε αυτό το token.',
+        'apidocs.new_token_warning': 'Αντιγράψτε αυτό το token τώρα — δεν θα μπορείτε να το δείτε ξανά.',
+        'apidocs.create_failed': 'Αποτυχία δημιουργίας token: {msg}',
+        'apidocs.revoke_failed': 'Αποτυχία ανάκλησης token: {msg}',
       },
     };
     let _lang = localStorage.getItem('lang') || 'el';
@@ -162,6 +257,93 @@
       document.getElementById('apiCategories').innerHTML =
         `<div class="alert alert-danger">${t('apidocs.load_error').replace('{msg}', e.message)}</div>`;
     });
+
+    // ── Personal API tokens ──────────────────────────────────────────────
+    function _apiEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function _apiFormatDate(iso) {
+      if (!iso) return t('apidocs.never');
+      return new Date(iso).toLocaleString(_lang === 'el' ? 'el-GR' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    async function loadApiTokens() {
+      const el = document.getElementById('apiTokensList');
+      try {
+        const resp = await fetch('/api/tokens');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const tokens = await resp.json();
+        _renderApiTokens(tokens);
+      } catch (e) {
+        el.innerHTML = `<div class="alert alert-danger mb-0">${_apiEsc(t('apidocs.tokens_load_error').replace('{msg}', e.message))}</div>`;
+      }
+    }
+
+    function _renderApiTokens(tokens) {
+      const el = document.getElementById('apiTokensList');
+      if (!tokens.length) {
+        el.innerHTML = `<p class="text-muted mb-0">${_apiEsc(t('apidocs.no_tokens'))}</p>`;
+        return;
+      }
+      el.innerHTML = tokens.map(tok => `
+        <div class="api-token-row${tok.revoked ? ' api-token-revoked' : ''}">
+          <div>
+            <span class="api-token-label">${_apiEsc(tok.label)}</span>
+            ${tok.revoked ? `<span class="api-chip api-chip-limit">${_apiEsc(t('apidocs.token_revoked'))}</span>` : ''}
+            <div class="api-token-meta">
+              ${_apiEsc(t('apidocs.token_created_on').replace('{when}', _apiFormatDate(tok.created_at)))}
+              · ${_apiEsc(t('apidocs.token_last_used').replace('{when}', _apiFormatDate(tok.last_used_at)))}
+            </div>
+          </div>
+          ${tok.revoked ? '' : `<button type="button" class="btn btn-sm btn-outline-danger" onclick="revokeApiToken(${tok.id}, '${_apiEsc(tok.label).replace(/'/g, "\\'")}')">${_apiEsc(t('apidocs.revoke'))}</button>`}
+        </div>`).join('');
+    }
+
+    async function revokeApiToken(id, label) {
+      if (!confirm(t('apidocs.confirm_revoke').replace('{label}', label))) return;
+      try {
+        const resp = await fetch(`/api/tokens/${id}/revoke`, { method: 'POST' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        loadApiTokens();
+      } catch (e) {
+        alert(t('apidocs.revoke_failed').replace('{msg}', e.message));
+      }
+    }
+
+    document.getElementById('apiTokenCreateForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('apiTokenLabel');
+      const label = input.value.trim();
+      if (!label) { alert(t('apidocs.label_required')); return; }
+      try {
+        const resp = await fetch('/api/tokens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label }),
+        });
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          throw new Error(data.error || ('HTTP ' + resp.status));
+        }
+        const created = await resp.json();
+        input.value = '';
+        const reveal = document.getElementById('apiNewTokenReveal');
+        reveal.classList.remove('d-none');
+        reveal.innerHTML = `
+          <div class="alert alert-warning mb-0">
+            <div class="mb-2">${_apiEsc(t('apidocs.new_token_warning'))}</div>
+            <div class="d-flex gap-2">
+              <code class="api-mono flex-grow-1 user-select-all" style="word-break:break-all">${_apiEsc(created.token)}</code>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('${created.token}')">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+          </div>`;
+        loadApiTokens();
+      } catch (e) {
+        alert(t('apidocs.create_failed').replace('{msg}', e.message));
+      }
+    });
+
+    loadApiTokens();
   </script>
 </body>
 </html>
