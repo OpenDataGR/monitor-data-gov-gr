@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="login-url" content="{{ url_for('login') }}">
+  <script>
+    (function () {
+      var saved = localStorage.getItem('theme');
+      var theme = saved === 'dark' || saved === 'light' ? saved
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-bs-theme', theme);
+    })();
+  </script>
+  <title>API Reference — data.gov.gr Monitor</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔌</text></svg>">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='api_shared.css') }}">
+  <style>
+    .top-header { background: linear-gradient(135deg, #003366 0%, #0057b8 100%); color: #fff; padding: 1rem 1.5rem; }
+    .api-hero { padding: 24px 32px 8px; max-width: 680px; }
+    .api-hero h2 { font-family: var(--api-mono); font-size: 1.5rem; margin: 0 0 8px; }
+    .api-hero p { color: var(--api-text-muted); margin: 0; }
+    .api-hero code { background: var(--api-surface-2); border: 1px solid var(--api-border-soft); border-radius: 5px; padding: 1px 6px; font-size: 0.85em; }
+    .api-console-cta {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 14px;
+      font-size: 0.85rem; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-3">
+      <div>
+        <a href="{{ url_for('index') }}" class="text-white-50 text-decoration-none small d-block mb-1">
+          <i class="bi bi-arrow-left me-1"></i><span data-i18n="apidocs.back_to_dashboard">Back to dashboard</span>
+        </a>
+        <div class="fw-bold fs-5"><i class="bi bi-plug me-2"></i><span data-i18n="apidocs.title">API Reference</span></div>
+      </div>
+    </div>
+    <div class="d-flex align-items-center flex-wrap justify-content-end gap-2 gap-md-3 row-gap-2">
+      <a href="{{ url_for('api_console_page') }}" class="btn btn-outline-light btn-sm px-3">
+        <i class="bi bi-play-circle me-1"></i><span data-i18n="apidocs.open_console">Open testing console</span>
+      </a>
+      {% set standalone_header = True %}
+      {% include "_header_controls.html" %}
+    </div>
+  </div>
+
+  <div class="api-hero">
+    <h2 data-i18n="apidocs.h1">Backend API reference</h2>
+    <p data-i18n="apidocs.intro">Every route this dashboard's own frontend calls. All of it sits behind your session login — nothing here is a separate public API, and nothing you can reach through it is more than what you can already do in the dashboard itself.</p>
+  </div>
+
+  <div class="api-shell">
+    <aside class="api-sidebar">
+      <div class="api-search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3" stroke-linecap="round"/></svg>
+        <input id="apiSearch" type="text" class="form-control form-control-sm" data-i18n-ph="apidocs.search_ph" placeholder="Filter routes…" autocomplete="off">
+      </div>
+      <div class="api-stat">
+        <span class="l" data-i18n="apidocs.routes_label">Routes</span>
+        <span class="n" id="apiStatTotal">—</span>
+      </div>
+      <nav class="api-toc" id="apiToc"></nav>
+    </aside>
+    <main class="api-main">
+      <div id="apiCategories"></div>
+      <div id="apiNoResults" data-i18n="apidocs.no_results">No routes match your search.</div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='i18n_shared.js') }}"></script>
+  <script src="{{ url_for('static', filename='api_shared.js') }}"></script>
+  <script>
+    const TRANSLATIONS = {
+      en: {
+        'apidocs.back_to_dashboard': 'Back to dashboard', 'apidocs.title': 'API Reference',
+        'apidocs.open_console': 'Open testing console',
+        'apidocs.h1': 'Backend API reference',
+        'apidocs.intro': "Every route this dashboard's own frontend calls. All of it sits behind your session login — nothing here is a separate public API, and nothing you can reach through it is more than what you can already do in the dashboard itself.",
+        'apidocs.search_ph': 'Filter routes…', 'apidocs.routes_label': 'Routes',
+        'apidocs.no_results': 'No routes match your search.',
+        'apidocs.load_error': 'Could not load the route list: {msg}',
+      },
+      el: {
+        'apidocs.back_to_dashboard': 'Επιστροφή στον πίνακα ελέγχου', 'apidocs.title': 'Οδηγός API',
+        'apidocs.open_console': 'Άνοιγμα κονσόλας δοκιμών',
+        'apidocs.h1': 'Οδηγός backend API',
+        'apidocs.intro': 'Κάθε endpoint που καλεί το ίδιο το frontend αυτού του dashboard. Όλα βρίσκονται πίσω από τη σύνδεσή σας — τίποτα εδώ δεν είναι ξεχωριστό δημόσιο API, και τίποτα δεν μπορείτε να κάνετε μέσω αυτού πέρα από όσα ήδη μπορείτε στο ίδιο το dashboard.',
+        'apidocs.search_ph': 'Φιλτράρισμα endpoints…', 'apidocs.routes_label': 'Endpoints',
+        'apidocs.no_results': 'Δεν βρέθηκαν endpoints.',
+        'apidocs.load_error': 'Αποτυχία φόρτωσης της λίστας: {msg}',
+      },
+    };
+    let _lang = localStorage.getItem('lang') || 'el';
+    function t(key) {
+      return (TRANSLATIONS[_lang] && TRANSLATIONS[_lang][key]) || TRANSLATIONS.en[key]
+        || (I18N_SHARED[_lang] && I18N_SHARED[_lang][key]) || I18N_SHARED.en[key] || key;
+    }
+    function applyI18n() {
+      document.getElementById('langEl').classList.toggle('active', _lang === 'el');
+      document.getElementById('langEn').classList.toggle('active', _lang === 'en');
+      document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')); });
+      document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.getAttribute('data-i18n-ph')); });
+      document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.getAttribute('data-i18n-title')); });
+    }
+    function setLang(lang) { _lang = lang; localStorage.setItem('lang', lang); applyI18n(); }
+
+    function _isDarkTheme() { return document.documentElement.getAttribute('data-bs-theme') === 'dark'; }
+    function applyThemeIcon() {
+      const icon = document.getElementById('themeToggleIcon');
+      if (icon) icon.className = 'bi ' + (_isDarkTheme() ? 'bi-sun' : 'bi-moon-stars');
+    }
+    function setTheme(theme) { document.documentElement.setAttribute('data-bs-theme', theme); localStorage.setItem('theme', theme); applyThemeIcon(); }
+    function toggleTheme() { setTheme(_isDarkTheme() ? 'light' : 'dark'); }
+
+    applyI18n();
+    applyThemeIcon();
+
+    apiFetchMeta().then(data => {
+      apiRenderBrowser({
+        categories: data.categories,
+        navEl: document.getElementById('apiToc'),
+        listEl: document.getElementById('apiCategories'),
+        searchEl: document.getElementById('apiSearch'),
+        statTotalEl: document.getElementById('apiStatTotal'),
+      });
+    }).catch(e => {
+      document.getElementById('apiCategories').innerHTML =
+        `<div class="alert alert-danger">${t('apidocs.load_error').replace('{msg}', e.message)}</div>`;
+    });
+  </script>
+</body>
+</html>

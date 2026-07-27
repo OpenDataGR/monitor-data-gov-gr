@@ -1,0 +1,174 @@
+/* Shared look for api_docs.html and api_console.html. Uses this app's own
+   [data-bs-theme] convention (set by the header's theme toggle), not a
+   separate design system -- tokens below just extend Bootstrap's palette
+   with a few API-reference-specific ones (method-badge colors, mono type). */
+:root {
+  --api-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+  --api-accent: #0E6E86;
+  --api-accent-soft: #E1EEF1;
+  --api-accent-text: #0A5567;
+  --api-border: #DCE3E9;
+  --api-border-soft: #E9EDF1;
+  --api-surface-2: #FAFBFC;
+  --api-text-muted: #5C6773;
+  --api-text-faint: #8A93A0;
+  --api-get: #2C63C9;      --api-get-soft: #E7EEFB;
+  --api-post: #1D8A5C;     --api-post-soft: #E4F4EC;
+  --api-patch: #A9700B;    --api-patch-soft: #F8EFDD;
+  --api-delete: #C1403F;   --api-delete-soft: #FBE9E8;
+  --api-admin: #8A4BB0;    --api-admin-soft: #F1E6F7;
+  --api-limit: #6B7280;    --api-limit-soft: #ECEDEF;
+}
+[data-bs-theme="dark"] {
+  --api-accent: #4FC1DB;
+  --api-accent-soft: #17323A;
+  --api-accent-text: #7DD4E8;
+  --api-border: #29313A;
+  --api-border-soft: #232A32;
+  --api-surface-2: #1C232B;
+  --api-text-muted: #9AA5B1;
+  --api-text-faint: #6C7684;
+  --api-get: #6FA6F2;      --api-get-soft: #1B2A42;
+  --api-post: #55D399;     --api-post-soft: #163429;
+  --api-patch: #E3AC4C;    --api-patch-soft: #3A2F16;
+  --api-delete: #F17872;   --api-delete-soft: #3A1E1E;
+  --api-admin: #C39BE0;    --api-admin-soft: #2E2338;
+  --api-limit: #9AA5B1;    --api-limit-soft: #232931;
+}
+
+.api-mono { font-family: var(--api-mono); }
+
+.api-shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: calc(100vh - 88px);
+}
+@media (max-width: 900px) {
+  .api-shell { grid-template-columns: 1fr; }
+  .api-sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--api-border); }
+}
+
+.api-sidebar {
+  position: sticky;
+  top: 88px;
+  align-self: start;
+  height: calc(100vh - 88px);
+  overflow-y: auto;
+  border-right: 1px solid var(--api-border);
+  padding: 20px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.api-search-box { position: relative; }
+.api-search-box input {
+  width: 100%;
+  padding: 8px 12px 8px 32px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.api-search-box svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--api-text-faint);
+  pointer-events: none;
+}
+
+.api-stat {
+  background: var(--api-surface-2);
+  border: 1px solid var(--api-border-soft);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.api-stat .n { font-family: var(--api-mono); font-weight: 700; color: var(--api-accent-text); }
+.api-stat .l { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--api-text-faint); }
+
+.api-toc { display: flex; flex-direction: column; gap: 1px; }
+.api-toc-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 0.83rem;
+  text-decoration: none;
+  color: var(--api-text-muted);
+}
+.api-toc-link:hover { background: var(--api-surface-2); }
+.api-toc-count { font-family: var(--api-mono); font-size: 0.7rem; color: var(--api-text-faint); }
+
+.api-main { padding: 28px 32px 80px; min-width: 0; }
+.api-category { margin-bottom: 36px; scroll-margin-top: 16px; }
+.api-category-head { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--api-border); }
+.api-category-head h3 { font-family: var(--api-mono); font-size: 1rem; margin: 0; }
+.api-category-count { font-family: var(--api-mono); font-size: 0.75rem; color: var(--api-text-faint); }
+.api-category-desc { font-size: 0.83rem; color: var(--api-text-muted); margin: 8px 0 14px; max-width: 620px; }
+
+.api-route-list { display: flex; flex-direction: column; gap: 1px; }
+.api-route {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 4px 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+.api-route-clickable { cursor: pointer; }
+.api-route:hover { background: var(--api-surface-2); border-color: var(--api-border-soft); }
+@media (max-width: 640px) { .api-route { grid-template-columns: 1fr; } }
+
+.api-route-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.api-method {
+  font-family: var(--api-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 2px 6px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.api-method-get    { background: var(--api-get-soft);    color: var(--api-get); }
+.api-method-post   { background: var(--api-post-soft);   color: var(--api-post); }
+.api-method-patch  { background: var(--api-patch-soft);  color: var(--api-patch); }
+.api-method-delete { background: var(--api-delete-soft); color: var(--api-delete); }
+
+.api-path { font-family: var(--api-mono); font-size: 0.83rem; word-break: break-word; }
+.api-param { color: var(--api-accent-text); }
+
+.api-route-desc { font-size: 0.85rem; margin: 0; }
+.api-route-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.api-chip {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+}
+.api-chip-admin  { background: var(--api-admin-soft);  color: var(--api-admin); text-transform: uppercase; }
+.api-chip-limit  { background: var(--api-limit-soft);  color: var(--api-limit); text-transform: uppercase; }
+.api-chip-params { background: var(--api-surface-2); color: var(--api-text-faint); border: 1px solid var(--api-border-soft); font-family: var(--api-mono); font-weight: 500; }
+
+.api-hidden { display: none !important; }
+#apiNoResults { display: none; color: var(--api-text-muted); padding: 30px 0; text-align: center; font-size: 0.83rem; }
+#apiNoResults.api-show { display: block; }
+
+/* Compact mode: the console's sidebar picker -- scanned and clicked, not
+   read, so no description/tags/category-blurb, just method + path. */
+.api-route-picker { display: flex; flex-direction: column; gap: 2px; }
+.api-category-compact { margin-bottom: 14px; }
+.api-category-compact .api-category-head { border-bottom: none; padding-bottom: 2px; opacity: 0.75; }
+.api-category-compact .api-category-head h3 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.api-route-compact { grid-template-columns: 1fr; padding: 6px 8px; }
+.api-route-compact .api-path { font-size: 0.78rem; }
+.api-route-active { background: var(--api-accent-soft) !important; border-color: var(--api-accent) !important; }

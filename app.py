@@ -36,6 +36,7 @@ from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgCont
 import rdflib
 import pyshacl
 import config
+import api_docs_data
 from webauthn import (
     generate_registration_options, verify_registration_response,
     generate_authentication_options, verify_authentication_response,
@@ -854,6 +855,30 @@ def admin_users_page():
     return render_template("admin_users.html", current_user_id=session.get("user_id"),
                            current_user_is_superadmin=session.get("is_superadmin", False),
                            user_name=session.get("user_name"))
+
+
+# ── API docs & testing console ───────────────────────────────────────────────
+# Any logged-in user can open these -- same permission as every other
+# non-admin-gated tab. No new privilege is exposed: the console just fires
+# fetch() calls with the browser's own session cookie, which the user could
+# already do from devtools. An admin-only *route* still 403s a non-admin who
+# tries it through the console, exactly as it would from the real dashboard.
+
+@app.route("/api-docs")
+def api_docs_page():
+    return render_template("api_docs.html", user_name=session.get("user_name"),
+                           is_admin=session.get("is_admin", False))
+
+
+@app.route("/api-console")
+def api_console_page():
+    return render_template("api_console.html", user_name=session.get("user_name"),
+                           is_admin=session.get("is_admin", False))
+
+
+@app.route("/api/_meta/routes")
+def api_meta_routes():
+    return jsonify({"categories": api_docs_data.build_route_meta(app.url_map)})
 
 
 @app.route("/api/users", methods=["GET", "POST"])
