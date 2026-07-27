@@ -28,6 +28,34 @@ function apiTagsHtml(route) {
 }
 function apiEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
+// Identifies one route uniquely -- a path can have more than one entry with
+// different method sets (e.g. GET /api/communications vs POST
+// /api/communications), so path alone isn't enough to disambiguate.
+function apiRouteKey(route) {
+  return route.methods.slice().sort().join(',') + ' ' + route.path;
+}
+
+// Deep-links from a docs row straight into the console with that exact
+// route pre-selected -- see api_console.js's apiApplyDeepLinkFromUrl(),
+// which reads these same two params back out on load.
+function apiConsoleLinkHref(route) {
+  const params = new URLSearchParams();
+  params.set('path', route.path);
+  params.set('methods', route.methods.join(','));
+  return '/api-console?' + params.toString();
+}
+
+// Finds a route by the same (path, methods) identity apiConsoleLinkHref
+// encoded into the URL, across every category.
+function apiFindRouteByKey(categories, path, methods) {
+  const key = methods.slice().sort().join(',') + ' ' + path;
+  for (const cat of categories) {
+    const hit = cat.routes.find(r => apiRouteKey(r) === key);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 // Renders the sidebar's category-jump nav + returns a flat lookup of every
 // route keyed by "METHOD1+METHOD2 /path", used by callers that need to find
 // a route's own metadata again after a click (e.g. the console builder).
@@ -84,13 +112,17 @@ function apiRenderBrowser({ categories, navEl, listEl, searchEl, statTotalEl, on
       const row = document.createElement('div');
       row.className = 'api-route' + (compact ? ' api-route-compact' : '');
       row.dataset.search = (route.methods.join(' ') + ' ' + route.path + ' ' + route.desc).toLowerCase();
+      row.dataset.routeKey = apiRouteKey(route);
       row.innerHTML = compact
         ? `<div class="api-route-head">${apiMethodBadgeHtml(route.methods)}<span class="api-path">${apiPathHtml(route.path)}</span></div>`
         : `<div class="api-route-head">${apiMethodBadgeHtml(route.methods)}<span class="api-path">${apiPathHtml(route.path)}</span></div>
         <div class="api-route-body">
           <p class="api-route-desc">${apiEsc(route.desc)}</p>
           <div class="api-route-meta">${apiTagsHtml(route)}</div>
-        </div>`;
+        </div>
+        <a class="api-try-link" href="${apiConsoleLinkHref(route)}">
+          <i class="bi bi-play-fill"></i> ${apiEsc(window.API_TRY_IT_LABEL || 'Try it')}
+        </a>`;
       if (onRouteClick) {
         row.classList.add('api-route-clickable');
         row.addEventListener('click', () => {

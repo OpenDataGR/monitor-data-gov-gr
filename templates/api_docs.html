@@ -20,7 +20,8 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='api_shared.css') }}">
   <style>
     .top-header { background: linear-gradient(135deg, #003366 0%, #0057b8 100%); color: #fff; padding: 1rem 1.5rem; }
-    .api-hero { padding: 24px 32px 8px; max-width: 680px; }
+    .api-hero { padding: 24px 32px 8px; }
+    .api-hero p { max-width: 900px; }
     .api-hero h2 { font-family: var(--api-mono); font-size: 1.5rem; margin: 0 0 8px; }
     .api-hero p { color: var(--api-text-muted); margin: 0; }
     .api-hero code { background: var(--api-surface-2); border: 1px solid var(--api-border-soft); border-radius: 5px; padding: 1px 6px; font-size: 0.85em; }
@@ -99,6 +100,7 @@
         'apidocs.no_results': 'No routes match your search.',
         'apidocs.load_error': 'Could not load the route list: {msg}',
         'apidocs.base_url': 'Base URL', 'apidocs.copy': 'Copy', 'apidocs.copied': 'Copied!',
+        'apidocs.try_it': 'Try it',
       },
       el: {
         'apidocs.back_to_dashboard': 'Επιστροφή στον πίνακα ελέγχου', 'apidocs.title': 'Οδηγός API',
@@ -109,6 +111,7 @@
         'apidocs.no_results': 'Δεν βρέθηκαν endpoints.',
         'apidocs.load_error': 'Αποτυχία φόρτωσης της λίστας: {msg}',
         'apidocs.base_url': 'Base URL', 'apidocs.copy': 'Αντιγραφή', 'apidocs.copied': 'Αντιγράφηκε!',
+        'apidocs.try_it': 'Δοκιμή',
       },
     };
     let _lang = localStorage.getItem('lang') || 'el';
@@ -135,6 +138,7 @@
 
     applyI18n();
     applyThemeIcon();
+    window.API_TRY_IT_LABEL = t('apidocs.try_it');
 
     document.getElementById('apiBaseUrl').textContent = location.origin;
     document.getElementById('apiBaseUrlCopyBtn').addEventListener('click', function () {

@@ -111,20 +111,35 @@
 .api-category-head { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--api-border); }
 .api-category-head h3 { font-family: var(--api-mono); font-size: 1rem; margin: 0; }
 .api-category-count { font-family: var(--api-mono); font-size: 0.75rem; color: var(--api-text-faint); }
-.api-category-desc { font-size: 0.83rem; color: var(--api-text-muted); margin: 8px 0 14px; max-width: 620px; }
+.api-category-desc { font-size: 0.83rem; color: var(--api-text-muted); margin: 8px 0 14px; max-width: 900px; }
 
-.api-route-list { display: flex; flex-direction: column; gap: 1px; }
+.api-route-list { display: flex; flex-direction: column; gap: 6px; }
 .api-route {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 220px 1fr auto;
+  align-items: start;
   gap: 4px 16px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: 8px;
-  border: 1px solid transparent;
+  background: var(--api-surface-2);
+  border: 1px solid var(--api-border-soft);
 }
 .api-route-clickable { cursor: pointer; }
-.api-route:hover { background: var(--api-surface-2); border-color: var(--api-border-soft); }
-@media (max-width: 640px) { .api-route { grid-template-columns: 1fr; } }
+.api-route:hover { border-color: var(--api-accent); }
+@media (max-width: 760px) { .api-route { grid-template-columns: 1fr; } }
+
+.api-try-link {
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--api-accent);
+  color: var(--api-accent-text);
+  text-decoration: none;
+  align-self: center;
+}
+.api-try-link:hover { background: var(--api-accent-soft); text-decoration: none; }
 
 .api-route-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .api-method {
@@ -166,9 +181,11 @@
 /* Compact mode: the console's sidebar picker -- scanned and clicked, not
    read, so no description/tags/category-blurb, just method + path. */
 .api-route-picker { display: flex; flex-direction: column; gap: 2px; }
+.api-route-picker .api-route-list { gap: 1px; }
 .api-category-compact { margin-bottom: 14px; }
 .api-category-compact .api-category-head { border-bottom: none; padding-bottom: 2px; opacity: 0.75; }
 .api-category-compact .api-category-head h3 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.api-route-compact { grid-template-columns: 1fr; padding: 6px 8px; }
+.api-route-compact { grid-template-columns: 1fr; padding: 6px 8px; background: transparent; border-color: transparent; }
+.api-route-compact:hover { background: var(--api-surface-2); border-color: var(--api-border-soft); }
 .api-route-compact .api-path { font-size: 0.78rem; }
 .api-route-active { background: var(--api-accent-soft) !important; border-color: var(--api-accent) !important; }

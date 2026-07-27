@@ -193,6 +193,26 @@ function renderResponse(status, ok, ms, bodyText) {
   document.getElementById('apiRespBody').textContent = bodyText;
 }
 
+// Docs-page "Try it" links land here as ?path=...&methods=GET,POST -- see
+// apiConsoleLinkHref in api_shared.js, which encodes the same identity.
+function apiApplyDeepLinkFromUrl(categories) {
+  const params = new URLSearchParams(location.search);
+  const path = params.get('path');
+  const methodsParam = params.get('methods');
+  if (!path || !methodsParam) return;
+  const route = apiFindRouteByKey(categories, path, methodsParam.split(','));
+  if (!route) return;
+  onRouteSelected(route);
+  // Not a CSS attribute-selector match -- route keys can contain
+  // <path:param>-style characters that aren't valid unescaped in one.
+  const wantedKey = apiRouteKey(route);
+  const row = Array.from(document.querySelectorAll('.api-route')).find(el => el.dataset.routeKey === wantedKey);
+  if (row) {
+    row.classList.add('api-route-active');
+    row.scrollIntoView({ block: 'center' });
+  }
+}
+
 apiFetchMeta().then(data => {
   apiRenderBrowser({
     categories: data.categories,
@@ -202,6 +222,7 @@ apiFetchMeta().then(data => {
     onRouteClick: onRouteSelected,
     compact: true,
   });
+  apiApplyDeepLinkFromUrl(data.categories);
 }).catch(e => {
   document.getElementById('apiCategories').innerHTML =
     `<div class="alert alert-danger small">${t('apiconsole.load_error').replace('{msg}', e.message)}</div>`;
