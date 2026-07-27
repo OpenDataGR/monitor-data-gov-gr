@@ -6764,11 +6764,14 @@ async function loadContactsTab(force = false) {
 }
 
 // The slow part of a cold portal-members fetch is one organization_show call
-// per CKAN organization; the backend reports {done, total} as those complete
-// so this can be a real progress bar (shared with the quality checks' —
-// see _showProgressBar) instead of a bare spinner.
+// per CKAN organization; the backend reports {phase: 'members', done, total}
+// as those complete so this can be a real progress bar (shared with the
+// quality checks' — see _showProgressBar). The brief phase: 'orgs' step
+// beforehand (organization_list + user_list) has no meaningful done/total
+// of its own, so it stays a bare spinner (the static text already shown
+// alongside it) rather than a progress bar stuck at 0%.
 function _updateContactsLoadingProgress(progress) {
-  if (!progress || !progress.total) return;
+  if (!progress || progress.phase !== 'members' || !progress.total) return;
   _showProgressBar('pm', progress.done, progress.total);
 }
 
@@ -6790,7 +6793,10 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
   try {
     // POST forces the server to bypass its own 2-hour cache and recompute
     // from CKAN — only needed on the first request of an explicit Reload.
-    const resp = await fetch(API_BASE + 'api/portal-members', { method: (attempt === 0 && force) ? 'POST' : 'GET' });
+    // full=1 asks for the complete raw per-membership list (undeduped) —
+    // this cache backs the Comms contact picker, org panel, user panel etc,
+    // which all expect that shape; the paginated table view fetches separately.
+    const resp = await fetch(API_BASE + 'api/portal-members?full=1', { method: (attempt === 0 && force) ? 'POST' : 'GET' });
     const data = await resp.json();
 
     if (resp.status === 202) {
@@ -6855,7 +6861,7 @@ function _pmEditOrAddButton(m, onclickExpr) {
 function sortContacts(col) {
   if (_contactsSortCol === col) _contactsSortDir = _contactsSortDir === 'asc' ? 'desc' : 'asc';
   else { _contactsSortCol = col; _contactsSortDir = 'asc'; }
-  filterContactsTab();
+  filterPortalMembersTab();
 }
 
 // Shared by both sortable tables (Portal Members / File Contacts) -- each
@@ -6965,70 +6971,36 @@ function _renderContactsFilterGroup(elId, indices, tabDotId) {
   _renderFilterGroup(elId, indices, tabDotId, _contactsSummaryCards, _contactsFilterIsActive, 'setContactsFilter');
 }
 
-function renderContactsSummary() {
-  if (!_portalMembersCache) {
+// roleCounts/stateCounts/fileCounts come straight from the backend response
+// ({total, admin, editor, ...}/{total, active, ...}/{total, has, none}) --
+// only present on a fresh page (start=0), same as File Contacts' facet
+// counts (see renderFileContactsSummary). Called with no args to just
+// re-render the last-known counts (e.g. after toggling a filter, before the
+// new fetch resolves) using whatever's already in the cards array.
+function renderContactsSummary(roleCounts, stateCounts, fileCounts) {
+  if (roleCounts) {
+    _contactsSummaryCards = [
+      { filter: { type: 'role', value: null },       label: t('contacts.total'), value: roleCounts.total,    bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+      { filter: { type: 'role', value: 'admin' },    label: t('contacts.role_admin'),    value: roleCounts.admin,    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-shield-check" },
+      { filter: { type: 'role', value: 'editor' },   label: t('contacts.role_editor'),   value: roleCounts.editor,   bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-pencil-square" },
+      { filter: { type: 'role', value: 'member' },   label: t('contacts.role_member'),   value: roleCounts.member,   bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person" },
+      { filter: { type: 'role', value: 'user' },     label: t('contacts.role_user'),     value: roleCounts.user,     bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person-badge" },
+      { filter: { type: 'role', value: 'sysadmin' }, label: t('contacts.role_sysadmin'), value: roleCounts.sysadmin, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-shield-lock" },
+      { filter: { type: 'state', value: null },      label: t('contacts.total'), value: stateCounts.total,      bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+      { filter: { type: 'state', value: 'active' },  label: t('contacts.state_active'),  value: stateCounts.active,  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-check-circle" },
+      { filter: { type: 'state', value: 'pending' }, label: t('contacts.state_pending'), value: stateCounts.pending, bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-hourglass-split" },
+      { filter: { type: 'state', value: 'deleted' }, label: t('contacts.state_deleted'), value: stateCounts.deleted, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-x-circle" },
+      { filter: { type: 'file', value: null },       label: t('contacts.total'),            value: fileCounts.total, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+      { filter: { type: 'file', value: 'has' },      label: t('contacts.has_contact_file'), value: fileCounts.has,  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-file-earmark-person" },
+      { filter: { type: 'file', value: 'none' },     label: t('contacts.no_contact_file'),  value: fileCounts.none, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-file-earmark-x" },
+    ];
+  }
+  if (!_contactsSummaryCards.length) {
     document.getElementById('contactsRoleSummary').innerHTML = '';
     document.getElementById('contactsStateSummary').innerHTML = '';
     document.getElementById('contactsFileSummary').innerHTML = '';
     return;
   }
-  const allRows = _dedupeContacts(_portalMembersCache);
-  const hasFile = m => !!m.contact_id;
-
-  // Each dimension's counts are scoped to the OTHER two dimensions' current
-  // selections (but not its own), same as the Dataset Catalog's Type/HVD/
-  // Harvested tabs — so picking "Admin" updates what State's and File info's
-  // numbers mean ("breakdown among admins") instead of staying frozen at the
-  // unfiltered total.
-  const stateAndFileMatch = m =>
-    (!_contactsStateFilter || (m.state || 'active') === _contactsStateFilter) &&
-    (!_contactsFileFilter  || (hasFile(m) ? 'has' : 'none') === _contactsFileFilter);
-  const roleAndFileMatch = m =>
-    (!_contactsRoleFilter || (_contactsRoleFilter === 'sysadmin' ? m.sysadmin : (!m.sysadmin && m.capacity === _contactsRoleFilter))) &&
-    (!_contactsFileFilter || (hasFile(m) ? 'has' : 'none') === _contactsFileFilter);
-  const roleAndStateMatch = m =>
-    (!_contactsRoleFilter  || (_contactsRoleFilter === 'sysadmin' ? m.sysadmin : (!m.sysadmin && m.capacity === _contactsRoleFilter))) &&
-    (!_contactsStateFilter || (m.state || 'active') === _contactsStateFilter);
-
-  const roleScopeRows  = allRows.filter(stateAndFileMatch);
-  const stateScopeRows = allRows.filter(roleAndFileMatch);
-  const fileScopeRows  = allRows.filter(roleAndStateMatch);
-
-  const roleCounts  = { admin: 0, editor: 0, member: 0, user: 0, sysadmin: 0 };
-  for (const m of roleScopeRows) {
-    if (m.sysadmin) roleCounts.sysadmin++;
-    else if (m.capacity in roleCounts) roleCounts[m.capacity]++;
-  }
-  const stateCounts = { active: 0, deleted: 0, pending: 0 };
-  for (const m of stateScopeRows) {
-    const st = m.state || 'active';
-    stateCounts[st] = (stateCounts[st] || 0) + 1;
-  }
-  let fileHasCount = 0, fileNoneCount = 0;
-  for (const m of fileScopeRows) {
-    if (hasFile(m)) fileHasCount++; else fileNoneCount++;
-  }
-
-  // Each dimension keeps its own "Total/All" card (a separate filter object,
-  // and now also its own count — the size of ITS OWN scope, i.e. everyone
-  // matching the other dimensions' filters) since clearing one facet's
-  // filter is an independent action from clearing another's.
-  _contactsSummaryCards = [
-    { filter: { type: 'role', value: null },       label: t('contacts.total'), value: roleScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
-    { filter: { type: 'role', value: 'admin' },    label: t('contacts.role_admin'),    value: roleCounts.admin,    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-shield-check" },
-    { filter: { type: 'role', value: 'editor' },   label: t('contacts.role_editor'),   value: roleCounts.editor,   bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-pencil-square" },
-    { filter: { type: 'role', value: 'member' },   label: t('contacts.role_member'),   value: roleCounts.member,   bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person" },
-    { filter: { type: 'role', value: 'user' },     label: t('contacts.role_user'),     value: roleCounts.user,    bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person-badge" },
-    { filter: { type: 'role', value: 'sysadmin' }, label: t('contacts.role_sysadmin'), value: roleCounts.sysadmin, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-shield-lock" },
-    { filter: { type: 'state', value: null },      label: t('contacts.total'), value: stateScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
-    { filter: { type: 'state', value: 'active' },  label: t('contacts.state_active'),  value: stateCounts.active,  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-check-circle" },
-    { filter: { type: 'state', value: 'pending' }, label: t('contacts.state_pending'), value: stateCounts.pending, bg: "bg-warning bg-opacity-10",   text: "text-warning",   icon: "bi-hourglass-split" },
-    { filter: { type: 'state', value: 'deleted' }, label: t('contacts.state_deleted'), value: stateCounts.deleted, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-x-circle" },
-    { filter: { type: 'file', value: null },       label: t('contacts.total'),            value: fileScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
-    { filter: { type: 'file', value: 'has' },      label: t('contacts.has_contact_file'), value: fileHasCount,        bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-file-earmark-person" },
-    { filter: { type: 'file', value: 'none' },     label: t('contacts.no_contact_file'),  value: fileNoneCount,       bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-file-earmark-x" },
-  ];
-
   _renderContactsFilterGroup('contactsRoleSummary',  [0, 1, 2, 3, 4, 5], 'contactsRoleTabDot');
   _renderContactsFilterGroup('contactsStateSummary', [6, 7, 8, 9],       'contactsStateTabDot');
   _renderContactsFilterGroup('contactsFileSummary',  [10, 11, 12],      'contactsFileTabDot');
@@ -7045,68 +7017,83 @@ function setContactsFilter(idx) {
   } else if (f.type === 'file') {
     _contactsFileFilter = (_contactsFileFilter === f.value) ? null : f.value;
   }
-  renderContactsSummary();
-  filterContactsTab();
+  filterPortalMembersTab();
 }
 
 function clearContactsFilters() {
   _contactsRoleFilter = null;
   _contactsStateFilter = null;
   _contactsFileFilter = null;
-  renderContactsSummary();
-  filterContactsTab();
+  filterPortalMembersTab();
 }
 
+// Dispatches to whichever scope is active -- File Contacts' own
+// filterFileContactsTab (server-paginated against the live DB) or Portal
+// Members' filterPortalMembersTab below (server-paginated against the
+// CKAN-derived _pm_cache, see portal_members_all in app.py).
 function filterContactsTab() {
   if (_contactsScope === 'file') { filterFileContactsTab(); return; }
-  if (!_portalMembersCache) return;
+  filterPortalMembersTab();
+}
 
-  const search = _ns(show('contactsSearch').value || '').trim();
-
-  let rows = _portalMembersCache;
-  if (search) rows = rows.filter(m =>
-    _ns(m.org_title  || '').includes(search) ||
-    _ns(m.display_name || '').includes(search) ||
-    _ns(_pmDisplayName(m)).includes(search) ||
-    _ns(m.username   || '').includes(search) ||
-    _ns(m.email      || '').includes(search) ||
-    _ns(m.contact_position || '').includes(search) ||
-    _ns(m.about      || '').includes(search)
-  );
-
-  rows = _dedupeContacts(rows);
-
-  if (_contactsRoleFilter) {
-    rows = rows.filter(m => _contactsRoleFilter === 'sysadmin'
-      ? m.sysadmin
-      : (!m.sysadmin && m.capacity === _contactsRoleFilter));
+function _pmPosLine(m) {
+  return m.contact_position
+    ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
+}
+function _pmOrgsHtml(m) {
+  const userOrgs = m.org_memberships || [];
+  const MAX_ORGS = 2;
+  if (!userOrgs.length) return `<span class="text-muted small fst-italic">—</span>`;
+  return userOrgs.slice(0, MAX_ORGS).map(o =>
+      `<span class="badge bg-light text-dark border me-1" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
+        title="${esc(o.org_title || o.org_name)}">${esc(o.org_title || o.org_name)}</span>`
+    ).join('') +
+    (userOrgs.length > MAX_ORGS ? `<span class="text-muted small">+${userOrgs.length - MAX_ORGS}</span>` : '');
+}
+// index === null renders the compact grouped-view row (no #/org columns,
+// since a group card's own header already says which org); otherwise the
+// full flat-view row -- same convention as _fileContactRowHtml.
+function _pmRowHtml(m, index) {
+  const state     = m.state || 'active';
+  const roleCls   = _portalRoleClass(m);
+  const roleLabel = _portalRoleLabel(m);
+  const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
+  const nameCell = `<span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${_pmFileBadge(m)}${_pmPosLine(m)}`;
+  const editOnclick = index == null ? `openPmEditByUsername('${esc(m.username)}')` : `openPmEdit(${index - 1})`;
+  const tail = `
+    <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
+    <td><span class="badge ${stateCls}">${esc(_contactStateLabel(state))}</span></td>
+    <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
+      ${m.email ? `<a href="mailto:${esc(m.email)}" class="d-block text-truncate" title="${esc(m.email)}">${esc(m.email)}</a>` : ''}
+      ${m.contact_email && m.contact_email !== m.email
+        ? `<div class="text-muted text-truncate" style="font-size:.75em" title="${esc(t('contacts.email_from_file').replace('{email}', m.contact_email))}"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>`
+        : ''}
+    </td>
+    <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
+      ${m.contact_tel ? `<a href="tel:${esc(m.contact_tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</a>` : ''}
+    </td>
+    <td onclick="event.stopPropagation()">
+      <div class="d-flex gap-1">
+        ${_pmEditOrAddButton(m, editOnclick)}
+        ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('contacts.delete_contact_record'))}"
+          onclick="deletePmContactRecord(${m.contact_id}, '${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
+      </div>
+    </td>`;
+  const rowStyle = `cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}`;
+  if (index == null) {
+    return `<tr style="${rowStyle}" onclick="openUserPanel('${esc(m.username)}')">
+      <td style="max-width:200px">${nameCell}</td>${tail}
+    </tr>`;
   }
-  if (_contactsStateFilter) {
-    rows = rows.filter(m => (m.state || 'active') === _contactsStateFilter);
-  }
-  if (_contactsFileFilter) {
-    rows = rows.filter(m => (m.contact_id ? 'has' : 'none') === _contactsFileFilter);
-  }
+  return `<tr style="${rowStyle}" onclick="openUserPanel('${esc(m.username)}')">
+    <td class="text-muted small">${index}</td>
+    <td style="max-width:200px">${nameCell}</td>
+    <td style="max-width:180px">${_pmOrgsHtml(m)}</td>
+    ${tail}
+  </tr>`;
+}
 
-  rows = [...rows].sort((a, b) => {
-    let av, bv;
-    switch (_contactsSortCol) {
-      case 'name':  av = _ns(_pmDisplayName(a)); bv = _ns(_pmDisplayName(b)); break;
-      case 'org':   av = _ns(a.org_title || a.org_name || ''); bv = _ns(b.org_title || b.org_name || ''); break;
-      case 'type': { const r = { sysadmin: 0, admin: 1, editor: 2, member: 3 };
-                     av = a.sysadmin ? 0 : (r[a.capacity] ?? 4); bv = b.sysadmin ? 0 : (r[b.capacity] ?? 4); break; }
-      case 'state': av = (a.state || 'active'); bv = (b.state || 'active'); break;
-      case 'email': av = (a.email || '').toLowerCase(); bv = (b.email || '').toLowerCase(); break;
-      default:      av = _ns(_pmDisplayName(a)); bv = _ns(_pmDisplayName(b));
-    }
-    if (av < bv) return _contactsSortDir === 'asc' ? -1 : 1;
-    if (av > bv) return _contactsSortDir === 'asc' ?  1 : -1;
-    return 0;
-  });
-
-  const total = new Set(_portalMembersCache.map(m => m.username)).size;
-  show('contactsCount').innerHTML = rows.length < total ? `${rows.length} / ${total}` : `${total}`;
-
+function _pmRenderHeader() {
   const th = (col, label, extraStyle = '') =>
     `<th style="cursor:pointer;user-select:none;${extraStyle}" onclick="sortContacts('${col}')">${label}${_contactsSortArrow(col)}</th>`;
   document.querySelector('#contactsTable thead tr').innerHTML =
@@ -7118,78 +7105,278 @@ function filterContactsTab() {
     th('email', t('contacts.email'), 'width:150px') +
     `<th style="width:90px">${t('contacts.col_tel')}</th>` +
     `<th style="width:2.5rem"></th>`;
+}
 
-  const flatDiv    = show('contactsFlatView');
-  const groupedDiv = show('contactsGroupedView');
-  if (_contactsViewMode === 'grouped') {
-    flatDiv.classList.add('d-none');
-    groupedDiv.classList.remove('d-none');
-    renderContactsGrouped(rows);
+// Query params shared by every /api/portal-members call this view makes (the
+// flat list, the org-group counts, and a single group's expand-fetch) -- so
+// search/role/state/file_info/sort always stay in sync across all three.
+function _pmQueryParams() {
+  const p = new URLSearchParams();
+  const search = (show('contactsSearch').value || '').trim();
+  if (search) p.set('q', search);
+  if (_contactsRoleFilter)  p.set('role', _contactsRoleFilter);
+  if (_contactsStateFilter) p.set('state', _contactsStateFilter);
+  if (_contactsFileFilter)  p.set('file_info', _contactsFileFilter);
+  p.set('sort', _contactsSortCol);
+  p.set('dir', _contactsSortDir);
+  return p;
+}
+
+const PORTAL_MEMBERS_PAGE_SIZE = 30;
+let _pmCache = [];          // rows loaded so far, in the active view's order (== _pmRows)
+let _pmStart = 0;           // next offset to fetch
+let _pmTotalCount = 0;
+let _pmFlatLoaded = false;  // distinguishes "never loaded" from "loaded, zero results"
+let _pmLoadingMore = false;
+let _pmObserver = null;
+
+function _ensurePortalMembersObserver() {
+  if (!_pmObserver) {
+    // Viewport-rooted, same as the Dataset Catalog/File Contacts -- this
+    // table grows with the page rather than scrolling inside a fixed-height
+    // card.
+    _pmObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) _portalMembersLoadMoreTrigger();
+    }, { rootMargin: '400px 0px' });
+  }
+  return _pmObserver;
+}
+function _portalMembersLoadMoreTrigger() {
+  if (_pmLoadingMore || _pmStart >= _pmTotalCount) return;
+  loadPortalMembersTab(true);
+}
+function _portalMembersMaybeAutoLoadMore() {
+  const sentinel = document.getElementById('contactsLoadMoreSentinel');
+  if (!sentinel || _pmLoadingMore || _pmStart >= _pmTotalCount) return;
+  const rect = sentinel.getBoundingClientRect();
+  if (rect.top < window.innerHeight && rect.bottom >= 0) _portalMembersLoadMoreTrigger();
+}
+
+async function loadPortalMembersTab(append = false) {
+  if (_contactsScope !== 'portal') return;
+  if (!append) _pmStart = 0;
+  const sentinelBefore = document.getElementById('contactsLoadMoreSentinel');
+  if (append) {
+    _pmLoadingMore = true;
+    if (sentinelBefore) sentinelBefore.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}`;
+  } else {
+    if (_pmObserver) _pmObserver.disconnect();
+    show('contactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>`;
+  }
+  try {
+    const params = _pmQueryParams();
+    params.set('rows', PORTAL_MEMBERS_PAGE_SIZE);
+    params.set('start', _pmStart);
+    const resp = await fetch(API_BASE + 'api/portal-members?' + params.toString());
+    const data = await resp.json();
+    if (resp.status === 202) {
+      // _pm_cache is cold -- shouldn't normally happen here since
+      // loadContactsTab's own full=1 poll already warms it server-side
+      // before this ever fires, but guard anyway.
+      if (!append) show('contactsTableBody').innerHTML =
+        `<tr><td colspan="8" class="text-center py-5 text-muted">${t('contacts.loading_portal')}</td></tr>`;
+      return;
+    }
+    _pmTotalCount = data.count || 0;
+    if (!append) {
+      _pmCache = [];
+      if (data.unmatched) _pmUnmatched = data.unmatched;
+      renderContactsSummary(data.role_counts, data.state_counts, data.file_counts);
+    }
+    const newRows = data.members || [];
+    _pmCache = _pmCache.concat(newRows);
+    _pmRows = _pmCache;
+    show('contactsCount').innerHTML = _pmCache.length < _pmTotalCount
+      ? `${_pmCache.length} / ${_pmTotalCount}` : `${_pmTotalCount}`;
+
+    if (!append && !newRows.length) {
+      show('contactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+    } else {
+      const rowsHtml = newRows.map((m, i) => _pmRowHtml(m, _pmStart + i + 1)).join('');
+      if (append) {
+        document.getElementById('contactsTableBody').insertAdjacentHTML('beforeend', rowsHtml);
+      } else {
+        _pmRenderHeader();
+        document.getElementById('contactsTableBody').innerHTML = rowsHtml;
+      }
+    }
+
+    _pmStart += newRows.length;
+
+    const sentinel = document.getElementById('contactsLoadMoreSentinel');
+    if (sentinel) {
+      if (_pmStart < _pmTotalCount) {
+        sentinel.innerHTML = '';
+        _ensurePortalMembersObserver().observe(sentinel);
+      } else {
+        _ensurePortalMembersObserver().unobserve(sentinel);
+        sentinel.innerHTML = data.count ? t('catalog.end_of_results') : '';
+      }
+    }
+    if (!append) _pmFlatLoaded = true;
+  } catch (e) {
+    if (!append) show('contactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
+  } finally {
+    _pmLoadingMore = false;
+  }
+  _portalMembersMaybeAutoLoadMore();
+}
+
+// ── Portal Members grouped-by-org view ──────────────────────────────────────
+// Same lazy-loading design as File Contacts' grouped view (see
+// _loadFileContactsGroups): group_by=org gets accurate per-org counts from
+// one aggregate pass with no row fetching, so every group card renders
+// immediately; a group's actual rows are only fetched the first time it's
+// expanded, then cached here.
+let _pmGroups = [];              // [{org_code, org_label, count}]
+let _pmGroupsLoaded = false;
+let _pmExpandedOrgs = new Set(); // slugs ('__none__' for no-org)
+const _pmGroupRows = new Map();    // slug -> rows[]
+const _pmGroupLoading = new Set(); // slugs currently fetching
+
+function _pmGroupSlug(orgCode) { return orgCode || '__none__'; }
+function _pmSlugToOrgParam(slug) { return slug === '__none__' ? '' : slug; }
+
+async function _loadPortalMembersGroups() {
+  if (_contactsScope !== 'portal') return;
+  const el = show('contactsGroupedView');
+  el.innerHTML = `<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>`;
+  try {
+    const params = _pmQueryParams();
+    params.set('group_by', 'org');
+    const resp = await fetch(API_BASE + 'api/portal-members?' + params.toString());
+    const data = await resp.json();
+    _pmGroups = data.groups || [];
+    _pmGroupsLoaded = true;
+    _renderPortalMembersGroups();
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+  }
+}
+
+function _renderPortalMembersGroups() {
+  const el = show('contactsGroupedView');
+  if (!_pmGroups.length) {
+    el.innerHTML = `<p class="text-muted text-center py-4">${t('contacts.no_results')}</p>`;
     return;
   }
-  flatDiv.classList.remove('d-none');
-  groupedDiv.classList.add('d-none');
-
-  if (!rows.length) {
-    show('contactsTableBody').innerHTML =
-      `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
-    return;
-  }
-
-  // Precompute username -> org-memberships once instead of scanning the full
-  // portal-members cache per row (was O(rows * _portalMembersCache) below).
-  const orgsByUsername = new Map();
-  for (const x of (_portalMembersCache || [])) {
-    if (!x.org_name) continue;
-    if (!orgsByUsername.has(x.username)) orgsByUsername.set(x.username, []);
-    orgsByUsername.get(x.username).push(x);
-  }
-
-  _pmRows = rows;
-  show('contactsTableBody').innerHTML = rows.map((m, i) => {
-    const state    = m.state || 'active';
-    const roleCls   = _portalRoleClass(m);
-    const roleLabel = _portalRoleLabel(m);
-    const stateCls = STATE_BADGE_CLS[state]       || 'bg-secondary';
-    const posLine = m.contact_position
-      ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
-    const userOrgs = orgsByUsername.get(m.username) || [];
-    const MAX_ORGS = 2;
-    const orgsHtml = userOrgs.length === 0
-      ? `<span class="text-muted small fst-italic">—</span>`
-      : userOrgs.slice(0, MAX_ORGS).map(o =>
-          `<span class="badge bg-light text-dark border me-1" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
-            title="${esc(o.org_title || o.org_name)}">${esc(o.org_title || o.org_name)}</span>`
-        ).join('') +
-        (userOrgs.length > MAX_ORGS ? `<span class="text-muted small">+${userOrgs.length - MAX_ORGS}</span>` : '');
-    const presenceBadges = _pmFileBadge(m);
-    return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
-      <td class="text-muted small">${i + 1}</td>
-      <td style="max-width:200px">
-        <span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${presenceBadges}
-        ${posLine}
-      </td>
-      <td style="max-width:180px">${orgsHtml}</td>
-      <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
-      <td><span class="badge ${stateCls}">${esc(_contactStateLabel(state))}</span></td>
-      <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
-        ${m.email ? `<a href="mailto:${esc(m.email)}" class="d-block text-truncate" title="${esc(m.email)}">${esc(m.email)}</a>` : ''}
-        ${m.contact_email && m.contact_email !== m.email
-          ? `<div class="text-muted text-truncate" style="font-size:.75em" title="${esc(t('contacts.email_from_file').replace('{email}', m.contact_email))}"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>`
-          : ''}
-      </td>
-      <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
-        ${m.contact_tel ? `<a href="tel:${esc(m.contact_tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</a>` : ''}
-      </td>
-      <td onclick="event.stopPropagation()">
-        <div class="d-flex gap-1">
-          ${_pmEditOrAddButton(m, `openPmEdit(${i})`)}
-          ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('contacts.delete_contact_record'))}"
-            onclick="deletePmContactRecord(${m.contact_id}, '${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
+  el.innerHTML = _pmGroups.map(g => {
+    const slug       = _pmGroupSlug(g.org_code);
+    const isNone     = slug === '__none__';
+    const isExpanded = _pmExpandedOrgs.has(slug);
+    const isLoading  = _pmGroupLoading.has(slug);
+    const cachedRows = _pmGroupRows.get(slug);
+    const gId = 'cg_' + slug.replace(/\W/g, '_');
+    let body = '';
+    if (isExpanded) {
+      body = (isLoading || !cachedRows)
+        ? `<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>`
+        : `<table class="table table-hover table-sm align-middle mb-0"><tbody>${cachedRows.map(m => _pmRowHtml(m, null)).join('')}</tbody></table>`;
+    }
+    return `
+    <div class="border rounded mb-2" ${isNone ? 'style="border-color:#fd7e14!important"' : ''}>
+      <div class="d-flex align-items-center justify-content-between px-3 py-2 ${isNone ? 'comm-group-row-warn' : 'comm-group-row'}"
+           style="cursor:pointer" onclick="toggleContactsOrg('${esc(slug)}')">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+          <i class="bi bi-${isNone ? 'person-slash text-warning' : 'building text-primary'}"></i>
+          <span class="fw-semibold small ${isNone ? 'text-warning-emphasis' : ''}">${esc(g.org_label || '(no organization)')}</span>
+          <span class="badge ${isNone ? 'bg-warning text-dark' : 'bg-secondary'} rounded-pill">${g.count}</span>
         </div>
-      </td>
-    </tr>`;
+        ${!isNone ? `<button class="btn btn-outline-primary btn-sm py-0 px-2" title="${esc(g.org_label)}"
+          onclick="event.stopPropagation();openOrgPanel('${esc(slug)}')">
+          <i class="bi bi-box-arrow-up-right"></i>
+        </button>` : ''}
+      </div>
+      <div id="${gId}" class="${isExpanded ? '' : 'd-none'} px-3">${body}</div>
+    </div>`;
   }).join('');
+}
+
+async function _fetchPortalMembersGroupRows(slug) {
+  if (_pmGroupRows.has(slug) || _pmGroupLoading.has(slug)) return;
+  _pmGroupLoading.add(slug);
+  try {
+    const params = _pmQueryParams();
+    params.set('org', _pmSlugToOrgParam(slug));
+    params.set('rows', 200); // generous cap for a single org; larger ones would need their own load-more
+    params.set('start', 0);
+    const resp = await fetch(API_BASE + 'api/portal-members?' + params.toString());
+    const data = await resp.json();
+    _pmGroupRows.set(slug, data.members || []);
+  } catch (e) {
+    _pmGroupRows.set(slug, []);
+  } finally {
+    _pmGroupLoading.delete(slug);
+  }
+}
+
+function togglePortalMembersOrg(slug) {
+  if (_pmExpandedOrgs.has(slug)) {
+    _pmExpandedOrgs.delete(slug);
+    _renderPortalMembersGroups();
+    return;
+  }
+  _pmExpandedOrgs.add(slug);
+  _renderPortalMembersGroups(); // show the per-group spinner immediately
+  _fetchPortalMembersGroupRows(slug).then(_renderPortalMembersGroups);
+}
+
+// Throttled (not all-at-once), same reasoning as expandAllFileContacts.
+async function expandAllPortalMembers() {
+  const slugs = _pmGroups.map(g => _pmGroupSlug(g.org_code)).filter(s => !_pmExpandedOrgs.has(s));
+  if (!slugs.length) return;
+  const btn = show('contactsExpandAllBtn');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  slugs.forEach(s => _pmExpandedOrgs.add(s));
+  _renderPortalMembersGroups();
+  const CONCURRENCY = 4;
+  let next = 0;
+  async function worker() {
+    while (next < slugs.length) {
+      const slug = slugs[next++];
+      await _fetchPortalMembersGroupRows(slug);
+      _renderPortalMembersGroups();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, slugs.length) }, worker));
+  btn.disabled = false;
+  btn.innerHTML = originalHtml;
+}
+
+function collapseAllPortalMembers() {
+  _pmExpandedOrgs.clear();
+  _renderPortalMembersGroups();
+}
+
+// Re-syncs whichever layout (flat/grouped) is currently selected without
+// invalidating anything -- used when just toggling All/By-Organization, as
+// opposed to filterPortalMembersTab() below, which is for when the actual
+// result set has changed. Mirrors _fileContactsSyncView.
+function _pmSyncView() {
+  if (_contactsViewMode === 'grouped') {
+    if (_pmGroupsLoaded) _renderPortalMembersGroups();
+    else _loadPortalMembersGroups();
+  } else if (!_pmFlatLoaded) {
+    loadPortalMembersTab(false);
+  }
+}
+
+// Search box / sort click / filter card click all funnel here -- the result
+// set has genuinely changed, so both view modes' cached data are stale.
+function filterPortalMembersTab() {
+  if (_contactsScope !== 'portal') return;
+  _pmCache = [];
+  _pmTotalCount = 0;
+  _pmFlatLoaded = false;
+  _pmGroups = [];
+  _pmGroupsLoaded = false;
+  _pmGroupRows.clear();
+  _pmExpandedOrgs.clear();
+  renderContactsSummary(); // repaint cards' active state immediately; counts refresh once the fetch below resolves
+  _pmSyncView();
 }
 
 let _contactsViewMode = 'flat';
@@ -7213,7 +7400,7 @@ function setContactsView(mode) {
   }
   show('contactsFlatView').classList.toggle('d-none', mode !== 'flat');
   show('contactsGroupedView').classList.toggle('d-none', mode !== 'grouped');
-  filterContactsTab();
+  _pmSyncView();  // reuses already-loaded data for this layout if we have it
 }
 
 // Portal Members = every portal account, enriched with matched contact-file
@@ -7257,107 +7444,20 @@ function reloadContactsTab() {
   else loadContactsTab(true);
 }
 
-let _contactsExpandedOrgs = new Set();
-let _contactsGroupSlugs   = [];  // slugs from the most recent renderContactsGrouped(), for Expand/Collapse All
-
+// Dispatches to whichever scope is active -- mirrors filterContactsTab.
 function toggleContactsOrg(slug) {
-  if (_contactsExpandedOrgs.has(slug)) _contactsExpandedOrgs.delete(slug);
-  else _contactsExpandedOrgs.add(slug);
-  filterContactsTab();
+  if (_contactsScope === 'file') { toggleFileContactsOrg(slug); return; }
+  togglePortalMembersOrg(slug);
 }
 
 function expandAllContacts() {
   if (_contactsScope === 'file') { expandAllFileContacts(); return; }
-  _contactsGroupSlugs.forEach(slug => _contactsExpandedOrgs.add(slug));
-  filterContactsTab();
+  expandAllPortalMembers();
 }
 
 function collapseAllContacts() {
   if (_contactsScope === 'file') { collapseAllFileContacts(); return; }
-  _contactsExpandedOrgs.clear();
-  filterContactsTab();
-}
-
-// Shared "group rows by organization, render as expandable cards" chrome for
-// both the Portal Members and File Contacts grouped views -- the card/
-// expand-collapse wrapper is identical between them; only how a row extracts
-// its org key/label and renders its own <tr> differs, so those are passed in.
-function _renderGroupedByOrg(containerId, gidPrefix, rows, getOrgKey, getOrgLabel, renderRow) {
-  const groups = new Map();
-  rows.forEach(row => {
-    const key   = getOrgKey(row)   || '__none__';
-    const label = getOrgLabel(row) || '(no organization)';
-    if (!groups.has(key)) groups.set(key, { slug: key, label, items: [] });
-    groups.get(key).items.push(row);
-  });
-  const sorted = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, 'el'));
-  _contactsGroupSlugs = sorted.map(g => g.slug);
-  const el = show(containerId);
-  if (!sorted.length) {
-    el.innerHTML = `<p class="text-muted text-center py-4">${t('contacts.no_results')}</p>`;
-    return;
-  }
-  el.innerHTML = sorted.map(g => {
-    const gId        = gidPrefix + g.slug.replace(/\W/g, '_');
-    const isNone     = g.slug === '__none__';
-    const isExpanded = _contactsExpandedOrgs.has(g.slug);
-    return `
-    <div class="border rounded mb-2" ${isNone ? 'style="border-color:#fd7e14!important"' : ''}>
-      <div class="d-flex align-items-center justify-content-between px-3 py-2 ${isNone ? 'comm-group-row-warn' : 'comm-group-row'}"
-           style="cursor:pointer" onclick="toggleContactsOrg('${esc(g.slug)}')">
-        <div class="d-flex align-items-center gap-2">
-          <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
-          <i class="bi bi-${isNone ? 'person-slash text-warning' : 'building text-primary'}"></i>
-          <span class="fw-semibold small ${isNone ? 'text-warning-emphasis' : ''}">${esc(g.label)}</span>
-          <span class="badge ${isNone ? 'bg-warning text-dark' : 'bg-secondary'} rounded-pill">${g.items.length}</span>
-        </div>
-        ${g.slug !== '__none__' ? `<button class="btn btn-outline-primary btn-sm py-0 px-2" title="${esc(g.label)}"
-          onclick="event.stopPropagation();openOrgPanel('${esc(g.slug)}')">
-          <i class="bi bi-box-arrow-up-right"></i>
-        </button>` : ''}
-      </div>
-      <div id="${gId}" class="${isExpanded ? '' : 'd-none'} px-3">
-        <table class="table table-hover table-sm align-middle mb-0">
-          <tbody>${g.items.map(renderRow).join('')}</tbody>
-        </table>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function renderContactsGrouped(rows) {
-  _renderGroupedByOrg('contactsGroupedView', 'cg_', rows,
-    m => m.org_name, m => m.org_title || m.org_name,
-    m => {
-      const state     = m.state || 'active';
-      const roleCls   = _portalRoleClass(m);
-      const roleLabel = _portalRoleLabel(m);
-      const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
-      const posLine   = m.contact_position
-        ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
-      const presenceBadges = _pmFileBadge(m);
-      return `<tr style="cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}" onclick="openUserPanel('${esc(m.username)}')">
-        <td style="max-width:200px">
-          <span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${presenceBadges}
-          ${posLine}
-        </td>
-        <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
-        <td><span class="badge ${stateCls}">${esc(_contactStateLabel(state))}</span></td>
-        <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
-          ${m.email ? `<a class="d-block text-truncate" href="mailto:${esc(m.email)}" title="${esc(m.email)}">${esc(m.email)}</a>` : ''}
-          ${m.contact_email && m.contact_email !== m.email ? `<div class="text-muted text-truncate" style="font-size:.75em" title="${esc(m.contact_email)}"><i class="bi bi-file-earmark-person me-1"></i>${esc(m.contact_email)}</div>` : ''}
-        </td>
-        <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
-          ${m.contact_tel ? `<a href="tel:${esc(m.contact_tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(m.contact_tel)}</a>` : ''}
-        </td>
-        <td onclick="event.stopPropagation()">
-          <div class="d-flex gap-1">
-            ${_pmEditOrAddButton(m, `openPmEditByUsername('${esc(m.username)}')`)}
-            ${m.contact_id ? `<button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('common.delete'))}" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')"><i class="bi bi-trash"></i></button>` : ''}
-          </div>
-        </td>
-      </tr>`;
-    });
+  collapseAllPortalMembers();
 }
 
 let _pmRows = [];
@@ -7685,7 +7785,6 @@ async function _loadFileContactsGroups() {
     const data = await resp.json();
     _fileContactsGroups = data.groups || [];
     _fileContactsGroupsLoaded = true;
-    _contactsGroupSlugs = _fileContactsGroups.map(g => _fcGroupSlug(g.org_code));
     _renderFileContactsGroups();
   } catch (e) {
     el.innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;

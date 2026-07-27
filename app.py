@@ -5299,6 +5299,58 @@ def _decode_payload():
     return freq.get_json(force=True, silent=True) or freq.form.to_dict() or freq.args.to_dict()
 
 
+def _pm_cache_sync_contact(contact_dict, removed=False):
+    """Keep the CKAN-derived _pm_cache["data"] in sync with an OrgContact
+    edit/removal from /api/contacts/save|remove -- the Portal Members table
+    is now served straight from this 2h-cached snapshot (see
+    portal_members_all's paginated path) rather than from a client-side
+    copy the browser used to patch in place itself, so without this the
+    table would keep showing a just-deleted/edited contact's old file info
+    until the next full CKAN refresh, even though /api/contacts (File
+    Contacts, backed by the live DB) would show it correctly right away.
+    """
+    data = _pm_cache["data"]
+    if not data:
+        return
+    cid = contact_dict.get("id")
+    members = data.get("members") or []
+    for m in members:
+        if m.get("contact_id") == cid:
+            m["contact_id"] = None
+            m["contact_position"] = m["contact_type"] = m["contact_tel"] = ""
+            m["contact_mobile"] = m["contact_name"] = m["contact_first_name"] = ""
+            m["contact_last_name"] = m["contact_email"] = ""
+            m["contact_org_codes"] = []
+    if not removed:
+        email = (contact_dict.get("email") or "").lower().strip()
+        if email:
+            for m in members:
+                if (m.get("email") or "").lower().strip() == email:
+                    m["contact_id"]         = cid
+                    m["contact_position"]   = contact_dict.get("position") or ""
+                    m["contact_type"]       = contact_dict.get("contact_type") or ""
+                    m["contact_tel"]        = contact_dict.get("tel") or ""
+                    m["contact_mobile"]     = contact_dict.get("mobile") or ""
+                    m["contact_name"]       = f"{contact_dict.get('first_name') or ''} {contact_dict.get('last_name') or ''}".strip()
+                    m["contact_first_name"] = contact_dict.get("first_name") or ""
+                    m["contact_last_name"]  = contact_dict.get("last_name") or ""
+                    m["contact_email"]      = contact_dict.get("email") or ""
+                    m["contact_org_codes"]  = contact_dict.get("org_codes") or []
+
+    unmatched = [c for c in (data.get("unmatched") or []) if c.get("id") != cid]
+    if not removed:
+        email = (contact_dict.get("email") or "").lower().strip()
+        member_emails = {(m.get("email") or "").lower().strip() for m in members if m.get("email")}
+        if not email or email not in member_emails:
+            unmatched.append(contact_dict)
+    data["unmatched"] = unmatched
+    # _pm_cache is Redis-backed (_SharedCache) -- __getitem__ round-trips
+    # through JSON, so `data` above is a fresh deserialized copy on every
+    # call, not a live reference. Mutating it in place is a no-op across
+    # gunicorn workers unless explicitly written back here.
+    _pm_cache["data"] = data
+
+
 @app.route("/api/contacts/save", methods=["POST", "PATCH"])
 def contacts_save():
     body = _decode_payload()
@@ -5316,6 +5368,7 @@ def contacts_save():
                 contact.org_label = (orgs[0].get("label") or orgs[0]["code"]).strip() or None
         contact.tel, contact.mobile = _fix_tel_mobile(contact.tel, contact.mobile)
         db.session.commit()
+        _pm_cache_sync_contact(contact.to_dict())
         return jsonify(contact.to_dict())
     else:
         org_codes_raw = body.get("org_codes")
@@ -5346,6 +5399,7 @@ def contacts_save():
         )
         db.session.add(contact)
         db.session.commit()
+        _pm_cache_sync_contact(contact.to_dict())
         return jsonify(contact.to_dict()), 201
 
 
@@ -5356,8 +5410,10 @@ def contacts_remove():
     if not contact_id:
         return jsonify({"error": "id required"}), 400
     contact = OrgContact.query.get_or_404(int(contact_id))
+    contact_snapshot = contact.to_dict()
     db.session.delete(contact)
     db.session.commit()
+    _pm_cache_sync_contact(contact_snapshot, removed=True)
     return jsonify({"ok": True})
 
 
@@ -5523,6 +5579,7 @@ def _do_fetch_portal_members():
         return
     _pm_cache["loading"] = True
     _pm_cache["error"] = None
+    _pm_cache["progress"] = {"phase": "orgs", "done": 0, "total": 0}
     base_headers = {"User-Agent": "DataGovGR-Dashboard/1.0"}
     auth_headers = {**base_headers, "Authorization": config.TOKEN} if config.TOKEN else base_headers
     try:
@@ -5600,7 +5657,7 @@ def _do_fetch_portal_members():
 
         raw_members: list = []
         total_orgs = len(org_list)
-        _pm_cache["progress"] = {"done": 0, "total": total_orgs}
+        _pm_cache["progress"] = {"phase": "members", "done": 0, "total": total_orgs}
         with ThreadPoolExecutor(max_workers=20) as pool:
             futs = {pool.submit(_fetch_org_members, org): org for org in org_list}
             for i, fut in enumerate(as_completed(futs), start=1):
@@ -5608,7 +5665,7 @@ def _do_fetch_portal_members():
                     raw_members.extend(fut.result())
                 except Exception:
                     pass
-                _pm_cache["progress"] = {"done": i, "total": total_orgs}
+                _pm_cache["progress"] = {"phase": "members", "done": i, "total": total_orgs}
 
         # Step 3 – enrich org members with user_info (no extra API calls)
         all_members = []
@@ -5699,27 +5756,185 @@ def _do_fetch_portal_members():
         _pm_cache["progress"] = None
 
 
+def _pm_display_name(m):
+    file_name = f"{(m.get('contact_first_name') or '').strip()} {(m.get('contact_last_name') or '').strip()}".strip()
+    return file_name or m.get("display_name") or m.get("username") or ""
+
+
+def _dedupe_portal_members(rows):
+    """Keep the highest-ranked role per username -- mirrors _dedupeContacts in
+    app.js exactly (sysadmin > admin > editor > member > user/other), ties
+    keeping whichever row was encountered first. A user with multiple org
+    memberships collapses to one row here; which org "wins" is exactly the
+    org this picks, which is why group_by=org's per-org counts and an
+    expanded org's actual rows both filter *after* this, not before --
+    otherwise the two could disagree about who belongs to which org."""
+    rank = {"admin": 3, "editor": 2, "member": 1}
+    def _rank(m):
+        return 4 if m.get("sysadmin") else rank.get(m.get("capacity"), 0)
+    seen = {}
+    for m in rows:
+        uname = m.get("username")
+        prev = seen.get(uname)
+        if not prev or _rank(m) > _rank(prev):
+            seen[uname] = m
+    return list(seen.values())
+
+
 @app.route("/api/portal-members", methods=["GET", "POST"])
 def portal_members_all():
-    """Return all portal users across every CKAN organisation, cached for 2 hours.
+    """Portal users across every CKAN organisation -- the underlying fetch
+    (organization_list + user_list + one organization_show per org) is still
+    computed once and cached for 2 hours server-side (_do_fetch_portal_members);
+    what's paginated/filtered/sorted here is just how much of that cached list
+    gets serialized to the client per request, same relationship as the
+    Dataset Catalog's /api/datasets/search has to its own cache.
 
-    Returns immediately — fetches in background on first call or after cache expiry.
-    Client receives {loading: true} (HTTP 202) while the fetch is in progress and
-    should poll until it gets a 200 response. POST forces a fresh fetch, bypassing
-    the 2-hour cache (used by the Contacts tab's Reload button).
+    Returns immediately while cold -- fetches in a background thread on first
+    call or after cache expiry, client receives {loading: true} (HTTP 202) and
+    should poll until it gets a 200 response. POST forces a fresh fetch,
+    bypassing the 2-hour cache (used by the Contacts tab's Reload button).
     """
     now = time.time()
     force = freq.method == "POST"
-    if not force and _pm_cache["data"] and now - _pm_cache["ts"] < 7200:
-        return jsonify(_pm_cache["data"])
-
     if not force and _pm_cache["error"] and not _pm_cache["loading"]:
         return jsonify({"error": _pm_cache["error"]}), 500
 
-    if not _pm_cache["loading"]:
-        threading.Thread(target=_do_fetch_portal_members, daemon=True).start()
+    is_cold = force or not _pm_cache["data"] or now - _pm_cache["ts"] >= 7200
+    if is_cold:
+        if not _pm_cache["loading"]:
+            threading.Thread(target=_do_fetch_portal_members, daemon=True).start()
+        return jsonify({"loading": True, "members": [], "count": 0, "progress": _pm_cache["progress"]}), 202
 
-    return jsonify({"loading": True, "members": [], "total": 0, "progress": _pm_cache["progress"]}), 202
+    data = _pm_cache["data"]
+    all_members = data.get("members") or []
+    unmatched = data.get("unmatched") or []
+
+    # A handful of other features (Comms contact picker, org-contacts panel,
+    # the user-detail side panel, edit/save syncing) all depend on holding
+    # the COMPLETE raw per-org-membership list client-side, unfiltered and
+    # undeduped, to search/cross-reference locally -- exactly what this route
+    # always returned before pagination existed. Keep serving them that
+    # verbatim shape rather than making them cope with a paginated response
+    # they were never written to expect.
+    if (freq.args.get("full") or "").strip():
+        return jsonify({"members": all_members, "total": len(all_members), "unmatched": unmatched})
+
+    q        = _search_normalize((freq.args.get("q") or "").strip())
+    role_f   = (freq.args.get("role") or "").strip()        # admin|editor|member|user|sysadmin
+    state_f  = (freq.args.get("state") or "").strip()       # active|pending|deleted
+    file_f   = (freq.args.get("file_info") or "").strip()   # has|none
+    org      = (freq.args.get("org") or "").strip()         # exact org_name, for a single group's lazy expand
+    sort_key = (freq.args.get("sort") or "name").strip()
+    sort_dir = (freq.args.get("dir") or "asc").strip()
+    group_by = (freq.args.get("group_by") or "").strip()
+    rows     = min(max(int(freq.args.get("rows", 30) or 30), 1), 200)
+    start    = max(int(freq.args.get("start", 0) or 0), 0)
+
+    def matches_q(m):
+        if not q:
+            return True
+        hay = _search_normalize(" ".join(filter(None, [
+            m.get("org_title"), m.get("display_name"), m.get("contact_first_name"),
+            m.get("contact_last_name"), m.get("username"), m.get("email"),
+            m.get("contact_position"), m.get("about"),
+        ])))
+        return q in hay
+
+    def is_role(m, r):
+        return bool(m.get("sysadmin")) if r == "sysadmin" else (not m.get("sysadmin") and m.get("capacity") == r)
+
+    def has_file(m):
+        return bool(m.get("contact_id"))
+
+    # Order matters: search on the raw per-membership rows first (same as the
+    # client did), *then* dedupe -- a user matching search only via one of
+    # their org memberships should be judged on that membership's role, not
+    # a different, non-matching one. group_by/org-scoping happen after
+    # dedupe too, so a group's count and its expanded rows never disagree
+    # about who "belongs" to it.
+    deduped = _dedupe_portal_members([m for m in all_members if matches_q(m)])
+    if org:
+        deduped = [m for m in deduped if m.get("org_name") == org]
+
+    if group_by == "org":
+        scoped = [m for m in deduped
+                  if (not role_f or is_role(m, role_f))
+                  and (not state_f or (m.get("state") or "active") == state_f)
+                  and (not file_f or (("has" if has_file(m) else "none") == file_f))]
+        groups = {}
+        for m in scoped:
+            key = m.get("org_name") or ""
+            g = groups.setdefault(key, {"org_code": key, "org_label": m.get("org_title") or key, "count": 0})
+            g["count"] += 1
+        return jsonify({"groups": sorted(groups.values(), key=lambda g: _search_normalize(g["org_label"]))})
+
+    # Each facet's counts are scoped to the OTHER two facets' current
+    # selections (but not its own) -- same cross-scoping the Contacts tab's
+    # summary cards already used.
+    role_scope  = [m for m in deduped if (not state_f or (m.get("state") or "active") == state_f)
+                                      and (not file_f or (("has" if has_file(m) else "none") == file_f))]
+    state_scope = [m for m in deduped if (not role_f or is_role(m, role_f))
+                                      and (not file_f or (("has" if has_file(m) else "none") == file_f))]
+    file_scope  = [m for m in deduped if (not role_f or is_role(m, role_f))
+                                      and (not state_f or (m.get("state") or "active") == state_f)]
+    filtered    = [m for m in deduped
+                   if (not role_f or is_role(m, role_f))
+                   and (not state_f or (m.get("state") or "active") == state_f)
+                   and (not file_f or (("has" if has_file(m) else "none") == file_f))]
+
+    role_counts = state_counts = file_counts = None
+    if start == 0:
+        rc = {"admin": 0, "editor": 0, "member": 0, "user": 0, "sysadmin": 0}
+        for m in role_scope:
+            if m.get("sysadmin"):
+                rc["sysadmin"] += 1
+            elif m.get("capacity") in rc:
+                rc[m["capacity"]] += 1
+        role_counts = {"total": len(role_scope), **rc}
+        sc = {"active": 0, "pending": 0, "deleted": 0}
+        for m in state_scope:
+            st = m.get("state") or "active"
+            sc[st] = sc.get(st, 0) + 1
+        state_counts = {"total": len(state_scope), **sc}
+        has_n = sum(1 for m in file_scope if has_file(m))
+        file_counts = {"total": len(file_scope), "has": has_n, "none": len(file_scope) - has_n}
+
+    sort_map = {
+        "name":  lambda m: _search_normalize(_pm_display_name(m)),
+        "org":   lambda m: _search_normalize(m.get("org_title") or m.get("org_name") or ""),
+        "type":  lambda m: 0 if m.get("sysadmin") else {"admin": 1, "editor": 2, "member": 3}.get(m.get("capacity"), 4),
+        "state": lambda m: m.get("state") or "active",
+        "email": lambda m: (m.get("email") or "").lower(),
+    }
+    filtered.sort(key=sort_map.get(sort_key, sort_map["name"]), reverse=(sort_dir == "desc"))
+
+    # Every org membership row for a username (unfiltered by search/facets,
+    # same as the client's own orgsByUsername lookup) -- the flat/grouped rows
+    # show a user's *other* org memberships as badges even though dedupe only
+    # keeps one row per user.
+    orgs_by_username = {}
+    for m in all_members:
+        if not m.get("org_name"):
+            continue
+        orgs_by_username.setdefault(m.get("username"), []).append(
+            {"org_name": m["org_name"], "org_title": m.get("org_title") or m["org_name"]}
+        )
+
+    def serialize(m):
+        d = dict(m)  # shallow copy -- avoid mutating the shared, cached member dicts
+        d["org_memberships"] = orgs_by_username.get(m.get("username"), [])
+        return d
+
+    page = filtered[start:start + rows]
+    return jsonify({
+        "count":         len(filtered),
+        "members":       [serialize(m) for m in page],
+        "unmatched":     unmatched,  # full list -- still needed elsewhere (comm modal picker, org contacts panel)
+        "role_counts":   role_counts,
+        "state_counts":  state_counts,
+        "file_counts":   file_counts,
+    })
 
 
 # ── Matomo Analytics ─────────────────────────────────────────────────────────
