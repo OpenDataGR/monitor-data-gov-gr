@@ -57,7 +57,6 @@ const TRANSLATIONS = {
     'contacts.view_by_org': 'By Organization',
     'contacts.scope_portal': 'Portal Members',
     'contacts.scope_file': 'File Contacts',
-    'contacts.col_portal': 'Portal account',
     'contacts.no_portal_account': 'No portal account',
     'contacts.reload': 'Reload',
     'contacts.export_modal_title': 'Export Contacts',
@@ -620,7 +619,6 @@ const TRANSLATIONS = {
     'contacts.view_by_org': 'Ανά Οργανισμό',
     'contacts.scope_portal': 'Μέλη Πύλης',
     'contacts.scope_file': 'Επαφές Αρχείου',
-    'contacts.col_portal': 'Λογαριασμός πύλης',
     'contacts.no_portal_account': 'Χωρίς λογαριασμό πύλης',
     'contacts.reload': 'Ανανέωση',
     'contacts.export_modal_title': 'Εξαγωγή Επαφών',
@@ -7822,6 +7820,10 @@ function _fileContactTypeBadges(c) {
 // is_linked/linked_username now come straight from the backend (see
 // _org_contacts_portal_link_info in app.py) -- no more client-side
 // portal-cache lookups needed to know whether/who this contact is linked to.
+// Rendered next to the contact's name (not its own column) -- mirrors
+// _pmFileBadge's "only show something when the flag is true, silent
+// otherwise" pattern (the opposite direction: Portal Members badges whoever
+// ALSO has a file record, this badges whoever ALSO has a portal account).
 function _fileContactPortalBadge(c) {
   if (c.linked_username) {
     return `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db;cursor:pointer" title="${esc(t('contacts.has_portal_account'))}"
@@ -7830,7 +7832,7 @@ function _fileContactPortalBadge(c) {
   if (c.is_linked) {
     return `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('contacts.has_portal_account'))}"><i class="bi bi-globe2 me-1"></i>${esc(t('contacts.has_portal_account'))}</span>`;
   }
-  return `<span class="text-muted small">${esc(t('contacts.no_portal_account'))}</span>`;
+  return '';
 }
 function _fileContactActions(c) {
   return `<div class="d-flex gap-1">
@@ -7846,11 +7848,10 @@ function _fileContactActions(c) {
 function _fileContactRowHtml(c, index) {
   const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
   const nameCell = `
-    <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
+    <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span> ${_fileContactPortalBadge(c)}
     ${_fileContactPosLine(c)}`;
   const tail = `
     <td>${_fileContactTypeBadges(c)}</td>
-    <td>${_fileContactPortalBadge(c)}</td>
     <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
       ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
     </td>
@@ -7881,7 +7882,6 @@ function _fileContactsRenderHeader() {
     th('name',  t('contacts.col_name'))   +
     th('org',   t('contacts.col_org'))   +
     th('type',  t('contacts.col_type'))  +
-    `<th>${t('contacts.col_portal')}</th>` +
     th('email', t('contacts.email'), 'width:150px') +
     `<th style="width:90px">${t('contacts.col_tel')}</th>` +
     `<th style="width:4rem"></th>`;
@@ -7927,7 +7927,7 @@ async function loadFileContactsTab(append = false) {
     if (sentinelBefore) sentinelBefore.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}`;
   } else {
     if (_fileContactsObserver) _fileContactsObserver.disconnect();
-    show('fileContactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>`;
+    show('fileContactsTableBody').innerHTML = `<tr><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>`;
   }
   try {
     const params = _fileContactsQueryParams();
@@ -7946,7 +7946,7 @@ async function loadFileContactsTab(append = false) {
     _fileContactsUpdateCountLabel();
 
     if (!append && !newRows.length) {
-      show('fileContactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+      show('fileContactsTableBody').innerHTML = `<tr><td colspan="7" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
     } else {
       const rowsHtml = newRows.map((c, i) => _fileContactRowHtml(c, _fileContactsStart + i + 1)).join('');
       if (append) {
@@ -7971,7 +7971,7 @@ async function loadFileContactsTab(append = false) {
     }
     if (!append) _fileContactsFlatLoaded = true;
   } catch (e) {
-    if (!append) show('fileContactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
+    if (!append) show('fileContactsTableBody').innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
   } finally {
     _fileContactsLoadingMore = false;
   }
