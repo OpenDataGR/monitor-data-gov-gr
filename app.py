@@ -5573,11 +5573,61 @@ _pm_cache = _SharedCache("portal_members", {"data": None, "ts": 0, "loading": Fa
 _PM_REFRESH_INTERVAL = 90 * 60  # refresh proactively before the 2h cache below goes stale
 
 
+_pm_fetch_lock = threading.Lock()
+
+
+def _pm_claim_fetch():
+    """Atomically claims the right to run _do_fetch_portal_members.
+
+    Every caller of _do_fetch_portal_members already does its own "if not
+    _pm_cache['loading']: ..." check first, but that check-then-act is
+    racy: two requests landing close together (e.g. the Contacts tab's
+    full=1 cache warmer and its own paginated table load, which now both
+    fire at once on a fresh tab-open -- see loadContactsTab in app.js) can
+    each observe loading=False before either has set it, so both spawn a
+    fetch. That doubles the CKAN request volume (slower) and, worse, both
+    fetches independently write to _pm_cache["progress"], stomping on each
+    other's counters -- which is what made the progress bar visibly jump
+    backward. Those callers' own pre-checks are left as harmless
+    optimizations; this is the actual guard, so it doesn't matter if a
+    caller's stale check spawns a redundant thread -- it'll just claim
+    nothing and return immediately here.
+
+    Redis SETNX makes this atomic across gunicorn worker processes too
+    (each has its own Python interpreter, so a plain threading.Lock only
+    protects same-process races); the thread lock is the fallback when
+    Redis isn't configured (local dev).
+    """
+    client = _redis_client()
+    if client is not None:
+        try:
+            got = bool(client.set("cache:portal_members:fetch_lock", "1", nx=True, ex=600))
+            if got:
+                _pm_cache["loading"] = True
+            return got
+        except Exception:
+            pass  # Redis errored -- fall through to the in-process lock below
+    with _pm_fetch_lock:
+        if _pm_cache["loading"]:
+            return False
+        _pm_cache["loading"] = True
+        return True
+
+
+def _pm_release_fetch():
+    client = _redis_client()
+    if client is not None:
+        try:
+            client.delete("cache:portal_members:fetch_lock")
+        except Exception:
+            pass
+    _pm_cache["loading"] = False
+
+
 def _do_fetch_portal_members():
     """Fetch all portal members in a background thread and populate _pm_cache."""
-    if _pm_cache["loading"]:
+    if not _pm_claim_fetch():
         return
-    _pm_cache["loading"] = True
     _pm_cache["error"] = None
     _pm_cache["progress"] = {"phase": "orgs", "done": 0, "total": 0}
     base_headers = {"User-Agent": "DataGovGR-Dashboard/1.0"}
@@ -5752,7 +5802,7 @@ def _do_fetch_portal_members():
     except Exception as exc:
         _pm_cache["error"] = str(exc)
     finally:
-        _pm_cache["loading"] = False
+        _pm_release_fetch()
         _pm_cache["progress"] = None
 
 
