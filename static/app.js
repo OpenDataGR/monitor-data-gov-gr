@@ -7574,15 +7574,12 @@ function _fileContactsUpdateCountLabel() {
 
 function _ensureFileContactsObserver() {
   if (!_fileContactsObserver) {
-    // Rooted at the table's own scroll box (fixed max-height:65vh), not the
-    // viewport -- unlike the Dataset Catalog's page-level scroll, this table
-    // scrolls internally. A 400px margin (the Catalog's value, tuned for a
-    // viewport-height root) would nearly always cover this whole short box,
-    // triggering every page at once; 100px only pre-fetches shortly before
-    // the sentinel would actually become visible.
+    // Viewport-rooted, same as the Dataset Catalog -- this table grows with
+    // the page rather than scrolling inside a fixed-height card, so the
+    // same 400px pre-fetch margin applies unmodified.
     _fileContactsObserver = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) _fileContactsLoadMoreTrigger();
-    }, { root: document.getElementById('fileContactsScrollBox'), rootMargin: '100px 0px' });
+    }, { rootMargin: '400px 0px' });
   }
   return _fileContactsObserver;
 }
@@ -7595,14 +7592,10 @@ function _fileContactsLoadMoreTrigger() {
 // never fully leaves the viewport would otherwise stop after one page (same
 // reasoning as the Dataset Catalog's _catalogMaybeAutoLoadMore).
 function _fileContactsMaybeAutoLoadMore() {
-  const box = document.getElementById('fileContactsScrollBox');
   const sentinel = document.getElementById('fileContactsLoadMoreSentinel');
-  if (!box || !sentinel || _fileContactsLoadingMore || _fileContactsStart >= _fileContactsTotalCount) return;
-  // Relative to the scroll box's own bounds, not the viewport -- see the
-  // matching comment on _ensureFileContactsObserver's root.
-  const boxRect = box.getBoundingClientRect();
+  if (!sentinel || _fileContactsLoadingMore || _fileContactsStart >= _fileContactsTotalCount) return;
   const rect = sentinel.getBoundingClientRect();
-  if (rect.top < boxRect.bottom && rect.bottom >= boxRect.top) _fileContactsLoadMoreTrigger();
+  if (rect.top < window.innerHeight && rect.bottom >= 0) _fileContactsLoadMoreTrigger();
 }
 
 async function loadFileContactsTab(append = false) {
