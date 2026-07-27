@@ -7175,6 +7175,18 @@ function _pmQueryParams() {
   return p;
 }
 
+// Snapshot of _pmQueryParams().toString() as of the last successful flat or
+// grouped fetch -- the search box is shared between Portal Members and File
+// Contacts, but only the *active* scope's cache gets invalidated when the
+// user types (filterPortalMembersTab only fires while scope === 'portal').
+// So typing a search term while on File Contacts, then switching back to
+// Portal Members, left _pmFlatLoaded/_pmGroupsLoaded still true from
+// *before* the search -- the reuse path in _pmSyncView had no way to know
+// the search/filters had changed underneath it, and just kept showing the
+// stale unfiltered list. _pmSyncView now also checks this fingerprint and
+// forces a fresh fetch (instead of reusing) whenever it's out of date.
+let _pmLoadedFingerprint = null;
+
 const PORTAL_MEMBERS_PAGE_SIZE = 30;
 let _pmCache = [];          // rows loaded so far, in the active view's order (== _pmRows)
 let _pmStart = 0;           // next offset to fetch
@@ -7281,6 +7293,7 @@ async function loadPortalMembersTab(append = false, attempt = 0, generation = nu
       _pmCache = [];
       if (data.unmatched) _pmUnmatched = data.unmatched;
       renderContactsSummary(data.role_counts, data.state_counts, data.file_counts);
+      _pmLoadedFingerprint = _pmQueryParams().toString();
     }
     const newRows = data.members || [];
     _pmCache = _pmCache.concat(newRows);
@@ -7374,6 +7387,7 @@ async function _loadPortalMembersGroups(attempt = 0, generation = null) {
     }
     _pmGroups = data.groups || [];
     _pmGroupsLoaded = true;
+    _pmLoadedFingerprint = _pmQueryParams().toString();
     _pmGroupedCountLabel();
     _renderPortalMembersGroups();
   } catch (e) {
@@ -7526,10 +7540,19 @@ function _pmRenderRowsFromCache() {
 }
 
 function _pmSyncView() {
+  // The search box (and role/state/file facet filters) are shared with File
+  // Contacts, but only the *active* scope's cache gets invalidated when the
+  // user changes one (filterPortalMembersTab only runs while scope ===
+  // 'portal') -- so typing a search term while on File Contacts, then
+  // switching back here, left _pmFlatLoaded/_pmGroupsLoaded still true from
+  // *before* that change. Treat a fingerprint mismatch the same as
+  // "not loaded" so it forces a fresh fetch instead of reusing a cache that
+  // no longer matches what's actually selected.
+  const stale = _pmQueryParams().toString() !== _pmLoadedFingerprint;
   if (_contactsViewMode === 'grouped') {
-    if (_pmGroupsLoaded) { _renderPortalMembersGroups(); _pmGroupedCountLabel(); }
+    if (_pmGroupsLoaded && !stale) { _renderPortalMembersGroups(); _pmGroupedCountLabel(); }
     else _loadPortalMembersGroups();
-  } else if (!_pmFlatLoaded) {
+  } else if (!_pmFlatLoaded || stale) {
     loadPortalMembersTab(false);
   } else {
     _pmFlatCountLabel();
@@ -7768,6 +7791,14 @@ function clearFileContactsFilters() {
 // Query params shared by every /api/contacts call this view makes (the flat
 // list, the org-group counts, and a single group's expand-fetch) -- so
 // search/type/linked/sort always stay in sync across all three.
+// Snapshot of _fileContactsQueryParams().toString() as of the last
+// successful flat or grouped fetch -- same reasoning as Portal Members'
+// _pmLoadedFingerprint (see its comment): the search box is shared between
+// scopes, so switching here after typing a search term while on Portal
+// Members needs this to force a fresh fetch instead of reusing a
+// pre-search cache.
+let _fileContactsLoadedFingerprint = null;
+
 function _fileContactsQueryParams() {
   const p = new URLSearchParams();
   const search = (show('contactsSearch').value || '').trim();
@@ -7908,6 +7939,7 @@ async function loadFileContactsTab(append = false) {
     if (!append) {
       _fileContactsCache = [];
       renderFileContactsSummary(data.type_counts, data.linked_counts);
+      _fileContactsLoadedFingerprint = _fileContactsQueryParams().toString();
     }
     const newRows = data.contacts || [];
     _fileContactsCache = _fileContactsCache.concat(newRows);
@@ -7974,6 +8006,7 @@ async function _loadFileContactsGroups() {
     const data = await _fetchJsonOrThrow(resp);
     _fileContactsGroups = data.groups || [];
     _fileContactsGroupsLoaded = true;
+    _fileContactsLoadedFingerprint = _fileContactsQueryParams().toString();
     _fileContactsGroupedCountLabel();
     _renderFileContactsGroups();
   } catch (e) {
@@ -8094,10 +8127,14 @@ function collapseAllFileContacts() {
 // All/By-Organization, as opposed to filterFileContactsTab() below, which
 // is for when the actual result set has changed.
 function _fileContactsSyncView() {
+  // See _pmSyncView's matching comment -- the search box (and type/linked
+  // facet filters) are shared with Portal Members, but only the *active*
+  // scope invalidates its own cache when one changes.
+  const stale = _fileContactsQueryParams().toString() !== _fileContactsLoadedFingerprint;
   if (_contactsViewMode === 'grouped') {
-    if (_fileContactsGroupsLoaded) { _renderFileContactsGroups(); _fileContactsGroupedCountLabel(); }
+    if (_fileContactsGroupsLoaded && !stale) { _renderFileContactsGroups(); _fileContactsGroupedCountLabel(); }
     else _loadFileContactsGroups();
-  } else if (!_fileContactsFlatLoaded) {
+  } else if (!_fileContactsFlatLoaded || stale) {
     loadFileContactsTab(false);
   } else {
     _fileContactsUpdateCountLabel();
