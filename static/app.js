@@ -92,6 +92,7 @@ const TRANSLATIONS = {
     'contacts.role_sysadmin': 'Sysadmin',
     'contacts.total': 'Total',
     'contacts.loading_portal': 'Loading portal members…',
+    'contacts.progress_unit_orgs': 'organizations',
     'contacts.no_token': 'No API token configured.',
     'contacts.all_types': 'All Types',
     'contacts.all_sources': 'All sources',
@@ -654,6 +655,7 @@ const TRANSLATIONS = {
     'contacts.role_sysadmin': 'Διαχειριστής Συστήματος',
     'contacts.total': 'Σύνολο',
     'contacts.loading_portal': 'Φόρτωση μελών πύλης…',
+    'contacts.progress_unit_orgs': 'οργανισμοί',
     'contacts.no_token': 'Δεν έχει ρυθμιστεί API token.',
     'contacts.all_types': 'Όλοι οι τύποι',
     'contacts.all_sources': 'Όλες οι πηγές',
@@ -2703,14 +2705,22 @@ function clearHvdCardFilters() {
 // fetching." Expects a "${prefix}ProgressWrap" containing "${prefix}ProgressBar"
 // / "${prefix}ProgressLabel" / "${prefix}ProgressPct" -- see _progressBarHtml
 // for a ready-made block using that convention.
-function _showProgressBar(prefix, completed, total) {
+// unit is an optional trailing label (e.g. "organizations") clarifying what
+// completed/total are actually counting -- worth passing whenever that
+// count could otherwise be mistaken for something else the page also shows
+// a number for (e.g. Portal Members' progress counts organizations
+// processed, one organization_show call each, not members loaded -- and
+// 482 organizations happens to be exactly what the header's own
+// "Organizations" KPI card shows too, so leaving it unlabeled reads as
+// members loaded / members total).
+function _showProgressBar(prefix, completed, total, unit = '') {
   const wrap = document.getElementById(`${prefix}ProgressWrap`);
   if (wrap) wrap.classList.remove('d-none');
   const pct = total ? Math.round((completed / total) * 100) : 0;
   const bar = document.getElementById(`${prefix}ProgressBar`);
   if (bar) { bar.style.width = pct + '%'; bar.setAttribute('aria-valuenow', pct); }
   const label = document.getElementById(`${prefix}ProgressLabel`);
-  if (label) label.textContent = `${fmt(completed)} / ${fmt(total)}`;
+  if (label) label.textContent = `${fmt(completed)} / ${fmt(total)}` + (unit ? ` ${unit}` : '');
   const pctEl = document.getElementById(`${prefix}ProgressPct`);
   if (pctEl) pctEl.textContent = `${pct}%`;
 }
@@ -6740,7 +6750,13 @@ function _pmReadCache() {
 }
 
 async function loadContactsTab(force = false) {
-  if (_portalMembersCache && !force) { renderContactsSummary(); filterContactsTab(); return; }
+  // Re-clicking the Contacts tab button always calls this -- when data's
+  // already warm, just re-sync the active scope's view (reusing what's
+  // loaded) rather than calling filterContactsTab(), which unconditionally
+  // resets Portal Members' pagination state and re-fetches from scratch
+  // even though nothing about the underlying data changed. That's what
+  // made switching to another tab and back re-show the cold-load spinner.
+  if (_portalMembersCache && !force) { _contactsSyncActiveScope(); return; }
 
   if (!force) {
     const cached = _pmReadCache();
@@ -6752,10 +6768,7 @@ async function loadContactsTab(force = false) {
       // This branch also runs as a background warm-up triggered from the
       // Comms tab (see loadComms()'s `if (!_portalMembersCache) loadContactsTab()`),
       // so the Contacts tab may not be visible here.
-      if (_isTabActive('tab-contacts')) {
-        renderContactsSummary();
-        filterContactsTab();
-      }
+      if (_isTabActive('tab-contacts')) _contactsSyncActiveScope();
       if (_orgsLoaded) loadContactSummary();
       // Silently refresh in background if stale
       if (Date.now() - cached.ts > _PM_STALE_MS) {
@@ -6793,10 +6806,13 @@ async function loadContactsTab(force = false) {
 // null the very first time -- re-checking on every retry means it's picked
 // up as soon as it becomes available instead of being missed for good.
 function _updateContactsLoadingProgress(progress) {
+  // Both branches count ORGANIZATIONS processed (one organization_show call
+  // each), not members loaded -- see t('contacts.progress_unit_orgs') for why
+  // that needs to be explicit.
   if (progress && progress.phase === 'members' && progress.total) {
-    _showProgressBar('pm', progress.done, progress.total);
+    _showProgressBar('pm', progress.done, progress.total, t('contacts.progress_unit_orgs'));
   } else if (_kpiOrgCount) {
-    _showProgressBar('pm', 0, _kpiOrgCount);
+    _showProgressBar('pm', 0, _kpiOrgCount, t('contacts.progress_unit_orgs'));
   }
 }
 
@@ -7539,6 +7555,27 @@ function setContactsView(mode) {
 // Type/Portal-account) since the underlying data differs.
 let _contactsScope = 'portal';   // 'portal' | 'file'
 
+// Re-syncs whichever Contacts scope (Portal Members/File Contacts) is
+// currently active, reusing already-loaded data instead of unconditionally
+// resetting and refetching -- unlike filterContactsTab()/
+// filterPortalMembersTab()/filterFileContactsTab(), which are for when the
+// actual result set changed (search/filter/sort). Use this whenever
+// _portalMembersCache is already warm and something just wants the visible
+// tab re-shown as-is -- e.g. re-clicking the Contacts tab button after
+// having been on a different tab, which used to go through
+// filterContactsTab() instead and always fully reset + re-fetch Portal
+// Members from scratch even though nothing about the underlying data
+// had changed.
+function _contactsSyncActiveScope() {
+  if (_contactsScope === 'file') {
+    renderFileContactsSummary();
+    _fileContactsSyncView();
+  } else {
+    renderContactsSummary();
+    _pmSyncView();
+  }
+}
+
 function setContactsScope(scope) {
   _contactsScope = scope;
   show('contactsScopePortalBtn').className  = 'btn btn-sm ' + (scope === 'portal' ? 'btn-primary' : 'btn-outline-primary');
@@ -7559,20 +7596,7 @@ function setContactsScope(scope) {
   show('fileContactsFlatView').classList.toggle('d-none', !isFile || _contactsViewMode !== 'flat');
   show('fileContactsGroupedView').classList.toggle('d-none', !isFile || _contactsViewMode !== 'grouped');
 
-  if (isFile) {
-    renderFileContactsSummary();
-    _fileContactsSyncView();
-    return;
-  }
-  // _pmSyncView() reuses already-loaded data for the active layout instead
-  // of refetching -- mirrors _fileContactsSyncView() above. Calling
-  // filterContactsTab()/filterPortalMembersTab() here instead (an earlier
-  // version of this did) unconditionally resets _pmFlatLoaded/_pmCache/etc
-  // first, so switching back to this scope always re-showed the cold-load
-  // spinner and progress bar even when the data was already sitting there
-  // loaded from before.
-  renderContactsSummary();
-  _pmSyncView();
+  _contactsSyncActiveScope();
 }
 
 function reloadContactsTab() {

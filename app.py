@@ -5046,7 +5046,15 @@ def contacts_all():
     unlike the Catalog, there's no need to push every clause into SQL.
     """
     q        = _search_normalize((freq.args.get("q") or "").strip())
-    org      = (freq.args.get("org") or "").strip()
+    # None = no org filter; "" (param present but empty) = filter to contacts
+    # with NO org, for the "(no organization)" group's lazy expand; anything
+    # else = exact org_code. Collapsing "" into "no filter" (the pattern
+    # every other param here uses) silently ignored the no-org filter
+    # entirely and returned every contact instead -- exactly the bug where
+    # expanding "(no organization)" showed everyone.
+    org = freq.args.get("org")
+    if org is not None:
+        org = org.strip()
     type_f   = (freq.args.get("type") or "").strip()
     linked_f = (freq.args.get("linked") or "").strip()  # '1' linked, '0' unlinked, '' = either
     sort_key = (freq.args.get("sort") or "name").strip()
@@ -5056,8 +5064,11 @@ def contacts_all():
     start    = max(int(freq.args.get("start", 0) or 0), 0)
 
     query = OrgContact.query
-    if org:
-        query = query.filter(OrgContact.org_code == org)
+    if org is not None:
+        if org == "":
+            query = query.filter(db.or_(OrgContact.org_code.is_(None), OrgContact.org_code == ""))
+        else:
+            query = query.filter(OrgContact.org_code == org)
     all_contacts = query.all()
 
     contact_id_to_username, portal_emails = _org_contacts_portal_link_info()
@@ -5962,7 +5973,15 @@ def portal_members_all():
     role_f   = (freq.args.get("role") or "").strip()        # admin|editor|member|user|sysadmin
     state_f  = (freq.args.get("state") or "").strip()       # active|pending|deleted
     file_f   = (freq.args.get("file_info") or "").strip()   # has|none
-    org      = (freq.args.get("org") or "").strip()         # exact org_name, for a single group's lazy expand
+    # None = no org filter; "" (param present but empty) = filter to members
+    # with NO org, for the "(no organization)" group's lazy expand; anything
+    # else = exact org_name. Collapsing "" into "no filter" (via `or ""`,
+    # like every other param above) silently ignored the no-org filter
+    # entirely and returned every member instead -- exactly the bug where
+    # expanding "(no organization)" showed everyone.
+    org = freq.args.get("org")
+    if org is not None:
+        org = org.strip()
     sort_key = (freq.args.get("sort") or "name").strip()
     sort_dir = (freq.args.get("dir") or "asc").strip()
     group_by = (freq.args.get("group_by") or "").strip()
@@ -5992,8 +6011,8 @@ def portal_members_all():
     # dedupe too, so a group's count and its expanded rows never disagree
     # about who "belongs" to it.
     deduped = _dedupe_portal_members([m for m in all_members if matches_q(m)])
-    if org:
-        deduped = [m for m in deduped if m.get("org_name") == org]
+    if org is not None:
+        deduped = [m for m in deduped if (m.get("org_name") or "") == org]
 
     if group_by == "org":
         scoped = [m for m in deduped
