@@ -6746,7 +6746,6 @@ async function loadContactsTab(force = false) {
       // so the Contacts tab may not be visible here.
       if (_isTabActive('tab-contacts')) {
         renderContactsSummary();
-        if (_fileContactsCache) renderFileContactsSummary();
         filterContactsTab();
       }
       if (_orgsLoaded) loadContactSummary();
@@ -6814,7 +6813,6 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
     show('contactsReloadBtn').disabled = false;
     if (_isTabActive('tab-contacts')) {
       renderContactsSummary();
-      if (_fileContactsCache) renderFileContactsSummary();
       filterContactsTab();
     }
     if (_orgsLoaded) loadContactSummary();
@@ -7210,10 +7208,11 @@ function setContactsView(mode) {
   if (_contactsScope === 'file') {
     show('fileContactsFlatView').classList.toggle('d-none', mode !== 'flat');
     show('fileContactsGroupedView').classList.toggle('d-none', mode !== 'grouped');
-  } else {
-    show('contactsFlatView').classList.toggle('d-none', mode !== 'flat');
-    show('contactsGroupedView').classList.toggle('d-none', mode !== 'grouped');
+    _fileContactsSyncView();  // reuses already-loaded data for this layout if we have it
+    return;
   }
+  show('contactsFlatView').classList.toggle('d-none', mode !== 'flat');
+  show('contactsGroupedView').classList.toggle('d-none', mode !== 'grouped');
   filterContactsTab();
 }
 
@@ -7247,15 +7246,14 @@ function setContactsScope(scope) {
 
   if (isFile) {
     renderFileContactsSummary();
-    if (_fileContactsCache) filterFileContactsTab();
-    else loadFileContactsTab();
+    _fileContactsSyncView();
     return;
   }
   filterContactsTab();
 }
 
 function reloadContactsTab() {
-  if (_contactsScope === 'file') loadFileContactsTab(true);
+  if (_contactsScope === 'file') filterFileContactsTab();
   else loadContactsTab(true);
 }
 
@@ -7269,11 +7267,13 @@ function toggleContactsOrg(slug) {
 }
 
 function expandAllContacts() {
+  if (_contactsScope === 'file') { expandAllFileContacts(); return; }
   _contactsGroupSlugs.forEach(slug => _contactsExpandedOrgs.add(slug));
   filterContactsTab();
 }
 
 function collapseAllContacts() {
+  if (_contactsScope === 'file') { collapseAllFileContacts(); return; }
   _contactsExpandedOrgs.clear();
   filterContactsTab();
 }
@@ -7367,63 +7367,19 @@ let _pmEditOrgs  = [];  // [{code, label}, ...] — orgs selected in the edit mo
 
 // ── File Contacts view — every org_contacts row (Excel import / manual entry),
 // matched or not, independent of whether it also has a portal account. Backs
-// the "File Contacts" scope; fetched separately from the CKAN-driven
-// _portalMembersCache since it's the same data source contacts_import etc. use.
-let _fileContactsCache = null;
-
-async function loadFileContactsTab(force = false) {
-  if (_fileContactsCache && !force) { filterFileContactsTab(); return; }
-  show('fileContactsTableBody').innerHTML =
-    `<tr><td colspan="8" class="text-center py-5">
-       <div class="spinner-border text-primary mb-2"></div>
-     </td></tr>`;
-  try {
-    const resp = await fetch(API_BASE + 'api/contacts');
-    const data = await resp.json();
-    _fileContactsCache = Array.isArray(data) ? data : [];
-    renderFileContactsSummary();
-    filterFileContactsTab();
-  } catch (e) {
-    show('fileContactsTableBody').innerHTML =
-      `<tr><td colspan="8" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
-  }
-}
-
-// Contact-id map -- gives a specific portal member to badge/link to when one
-// exists, but is NOT the source of truth for "is this contact matched" (see
-// _fileContactIsLinked below for why).
-function _fileContactsPortalMap() {
-  const m = new Map();
-  for (const x of (_portalMembersCache || [])) {
-    if (x.contact_id && !m.has(x.contact_id)) m.set(x.contact_id, x);
-  }
-  return m;
-}
-
-// All portal-member emails, lowercased -- the actual definition of "matched"
-// used everywhere else in this file (_do_fetch_portal_members's own
-// `unmatched` list, i.e. the "23" badge below the Unified view, is built the
-// same way: email-set membership, not contact_id). contact_id alone
-// undercounts: when two OrgContact rows share an email, the server's
-// contact_by_email dict only keeps the last one, so only that one contact
-// ever gets a contact_id stamped onto a portal-member row -- the other is
-// still correctly "matched" by email, just invisible to a contact_id lookup.
-// Matching this same email-based definition here (rather than a stricter,
-// more "precise" per-id one) is what keeps this view's counts consistent
-// with the rest of the app instead of quietly disagreeing with them.
-function _fileContactsPortalEmails() {
-  const s = new Set();
-  for (const x of (_portalMembersCache || [])) {
-    if (x.email) s.add(x.email.toLowerCase().trim());
-  }
-  return s;
-}
-
-function _fileContactIsLinked(c, portalByContactId, portalEmails) {
-  if (portalByContactId.has(c.id)) return true;
-  const e = (c.email || '').toLowerCase().trim();
-  return !!e && portalEmails.has(e);
-}
+// the "File Contacts" scope. Server-paginated + server-filtered (like the
+// Dataset Catalog's /api/datasets/search) rather than fetch-everything-once,
+// since this table has no natural upper bound on row count. The backend now
+// also resolves is_linked/linked_username per row (see _org_contacts_portal_link_info
+// in app.py), so the client no longer needs its own copy of the
+// portal-members cache just to render this table's badges.
+const FILE_CONTACTS_PAGE_SIZE = 30;
+let _fileContactsCache = [];          // rows loaded so far, in the active view's order
+let _fileContactsStart = 0;           // next offset to fetch
+let _fileContactsTotalCount = 0;
+let _fileContactsFlatLoaded = false;  // distinguishes "never loaded" from "loaded, zero results"
+let _fileContactsLoadingMore = false;
+let _fileContactsObserver = null;
 
 let _fileContactsSortCol = 'name';
 let _fileContactsSortDir = 'asc';
@@ -7440,10 +7396,10 @@ function _fileContactsSortArrow(col) {
 
 // Type and Portal-link are independent, combinable facets -- same pattern as
 // the Unified/Portal Role+State cards. A file contact can hold several
-// contact_type values at once (comma-separated), so the Type facet filters
-// by "list includes this value" rather than exclusive equality.
+// contact_type values at once (comma-separated), so the backend's Type facet
+// filters by "list includes this value" rather than exclusive equality.
 let _fileContactsTypeFilter   = null;  // e.g. 'Org Administrator', or null = every type
-let _fileContactsLinkedFilter = null;  // 'linked' | 'unlinked' | null
+let _fileContactsLinkedFilter = null;  // '1' | '0' | null, matches the backend's linked param
 let _fileContactsSummaryCards = [];
 
 const _FILE_CONTACT_TYPES = Object.keys(CONTACT_TYPE_CLS);
@@ -7466,49 +7422,39 @@ function _renderFileContactsFilterGroup(elId, indices, tabDotId) {
   _renderFilterGroup(elId, indices, tabDotId, _fileContactsSummaryCards, _fileContactsFilterIsActive, 'setFileContactsFilter');
 }
 
-function renderFileContactsSummary() {
-  if (!_fileContactsCache) {
+// typeCounts/linkedCounts come straight from the backend response
+// ({total, items}/{total, has, none}) -- only present on a fresh page
+// (start=0), same as the Dataset Catalog's facet counts. Called with no args
+// to just re-render the last-known counts (e.g. after toggling a filter,
+// before the new fetch resolves) using whatever's already in the cards array.
+function renderFileContactsSummary(typeCounts, linkedCounts) {
+  if (typeCounts) {
+    const byName = {};
+    typeCounts.items.forEach(i => { byName[i.name] = i.count; });
+    _fileContactsSummaryCards = [
+      { filter: { type: 'type', value: null }, label: t('contacts.total'), value: typeCounts.total, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+      ..._FILE_CONTACT_TYPES.map(ty => ({
+        filter: { type: 'type', value: ty },
+        label: _CONTACT_TYPE_I18N_KEY[ty] ? t(_CONTACT_TYPE_I18N_KEY[ty]) : ty,
+        value: byName[ty] || 0,
+        ..._FILE_CONTACT_TYPE_CARD[ty],
+      })),
+      ..._fileContactsSummaryCards.filter(c => c.filter.type === 'linked'),
+    ];
+  }
+  if (linkedCounts) {
+    _fileContactsSummaryCards = [
+      ..._fileContactsSummaryCards.filter(c => c.filter.type === 'type'),
+      { filter: { type: 'linked', value: null }, label: t('contacts.total'),              value: linkedCounts.total, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
+      { filter: { type: 'linked', value: '1' },  label: t('contacts.has_portal_account'), value: linkedCounts.has,  bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-globe2" },
+      { filter: { type: 'linked', value: '0' },  label: t('contacts.no_portal_account'),  value: linkedCounts.none, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-file-earmark-person" },
+    ];
+  }
+  if (!_fileContactsSummaryCards.length) {
     document.getElementById('fileContactsTypeSummary').innerHTML = '';
     document.getElementById('fileContactsLinkedSummary').innerHTML = '';
     return;
   }
-  const portalByContactId = _fileContactsPortalMap();
-  const portalEmails      = _fileContactsPortalEmails();
-
-  // Each dimension's counts are scoped to the OTHER dimension's current
-  // selection (but not its own) -- same as the Unified/Portal Role+State cards.
-  const typeScopeRows = _fileContactsLinkedFilter
-    ? _fileContactsCache.filter(c => (_fileContactIsLinked(c, portalByContactId, portalEmails) ? 'linked' : 'unlinked') === _fileContactsLinkedFilter)
-    : _fileContactsCache;
-  const linkedScopeRows = _fileContactsTypeFilter
-    ? _fileContactsCache.filter(c => (c.contact_type || '').split(',').map(s => s.trim()).includes(_fileContactsTypeFilter))
-    : _fileContactsCache;
-
-  const typeCounts = {};
-  _FILE_CONTACT_TYPES.forEach(ty => typeCounts[ty] = 0);
-  for (const c of typeScopeRows) {
-    for (const ty of (c.contact_type || '').split(',').map(s => s.trim()).filter(Boolean)) {
-      if (ty in typeCounts) typeCounts[ty]++;
-    }
-  }
-  let linkedCount = 0, unlinkedCount = 0;
-  for (const c of linkedScopeRows) {
-    if (_fileContactIsLinked(c, portalByContactId, portalEmails)) linkedCount++; else unlinkedCount++;
-  }
-
-  _fileContactsSummaryCards = [
-    { filter: { type: 'type', value: null }, label: t('contacts.total'), value: typeScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
-    ..._FILE_CONTACT_TYPES.map(ty => ({
-      filter: { type: 'type', value: ty },
-      label: _CONTACT_TYPE_I18N_KEY[ty] ? t(_CONTACT_TYPE_I18N_KEY[ty]) : ty,
-      value: typeCounts[ty],
-      ..._FILE_CONTACT_TYPE_CARD[ty],
-    })),
-    { filter: { type: 'linked', value: null },       label: t('contacts.total'),              value: linkedScopeRows.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
-    { filter: { type: 'linked', value: 'linked' },   label: t('contacts.has_portal_account'), value: linkedCount,   bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-globe2" },
-    { filter: { type: 'linked', value: 'unlinked' }, label: t('contacts.no_portal_account'),  value: unlinkedCount, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-file-earmark-person" },
-  ];
-
   const typeIndices   = _fileContactsSummaryCards.map((_, i) => i).filter(i => _fileContactsSummaryCards[i].filter.type === 'type');
   const linkedIndices = _fileContactsSummaryCards.map((_, i) => i).filter(i => _fileContactsSummaryCards[i].filter.type === 'linked');
   _renderFileContactsFilterGroup('fileContactsTypeSummary',   typeIndices,   'fileContactsTypeTabDot');
@@ -7521,78 +7467,27 @@ function setFileContactsFilter(idx) {
   const f = card.filter;
   if (f.type === 'type') _fileContactsTypeFilter = (_fileContactsTypeFilter === f.value) ? null : f.value;
   else if (f.type === 'linked') _fileContactsLinkedFilter = (_fileContactsLinkedFilter === f.value) ? null : f.value;
-  renderFileContactsSummary();
   filterFileContactsTab();
 }
 
 function clearFileContactsFilters() {
   _fileContactsTypeFilter = null;
   _fileContactsLinkedFilter = null;
-  renderFileContactsSummary();
   filterFileContactsTab();
 }
 
-function filterFileContactsTab() {
-  if (_contactsScope !== 'file') return;
-  if (!_fileContactsCache) { loadFileContactsTab(); return; }
-
-  const search = _ns(show('contactsSearch').value || '').trim();
-  let rows = _fileContactsCache;
-  if (search) rows = rows.filter(c =>
-    _ns(`${c.first_name || ''} ${c.last_name || ''}`).includes(search) ||
-    _ns(c.org_label   || '').includes(search) ||
-    _ns(c.position    || '').includes(search) ||
-    _ns(c.email       || '').includes(search)
-  );
-
-  if (_fileContactsTypeFilter) {
-    rows = rows.filter(c => (c.contact_type || '').split(',').map(s => s.trim()).includes(_fileContactsTypeFilter));
-  }
-  const portalByContactId = _fileContactsPortalMap();
-  const portalEmails      = _fileContactsPortalEmails();
-  if (_fileContactsLinkedFilter) {
-    rows = rows.filter(c => (_fileContactIsLinked(c, portalByContactId, portalEmails) ? 'linked' : 'unlinked') === _fileContactsLinkedFilter);
-  }
-
-  rows = [...rows].sort((a, b) => {
-    let av, bv;
-    switch (_fileContactsSortCol) {
-      case 'org':   av = _ns(a.org_label || a.org_code || ''); bv = _ns(b.org_label || b.org_code || ''); break;
-      case 'type':  av = _ns(a.contact_type || ''); bv = _ns(b.contact_type || ''); break;
-      case 'email': av = (a.email || '').toLowerCase(); bv = (b.email || '').toLowerCase(); break;
-      default:      av = _ns(`${a.first_name || ''} ${a.last_name || ''}`); bv = _ns(`${b.first_name || ''} ${b.last_name || ''}`);
-    }
-    if (av < bv) return _fileContactsSortDir === 'asc' ? -1 : 1;
-    if (av > bv) return _fileContactsSortDir === 'asc' ?  1 : -1;
-    return 0;
-  });
-
-  const th = (col, label, extraStyle = '') =>
-    `<th style="cursor:pointer;user-select:none;${extraStyle}" onclick="sortFileContacts('${col}')">${label}${_fileContactsSortArrow(col)}</th>`;
-  document.querySelector('#fileContactsTable thead tr').innerHTML =
-    `<th style="width:3rem">#</th>` +
-    th('name',  t('contacts.col_name'))   +
-    th('org',   t('contacts.col_org'))   +
-    th('type',  t('contacts.col_type'))  +
-    `<th>${t('contacts.col_portal')}</th>` +
-    th('email', t('contacts.email'), 'width:150px') +
-    `<th style="width:90px">${t('contacts.col_tel')}</th>` +
-    `<th style="width:4rem"></th>`;
-
-  show('contactsCount').innerHTML = rows.length < _fileContactsCache.length
-    ? `${rows.length} / ${_fileContactsCache.length}` : `${_fileContactsCache.length}`;
-
-  const flatDiv    = show('fileContactsFlatView');
-  const groupedDiv = show('fileContactsGroupedView');
-  if (_contactsViewMode === 'grouped') {
-    flatDiv.classList.add('d-none');
-    groupedDiv.classList.remove('d-none');
-    renderFileContactsGrouped(rows, portalByContactId, portalEmails);
-    return;
-  }
-  flatDiv.classList.remove('d-none');
-  groupedDiv.classList.add('d-none');
-  renderFileContactsTab(rows, portalByContactId, portalEmails);
+// Query params shared by every /api/contacts call this view makes (the flat
+// list, the org-group counts, and a single group's expand-fetch) -- so
+// search/type/linked/sort always stay in sync across all three.
+function _fileContactsQueryParams() {
+  const p = new URLSearchParams();
+  const search = (show('contactsSearch').value || '').trim();
+  if (search) p.set('q', search);
+  if (_fileContactsTypeFilter) p.set('type', _fileContactsTypeFilter);
+  if (_fileContactsLinkedFilter) p.set('linked', _fileContactsLinkedFilter);
+  p.set('sort', _fileContactsSortCol);
+  p.set('dir', _fileContactsSortDir);
+  return p;
 }
 
 function _fileContactPosLine(c) {
@@ -7604,89 +7499,345 @@ function _fileContactTypeBadges(c) {
     .map(s => `<span class="badge me-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(_CONTACT_TYPE_I18N_KEY[s] ? t(_CONTACT_TYPE_I18N_KEY[s]) : s)}</span>`).join('');
   return badges || '<span class="text-muted small">—</span>';
 }
-function _fileContactPortalBadge(c, portalByContactId, portalEmails) {
-  const m = portalByContactId.get(c.id);
-  if (m) {
+// is_linked/linked_username now come straight from the backend (see
+// _org_contacts_portal_link_info in app.py) -- no more client-side
+// portal-cache lookups needed to know whether/who this contact is linked to.
+function _fileContactPortalBadge(c) {
+  if (c.linked_username) {
     return `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db;cursor:pointer" title="${esc(t('contacts.has_portal_account'))}"
-         onclick="event.stopPropagation();openUserPanel('${esc(m.username)}')"><i class="bi bi-globe2 me-1"></i>${esc(m.username)}</span>`;
+         onclick="event.stopPropagation();openUserPanel('${esc(c.linked_username)}')"><i class="bi bi-globe2 me-1"></i>${esc(c.linked_username)}</span>`;
   }
-  // Matched by email but no specific portal-member row carries this contact's
-  // id (another OrgContact shares the same email and won that slot server-side
-  // -- see _fileContactsPortalEmails) -- still linked, just not to one
-  // particular account we can deep-link to.
-  if (_fileContactIsLinked(c, portalByContactId, portalEmails)) {
+  if (c.is_linked) {
     return `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('contacts.has_portal_account'))}"><i class="bi bi-globe2 me-1"></i>${esc(t('contacts.has_portal_account'))}</span>`;
   }
   return `<span class="text-muted small">${esc(t('contacts.no_portal_account'))}</span>`;
 }
-function _fileContactActions(c, portalByContactId) {
-  const m = portalByContactId.get(c.id);
+function _fileContactActions(c) {
   return `<div class="d-flex gap-1">
       <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('common.edit'))}"
         onclick="openPmEditFileContact(${c.id})"><i class="bi bi-pencil"></i></button>
       <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('common.delete'))}"
-        onclick="deletePmContactRecord(${c.id}, ${m ? `'${esc(m.username)}'` : 'null'})"><i class="bi bi-trash"></i></button>
+        onclick="deletePmContactRecord(${c.id}, ${c.linked_username ? `'${esc(c.linked_username)}'` : 'null'})"><i class="bi bi-trash"></i></button>
     </div>`;
 }
+// index === null renders the compact grouped-view row (no #/org columns,
+// since a group card's own header already says which org); otherwise the
+// full flat-view row.
+function _fileContactRowHtml(c, index) {
+  const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
+  const nameCell = `
+    <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
+    ${_fileContactPosLine(c)}`;
+  const tail = `
+    <td>${_fileContactTypeBadges(c)}</td>
+    <td>${_fileContactPortalBadge(c)}</td>
+    <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
+      ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
+    </td>
+    <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
+      ${c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(c.tel)}</a>`
+              : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
+    </td>
+    <td onclick="event.stopPropagation()">${_fileContactActions(c)}</td>`;
+  if (index == null) {
+    return `<tr><td style="max-width:200px">${nameCell}</td>${tail}</tr>`;
+  }
+  const orgBadge = (c.org_label || c.org_code)
+    ? `<span class="badge bg-light text-dark border" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
+         title="${esc(c.org_label || c.org_code)}">${esc(c.org_label || c.org_code)}</span>` : '—';
+  return `<tr>
+    <td class="text-muted small">${index}</td>
+    <td style="max-width:200px">${nameCell}</td>
+    <td style="max-width:180px">${orgBadge}</td>
+    ${tail}
+  </tr>`;
+}
 
-function renderFileContactsTab(rows, portalByContactId, portalEmails) {
-  if (!rows.length) {
-    show('fileContactsTableBody').innerHTML =
-      `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+function _fileContactsRenderHeader() {
+  const th = (col, label, extraStyle = '') =>
+    `<th style="cursor:pointer;user-select:none;${extraStyle}" onclick="sortFileContacts('${col}')">${label}${_fileContactsSortArrow(col)}</th>`;
+  document.querySelector('#fileContactsTable thead tr').innerHTML =
+    `<th style="width:3rem">#</th>` +
+    th('name',  t('contacts.col_name'))   +
+    th('org',   t('contacts.col_org'))   +
+    th('type',  t('contacts.col_type'))  +
+    `<th>${t('contacts.col_portal')}</th>` +
+    th('email', t('contacts.email'), 'width:150px') +
+    `<th style="width:90px">${t('contacts.col_tel')}</th>` +
+    `<th style="width:4rem"></th>`;
+}
+
+function _fileContactsUpdateCountLabel() {
+  show('contactsCount').innerHTML = _fileContactsCache.length < _fileContactsTotalCount
+    ? `${_fileContactsCache.length} / ${_fileContactsTotalCount}` : `${_fileContactsTotalCount}`;
+}
+
+function _ensureFileContactsObserver() {
+  if (!_fileContactsObserver) {
+    // Rooted at the table's own scroll box (fixed max-height:65vh), not the
+    // viewport -- unlike the Dataset Catalog's page-level scroll, this table
+    // scrolls internally. A 400px margin (the Catalog's value, tuned for a
+    // viewport-height root) would nearly always cover this whole short box,
+    // triggering every page at once; 100px only pre-fetches shortly before
+    // the sentinel would actually become visible.
+    _fileContactsObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) _fileContactsLoadMoreTrigger();
+    }, { root: document.getElementById('fileContactsScrollBox'), rootMargin: '100px 0px' });
+  }
+  return _fileContactsObserver;
+}
+function _fileContactsLoadMoreTrigger() {
+  if (_fileContactsLoadingMore || _fileContactsStart >= _fileContactsTotalCount) return;
+  loadFileContactsTab(true);
+}
+// Keeps loading more pages while the sentinel is still on-screen -- plain
+// IntersectionObserver only fires on enter/exit, so a short result list that
+// never fully leaves the viewport would otherwise stop after one page (same
+// reasoning as the Dataset Catalog's _catalogMaybeAutoLoadMore).
+function _fileContactsMaybeAutoLoadMore() {
+  const box = document.getElementById('fileContactsScrollBox');
+  const sentinel = document.getElementById('fileContactsLoadMoreSentinel');
+  if (!box || !sentinel || _fileContactsLoadingMore || _fileContactsStart >= _fileContactsTotalCount) return;
+  // Relative to the scroll box's own bounds, not the viewport -- see the
+  // matching comment on _ensureFileContactsObserver's root.
+  const boxRect = box.getBoundingClientRect();
+  const rect = sentinel.getBoundingClientRect();
+  if (rect.top < boxRect.bottom && rect.bottom >= boxRect.top) _fileContactsLoadMoreTrigger();
+}
+
+async function loadFileContactsTab(append = false) {
+  if (_contactsScope !== 'file') return;
+  if (!append) _fileContactsStart = 0;
+  const sentinelBefore = document.getElementById('fileContactsLoadMoreSentinel');
+  if (append) {
+    _fileContactsLoadingMore = true;
+    if (sentinelBefore) sentinelBefore.innerHTML = `<div class="spinner-border spinner-border-sm me-2"></div>${t('loading')}`;
+  } else {
+    if (_fileContactsObserver) _fileContactsObserver.disconnect();
+    show('fileContactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>`;
+  }
+  try {
+    const params = _fileContactsQueryParams();
+    params.set('rows', FILE_CONTACTS_PAGE_SIZE);
+    params.set('start', _fileContactsStart);
+    const resp = await fetch(API_BASE + 'api/contacts?' + params.toString());
+    const data = await resp.json();
+    _fileContactsTotalCount = data.count || 0;
+    if (!append) {
+      _fileContactsCache = [];
+      renderFileContactsSummary(data.type_counts, data.linked_counts);
+    }
+    const newRows = data.contacts || [];
+    _fileContactsCache = _fileContactsCache.concat(newRows);
+    _fileContactsUpdateCountLabel();
+
+    if (!append && !newRows.length) {
+      show('fileContactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
+    } else {
+      const rowsHtml = newRows.map((c, i) => _fileContactRowHtml(c, _fileContactsStart + i + 1)).join('');
+      if (append) {
+        document.getElementById('fileContactsTableBody').insertAdjacentHTML('beforeend', rowsHtml);
+      } else {
+        _fileContactsRenderHeader();
+        document.getElementById('fileContactsTableBody').innerHTML = rowsHtml;
+      }
+    }
+
+    _fileContactsStart += newRows.length;
+
+    const sentinel = document.getElementById('fileContactsLoadMoreSentinel');
+    if (sentinel) {
+      if (_fileContactsStart < _fileContactsTotalCount) {
+        sentinel.innerHTML = '';
+        _ensureFileContactsObserver().observe(sentinel);
+      } else {
+        _ensureFileContactsObserver().unobserve(sentinel);
+        sentinel.innerHTML = data.count ? t('catalog.end_of_results') : '';
+      }
+    }
+    if (!append) _fileContactsFlatLoaded = true;
+  } catch (e) {
+    if (!append) show('fileContactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">${esc(e.message)}</td></tr>`;
+  } finally {
+    _fileContactsLoadingMore = false;
+  }
+  _fileContactsMaybeAutoLoadMore();
+}
+
+// ── File Contacts grouped-by-org view ───────────────────────────────────────
+// Lazy by design: a lightweight group_by=org request gets accurate
+// per-organization counts (one aggregate pass server-side, no row fetching)
+// so every group card renders immediately with a correct badge; a group's
+// actual rows are only fetched the first time it's expanded, then cached
+// here so re-collapsing/re-expanding doesn't refetch. Filter/search/sort
+// changes invalidate this cache (see filterFileContactsTab) since the
+// underlying result set changed.
+let _fileContactsGroups = [];                // [{org_code, org_label, count}]
+let _fileContactsGroupsLoaded = false;
+let _fileContactsExpandedOrgs = new Set();    // slugs ('__none__' for no-org)
+const _fileContactsGroupRows = new Map();     // slug -> rows[]
+const _fileContactsGroupLoading = new Set();  // slugs currently fetching
+
+function _fcGroupSlug(orgCode) { return orgCode || '__none__'; }
+function _fcSlugToOrgParam(slug) { return slug === '__none__' ? '' : slug; }
+
+async function _loadFileContactsGroups() {
+  if (_contactsScope !== 'file') return;
+  const el = show('fileContactsGroupedView');
+  el.innerHTML = `<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>`;
+  try {
+    const params = _fileContactsQueryParams();
+    params.set('group_by', 'org');
+    const resp = await fetch(API_BASE + 'api/contacts?' + params.toString());
+    const data = await resp.json();
+    _fileContactsGroups = data.groups || [];
+    _fileContactsGroupsLoaded = true;
+    _contactsGroupSlugs = _fileContactsGroups.map(g => _fcGroupSlug(g.org_code));
+    _renderFileContactsGroups();
+  } catch (e) {
+    el.innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+  }
+}
+
+function _renderFileContactsGroups() {
+  const el = show('fileContactsGroupedView');
+  if (!_fileContactsGroups.length) {
+    el.innerHTML = `<p class="text-muted text-center py-4">${t('contacts.no_results')}</p>`;
     return;
   }
-  show('fileContactsTableBody').innerHTML = rows.map((c, i) => {
-    const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
-    const orgBadge = (c.org_label || c.org_code)
-      ? `<span class="badge bg-light text-dark border" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
-           title="${esc(c.org_label || c.org_code)}">${esc(c.org_label || c.org_code)}</span>` : '—';
-    return `<tr>
-      <td class="text-muted small">${i + 1}</td>
-      <td style="max-width:200px">
-        <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
-        ${_fileContactPosLine(c)}
-      </td>
-      <td style="max-width:180px">${orgBadge}</td>
-      <td>${_fileContactTypeBadges(c)}</td>
-      <td>${_fileContactPortalBadge(c, portalByContactId, portalEmails)}</td>
-      <td class="small" style="width:150px;max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
-        ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
-      </td>
-      <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
-        ${c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(c.tel)}</a>`
-                : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
-      </td>
-      <td onclick="event.stopPropagation()">${_fileContactActions(c, portalByContactId)}</td>
-    </tr>`;
+  el.innerHTML = _fileContactsGroups.map(g => {
+    const slug       = _fcGroupSlug(g.org_code);
+    const isNone      = slug === '__none__';
+    const isExpanded  = _fileContactsExpandedOrgs.has(slug);
+    const isLoading   = _fileContactsGroupLoading.has(slug);
+    const cachedRows  = _fileContactsGroupRows.get(slug);
+    const gId = 'fcg_' + slug.replace(/\W/g, '_');
+    let body = '';
+    if (isExpanded) {
+      body = (isLoading || !cachedRows)
+        ? `<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>`
+        : `<table class="table table-hover table-sm align-middle mb-0"><tbody>${cachedRows.map(c => _fileContactRowHtml(c, null)).join('')}</tbody></table>`;
+    }
+    return `
+    <div class="border rounded mb-2" ${isNone ? 'style="border-color:#fd7e14!important"' : ''}>
+      <div class="d-flex align-items-center justify-content-between px-3 py-2 ${isNone ? 'comm-group-row-warn' : 'comm-group-row'}"
+           style="cursor:pointer" onclick="toggleFileContactsOrg('${esc(slug)}')">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+          <i class="bi bi-${isNone ? 'person-slash text-warning' : 'building text-primary'}"></i>
+          <span class="fw-semibold small ${isNone ? 'text-warning-emphasis' : ''}">${esc(g.org_label || '(no organization)')}</span>
+          <span class="badge ${isNone ? 'bg-warning text-dark' : 'bg-secondary'} rounded-pill">${g.count}</span>
+        </div>
+        ${!isNone ? `<button class="btn btn-outline-primary btn-sm py-0 px-2" title="${esc(g.org_label)}"
+          onclick="event.stopPropagation();openOrgPanel('${esc(slug)}')">
+          <i class="bi bi-box-arrow-up-right"></i>
+        </button>` : ''}
+      </div>
+      <div id="${gId}" class="${isExpanded ? '' : 'd-none'} px-3">${body}</div>
+    </div>`;
   }).join('');
 }
 
-function renderFileContactsGrouped(rows, portalByContactId, portalEmails) {
-  _renderGroupedByOrg('fileContactsGroupedView', 'fcg_', rows,
-    c => c.org_code, c => c.org_label || c.org_code,
-    c => {
-      const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
-      return `<tr>
-        <td style="max-width:200px">
-          <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>
-          ${_fileContactPosLine(c)}
-        </td>
-        <td>${_fileContactTypeBadges(c)}</td>
-        <td>${_fileContactPortalBadge(c, portalByContactId, portalEmails)}</td>
-        <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
-          ${c.email ? `<a class="d-block text-truncate" href="mailto:${esc(c.email)}" title="${esc(c.email)}">${esc(c.email)}</a>` : ''}
-        </td>
-        <td class="small text-nowrap" style="width:90px" onclick="event.stopPropagation()">
-          ${c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none"><i class="bi bi-telephone me-1"></i>${esc(c.tel)}</a>`
-                  : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
-        </td>
-        <td onclick="event.stopPropagation()">${_fileContactActions(c, portalByContactId)}</td>
-      </tr>`;
-    });
+async function _fetchFileContactsGroupRows(slug) {
+  if (_fileContactsGroupRows.has(slug) || _fileContactsGroupLoading.has(slug)) return;
+  _fileContactsGroupLoading.add(slug);
+  try {
+    const params = _fileContactsQueryParams();
+    params.set('org', _fcSlugToOrgParam(slug));
+    params.set('rows', 200);  // generous cap for a single org; larger ones would need their own load-more
+    params.set('start', 0);
+    const resp = await fetch(API_BASE + 'api/contacts?' + params.toString());
+    const data = await resp.json();
+    _fileContactsGroupRows.set(slug, data.contacts || []);
+  } catch (e) {
+    _fileContactsGroupRows.set(slug, []);
+  } finally {
+    _fileContactsGroupLoading.delete(slug);
+  }
+}
+
+function toggleFileContactsOrg(slug) {
+  if (_fileContactsExpandedOrgs.has(slug)) {
+    _fileContactsExpandedOrgs.delete(slug);
+    _renderFileContactsGroups();
+    return;
+  }
+  _fileContactsExpandedOrgs.add(slug);
+  _renderFileContactsGroups();  // show the per-group spinner immediately
+  _fetchFileContactsGroupRows(slug).then(_renderFileContactsGroups);
+}
+
+// Throttled (not all-at-once): fires a bounded number of concurrent
+// per-group fetches rather than one request per organization simultaneously,
+// which could otherwise burst dozens of requests at once on a large org list.
+async function expandAllFileContacts() {
+  const slugs = _fileContactsGroups.map(g => _fcGroupSlug(g.org_code)).filter(s => !_fileContactsExpandedOrgs.has(s));
+  if (!slugs.length) return;
+  const btn = show('contactsExpandAllBtn');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  slugs.forEach(s => _fileContactsExpandedOrgs.add(s));
+  _renderFileContactsGroups();
+  const CONCURRENCY = 4;
+  let next = 0;
+  async function worker() {
+    while (next < slugs.length) {
+      const slug = slugs[next++];
+      await _fetchFileContactsGroupRows(slug);
+      _renderFileContactsGroups();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, slugs.length) }, worker));
+  btn.disabled = false;
+  btn.innerHTML = originalHtml;
+}
+
+function collapseAllFileContacts() {
+  _fileContactsExpandedOrgs.clear();
+  _renderFileContactsGroups();
+}
+
+// Re-syncs whichever layout (flat/grouped) is currently selected without
+// invalidating anything -- used when just switching scope or toggling
+// All/By-Organization, as opposed to filterFileContactsTab() below, which
+// is for when the actual result set has changed.
+function _fileContactsSyncView() {
+  if (_contactsViewMode === 'grouped') {
+    if (_fileContactsGroupsLoaded) _renderFileContactsGroups();
+    else _loadFileContactsGroups();
+  } else if (!_fileContactsFlatLoaded) {
+    loadFileContactsTab(false);
+  }
+}
+
+// Search box / sort click / filter card click all funnel here -- the result
+// set has genuinely changed, so both view modes' cached data are stale.
+function filterFileContactsTab() {
+  if (_contactsScope !== 'file') return;
+  _fileContactsCache = [];
+  _fileContactsTotalCount = 0;
+  _fileContactsFlatLoaded = false;
+  _fileContactsGroups = [];
+  _fileContactsGroupsLoaded = false;
+  _fileContactsGroupRows.clear();
+  _fileContactsExpandedOrgs.clear();
+  renderFileContactsSummary();  // repaint cards' active state immediately; counts refresh once the fetch below resolves
+  _fileContactsSyncView();
+}
+
+function _findLoadedFileContact(id) {
+  const inFlat = (_fileContactsCache || []).find(c => c.id === id);
+  if (inFlat) return inFlat;
+  for (const rows of _fileContactsGroupRows.values()) {
+    const found = rows.find(c => c.id === id);
+    if (found) return found;
+  }
+  return null;
 }
 
 function openPmEditFileContact(id) {
-  const c = (_fileContactsCache || []).find(c => c.id === id);
+  const c = _findLoadedFileContact(id);
   if (!c) return;
   const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || '(no name)';
   show('pmEditTitle').textContent   = name + ' — ' + (c.org_label || c.org_code);
@@ -7938,7 +8089,17 @@ function deletePmContactRecord(contactId, username) {
         _pmUnmatched = _pmUnmatched.filter(c => c.id !== contactId);
         _pmSaveCache(_portalMembersCache || [], _pmUnmatched);
       }
-      if (_fileContactsCache) _fileContactsCache = _fileContactsCache.filter(c => c.id !== contactId);
+      // filterContactsTab() below already does a full refetch if File
+      // Contacts is the active scope (simplest way to keep counts/groups
+      // consistent) -- when it's not, just patch the caches so a later
+      // switch there without an intervening filter change (see
+      // _fileContactsSyncView) doesn't show a deleted row.
+      if (_contactsScope !== 'file') {
+        _fileContactsCache = _fileContactsCache.filter(c => c.id !== contactId);
+        _fileContactsGroupRows.clear();
+        _fileContactsGroups = [];
+        _fileContactsGroupsLoaded = false;
+      }
       _allContacts = null; _allUnified = null;
       filterContactsTab();
       if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel();
@@ -8248,11 +8409,18 @@ async function savePmContact() {
     if (idx >= 0) _pmUnmatched[idx] = data;
     else _pmUnmatched.unshift(data);
   }
-  if (_fileContactsCache) {
+  // Same reasoning as deletePmContactRecord above: a full refetch when File
+  // Contacts is the active scope, otherwise just patch/invalidate its caches
+  // for next time.
+  if (_contactsScope === 'file') {
+    filterFileContactsTab();
+  } else {
     const fIdx = _fileContactsCache.findIndex(c => c.id === data.id);
     if (fIdx >= 0) _fileContactsCache[fIdx] = data;
     else _fileContactsCache.unshift(data);
-    if (_contactsScope === 'file') filterFileContactsTab();
+    _fileContactsGroupRows.clear();
+    _fileContactsGroups = [];
+    _fileContactsGroupsLoaded = false;
   }
   _pmSaveCache(_portalMembersCache, _pmUnmatched);
   _pmEditModal.hide();

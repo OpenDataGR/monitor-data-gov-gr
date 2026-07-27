@@ -4934,14 +4934,138 @@ def contacts_fix_tel_mobile():
 
 # ── Org Contacts ─────────────────────────────────────────────────────────────
 
+# Mirrors CONTACT_TYPE_CLS's keys in app.js -- the fixed vocabulary
+# contact_type is drawn from (comma-separated, a contact can hold several).
+_CONTACT_TYPE_VALUES = [
+    "Org Administrator", "Org Editor", "Org Member",
+    "Data Governance Officer", "Data Steward",
+    "Κεντρικός Διαχειριστής Οργανισμού",
+]
+
+
+def _org_contacts_portal_link_info():
+    """(contact_id -> username, {linked emails}) from the portal-members
+    cache -- used to classify a file contact as portal-linked the same way
+    the Contacts tab already did client-side (see the old _fileContactIsLinked
+    in app.js): by contact_id when a specific portal-member row carries it,
+    falling back to email-set membership for the case where a duplicate-email
+    OrgContact row lost that attachment (contact_by_email in
+    _do_fetch_portal_members keeps only the last one per email). Returns
+    empty structures if the portal-members cache hasn't warmed yet -- same
+    "not linked until we know otherwise" behavior as before."""
+    data = _pm_cache["data"]
+    if not data:
+        return {}, set()
+    by_contact_id = {}
+    emails = set()
+    for m in (data.get("members") or []):
+        cid = m.get("contact_id")
+        if cid and cid not in by_contact_id:
+            by_contact_id[cid] = m.get("username", "")
+        if m.get("email"):
+            emails.add(m["email"].lower().strip())
+    return by_contact_id, emails
+
+
 @app.route("/api/contacts", methods=["GET"])
 def contacts_all():
-    contacts = (
-        OrgContact.query
-        .order_by(OrgContact.org_code, OrgContact.last_name, OrgContact.first_name)
-        .all()
-    )
-    return jsonify([c.to_dict() for c in contacts])
+    """Paginated, searchable, filterable list of file contacts (org_contacts
+    rows) backing the Contacts tab's File Contacts scope -- mirrors the
+    Dataset Catalog's /api/datasets/search contract: rows/start pagination,
+    facet counts returned only on the first page (start=0) since they can't
+    have changed since, and a group_by=org mode returning per-organization
+    counts only (no rows) for the grouped view's collapsed-by-default cards.
+
+    File contacts are few enough (hundreds, not tens of thousands) that
+    filtering/sorting in Python after one query is simpler and plenty fast --
+    unlike the Catalog, there's no need to push every clause into SQL.
+    """
+    q        = _search_normalize((freq.args.get("q") or "").strip())
+    org      = (freq.args.get("org") or "").strip()
+    type_f   = (freq.args.get("type") or "").strip()
+    linked_f = (freq.args.get("linked") or "").strip()  # '1' linked, '0' unlinked, '' = either
+    sort_key = (freq.args.get("sort") or "name").strip()
+    sort_dir = (freq.args.get("dir") or "asc").strip()
+    group_by = (freq.args.get("group_by") or "").strip()
+    rows     = min(max(int(freq.args.get("rows", 30) or 30), 1), 200)
+    start    = max(int(freq.args.get("start", 0) or 0), 0)
+
+    query = OrgContact.query
+    if org:
+        query = query.filter(OrgContact.org_code == org)
+    all_contacts = query.all()
+
+    contact_id_to_username, portal_emails = _org_contacts_portal_link_info()
+
+    def is_linked(c):
+        return c.id in contact_id_to_username or (c.email or "").lower().strip() in portal_emails
+
+    def has_type(c, ty):
+        return ty in [t.strip() for t in (c.contact_type or "").split(",") if t.strip()]
+
+    def matches_q(c):
+        if not q:
+            return True
+        hay = _search_normalize(" ".join(filter(None, [
+            c.first_name, c.last_name, c.org_label, c.position, c.email,
+        ])))
+        return q in hay
+
+    shared = [c for c in all_contacts if matches_q(c)]  # org + search already applied above
+
+    if group_by == "org":
+        scoped = [c for c in shared
+                  if (not type_f or has_type(c, type_f))
+                  and (not linked_f or (("1" if is_linked(c) else "0") == linked_f))]
+        groups = {}
+        for c in scoped:
+            key = c.org_code or ""
+            g = groups.setdefault(key, {"org_code": c.org_code or "", "org_label": c.org_label or c.org_code or "", "count": 0})
+            g["count"] += 1
+        return jsonify({"groups": sorted(groups.values(), key=lambda g: _search_normalize(g["org_label"]))})
+
+    # Each facet's counts are scoped to the OTHER facet's current selection
+    # (but not its own), same cross-scoping the Contacts tab's summary cards
+    # already used -- so picking a Type updates what Linked's numbers mean.
+    type_scope   = [c for c in shared if not linked_f or (("1" if is_linked(c) else "0") == linked_f)]
+    linked_scope = [c for c in shared if not type_f or has_type(c, type_f)]
+    filtered     = [c for c in shared
+                    if (not type_f or has_type(c, type_f))
+                    and (not linked_f or (("1" if is_linked(c) else "0") == linked_f))]
+
+    type_counts = None
+    linked_counts = None
+    if start == 0:
+        tc = {ty: 0 for ty in _CONTACT_TYPE_VALUES}
+        for c in type_scope:
+            for ty in [t.strip() for t in (c.contact_type or "").split(",") if t.strip()]:
+                if ty in tc:
+                    tc[ty] += 1
+        type_counts = {"total": len(type_scope), "items": [{"name": ty, "count": tc[ty]} for ty in _CONTACT_TYPE_VALUES]}
+        has_n = sum(1 for c in linked_scope if is_linked(c))
+        linked_counts = {"total": len(linked_scope), "has": has_n, "none": len(linked_scope) - has_n}
+
+    sort_map = {
+        "name":  lambda c: _search_normalize(f"{c.first_name or ''} {c.last_name or ''}"),
+        "org":   lambda c: _search_normalize(c.org_label or c.org_code or ""),
+        "type":  lambda c: _search_normalize(c.contact_type or ""),
+        "email": lambda c: (c.email or "").lower(),
+    }
+    filtered.sort(key=sort_map.get(sort_key, sort_map["name"]), reverse=(sort_dir == "desc"))
+
+    def serialize(c):
+        d = c.to_dict()
+        d["linked_username"] = contact_id_to_username.get(c.id)
+        d["is_linked"] = is_linked(c)
+        return d
+
+    page = filtered[start:start + rows]
+    return jsonify({
+        "count":          len(filtered),
+        "contacts":       [serialize(c) for c in page],
+        "type_counts":    type_counts,
+        "linked_counts":  linked_counts,
+    })
 
 
 def _search_normalize(s):

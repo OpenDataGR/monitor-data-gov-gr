@@ -1182,13 +1182,14 @@
             <div id="contactsGroupedView" class="d-none"></div>
             <div id="fileContactsView" class="d-none">
               <div id="fileContactsFlatView">
-                <div style="max-height:65vh;overflow-y:auto">
+                <div id="fileContactsScrollBox" style="max-height:65vh;overflow-y:auto">
                 <table class="table table-hover table-sm align-middle mb-0" id="fileContactsTable">
                   <thead class="sticky-top bg-white"><tr></tr></thead>
                   <tbody id="fileContactsTableBody">
                     <tr><td colspan="8" class="text-center py-5 text-muted"><span data-i18n="contacts.tab_hint">Open this tab to load contacts.</span></td></tr>
                   </tbody>
                 </table>
+                <div id="fileContactsLoadMoreSentinel" class="text-center py-3 text-muted small"></div>
                 </div>
               </div>
               <div id="fileContactsGroupedView" class="d-none"></div>
