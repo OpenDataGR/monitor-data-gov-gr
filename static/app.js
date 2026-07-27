@@ -7156,6 +7156,19 @@ const _PM_LOAD_MAX_ATTEMPTS = 40;   // give up after ~200s, same budget as _poll
 const _PM_LOAD_RETRY_MS     = 5000;
 let _pmLoadRetryTimer = null;
 
+// Bumped by every fresh (non-append) load -- loadPortalMembersTab and
+// _loadPortalMembersGroups share this because they also share the same
+// progress-bar DOM ids (see _progressBarHtml('pm', ...)). Switching scope
+// away and back (or toggling flat/grouped) cancels a *pending* retry timer,
+// but an already in-flight fetch from the old load has no way to be
+// aborted -- if that stale response (captured an earlier, lower progress
+// count) arrives *after* a newer load already rendered a higher one, the
+// bar visibly jumps backward. Each in-flight call captures the generation
+// active when it started and checks it again once the response lands;
+// a mismatch means a newer load has since taken over, so this response
+// is just discarded instead of applied.
+let _pmLoadGeneration = 0;
+
 // attempt only applies to a fresh (non-append) load -- _pm_cache backing
 // this table is the SAME server-side cache loadContactsTab's full=1 poll
 // warms, so a cold response here is common (whichever of the two requests
@@ -7165,6 +7178,7 @@ async function loadPortalMembersTab(append = false, attempt = 0) {
   if (_contactsScope !== 'portal') return;
   if (_pmLoadRetryTimer) { clearTimeout(_pmLoadRetryTimer); _pmLoadRetryTimer = null; }
   if (!append) _pmStart = 0;
+  const myGeneration = append ? _pmLoadGeneration : ++_pmLoadGeneration;
   const sentinelBefore = document.getElementById('contactsLoadMoreSentinel');
   if (append) {
     _pmLoadingMore = true;
@@ -7184,6 +7198,7 @@ async function loadPortalMembersTab(append = false, attempt = 0) {
     params.set('start', _pmStart);
     const resp = await fetch(API_BASE + 'api/portal-members?' + params.toString());
     const data = await resp.json();
+    if (myGeneration !== _pmLoadGeneration) return;  // superseded by a newer load while this was in flight
     if (resp.status === 202) {
       if (append) return;  // can't happen (append never fires while cold, see guards below), but stay safe
       _updateContactsLoadingProgress(data.progress);
@@ -7264,6 +7279,7 @@ let _pmGroupsRetryTimer = null;
 async function _loadPortalMembersGroups(attempt = 0) {
   if (_contactsScope !== 'portal') return;
   if (_pmGroupsRetryTimer) { clearTimeout(_pmGroupsRetryTimer); _pmGroupsRetryTimer = null; }
+  const myGeneration = attempt === 0 ? ++_pmLoadGeneration : _pmLoadGeneration;
   const el = show('contactsGroupedView');
   if (attempt === 0) {
     el.innerHTML = `<div class="text-center py-4"><div class="spinner-border text-primary mb-2"></div>
@@ -7275,6 +7291,7 @@ async function _loadPortalMembersGroups(attempt = 0) {
     params.set('group_by', 'org');
     const resp = await fetch(API_BASE + 'api/portal-members?' + params.toString());
     const data = await resp.json();
+    if (myGeneration !== _pmLoadGeneration) return;  // superseded by a newer load while this was in flight
     if (resp.status === 202) {
       _updateContactsLoadingProgress(data.progress);
       if (attempt < _PM_LOAD_MAX_ATTEMPTS) {
