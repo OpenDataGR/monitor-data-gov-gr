@@ -1364,9 +1364,10 @@ document.addEventListener('hidden.bs.tab', (e) => {
   const target = e.target.dataset.bsTarget;
   if (target === '#tab-orgs' && _orgsLoaded) show('orgsTable').innerHTML = '';
   if (target === '#tab-contacts' && _portalMembersCache) show('contactsTableBody').innerHTML = '';
-  // Communications/Cases: same story -- every row of _commsData/_casesData
-  // ever logged renders into one #commsTable, unpaginated, and grows for as
-  // long as the dashboard is used.
+  // Communications/Cases: same DOM-size reasoning, though the data behind
+  // it is paginated now -- _commsSyncView's reuse path rebuilds whichever
+  // view was showing from its own cache (_commsFlatRows/_commsCaseGroups/
+  // etc.) without a network call once this tab is shown again.
   if (target === '#tab-comms' && _commsLoaded) show('commsTable').innerHTML = '';
   // hvdTableWrap/dcatTableWrap/geodcatTableWrap only exist once their check has
   // actually been run at least once this session (they're created dynamically
@@ -4345,10 +4346,12 @@ async function _pollUntilEnriched(attempts = 0) {
 }
 
 // ── Communications tab ───────────────────────────────────────────────────────
+// Server-paginated: /api/communications is queried per view instead of once
+// for everything, mirroring the Dataset Catalog/Contacts tabs' design (see
+// that route's docstring in app.py). Unlike those, there's no cold-cache
+// 202-polling dance here -- this queries the DB directly, which stays fast
+// even as row counts grow, so every fetch below just resolves immediately.
 let _commsLoaded   = false;
-let _commsData     = [];
-let _casesData     = [];   // [{id, org_name, org_title, subject, status, opened_at, closed_at, entry_count, last_update}]
-let _commsPollSnapshot = '';  // last-seen JSON of comms+cases, so the 20s poll can skip re-rendering when nothing changed
 let _inboundEmailsData = [];  // pending_review InboundEmail rows -- not real Communications yet, shown above the log for approval
 let _inboundAttachModal = null;
 let _publicOrgs    = [];   // [{code, label}] from hrms.gov.gr
@@ -4362,6 +4365,76 @@ let _expandedCases  = new Set();
 let _expandedTimelineDays = new Set();
 let _timelineDaysInitialized = false;
 
+// Server-computed cross-scoped facet counts (case_status/stale/status),
+// replacing the old client-side computation over full _commsData/_casesData
+// arrays -- refreshed by _applyCommsFacets() whenever any view's fresh
+// (start=0) fetch resolves.
+let _commsCaseStatusCounts = null;
+let _commsStaleCounts      = null;
+let _commsStatusCounts     = null;
+
+// q/case_status/stale/status shared by every /api/communications call this
+// tab makes (flat rows, group listings, and a single group's expand-fetch)
+// -- so all of them stay in sync with the search box and filter cards.
+// Sort/dir are NOT included here since only the flat view exposes sorting.
+function _commsQueryParams() {
+  const p = new URLSearchParams();
+  const search = (show('commsSearch').value || '').trim();
+  if (search) p.set('q', search);
+  if (_commsCaseStatusFilter) p.set('case_status', _commsCaseStatusFilter);
+  if (_commsStaleFilter)      p.set('stale', _commsStaleFilter);
+  if (_commsStatusFilter)     p.set('status', _commsStatusFilter);
+  return p;
+}
+
+// Snapshot of _commsQueryParams().toString() as of the last successful fetch
+// for ANY view -- same fingerprint-staleness pattern as Portal Members'
+// _pmLoadedFingerprint. All 4 views share one fingerprint since they all
+// depend on exactly the same 4 filter dimensions.
+let _commsLoadedFingerprint = null;
+
+function _applyCommsFacets(data) {
+  if (data.case_status_counts) _commsCaseStatusCounts = data.case_status_counts;
+  if (data.stale_counts)       _commsStaleCounts      = data.stale_counts;
+  if (data.status_counts)      _commsStatusCounts     = data.status_counts;
+  renderCommsSummary();
+}
+
+// Every id a user can click an edit/follow-up button on is, by construction,
+// already sitting in one of the caches below (the button only exists on an
+// already-rendered row) -- so a plain in-memory scan across all of them
+// always finds it, no fetch needed. Used by openCommModal/addFollowupForComm.
+function _commsFindById(id) {
+  const inFlat = _commsFlatRows.find(c => c.id === id);
+  if (inFlat) return inFlat;
+  for (const rows of _commsCaseExpandRows.values()) {
+    const hit = rows.find(c => c.id === id);
+    if (hit) return hit;
+  }
+  for (const rows of _commsOrgExpandRows.values()) {
+    const hit = rows.find(c => c.id === id);
+    if (hit) return hit;
+  }
+  for (const rows of _commsDayExpandRows.values()) {
+    const hit = rows.find(c => c.id === id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// Case-level fields (deadline/opened_at/closed_at/status) aren't carried by
+// every Communication row (only its case_status/case_is_stale snapshot is) --
+// fetched on demand via the existing /api/cases/<id> route and cached here,
+// since a case's own details rarely change within one modal interaction.
+const _commsCaseDetailCache = new Map();
+async function _commsFetchCaseDetail(caseId) {
+  if (_commsCaseDetailCache.has(caseId)) return _commsCaseDetailCache.get(caseId);
+  const resp = await fetch(`${API_BASE}api/cases/${caseId}`);
+  const cs = await _fetchJsonOrThrow(resp);
+  _commsCaseDetailCache.set(caseId, cs);
+  return cs;
+}
+
 const STATUS_BADGE = {
   "Initial Contact":      "bg-primary",
   "Intermediate Contact": "bg-info text-dark",
@@ -4369,6 +4442,18 @@ const STATUS_BADGE = {
   "Negative Response":    "bg-danger",
   "No Response":          "bg-secondary",
 };
+// Built lazily (not at module-eval time) since it depends on t(), which
+// needs i18n strings loaded first -- called fresh by every renderer below
+// rather than cached, since the active language can change mid-session.
+function _commsStatusLabels() {
+  return {
+    "Initial Contact":      t('comms.initial_contact'),
+    "Intermediate Contact": t('comms.intermediate_contact'),
+    "Positive Response":    t('comms.positive_response'),
+    "Negative Response":    t('comms.negative_response'),
+    "No Response":          t('comms.no_response'),
+  };
+}
 
 const CASE_STATUS_BADGE = { "Open": "bg-warning text-dark", "Closed": "bg-success" };
 function caseStatusLabel(status) {
@@ -4404,25 +4489,7 @@ function autoEmailBadge(c) {
 }
 
 document.getElementById('commsTabBtn').addEventListener('click', () => {
-  // Already-loaded data lives in _commsData/_casesData -- re-render from
-  // there instead of skipping outright, since #commsTable is emptied
-  // whenever this tab is hidden (see the hidden.bs.tab listener above).
-  if (_commsLoaded) { renderCommsSummary(); filterComms(); return; }
-  loadComms();
-});
-
-async function loadComms() {
-  try {
-    const fetches = [
-      fetch(API_BASE + 'api/communications').then(r => r.json()),
-      fetch(API_BASE + 'api/cases').then(r => r.json()),
-    ];
-    if (!_publicOrgs.length) fetches.push(fetch(API_BASE + 'api/public-orgs').then(r => r.ok ? r.json() : []));
-    const results = await Promise.all(fetches);
-    _commsData = results[0];
-    _casesData = Array.isArray(results[1]) ? results[1] : [];
-    _commsPollSnapshot = JSON.stringify([_commsData, _casesData]);
-    if (results[2]) _publicOrgs = Array.isArray(results[2]) ? results[2] : [];
+  if (!_commsLoaded) {
     _commsLoaded = true;
     if (!_portalMembersCache) loadContactsTab();
     if (!_orgsData.length) {
@@ -4432,14 +4499,16 @@ async function loadComms() {
       if (cached) _orgsData = cached.data;
       else _loadOrgsBackground();
     }
-    renderCommsSummary();
-    filterComms();
+    if (!_publicOrgs.length) fetch(API_BASE + 'api/public-orgs').then(r => r.ok ? r.json() : []).then(d => { _publicOrgs = Array.isArray(d) ? d : []; }).catch(() => {});
     _refreshCommSubjectDatalist();
     _loadInboundEmails();
-  } catch (e) {
-    show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${t('error')}: ${e.message}</div>`;
   }
-}
+  // Re-syncs whichever view is active, reusing already-loaded data if the
+  // filters haven't changed since -- same relationship _contactsSyncActiveScope
+  // has to filterPortalMembersTab (that one resets+refetches; this one doesn't).
+  renderCommsSummary();
+  _commsSyncView();
+});
 
 async function _loadInboundEmails() {
   try {
@@ -4451,42 +4520,38 @@ async function _loadInboundEmails() {
   renderCommsReviewSection();
 }
 
+// Called whenever the underlying data changed elsewhere -- this admin's own
+// edit, another admin's edit (the 20s multi-editor poll), or an auto-captured
+// inbound email (the SSE new_communication event). Unlike filterComms() (for
+// when the user actually changed a filter/search/sort), this doesn't need to
+// distinguish "did anything really change" the way the old JSON-snapshot-diff
+// did -- refetching a page is cheap now that it's paginated instead of the
+// whole table, so it just always refreshes. Accepted tradeoff: this collapses
+// any expanded groups and resets flat-view scroll to the top, even if nothing
+// relevant to the current view actually changed -- a minor, infrequent cost
+// (this fires at most every 20s) that isn't worth re-introducing the diffing
+// complexity for.
 async function _reloadCasesAndComms() {
-  const [comms, cases] = await Promise.all([
-    fetch(API_BASE + 'api/communications').then(r => r.json()),
-    fetch(API_BASE + 'api/cases').then(r => r.json()),
-  ]);
-  const casesArr = Array.isArray(cases) ? cases : [];
-  const snapshot = JSON.stringify([comms, casesArr]);
-  const changed = snapshot !== _commsPollSnapshot;
-  if (changed) {
-    _commsPollSnapshot = snapshot;
-    _commsData = comms;
-    _casesData = casesArr;
+  if (!_isTabActive('tab-comms')) {
+    // Not looking at the tab right now -- just mark every view stale so the
+    // next visit fetches fresh instead of showing pre-change data.
+    _commsLoadedFingerprint = null;
+    return;
   }
-  if (_isTabActive('tab-comms')) {
-    // Refreshed unconditionally -- a new pending email doesn't touch comms/cases
-    // at all, so it would never surface if gated behind the snapshot-changed check.
-    await _loadInboundEmails();
-    if (changed) {
-      renderCommsSummary();
-      filterComms();
-    }
-  }
+  await _loadInboundEmails();
+  filterComms();
 }
 
-function _refreshCommSubjectDatalist() {
+async function _refreshCommSubjectDatalist() {
   const list = document.getElementById('commSubjectDatalist');
   if (!list) return;
-  const seen = new Set();
-  const subjects = [];
-  for (const c of [..._commsData].sort((a, b) => b.contact_date.localeCompare(a.contact_date))) {
-    const subj = (c.subject || '').trim();
-    const key = subj.toLowerCase();
-    if (!subj || seen.has(key)) continue;
-    seen.add(key);
-    subjects.push(subj);
+  let subjects;
+  try {
+    subjects = await fetch(API_BASE + 'api/communications/subjects').then(r => r.ok ? r.json() : []);
+  } catch (_) {
+    return;  // leave the datalist as it was rather than wiping it on a transient error
   }
+  if (!Array.isArray(subjects)) return;
   list.innerHTML = subjects.map(s => `<option value="${esc(s)}">`).join('');
 }
 
@@ -4566,46 +4631,31 @@ function renderCommsReviewSection() {
 }
 
 function renderCommsSummary() {
-  // Cases with a communications entry matching the current Status filter
-  // (null = no restriction) — used to scope the Case/Follow-up tabs by the
-  // Status tab's selection, same cross-scoping the Catalog/Contacts tabs do.
-  const statusScopeCaseIds = _commsStatusFilter
-    ? new Set(_commsData.filter(c => c.status === _commsStatusFilter).map(c => c.case_id))
-    : null;
-  const matchesStatusScope = (c) => !statusScopeCaseIds || statusScopeCaseIds.has(c.id);
-  const matchesStale       = (c) => !_commsStaleFilter || (_commsStaleFilter === '1' ? !!c.is_stale : !c.is_stale);
-  const matchesCaseStatus  = (c) => !_commsCaseStatusFilter || c.status === _commsCaseStatusFilter;
-
-  const caseScopeForCaseStatus = _casesData.filter(c => matchesStale(c) && matchesStatusScope(c));
-  const caseScopeForStale      = _casesData.filter(c => matchesCaseStatus(c) && matchesStatusScope(c));
-  const openCases      = caseScopeForCaseStatus.filter(c => c.status === 'Open').length;
-  const closedCases    = caseScopeForCaseStatus.filter(c => c.status === 'Closed').length;
-  const staleCases     = caseScopeForStale.filter(c => c.is_stale).length;
-  const notStaleCases  = caseScopeForStale.filter(c => !c.is_stale).length;
-
-  // Entry Status counts are scoped by the case-level filters — each comms
-  // entry already carries its case's status/staleness (case_status/case_is_stale).
-  const entryScopeRows = _commsData.filter(c =>
-    (!_commsCaseStatusFilter || c.case_status === _commsCaseStatusFilter) &&
-    (!_commsStaleFilter || (_commsStaleFilter === '1' ? !!c.case_is_stale : !c.case_is_stale))
-  );
-  const statusCounts = { "Initial Contact": 0, "Intermediate Contact": 0, "Positive Response": 0, "Negative Response": 0 };
-  for (const c of entryScopeRows) if (c.status in statusCounts) statusCounts[c.status]++;
+  // Counts come from the server (_commsCaseStatusCounts/_commsStaleCounts/
+  // _commsStatusCounts, refreshed by _applyCommsFacets whenever any view's
+  // fresh fetch resolves) instead of being computed here over full
+  // _commsData/_casesData arrays -- each is already cross-scoped by the
+  // *other* two filter dimensions server-side, same relationship the old
+  // client-side computation had. null-safe defaults so the cards render as
+  // all-zero before the first fetch resolves rather than throwing.
+  const csc = _commsCaseStatusCounts || { total: 0, Open: 0, Closed: 0 };
+  const sc  = _commsStaleCounts      || { total: 0, '1': 0, '0': 0 };
+  const stc = _commsStatusCounts     || { total: 0, "Initial Contact": 0, "Intermediate Contact": 0, "Positive Response": 0, "Negative Response": 0 };
 
   _commsSummaryCards = [
-    { filter: { dim: 'case_status', value: null },       label: t('comms.total'),        value: caseScopeForCaseStatus.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
-    { filter: { dim: 'case_status', value: 'Open' },      label: t('comms.open_cases'),   value: openCases,   bg: "bg-warning bg-opacity-10", text: "text-warning",   icon: "bi-folder2-open" },
-    { filter: { dim: 'case_status', value: 'Closed' },    label: t('comms.closed_cases'), value: closedCases, bg: "bg-success bg-opacity-10", text: "text-success",   icon: "bi-folder-check" },
+    { filter: { dim: 'case_status', value: null },       label: t('comms.total'),        value: csc.total,        bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
+    { filter: { dim: 'case_status', value: 'Open' },      label: t('comms.open_cases'),   value: csc.Open || 0,   bg: "bg-warning bg-opacity-10", text: "text-warning",   icon: "bi-folder2-open" },
+    { filter: { dim: 'case_status', value: 'Closed' },    label: t('comms.closed_cases'), value: csc.Closed || 0, bg: "bg-success bg-opacity-10", text: "text-success",   icon: "bi-folder-check" },
 
-    { filter: { dim: 'stale', value: null }, label: t('comms.total'),          value: caseScopeForStale.length, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
-    { filter: { dim: 'stale', value: '1' },  label: t('comms.stale_cases'),     value: staleCases,    bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-hourglass-split" },
-    { filter: { dim: 'stale', value: '0' },  label: t('comms.not_stale_cases'), value: notStaleCases, bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-hourglass-split" },
+    { filter: { dim: 'stale', value: null }, label: t('comms.total'),          value: sc.total,      bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
+    { filter: { dim: 'stale', value: '1' },  label: t('comms.stale_cases'),     value: sc['1'] || 0,  bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-hourglass-split" },
+    { filter: { dim: 'stale', value: '0' },  label: t('comms.not_stale_cases'), value: sc['0'] || 0,  bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-hourglass-split" },
 
-    { filter: { dim: 'status', value: null },                     label: t('comms.total'),                value: entryScopeRows.length,           bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
-    { filter: { dim: 'status', value: 'Initial Contact' },        label: t('comms.initial_contact'),      value: statusCounts["Initial Contact"],      bg: "bg-primary bg-opacity-10", text: "text-primary", icon: "bi-envelope" },
-    { filter: { dim: 'status', value: 'Intermediate Contact' },   label: t('comms.intermediate_contact'), value: statusCounts["Intermediate Contact"], bg: "bg-info bg-opacity-10",    text: "text-info",    icon: "bi-reply" },
-    { filter: { dim: 'status', value: 'Positive Response' },      label: t('comms.positive_response'),    value: statusCounts["Positive Response"],    bg: "bg-success bg-opacity-10", text: "text-success", icon: "bi-hand-thumbs-up" },
-    { filter: { dim: 'status', value: 'Negative Response' },      label: t('comms.negative_response'),    value: statusCounts["Negative Response"],    bg: "bg-danger bg-opacity-10",   text: "text-danger",  icon: "bi-hand-thumbs-down" },
+    { filter: { dim: 'status', value: null },                     label: t('comms.total'),                value: stc.total,                                  bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-list-ul" },
+    { filter: { dim: 'status', value: 'Initial Contact' },        label: t('comms.initial_contact'),      value: stc["Initial Contact"] || 0,      bg: "bg-primary bg-opacity-10", text: "text-primary", icon: "bi-envelope" },
+    { filter: { dim: 'status', value: 'Intermediate Contact' },   label: t('comms.intermediate_contact'), value: stc["Intermediate Contact"] || 0, bg: "bg-info bg-opacity-10",    text: "text-info",    icon: "bi-reply" },
+    { filter: { dim: 'status', value: 'Positive Response' },      label: t('comms.positive_response'),    value: stc["Positive Response"] || 0,    bg: "bg-success bg-opacity-10", text: "text-success", icon: "bi-hand-thumbs-up" },
+    { filter: { dim: 'status', value: 'Negative Response' },      label: t('comms.negative_response'),    value: stc["Negative Response"] || 0,    bg: "bg-danger bg-opacity-10",   text: "text-danger",  icon: "bi-hand-thumbs-down" },
   ];
 
   _renderCommsFilterGroup('commsCaseSummary',   [0, 1, 2],       'commsCaseTabDot');
@@ -4659,7 +4709,7 @@ function sortComms(col) {
     _commsSortCol = col;
     _commsSortDir = col === 'contact_date' ? 'desc' : 'asc';
   }
-  filterComms();
+  loadCommsFlat(false);  // only the flat view exposes sorting -- the 3 grouped views are unaffected
 }
 
 function commsArrow(col) {
@@ -4667,20 +4717,39 @@ function commsArrow(col) {
   return _commsSortDir === 'asc' ? ' ↑' : ' ↓';
 }
 
+// Re-syncs whichever view is currently selected, reusing already-loaded data
+// if the 4 filter dimensions haven't changed since -- mirrors _pmSyncView.
+// Used on view-mode toggle and re-clicking the tab button; filterComms()
+// below is for when the result set itself actually changed.
+function _commsSyncView() {
+  const stale = _commsQueryParams().toString() !== _commsLoadedFingerprint;
+  if (_commsViewMode === 'cases') {
+    if (_commsCaseGroupsLoaded && !stale) _renderCommsCaseGroups();
+    else _loadCommsCaseGroups();
+  } else if (_commsViewMode === 'grouped') {
+    if (_commsOrgGroupsLoaded && !stale) _renderCommsOrgGroups();
+    else _loadCommsOrgGroups();
+  } else if (_commsViewMode === 'timeline') {
+    if (_commsDayGroupsLoaded && !stale) _renderCommsDayGroups();
+    else _loadCommsDayGroups();
+  } else if (!_commsFlatLoaded || stale) {
+    loadCommsFlat(false);
+  } else if (!document.querySelector('#commsTable tbody')) {
+    // #commsTable was emptied by the hidden.bs.tab listener while we were on
+    // another tab -- rebuild from the already-fetched cache, no network call.
+    _renderCommsFlat(_commsFlatRows, false);
+  }
+}
+
+// Search box / filter card clicks funnel here -- the result set has
+// genuinely changed, so every view's cached data (and any expanded groups,
+// which no longer necessarily apply to the new result set) is stale.
 function filterComms() {
-  const q = _ns(show('commsSearch').value);
-  const filtered = _commsData.filter(c => {
-    const matchQ = !q || _ns(c.org_title).includes(q) || _ns(c.subject).includes(q) || _ns(c.notes || '').includes(q);
-    let matchFilter = true;
-    if (_commsCaseStatusFilter) matchFilter = matchFilter && c.case_status === _commsCaseStatusFilter;
-    if (_commsStaleFilter)      matchFilter = matchFilter && (_commsStaleFilter === '1' ? !!c.case_is_stale : !c.case_is_stale);
-    if (_commsStatusFilter)     matchFilter = matchFilter && c.status === _commsStatusFilter;
-    return matchQ && matchFilter;
-  });
-  if (_commsViewMode === 'grouped') renderCommsGrouped(filtered);
-  else if (_commsViewMode === 'cases') renderCommsCases(filtered);
-  else if (_commsViewMode === 'timeline') renderCommsTimeline(filtered);
-  else renderCommsTable(filtered);
+  _commsFlatRows = []; _commsFlatLoaded = false; _commsFlatStart = 0; _commsFlatTotal = 0;
+  _commsCaseGroups = []; _commsCaseGroupsLoaded = false; _commsCaseExpandRows.clear(); _expandedCases.clear();
+  _commsOrgGroups = []; _commsOrgGroupsLoaded = false; _commsOrgExpandRows.clear(); _expandedOrgs.clear();
+  _commsDayGroups = []; _commsDayGroupsLoaded = false; _commsDayExpandRows.clear(); _expandedTimelineDays.clear(); _timelineDaysInitialized = false;
+  _commsSyncView();
 }
 
 function setCommsView(mode) {
@@ -4692,150 +4761,200 @@ function setCommsView(mode) {
   const showExpandBtns = (mode === 'cases' || mode === 'grouped' || mode === 'timeline');
   show('commsExpandAllBtn').classList.toggle('d-none', !showExpandBtns);
   show('commsCollapseAllBtn').classList.toggle('d-none', !showExpandBtns);
-  filterComms();
+  _commsSyncView();  // reuses already-loaded data for this view if we have it
 }
 
-function expandAllComms() {
-  if (_commsViewMode === 'cases') {
-    for (const cs of _casesData) _expandedCases.add(cs.id);
-  } else if (_commsViewMode === 'grouped') {
-    for (const c of _commsData) _expandedOrgs.add(c.org_title || c.org_name);
-  } else if (_commsViewMode === 'timeline') {
-    for (const c of _commsData) _expandedTimelineDays.add(c.contact_date);
+// Shared by expandAllComms's 3 group-view branches -- throttled (not
+// all-at-once) the same way Portal Members' expandAllPortalMembers is, so
+// expanding e.g. 40 groups doesn't fire 40 simultaneous requests.
+async function _commsThrottledExpand(keys, markFn, fetchFn, renderFn) {
+  const btn = show('commsExpandAllBtn');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  keys.forEach(markFn);
+  renderFn();
+  const CONCURRENCY = 4;
+  let next = 0;
+  async function worker() {
+    while (next < keys.length) {
+      const k = keys[next++];
+      await fetchFn(k);
+      renderFn();
+    }
   }
-  filterComms();
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, keys.length) }, worker));
+  btn.disabled = false;
+  btn.innerHTML = originalHtml;
+}
+
+async function expandAllComms() {
+  if (_commsViewMode === 'cases') {
+    const ids = _commsCaseGroups.map(cs => cs.id).filter(id => !_expandedCases.has(id));
+    if (ids.length) await _commsThrottledExpand(ids, id => _expandedCases.add(id), id => _fetchCommsCaseRows(id), _renderCommsCaseGroups);
+  } else if (_commsViewMode === 'grouped') {
+    const keys = _commsOrgGroups.map(g => g.org_title).filter(k => !_expandedOrgs.has(k));
+    if (keys.length) await _commsThrottledExpand(keys, k => _expandedOrgs.add(k), k => _fetchCommsOrgRows(k), _renderCommsOrgGroups);
+  } else if (_commsViewMode === 'timeline') {
+    const days = _commsDayGroups.map(g => g.day).filter(d => !_expandedTimelineDays.has(d));
+    if (days.length) await _commsThrottledExpand(days, d => _expandedTimelineDays.add(d), d => _fetchCommsDayRows(d), _renderCommsDayGroups);
+  }
 }
 
 function collapseAllComms() {
-  if (_commsViewMode === 'cases') _expandedCases.clear();
-  else if (_commsViewMode === 'grouped') _expandedOrgs.clear();
-  else if (_commsViewMode === 'timeline') _expandedTimelineDays.clear();
-  filterComms();
+  if (_commsViewMode === 'cases') { _expandedCases.clear(); _renderCommsCaseGroups(); }
+  else if (_commsViewMode === 'grouped') { _expandedOrgs.clear(); _renderCommsOrgGroups(); }
+  else if (_commsViewMode === 'timeline') { _expandedTimelineDays.clear(); _renderCommsDayGroups(); }
 }
 
-function renderCommsTable(rows) {
-  const el = show('commsTable');
-  if (!rows.length) {
-    el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
-    return;
-  }
+function _commsFlatRowHtml(c) {
+  const statusLabel = _commsStatusLabels();
+  return `
+    <tr>
+      <td class="text-muted small mono text-nowrap">${esc(c.contact_date)}</td>
+      <td class="fw-semibold small">${esc(c.org_title)}</td>
+      <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
+      <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
+      <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
+      <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
+      <td class="text-end text-nowrap">
+        <div class="d-flex gap-1 justify-content-end">
+          ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
+          <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+        </div>
+      </td>
+    </tr>`;
+}
 
-  const STATUS_ORDER = { "Initial Contact": 0, "Intermediate Contact": 1, "Positive Response": 2, "Negative Response": 3, "No Response": 4 };
-  const statusLabel = { "Initial Contact": t('comms.initial_contact'), "Intermediate Contact": t('comms.intermediate_contact'), "Positive Response": t('comms.positive_response'), "Negative Response": t('comms.negative_response'), "No Response": t('comms.no_response') };
-  const sorted = [...rows].sort((a, b) => {
-    let av, bv;
-    switch (_commsSortCol) {
-      case 'org_title':     av = a.org_title.toLowerCase(); bv = b.org_title.toLowerCase(); break;
-      case 'subject':       av = a.subject.toLowerCase();   bv = b.subject.toLowerCase();   break;
-      case 'status':        av = STATUS_ORDER[a.status] ?? 99; bv = STATUS_ORDER[b.status] ?? 99; break;
-      default:              av = a.contact_date;             bv = b.contact_date;
+// ── Communications: flat/all view (real infinite scroll) ───────────────────
+// The only one of the 4 views where the underlying row count can genuinely
+// grow large enough to matter -- the 3 grouped views below fetch their whole
+// group listing in one shot instead (bounded by case/org/day count, not by
+// total communications logged), same tradeoff Portal Members' org grouping
+// already makes.
+const COMMS_PAGE_SIZE = 50;
+let _commsFlatRows = [];
+let _commsFlatStart = 0;
+let _commsFlatTotal = 0;
+let _commsFlatLoaded = false;
+let _commsFlatLoadingMore = false;
+let _commsFlatObserver = null;
+
+function _ensureCommsFlatObserver() {
+  if (!_commsFlatObserver) {
+    _commsFlatObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) _commsFlatLoadMoreTrigger();
+    }, { rootMargin: '400px 0px' });
+  }
+  return _commsFlatObserver;
+}
+function _commsFlatLoadMoreTrigger() {
+  if (_commsFlatLoadingMore || _commsFlatStart >= _commsFlatTotal) return;
+  loadCommsFlat(true);
+}
+
+async function loadCommsFlat(append = false) {
+  if (_commsViewMode !== 'flat') return;
+  if (!append) _commsFlatStart = 0;
+  if (append) {
+    _commsFlatLoadingMore = true;
+  } else {
+    if (_commsFlatObserver) _commsFlatObserver.disconnect();
+    show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
+  }
+  try {
+    const params = _commsQueryParams();
+    params.set('sort', _commsSortCol);
+    params.set('dir', _commsSortDir);
+    params.set('rows', COMMS_PAGE_SIZE);
+    params.set('start', _commsFlatStart);
+    const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
+    const data = await _fetchJsonOrThrow(resp);
+    _commsFlatTotal = data.total || 0;
+    if (!append) {
+      _commsFlatRows = [];
+      _applyCommsFacets(data);
+      _commsLoadedFingerprint = _commsQueryParams().toString();
     }
-    if (av < bv) return _commsSortDir === 'asc' ? -1 : 1;
-    if (av > bv) return _commsSortDir === 'asc' ?  1 : -1;
-    return 0;
-  });
-
-  const thS = (col, label, cls = '') =>
-    `<th class="${cls}" style="cursor:pointer;user-select:none;white-space:nowrap" onclick="sortComms('${col}')">${label}${commsArrow(col)}</th>`;
-
-  el.innerHTML = `
-    <table class="table table-hover table-sm align-middle mb-0">
-      <colgroup><col style="width:110px"><col><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
-      <thead><tr>
-        ${thS('contact_date', t('comms.col_date'), 'text-nowrap')}
-        ${thS('org_title',    t('comms.col_org'))}
-        ${thS('subject',      t('comms.col_subject'))}
-        ${thS('status',       t('comms.col_status'))}
-        <th>${t('comms.col_medium')}</th>
-        <th>${t('comms.col_notes')}</th>
-        <th></th>
-      </tr></thead>
-      <tbody>
-        ${sorted.map(c => `
-          <tr>
-            <td class="text-muted small mono text-nowrap">${esc(c.contact_date)}</td>
-            <td class="fw-semibold small">${esc(c.org_title)}</td>
-            <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
-            <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-            <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
-            <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
-            <td class="text-end text-nowrap">
-              <div class="d-flex gap-1 justify-content-end">
-                ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-                <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-                <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
-              </div>
-            </td>
-          </tr>`).join('')}
-      </tbody>
-    </table>`;
+    const newRows = data.rows || [];
+    _commsFlatRows = _commsFlatRows.concat(newRows);
+    _commsFlatStart += newRows.length;
+    if (!append && !newRows.length) {
+      show('commsTable').innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
+    } else {
+      _renderCommsFlat(append ? newRows : _commsFlatRows, append);
+    }
+    _commsFlatLoaded = true;
+  } catch (e) {
+    if (!append) show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+  } finally {
+    _commsFlatLoadingMore = false;
+  }
 }
 
-function renderCommsGrouped(data) {
-  const el = show('commsTable');
-  if (!data.length) {
-    el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
-    return;
+// rows/append: append=false always means "render this full set from
+// scratch" (used both for a fresh page-1 load and for rebuilding from cache
+// after the DOM was wiped -- see _commsSyncView); append=true means "insert
+// just these new rows at the bottom of the existing table".
+function _renderCommsFlat(rows, append) {
+  if (append) {
+    const tbody = document.querySelector('#commsTable tbody');
+    if (tbody) tbody.insertAdjacentHTML('beforeend', rows.map(_commsFlatRowHtml).join(''));
+  } else {
+    const thS = (col, label, cls = '') =>
+      `<th class="${cls}" style="cursor:pointer;user-select:none;white-space:nowrap" onclick="sortComms('${col}')">${label}${commsArrow(col)}</th>`;
+    show('commsTable').innerHTML = `
+      <table class="table table-hover table-sm align-middle mb-0">
+        <colgroup><col style="width:110px"><col><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
+        <thead><tr>
+          ${thS('contact_date', t('comms.col_date'), 'text-nowrap')}
+          ${thS('org_title',    t('comms.col_org'))}
+          ${thS('subject',      t('comms.col_subject'))}
+          ${thS('status',       t('comms.col_status'))}
+          <th>${t('comms.col_medium')}</th>
+          <th>${t('comms.col_notes')}</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${rows.map(_commsFlatRowHtml).join('')}</tbody>
+      </table>
+      <div id="commsLoadMoreSentinel" class="text-center text-muted small py-2"></div>`;
   }
-  const statusLabel = { "Initial Contact": t('comms.initial_contact'), "Intermediate Contact": t('comms.intermediate_contact'), "Positive Response": t('comms.positive_response'), "Negative Response": t('comms.negative_response'), "No Response": t('comms.no_response') };
-
-  // Group by org_title, preserve insertion order within groups
-  const groups = new Map();
-  for (const c of data) {
-    const key = c.org_title || c.org_name;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(c);
+  const sentinel = document.getElementById('commsLoadMoreSentinel');
+  if (sentinel) {
+    if (_commsFlatStart < _commsFlatTotal) {
+      sentinel.innerHTML = '';
+      _ensureCommsFlatObserver().observe(sentinel);
+    } else {
+      _ensureCommsFlatObserver().unobserve(sentinel);
+      sentinel.innerHTML = _commsFlatTotal ? t('catalog.end_of_results') : '';
+    }
   }
+}
 
-  // Sort each group newest-first
-  for (const comms of groups.values()) {
-    comms.sort((a, b) => b.contact_date.localeCompare(a.contact_date));
-  }
-
-  // Sort groups by their most recent communication
-  const sorted = [...groups.entries()].sort(
-    ([, a], [, b]) => b[0].contact_date.localeCompare(a[0].contact_date)
-  );
-
-  const rows = sorted.map(([orgTitle, comms]) => {
-    const latest     = comms[0];
-    const isExpanded = _expandedOrgs.has(orgTitle);
-    const safeAttr   = orgTitle.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-    return `
-      <tr class="comm-group-row" style="cursor:pointer" data-org="${safeAttr}" onclick="toggleOrgComms(this.dataset.org)">
-        <td colspan="6">
-          <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
-            <span class="fw-semibold">${esc(orgTitle)}</span>
-            <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${comms.length} ${comms.length === 1 ? t('comms.entry') : t('comms.entries')}</span>
-            <span class="badge ${STATUS_BADGE[latest.status] || 'bg-secondary'}" style="font-size:.7rem">${statusLabel[latest.status] || latest.status}</span>
-            <span class="text-muted small ms-auto">${latest.contact_date}</span>
-            <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-2" data-org="${safeAttr}" data-orgcode="${esc(comms[0].org_name || '')}"
-                    onclick="event.stopPropagation();openCommModal(null,this.dataset.org,this.dataset.orgcode)"
-                    title="${t('comms.add_comm_for_org')}">
-              <i class="bi bi-plus"></i>
-            </button>
-          </div>
-        </td>
-      </tr>
-      ${comms.map(c => `
-        <tr style="${isExpanded ? '' : 'display:none'}" class="comm-hist-row">
-          <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
-          <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
-          <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-          <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
-          <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
-          <td class="text-end text-nowrap">
-            <div class="d-flex gap-1 justify-content-end">
-              ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-              <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-              <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
-            </div>
-          </td>
-        </tr>`).join('')}`;
-  }).join('');
-
-  el.innerHTML = `
+// Shared by the org and case grouped views' expanded rows -- identical
+// markup except the case view omits the case badge (redundant once you're
+// already looking inside that case's own group).
+function _commsHistRowHtml(c, showCaseBadge) {
+  const statusLabel = _commsStatusLabels();
+  return `
+    <tr class="comm-hist-row">
+      <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
+      <td class="small">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${contactPersonHtml(c)}</td>
+      <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
+      <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
+      <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
+      <td class="text-end text-nowrap">
+        <div class="d-flex gap-1 justify-content-end">
+          ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
+          <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+        </div>
+      </td>
+    </tr>`;
+}
+function _commsGroupTableShell(rows) {
+  return `
     <table class="table table-hover table-sm align-middle mb-0">
       <colgroup><col style="width:110px"><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
       <thead><tr>
@@ -4850,40 +4969,159 @@ function renderCommsGrouped(data) {
     </table>`;
 }
 
-function renderCommsCases(data) {
+// ── Communications: By-Organization view ────────────────────────────────────
+// Same lazy-loading design as Portal Members' org grouping: group_by=org
+// gets accurate per-org counts from one aggregate pass with no row fetching,
+// so every group card renders immediately; a group's actual rows are only
+// fetched the first time it's expanded, then cached here.
+let _commsOrgGroups = [];
+let _commsOrgGroupsLoaded = false;
+const _commsOrgExpandRows = new Map();     // org_title -> rows[]
+const _commsOrgExpandLoading = new Set();  // org_titles currently fetching
+
+async function _loadCommsOrgGroups() {
+  if (_commsViewMode !== 'grouped') return;
+  show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
+  try {
+    const params = _commsQueryParams();
+    params.set('group_by', 'org');
+    params.set('rows', 500);  // groups are bounded by org count, not total comms -- one shot, no scrolling needed
+    const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
+    const data = await _fetchJsonOrThrow(resp);
+    _commsOrgGroups = data.groups || [];
+    _commsOrgGroupsLoaded = true;
+    _commsOrgExpandRows.clear();
+    _applyCommsFacets(data);
+    _commsLoadedFingerprint = _commsQueryParams().toString();
+    _renderCommsOrgGroups();
+  } catch (e) {
+    show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+  }
+}
+
+function _renderCommsOrgGroups() {
   const el = show('commsTable');
-  if (!data.length) {
+  if (!_commsOrgGroups.length) {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
-  const statusLabel = { "Initial Contact": t('comms.initial_contact'), "Intermediate Contact": t('comms.intermediate_contact'), "Positive Response": t('comms.positive_response'), "Negative Response": t('comms.negative_response'), "No Response": t('comms.no_response') };
-  const casesById = new Map(_casesData.map(cs => [cs.id, cs]));
-
-  // Group visible entries by case_id
-  const groups = new Map();
-  for (const c of data) {
-    if (!c.case_id) continue;
-    if (!groups.has(c.case_id)) groups.set(c.case_id, []);
-    groups.get(c.case_id).push(c);
-  }
-
-  const sorted = [...groups.entries()].sort(([idA], [idB]) => {
-    const a = casesById.get(idA), b = casesById.get(idB);
-    return (b?.opened_at || '').localeCompare(a?.opened_at || '');
-  });
-
-  const rows = sorted.map(([caseId, comms]) => {
-    const cs = casesById.get(caseId);
-    if (!cs) return '';
-    comms.sort((a, b) => b.contact_date.localeCompare(a.contact_date));
-    const isExpanded = _expandedCases.has(caseId);
-    const isClosed    = cs.status === 'Closed';
+  const statusLabel = _commsStatusLabels();
+  const rows = _commsOrgGroups.map(g => {
+    const orgTitle   = g.org_title;
+    const isExpanded = _expandedOrgs.has(orgTitle);
+    const cachedRows = _commsOrgExpandRows.get(orgTitle);
+    const isLoading  = _commsOrgExpandLoading.has(orgTitle);
+    const safeAttr   = orgTitle.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    let body = '';
+    if (isExpanded) {
+      body = (isLoading || !cachedRows)
+        ? `<tr class="comm-hist-row"><td colspan="6" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>`
+        : cachedRows.map(c => _commsHistRowHtml(c, true)).join('');
+    }
     return `
-      <tr class="comm-group-row" style="cursor:pointer" onclick="toggleCaseExpand(${caseId})">
+      <tr class="comm-group-row" style="cursor:pointer" data-org="${safeAttr}" onclick="toggleOrgComms(this.dataset.org)">
+        <td colspan="6">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+            <span class="fw-semibold">${esc(orgTitle)}</span>
+            <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${g.count} ${g.count === 1 ? t('comms.entry') : t('comms.entries')}</span>
+            <span class="badge ${STATUS_BADGE[g.latest_status] || 'bg-secondary'}" style="font-size:.7rem">${statusLabel[g.latest_status] || g.latest_status}</span>
+            <span class="text-muted small ms-auto">${g.latest_date}</span>
+            <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-2" data-org="${safeAttr}" data-orgcode="${esc(g.org_name || '')}"
+                    onclick="event.stopPropagation();openCommModal(null,this.dataset.org,this.dataset.orgcode)"
+                    title="${t('comms.add_comm_for_org')}">
+              <i class="bi bi-plus"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+      ${body}`;
+  }).join('');
+
+  el.innerHTML = _commsGroupTableShell(rows);
+}
+
+function toggleOrgComms(orgTitle) {
+  if (_expandedOrgs.has(orgTitle)) {
+    _expandedOrgs.delete(orgTitle);
+    _renderCommsOrgGroups();
+    return;
+  }
+  _expandedOrgs.add(orgTitle);
+  _renderCommsOrgGroups();  // show the per-group spinner immediately
+  _fetchCommsOrgRows(orgTitle).then(_renderCommsOrgGroups);
+}
+
+async function _fetchCommsOrgRows(orgTitle) {
+  if (_commsOrgExpandRows.has(orgTitle) || _commsOrgExpandLoading.has(orgTitle)) return;
+  _commsOrgExpandLoading.add(orgTitle);
+  try {
+    const params = _commsQueryParams();
+    params.set('org', orgTitle);
+    params.set('rows', 200);  // generous cap for one org; a larger one would need its own load-more
+    const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
+    const data = await _fetchJsonOrThrow(resp);
+    _commsOrgExpandRows.set(orgTitle, data.rows || []);
+  } catch (e) {
+    _commsOrgExpandRows.set(orgTitle, []);
+  } finally {
+    _commsOrgExpandLoading.delete(orgTitle);
+  }
+}
+
+// ── Communications: Cases view (default) ───────────────────────────────────
+// Same lazy-loading shape as the org grouping above: group_by=case returns
+// full Case.to_dict() groups (deadline/opened_at/closed_at/entry_count/
+// is_stale all already correct, unaffected by the comms-level filters) in
+// one shot; a case's own communications are only fetched once expanded.
+let _commsCaseGroups = [];
+let _commsCaseGroupsLoaded = false;
+const _commsCaseExpandRows = new Map();     // caseId -> rows[]
+const _commsCaseExpandLoading = new Set();  // caseIds currently fetching
+
+async function _loadCommsCaseGroups() {
+  if (_commsViewMode !== 'cases') return;
+  show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
+  try {
+    const params = _commsQueryParams();
+    params.set('group_by', 'case');
+    params.set('rows', 500);  // groups are bounded by case count, not total comms -- one shot, no scrolling needed
+    const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
+    const data = await _fetchJsonOrThrow(resp);
+    _commsCaseGroups = data.groups || [];
+    _commsCaseGroupsLoaded = true;
+    _commsCaseExpandRows.clear();
+    _applyCommsFacets(data);
+    _commsLoadedFingerprint = _commsQueryParams().toString();
+    _renderCommsCaseGroups();
+  } catch (e) {
+    show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+  }
+}
+
+function _renderCommsCaseGroups() {
+  const el = show('commsTable');
+  if (!_commsCaseGroups.length) {
+    el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
+    return;
+  }
+  const rows = _commsCaseGroups.map(cs => {
+    const isExpanded = _expandedCases.has(cs.id);
+    const isClosed    = cs.status === 'Closed';
+    const cachedRows = _commsCaseExpandRows.get(cs.id);
+    const isLoading  = _commsCaseExpandLoading.has(cs.id);
+    let body = '';
+    if (isExpanded) {
+      body = (isLoading || !cachedRows)
+        ? `<tr class="comm-hist-row"><td colspan="6" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>`
+        : cachedRows.map(c => _commsHistRowHtml(c, false)).join('');
+    }
+    return `
+      <tr class="comm-group-row" style="cursor:pointer" onclick="toggleCaseExpand(${cs.id})">
         <td colspan="6">
           <div class="d-flex align-items-center gap-2 flex-wrap">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
-            <span class="text-muted small mono">#${caseId}</span>
+            <span class="text-muted small mono">#${cs.id}</span>
             <span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">
               <i class="bi ${isClosed ? 'bi-folder-check' : 'bi-folder2-open'} me-1"></i>${caseStatusLabel(cs.status)}
             </span>
@@ -4893,60 +5131,58 @@ function renderCommsCases(data) {
             <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
             <span class="text-muted small ms-auto">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}${isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')}</span>
             <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('comms.case_add_entry')}"
-                    onclick="event.stopPropagation();openFollowupForCase(${caseId})">
+                    onclick="event.stopPropagation();openFollowupForCase(${cs.id})">
               <i class="bi bi-plus"></i>
             </button>
             ${isClosed
-              ? `<button class="btn btn-outline-success btn-sm py-0 px-2" title="${t('comms.case_reopen')}" onclick="event.stopPropagation();reopenCase(${caseId})"><i class="bi bi-arrow-counterclockwise"></i></button>`
-              : `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="${t('comms.case_close')}" onclick="event.stopPropagation();closeCase(${caseId})"><i class="bi bi-check2-circle"></i></button>`}
+              ? `<button class="btn btn-outline-success btn-sm py-0 px-2" title="${t('comms.case_reopen')}" onclick="event.stopPropagation();reopenCase(${cs.id})"><i class="bi bi-arrow-counterclockwise"></i></button>`
+              : `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="${t('comms.case_close')}" onclick="event.stopPropagation();closeCase(${cs.id})"><i class="bi bi-check2-circle"></i></button>`}
           </div>
         </td>
       </tr>
-      ${comms.map(c => `
-        <tr style="${isExpanded ? '' : 'display:none'}" class="comm-hist-row">
-          <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
-          <td class="small">${esc(c.subject)}${contactPersonHtml(c)}</td>
-          <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-          <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
-          <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
-          <td class="text-end text-nowrap">
-            <div class="d-flex gap-1 justify-content-end">
-              ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-              <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-              <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
-            </div>
-          </td>
-        </tr>`).join('')}`;
+      ${body}`;
   }).join('');
 
-  el.innerHTML = `
-    <table class="table table-hover table-sm align-middle mb-0">
-      <colgroup><col style="width:110px"><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
-      <thead><tr>
-        <th>${t('comms.col_date')}</th>
-        <th>${t('comms.col_subject')}</th>
-        <th>${t('comms.col_status')}</th>
-        <th>${t('comms.col_medium')}</th>
-        <th>${t('comms.col_notes')}</th>
-        <th></th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+  el.innerHTML = _commsGroupTableShell(rows);
 }
 
 function toggleCaseExpand(caseId) {
-  if (_expandedCases.has(caseId)) _expandedCases.delete(caseId);
-  else _expandedCases.add(caseId);
-  filterComms();
+  if (_expandedCases.has(caseId)) {
+    _expandedCases.delete(caseId);
+    _renderCommsCaseGroups();
+    return;
+  }
+  _expandedCases.add(caseId);
+  _renderCommsCaseGroups();  // show the per-group spinner immediately
+  _fetchCommsCaseRows(caseId).then(_renderCommsCaseGroups);
+}
+
+async function _fetchCommsCaseRows(caseId) {
+  if (_commsCaseExpandRows.has(caseId) || _commsCaseExpandLoading.has(caseId)) return;
+  _commsCaseExpandLoading.add(caseId);
+  try {
+    const params = _commsQueryParams();
+    params.set('case_id', caseId);
+    params.set('rows', 200);  // generous cap for one case; a larger one would need its own load-more
+    const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
+    const data = await _fetchJsonOrThrow(resp);
+    _commsCaseExpandRows.set(caseId, data.rows || []);
+  } catch (e) {
+    _commsCaseExpandRows.set(caseId, []);
+  } finally {
+    _commsCaseExpandLoading.delete(caseId);
+  }
 }
 
 async function closeCase(caseId) {
   await fetch(`${API_BASE}api/cases/${caseId}/close`, { method: 'POST', cache: 'no-store' });
+  _commsCaseDetailCache.delete(caseId);  // stale status/closed_at otherwise
   await _reloadCasesAndComms();
 }
 
 async function reopenCase(caseId) {
   await fetch(`${API_BASE}api/cases/${caseId}/reopen`, { method: 'POST', cache: 'no-store' });
+  _commsCaseDetailCache.delete(caseId);
   await _reloadCasesAndComms();
 }
 
@@ -4965,93 +5201,137 @@ const COMM_STATUS_DOT = {
   "No Response":          "#6c757d",
 };
 
-function renderCommsTimeline(rows) {
+// ── Communications: Timeline view ───────────────────────────────────────────
+// Same lazy-loading shape as the org/case views above, grouped by
+// contact_date instead. Today's day is auto-expanded (and its rows
+// pre-fetched) the first time this view loads each session, matching the
+// old behavior of always showing today's activity without an extra click.
+let _commsDayGroups = [];
+let _commsDayGroupsLoaded = false;
+const _commsDayExpandRows = new Map();     // day -> rows[]
+const _commsDayExpandLoading = new Set();  // days currently fetching
+
+async function _loadCommsDayGroups() {
+  if (_commsViewMode !== 'timeline') return;
+  show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
+  try {
+    const params = _commsQueryParams();
+    params.set('group_by', 'day');
+    params.set('rows', 1000);  // groups are bounded by distinct days logged, not total comms -- one shot
+    const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
+    const data = await _fetchJsonOrThrow(resp);
+    _commsDayGroups = data.groups || [];
+    _commsDayGroupsLoaded = true;
+    _commsDayExpandRows.clear();
+    _applyCommsFacets(data);
+    _commsLoadedFingerprint = _commsQueryParams().toString();
+    const todayIso = new Date().toISOString().slice(0, 10);
+    if (!_timelineDaysInitialized) {
+      _expandedTimelineDays.add(todayIso);
+      _timelineDaysInitialized = true;
+    }
+    _renderCommsDayGroups();
+    if (_expandedTimelineDays.has(todayIso) && _commsDayGroups.some(g => g.day === todayIso)) {
+      _fetchCommsDayRows(todayIso).then(_renderCommsDayGroups);
+    }
+  } catch (e) {
+    show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+  }
+}
+
+function _commsDayLabel(iso) {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const yesterdayIso = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (iso === todayIso) return t('comms.today');
+  if (iso === yesterdayIso) return t('comms.yesterday');
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString(_lang === 'el' ? 'el-GR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function _commsTimelineItemHtml(c) {
+  const statusLabel = _commsStatusLabels();
+  return `
+    <div class="comm-timeline-item">
+      <span class="comm-dot" style="background:${COMM_STATUS_DOT[c.status] || '#6c757d'}"></span>
+      <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+        <div>
+          <span class="fw-semibold small">${esc(c.org_title)}</span>
+          <span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'} ms-2" style="font-size:.68rem">
+            <i class="bi ${COMM_STATUS_ICON[c.status] || 'bi-circle'} me-1"></i>${statusLabel[c.status] || c.status}
+          </span>
+          ${caseBadgeHtml(c, 'ms-1')}
+        </div>
+        <div class="text-end text-nowrap">
+          <div class="d-flex gap-1 justify-content-end">
+            ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
+            <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+      </div>
+      <div class="small mt-1">${esc(c.subject)}</div>
+      ${c.contact_person ? `<div class="text-muted" style="font-size:.72rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>` : ''}
+      ${c.medium ? `<div class="text-muted" style="font-size:.72rem"><i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}${autoEmailBadge(c)}</div>` : ''}
+      ${c.notes ? `<div class="text-muted small mt-1">${esc(c.notes)}</div>` : ''}
+    </div>`;
+}
+
+function _renderCommsDayGroups() {
   const el = show('commsTable');
-  if (!rows.length) {
+  if (!_commsDayGroups.length) {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
-  const statusLabel = { "Initial Contact": t('comms.initial_contact'), "Intermediate Contact": t('comms.intermediate_contact'), "Positive Response": t('comms.positive_response'), "Negative Response": t('comms.negative_response'), "No Response": t('comms.no_response') };
-
-  const sorted = [...rows].sort((a, b) => {
-    if (a.contact_date !== b.contact_date) return b.contact_date.localeCompare(a.contact_date);
-    return new Date(b.created_at) - new Date(a.created_at);
-  });
-
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const yesterdayIso = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const dayLabel = (iso) => {
-    if (iso === todayIso) return t('comms.today');
-    if (iso === yesterdayIso) return t('comms.yesterday');
-    const d = new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString(_lang === 'el' ? 'el-GR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  };
-
-  if (!_timelineDaysInitialized) {
-    _expandedTimelineDays.add(todayIso);
-    _timelineDaysInitialized = true;
-  }
-
-  // Group entries by day, preserving the newest-first order already established above
-  const dayGroups = new Map();
-  for (const c of sorted) {
-    if (!dayGroups.has(c.contact_date)) dayGroups.set(c.contact_date, []);
-    dayGroups.get(c.contact_date).push(c);
-  }
-
   let html = '<div class="comm-timeline">';
-  for (const [day, items] of dayGroups) {
-    const isExpanded = _expandedTimelineDays.has(day);
+  for (const g of _commsDayGroups) {
+    const isExpanded = _expandedTimelineDays.has(g.day);
     html += `
-      <div class="comm-timeline-day" style="cursor:pointer" data-day="${day}" onclick="toggleTimelineDay(this.dataset.day)">
-        <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} me-1" style="font-size:.75rem"></i>${dayLabel(day)}
-        <span class="badge bg-secondary rounded-pill ms-1" style="font-size:.65rem">${items.length}</span>
+      <div class="comm-timeline-day" style="cursor:pointer" data-day="${g.day}" onclick="toggleTimelineDay(this.dataset.day)">
+        <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} me-1" style="font-size:.75rem"></i>${_commsDayLabel(g.day)}
+        <span class="badge bg-secondary rounded-pill ms-1" style="font-size:.65rem">${g.count}</span>
       </div>`;
     if (!isExpanded) continue;
-    for (const c of items) {
-      html += `
-        <div class="comm-timeline-item">
-          <span class="comm-dot" style="background:${COMM_STATUS_DOT[c.status] || '#6c757d'}"></span>
-          <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
-            <div>
-              <span class="fw-semibold small">${esc(c.org_title)}</span>
-              <span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'} ms-2" style="font-size:.68rem">
-                <i class="bi ${COMM_STATUS_ICON[c.status] || 'bi-circle'} me-1"></i>${statusLabel[c.status] || c.status}
-              </span>
-              ${caseBadgeHtml(c, 'ms-1')}
-            </div>
-            <div class="text-end text-nowrap">
-              <div class="d-flex gap-1 justify-content-end">
-                ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-                <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-                <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
-              </div>
-            </div>
-          </div>
-          <div class="small mt-1">${esc(c.subject)}</div>
-          ${c.contact_person ? `<div class="text-muted" style="font-size:.72rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>` : ''}
-          ${c.medium ? `<div class="text-muted" style="font-size:.72rem"><i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}${autoEmailBadge(c)}</div>` : ''}
-          ${c.notes ? `<div class="text-muted small mt-1">${esc(c.notes)}</div>` : ''}
-        </div>`;
-    }
+    const cachedRows = _commsDayExpandRows.get(g.day);
+    const isLoading  = _commsDayExpandLoading.has(g.day);
+    html += (isLoading || !cachedRows)
+      ? `<div class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div></div>`
+      : cachedRows.map(_commsTimelineItemHtml).join('');
   }
   html += '</div>';
   el.innerHTML = html;
 }
 
 function toggleTimelineDay(day) {
-  if (_expandedTimelineDays.has(day)) _expandedTimelineDays.delete(day);
-  else _expandedTimelineDays.add(day);
-  filterComms();
+  if (_expandedTimelineDays.has(day)) {
+    _expandedTimelineDays.delete(day);
+    _renderCommsDayGroups();
+    return;
+  }
+  _expandedTimelineDays.add(day);
+  _renderCommsDayGroups();  // show the per-group spinner immediately
+  _fetchCommsDayRows(day).then(_renderCommsDayGroups);
 }
 
-function toggleOrgComms(orgTitle) {
-  if (_expandedOrgs.has(orgTitle)) _expandedOrgs.delete(orgTitle);
-  else _expandedOrgs.add(orgTitle);
-  filterComms();
+async function _fetchCommsDayRows(day) {
+  if (_commsDayExpandRows.has(day) || _commsDayExpandLoading.has(day)) return;
+  _commsDayExpandLoading.add(day);
+  try {
+    const params = _commsQueryParams();
+    params.set('day', day);
+    params.set('rows', 200);  // generous cap for one day; a larger one would need its own load-more
+    const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
+    const data = await _fetchJsonOrThrow(resp);
+    // default sort (contact_date, created_at) desc already matches the old
+    // client sort (newest-first by created_at) within a single day.
+    _commsDayExpandRows.set(day, data.rows || []);
+  } catch (e) {
+    _commsDayExpandRows.set(day, []);
+  } finally {
+    _commsDayExpandLoading.delete(day);
+  }
 }
 
-function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCaseId = null, prefillSubject = null, prefillMedium = null, prefillContactPerson = null) {
+async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCaseId = null, prefillSubject = null, prefillMedium = null, prefillContactPerson = null) {
   if (!_commModal) _commModal = new bootstrap.Modal(document.getElementById('commModal'));
   show('commError').classList.add('d-none');
   show('commSaveBtn').disabled = false;
@@ -5063,13 +5343,17 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
   }
 
   if (id) {
-    const c = _commsData.find(x => x.id === id);
+    // id always comes from a currently-rendered row's own edit button, so
+    // it's guaranteed to already be sitting in one of the loaded caches --
+    // see _commsFindById.
+    const c = _commsFindById(id);
     if (!c) return;
     show('commModalTitle').textContent = t('comm_modal.edit_title');
     show('commId').value      = c.id;
     show('commCaseId').value  = c.case_id || '';
     show('commDate').value    = c.contact_date;
-    show('commDeadline').value = (_casesData.find(x => x.id === c.case_id) || {}).deadline || _plus14(c.contact_date);
+    const cs = c.case_id ? await _commsFetchCaseDetail(c.case_id).catch(() => null) : null;
+    show('commDeadline').value = (cs && cs.deadline) || _plus14(c.contact_date);
     show('commSubject').value = c.subject;
     show('commStatus').value  = c.status;
     show('commStatus').disabled = c.status === 'Initial Contact';  // the entry that opened the case must stay Initial Contact
@@ -5079,13 +5363,14 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     _commOrgSet(c.org_name, c.org_title);
     _setOrgLocked(false);
     onCommOrgInput(c.contact_person || '');
-    _renderCommCaseInfo(c.case_id, true);
+    _renderCommCaseInfo(cs, true);
   } else {
     show('commModalTitle').textContent = prefillOrg ? `${t('comm_modal.add_title')} — ${prefillOrg}` : t('comm_modal.add_title');
     show('commId').value      = '';
     show('commCaseId').value  = prefillCaseId || '';
     show('commDate').value    = new Date().toISOString().slice(0, 10);
-    show('commDeadline').value = (prefillCaseId && (_casesData.find(x => x.id === prefillCaseId) || {}).deadline) || _plus14(show('commDate').value);
+    const cs = prefillCaseId ? await _commsFetchCaseDetail(prefillCaseId).catch(() => null) : null;
+    show('commDeadline').value = (cs && cs.deadline) || _plus14(show('commDate').value);
     show('commSubject').value = prefillSubject || '';
     show('commStatus').disabled = !prefillCaseId;  // a brand-new case always opens as Initial Contact
     show('commStatusInitialOption').hidden = !!prefillCaseId;  // reserved for the entry that opens a case
@@ -5094,19 +5379,22 @@ function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefillCase
     show('commNotes').value   = '';
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(prefillContactPerson || ''); }
     _setOrgLocked(!!prefillCaseId);  // a follow-up stays tied to its case's organization
-    _renderCommCaseInfo(prefillCaseId);
+    _renderCommCaseInfo(cs, false);
   }
   _onCommStatusChange();
   _commModal.show();
 }
 
-function _renderCommCaseInfo(caseId, isEdit = false) {
+// Takes the already-fetched case-detail object (not just its id) -- every
+// caller has one in hand already, either from _commsFetchCaseDetail (above)
+// or from openFollowupForCase's own fetch, so there's no need for this to
+// do its own lookup/fetch.
+function _renderCommCaseInfo(cs, isEdit = false) {
   const box = show('commCaseInfo');
-  if (!caseId) { box.classList.add('d-none'); return; }
-  const cs = _casesData.find(x => x.id === caseId);
   if (!cs) { box.classList.add('d-none'); return; }
   box.classList.remove('d-none');
-  box.dataset.caseId = caseId;
+  box.dataset.caseId = cs.id;
+  box.dataset.caseStatus = cs.status;  // read back by _toggleCaseFromModal instead of a second lookup
   box.dataset.isEdit = isEdit ? '1' : '';
   const isClosed = cs.status === 'Closed';
   show('commCaseStatusBadge').className = 'badge ' + (CASE_STATUS_BADGE[cs.status] || 'bg-secondary');
@@ -5122,11 +5410,12 @@ function _renderCommCaseInfo(caseId, isEdit = false) {
 async function _toggleCaseFromModal() {
   const caseId = parseInt(show('commCaseInfo').dataset.caseId, 10);
   if (!caseId) return;
-  const cs = _casesData.find(x => x.id === caseId);
-  const action = cs && cs.status === 'Closed' ? 'reopen' : 'close';
+  const action = show('commCaseInfo').dataset.caseStatus === 'Closed' ? 'reopen' : 'close';
   await fetch(`${API_BASE}api/cases/${caseId}/${action}`, { method: 'POST', cache: 'no-store' });
+  _commsCaseDetailCache.delete(caseId);
   await _reloadCasesAndComms();
-  _renderCommCaseInfo(caseId, show('commCaseInfo').dataset.isEdit === '1');
+  const cs = await _commsFetchCaseDetail(caseId).catch(() => null);
+  _renderCommCaseInfo(cs, show('commCaseInfo').dataset.isEdit === '1');
 }
 
 function _addFollowupFromModal() {
@@ -5136,16 +5425,20 @@ function _addFollowupFromModal() {
 }
 
 function addFollowupForComm(commId) {
-  const c = _commsData.find(x => x.id === commId);
+  const c = _commsFindById(commId);
   if (!c || !c.case_id) return;
   openFollowupForCase(c.case_id);
 }
 
-function openFollowupForCase(caseId) {
-  const cs = _casesData.find(x => x.id === caseId);
-  if (!cs) return;
+async function openFollowupForCase(caseId) {
+  let cs;
+  try {
+    cs = await _commsFetchCaseDetail(caseId);
+  } catch (e) {
+    return;
+  }
   // entries oldest-first (same ordering as Case.to_dict on the backend)
-  const entries = _commsData.filter(c => c.case_id === caseId).sort((a, b) =>
+  const entries = (cs.communications || []).slice().sort((a, b) =>
     a.contact_date !== b.contact_date
       ? a.contact_date.localeCompare(b.contact_date)
       : new Date(a.created_at) - new Date(b.created_at));
@@ -5320,9 +5613,14 @@ async function saveComm() {
     const json   = await resp.json();
     if (!resp.ok) { err.textContent = json.error || t('common.save_failed'); err.classList.remove('d-none'); return; }
 
-    // Full reload (not a local patch) -- editing/adding one entry can change its
-    // case's computed is_stale/entry_count, which every other entry in that case
-    // carries a denormalized snapshot of, so a partial patch would leave siblings stale.
+    // Adding/editing an entry can change its case's computed is_stale/
+    // entry_count/communications list -- drop the cached case detail so the
+    // next time this case is opened (edit/follow-up modal, or the Cases
+    // view's own group_by=case fetch) it's not shown stale.
+    if (body.case_id) _commsCaseDetailCache.delete(parseInt(body.case_id, 10));
+    // Full reload (not a local patch) -- same reasoning as the case cache
+    // drop above, but for every OTHER entry in that case, which each carry
+    // their own denormalized case_status/case_is_stale snapshot too.
     await _reloadCasesAndComms();
     _commModal.hide();
     _refreshCommSubjectDatalist();
@@ -5336,6 +5634,7 @@ async function saveComm() {
 
 function deleteComm(id) {
   confirmDangerAction(t('comm_modal.delete_confirm'), async () => {
+    const caseId = (_commsFindById(id) || {}).case_id;
     try {
       const resp = await fetch(`${API_BASE}api/communications/${id}/delete`, { method: 'DELETE', cache: 'no-store' });
       // fetch() only rejects on a network failure, not an HTTP error status --
@@ -5345,6 +5644,7 @@ function deleteComm(id) {
         const data = await resp.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${resp.status}`);
       }
+      if (caseId) _commsCaseDetailCache.delete(caseId);  // same staleness reasoning as saveComm
       // Full reload (not a local splice) -- removing an entry can change its case's
       // computed is_stale/entry_count, which every remaining entry in that case
       // carries a denormalized snapshot of, so a partial patch left the filter-tab
@@ -5395,7 +5695,7 @@ function _inboundAttachOrgSelect(code, label) {
   _refreshInboundAttachCases();
 }
 
-function _refreshInboundAttachCases() {
+async function _refreshInboundAttachCases() {
   const orgCode = show('inboundAttachOrgCode').value.trim();
   const sel  = document.getElementById('inboundAttachCaseSelect');
   const wrap = document.getElementById('inboundAttachCaseWrap');
@@ -5406,7 +5706,16 @@ function _refreshInboundAttachCases() {
     return;
   }
   wrap.classList.remove('d-none');
-  const openCases = _casesData.filter(c => c.status === 'Open' && _orgCodeMatches(c.org_name || '', orgCode));
+  // "All open cases" is small and bounded (current outreach efforts, not the
+  // full historical archive) regardless of how large the Communications log
+  // grows -- fine to fetch fresh here rather than needing its own cache.
+  let cases;
+  try {
+    cases = await fetch(`${API_BASE}api/cases?status=Open`).then(r => r.ok ? r.json() : []);
+  } catch (_) {
+    cases = [];
+  }
+  const openCases = (Array.isArray(cases) ? cases : []).filter(c => _orgCodeMatches(c.org_name || '', orgCode));
   sel.innerHTML = [
     `<option value="">${esc(t('inbound.new_case'))}</option>`,
     ...openCases.map(c => `<option value="${c.id}">${esc(c.subject)}</option>`),
