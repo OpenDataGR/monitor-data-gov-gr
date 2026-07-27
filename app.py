@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 from datetime import datetime, timedelta, timezone
 import io
 import secrets
+import hashlib
 from urllib.parse import urlparse, quote
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response
 from flask_compress import Compress
@@ -32,7 +33,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, ExcludedEmailAddress
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, ExcludedEmailAddress, ApiToken
 import rdflib
 import pyshacl
 import config
@@ -104,6 +105,14 @@ Compress(app)
 # default (1 hour) would 400 a perfectly normal session that's just been
 # open in a browser tab for a while.
 app.config["WTF_CSRF_TIME_LIMIT"] = None
+# Checked explicitly in require_login() below instead of automatically on
+# every request -- CSRF protection exists to stop a malicious page from
+# silently riding the browser's own cookie into a state-changing request;
+# an Authorization: Bearer <api token> request can't happen that way (the
+# calling script has to know and set the header itself), so it doesn't need
+# or get a CSRF check, while a cookie-session request still gets exactly the
+# same enforcement it always has.
+app.config["WTF_CSRF_CHECK_DEFAULT"] = False
 csrf = CSRFProtect(app)
 
 # Production-only cookie hardening, gated on a real FLASK_SECRET_KEY being set
@@ -867,13 +876,13 @@ def admin_users_page():
 @app.route("/api-docs")
 def api_docs_page():
     return render_template("api_docs.html", user_name=session.get("user_name"),
-                           is_admin=session.get("is_admin", False))
+                           is_admin=session.get("is_admin", False), build_date=_build_date())
 
 
 @app.route("/api-console")
 def api_console_page():
     return render_template("api_console.html", user_name=session.get("user_name"),
-                           is_admin=session.get("is_admin", False))
+                           is_admin=session.get("is_admin", False), build_date=_build_date())
 
 
 @app.route("/api/_meta/routes")
