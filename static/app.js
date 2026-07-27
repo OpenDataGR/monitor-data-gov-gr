@@ -7825,14 +7825,15 @@ function _fileContactTypeBadges(c) {
 // otherwise" pattern (the opposite direction: Portal Members badges whoever
 // ALSO has a file record, this badges whoever ALSO has a portal account).
 function _fileContactPortalBadge(c) {
-  if (c.linked_username) {
-    return `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db;cursor:pointer" title="${esc(t('contacts.has_portal_account'))}"
-         onclick="event.stopPropagation();openUserPanel('${esc(c.linked_username)}')"><i class="bi bi-globe2 me-1"></i>${esc(c.linked_username)}</span>`;
-  }
-  if (c.is_linked) {
-    return `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('contacts.has_portal_account'))}"><i class="bi bi-globe2 me-1"></i>${esc(t('contacts.has_portal_account'))}</span>`;
-  }
-  return '';
+  if (!c.linked_username && !c.is_linked) return '';
+  // Same fixed label for everyone (mirrors _pmFileBadge's plain "File" text)
+  // -- the username, when known, only drives whether the badge is clickable
+  // to open that user's panel, not what the badge itself says.
+  const style = `font-size:.65rem;background:#e8f0fe;color:#1a56db${c.linked_username ? ';cursor:pointer' : ''}`;
+  const onclick = c.linked_username
+    ? ` onclick="event.stopPropagation();openUserPanel('${esc(c.linked_username)}')"`
+    : '';
+  return `<span class="badge rounded-pill" style="${style}" title="${esc(t('contacts.has_portal_account'))}"${onclick}><i class="bi bi-globe2 me-1"></i>Portal</span>`;
 }
 function _fileContactActions(c) {
   return `<div class="d-flex gap-1">
