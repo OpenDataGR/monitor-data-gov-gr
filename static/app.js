@@ -6761,6 +6761,14 @@ async function loadContactsTab(force = false) {
   _portalMembersCache = null;
   if (_pmPollTimer) { clearTimeout(_pmPollTimer); _pmPollTimer = null; }
   _pollPortalMembers(0, false, force);
+  // _pollPortalMembers only warms _portalMembersCache now (see its own
+  // comment) -- with no localStorage cache to fall back on, nothing else
+  // would kick off the paginated table's own cold-load/retry/progress-bar
+  // handling until that background poll finishes, leaving the table stuck
+  // on its static "open this tab" placeholder for the whole wait. Kick it
+  // off immediately too; it hits the same _pm_cache and has its own 202
+  // retry loop, so it shows real loading progress right away instead.
+  if (_isTabActive('tab-contacts')) filterContactsTab();
 }
 
 // The slow part of a cold portal-members fetch is one organization_show call
