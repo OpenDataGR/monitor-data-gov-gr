@@ -1481,6 +1481,13 @@ async function loadTodayTraffic() {
 }
 
 // ── Overview ─────────────────────────────────────────────────────────────────
+// Populated as a side effect of the header KPI card below -- also used as an
+// immediate best-guess "total" for the Portal Members cold-load progress bar
+// (see loadPortalMembersTab/_loadPortalMembersGroups), so it can render with
+// a real total right away instead of waiting for the slow per-org fetch's
+// own first progress report to confirm one org count.
+let _kpiOrgCount = null;
+
 async function loadOverview() {
   loadTodayTraffic();
   // Portal stats — snapshot first (fast), then live fetch updates all cards
@@ -1491,6 +1498,7 @@ async function loadOverview() {
       show('statServices').textContent  = fmt(snap.total_services);
       show('statResources').textContent = fmt(snap.total_resources);
       show('statOrgs').textContent      = fmt(snap.total_organizations);
+      if (snap.total_organizations != null) _kpiOrgCount = snap.total_organizations;
     }
   } catch (_) {}
   // Live fetch from CKAN — corrects any snapshot staleness
@@ -1500,7 +1508,7 @@ async function loadOverview() {
       if (live.total_datasets     != null) show('statDatasets').textContent  = fmt(live.total_datasets);
       if (live.total_services     != null) show('statServices').textContent  = fmt(live.total_services);
       if (live.total_resources    != null) show('statResources').textContent = fmt(live.total_resources);
-      if (live.total_organizations != null) show('statOrgs').textContent     = fmt(live.total_organizations);
+      if (live.total_organizations != null) { show('statOrgs').textContent = fmt(live.total_organizations); _kpiOrgCount = live.total_organizations; }
     }
   } catch (_) {}
 
@@ -7216,6 +7224,14 @@ async function loadPortalMembersTab(append = false, attempt = 0, generation = nu
          <div class="text-muted small mb-2">${t('contacts.loading_portal')}</div>
          ${_progressBarHtml('pm', 'mx-auto', 'max-width:280px')}
        </td></tr>`;
+    // Don't wait for the slow per-org fetch's own first progress report just
+    // to learn how many orgs there are -- that number's already sitting in
+    // the header's own "Organizations" KPI card (from the same /api/stats
+    // call every page load makes regardless of which tab is open). Show the
+    // bar immediately with that as a best-guess total; the real one (from
+    // _pm_cache's own progress, once phase 'members' starts reporting)
+    // still overwrites it as soon as it arrives, correcting any drift.
+    if (_kpiOrgCount) _showProgressBar('pm', 0, _kpiOrgCount);
   }
   try {
     const params = _pmQueryParams();
@@ -7313,6 +7329,8 @@ async function _loadPortalMembersGroups(attempt = 0, generation = null) {
     el.innerHTML = `<div class="text-center py-4"><div class="spinner-border text-primary mb-2"></div>
       <div class="text-muted small mb-2">${t('contacts.loading_portal')}</div>
       ${_progressBarHtml('pm', 'mx-auto', 'max-width:280px')}</div>`;
+    // Same best-guess-total trick as loadPortalMembersTab -- see its comment.
+    if (_kpiOrgCount) _showProgressBar('pm', 0, _kpiOrgCount);
   }
   try {
     const params = _pmQueryParams();
