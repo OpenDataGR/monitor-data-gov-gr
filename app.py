@@ -5025,6 +5025,14 @@ def _org_contacts_portal_link_info():
 
 
 @app.route("/api/contacts", methods=["GET"])
+# Exempt from the blanket 200/minute default: this is an authenticated,
+# read-only GET hit on every search keystroke (debounced, but still),
+# sort/filter click, AND "Expand All" on the grouped view -- which fires
+# one request per distinct organization, so a large org count alone can
+# legitimately burst well past 200 in a minute. Getting rate-limited here
+# doesn't protect anything (no write, no external side effect) and the
+# frontend has no graceful handling for a 429 -- it just breaks.
+@limiter.exempt
 def contacts_all():
     """Paginated, searchable, filterable list of file contacts (org_contacts
     rows) backing the Contacts tab's File Contacts scope -- mirrors the
@@ -5904,6 +5912,14 @@ def _dedupe_portal_members(rows):
 
 
 @app.route("/api/portal-members", methods=["GET", "POST"])
+# Exempt from the blanket 200/minute default -- same reasoning as
+# /api/contacts above: an authenticated, mostly read-only endpoint hit by
+# search/filter/sort, "Expand All" (one request per organization -- 482 of
+# them here), and the cold-load retry poll (every 5s for up to ~3min while
+# _pm_cache warms). All of that is legitimate, expected traffic from a
+# single dashboard session, not abuse; a 429 here just breaks the UI since
+# the frontend has no graceful handling for a non-JSON error response.
+@limiter.exempt
 def portal_members_all():
     """Portal users across every CKAN organisation -- the underlying fetch
     (organization_list + user_list + one organization_show per org) is still

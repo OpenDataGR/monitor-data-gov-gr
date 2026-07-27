@@ -6791,6 +6791,17 @@ function _updateContactsLoadingProgress(progress) {
 // which hits the exact same underlying _pm_cache; having both this function
 // AND that one write into the same DOM element raced against each other
 // (whichever resolved last won, sometimes leaving a stale row behind).
+// Throws a clear "HTTP <status>" error instead of a cryptic JSON-parse
+// exception when a response isn't actually JSON -- e.g. Flask-Limiter's
+// default 429 response is an HTML page, and blindly calling resp.json()
+// on it throws a SyntaxError that's meaningless in an error message. 202
+// is accepted here too since several of this file's cold-load endpoints
+// deliberately use it with a real JSON body (progress info).
+async function _fetchJsonOrThrow(resp) {
+  if (!resp.ok && resp.status !== 202) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
 async function _pollPortalMembers(attempt, silent = false, force = false) {
   const MAX = 40;   // give up after ~200 s
   const INTERVAL = 5000;
@@ -6804,7 +6815,7 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
     // this cache backs the Comms contact picker, org panel, user panel etc,
     // which all expect that shape; the paginated table view fetches separately.
     const resp = await fetch(API_BASE + 'api/portal-members?full=1', { method: (attempt === 0 && force) ? 'POST' : 'GET' });
-    const data = await resp.json();
+    const data = await _fetchJsonOrThrow(resp);
 
     if (resp.status === 202) {
       if (attempt < MAX) {
@@ -6821,10 +6832,19 @@ async function _pollPortalMembers(attempt, silent = false, force = false) {
     _pmSaveCache(_portalMembersCache, _pmUnmatched);
     _pmSetFetchedAt(Date.now());
     show('contactsReloadBtn').disabled = false;
-    if (_isTabActive('tab-contacts')) {
-      renderContactsSummary();
-      filterContactsTab();
-    }
+    // Only an explicit force-reload re-triggers the visible table here.
+    // loadPortalMembersTab manages its own independent fetch/retry/render
+    // lifecycle (guarded by _pmLoadGeneration) and already gets kicked off
+    // on tab-open independently of this poll -- re-triggering it again from
+    // here on every routine/background completion raced against whatever
+    // it was already doing (this poll runs on its own, much slower cadence,
+    // a full CKAN re-fetch vs a cheap paginated query), so whichever landed
+    // last won, sometimes overwriting fresh, correctly filtered summary
+    // cards with stale ones. force=true is the one case this signal is
+    // still genuinely needed: a Reload replaces _pm_cache["data"] server-
+    // side only once the new fetch finishes, so nothing else would tell an
+    // already-warm paginated table to go re-fetch and pick up the change.
+    if (force && _isTabActive('tab-contacts')) filterContactsTab();
     if (_orgsLoaded) loadContactSummary();
   } catch (e) {
     if (!silent) show('contactsReloadBtn').disabled = false;
@@ -7202,7 +7222,7 @@ async function loadPortalMembersTab(append = false, attempt = 0, generation = nu
     params.set('rows', PORTAL_MEMBERS_PAGE_SIZE);
     params.set('start', _pmStart);
     const resp = await fetch(API_BASE + 'api/portal-members?' + params.toString());
-    const data = await resp.json();
+    const data = await _fetchJsonOrThrow(resp);
     if (myGeneration !== _pmLoadGeneration) return;  // superseded by a newer load while this was in flight
     if (resp.status === 202) {
       if (append) return;  // can't happen (append never fires while cold, see guards below), but stay safe
@@ -7224,8 +7244,7 @@ async function loadPortalMembersTab(append = false, attempt = 0, generation = nu
     const newRows = data.members || [];
     _pmCache = _pmCache.concat(newRows);
     _pmRows = _pmCache;
-    show('contactsCount').innerHTML = _pmCache.length < _pmTotalCount
-      ? `${_pmCache.length} / ${_pmTotalCount}` : `${_pmTotalCount}`;
+    _pmFlatCountLabel();
 
     if (!append && !newRows.length) {
       show('contactsTableBody').innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">${t('contacts.no_results')}</td></tr>`;
@@ -7299,7 +7318,7 @@ async function _loadPortalMembersGroups(attempt = 0, generation = null) {
     const params = _pmQueryParams();
     params.set('group_by', 'org');
     const resp = await fetch(API_BASE + 'api/portal-members?' + params.toString());
-    const data = await resp.json();
+    const data = await _fetchJsonOrThrow(resp);
     if (myGeneration !== _pmLoadGeneration) return;  // superseded by a newer load while this was in flight
     if (resp.status === 202) {
       _updateContactsLoadingProgress(data.progress);
@@ -7312,8 +7331,7 @@ async function _loadPortalMembersGroups(attempt = 0, generation = null) {
     }
     _pmGroups = data.groups || [];
     _pmGroupsLoaded = true;
-    const total = _pmGroups.reduce((sum, g) => sum + (g.count || 0), 0);
-    show('contactsCount').innerHTML = `${total}`;
+    _pmGroupedCountLabel();
     _renderPortalMembersGroups();
   } catch (e) {
     el.innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
@@ -7368,7 +7386,7 @@ async function _fetchPortalMembersGroupRows(slug) {
     params.set('rows', 200); // generous cap for a single org; larger ones would need their own load-more
     params.set('start', 0);
     const resp = await fetch(API_BASE + 'api/portal-members?' + params.toString());
-    const data = await resp.json();
+    const data = await _fetchJsonOrThrow(resp);
     _pmGroupRows.set(slug, data.members || []);
   } catch (e) {
     _pmGroupRows.set(slug, []);
@@ -7417,16 +7435,33 @@ function collapseAllPortalMembers() {
   _renderPortalMembersGroups();
 }
 
+// #contactsCount is a single shared badge both layouts write to -- whichever
+// one last loaded overwrites what the other one had shown. Re-asserting the
+// active layout's own value here (not just after a fresh fetch) is what
+// makes switching layouts/scopes WITHOUT a refetch (the reuse branches in
+// _pmSyncView below) still show the right number instead of leaving
+// whatever the other layout last put there.
+function _pmFlatCountLabel() {
+  show('contactsCount').innerHTML = _pmCache.length < _pmTotalCount
+    ? `${_pmCache.length} / ${_pmTotalCount}` : `${_pmTotalCount}`;
+}
+function _pmGroupedCountLabel() {
+  const total = _pmGroups.reduce((sum, g) => sum + (g.count || 0), 0);
+  show('contactsCount').innerHTML = `${total}`;
+}
+
 // Re-syncs whichever layout (flat/grouped) is currently selected without
 // invalidating anything -- used when just toggling All/By-Organization, as
 // opposed to filterPortalMembersTab() below, which is for when the actual
 // result set has changed. Mirrors _fileContactsSyncView.
 function _pmSyncView() {
   if (_contactsViewMode === 'grouped') {
-    if (_pmGroupsLoaded) _renderPortalMembersGroups();
+    if (_pmGroupsLoaded) { _renderPortalMembersGroups(); _pmGroupedCountLabel(); }
     else _loadPortalMembersGroups();
   } else if (!_pmFlatLoaded) {
     loadPortalMembersTab(false);
+  } else {
+    _pmFlatCountLabel();
   }
 }
 
@@ -7788,7 +7823,7 @@ async function loadFileContactsTab(append = false) {
     params.set('rows', FILE_CONTACTS_PAGE_SIZE);
     params.set('start', _fileContactsStart);
     const resp = await fetch(API_BASE + 'api/contacts?' + params.toString());
-    const data = await resp.json();
+    const data = await _fetchJsonOrThrow(resp);
     _fileContactsTotalCount = data.count || 0;
     if (!append) {
       _fileContactsCache = [];
@@ -7856,13 +7891,23 @@ async function _loadFileContactsGroups() {
     const params = _fileContactsQueryParams();
     params.set('group_by', 'org');
     const resp = await fetch(API_BASE + 'api/contacts?' + params.toString());
-    const data = await resp.json();
+    const data = await _fetchJsonOrThrow(resp);
     _fileContactsGroups = data.groups || [];
     _fileContactsGroupsLoaded = true;
+    _fileContactsGroupedCountLabel();
     _renderFileContactsGroups();
   } catch (e) {
     el.innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
   }
+}
+
+// #contactsCount is shared with Portal Members' flat/grouped labels (see
+// _pmFlatCountLabel/_pmGroupedCountLabel) -- re-asserting this on reuse
+// (not just after a fresh fetch) is what makes toggling layouts/scopes
+// without a refetch still show the right number.
+function _fileContactsGroupedCountLabel() {
+  const total = _fileContactsGroups.reduce((sum, g) => sum + (g.count || 0), 0);
+  show('contactsCount').innerHTML = `${total}`;
 }
 
 function _renderFileContactsGroups() {
@@ -7913,7 +7958,7 @@ async function _fetchFileContactsGroupRows(slug) {
     params.set('rows', 200);  // generous cap for a single org; larger ones would need their own load-more
     params.set('start', 0);
     const resp = await fetch(API_BASE + 'api/contacts?' + params.toString());
-    const data = await resp.json();
+    const data = await _fetchJsonOrThrow(resp);
     _fileContactsGroupRows.set(slug, data.contacts || []);
   } catch (e) {
     _fileContactsGroupRows.set(slug, []);
@@ -7970,10 +8015,12 @@ function collapseAllFileContacts() {
 // is for when the actual result set has changed.
 function _fileContactsSyncView() {
   if (_contactsViewMode === 'grouped') {
-    if (_fileContactsGroupsLoaded) _renderFileContactsGroups();
+    if (_fileContactsGroupsLoaded) { _renderFileContactsGroups(); _fileContactsGroupedCountLabel(); }
     else _loadFileContactsGroups();
   } else if (!_fileContactsFlatLoaded) {
     loadFileContactsTab(false);
+  } else {
+    _fileContactsUpdateCountLabel();
   }
 }
 
