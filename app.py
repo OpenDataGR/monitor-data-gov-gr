@@ -3778,10 +3778,195 @@ def _default_deadline(contact_date_str, days=14):
         return None
 
 
+_COMM_STATUS_ORDER = {"Initial Contact": 0, "Intermediate Contact": 1, "Positive Response": 2, "Negative Response": 3, "No Response": 4}
+
+
 @app.route("/api/communications", methods=["GET"])
 def communications_list():
-    rows = Communication.query.order_by(Communication.contact_date.desc(), Communication.created_at.desc()).all()
-    return jsonify([r.to_dict() for r in rows])
+    """Server-side pagination/search/filter/sort for the Communications tab,
+    mirroring /api/portal-members's design -- but simpler in one respect:
+    there's no slow external fetch to warm a cache for (this queries the DB
+    directly, which even at thousands of rows is fast), so unlike Portal
+    Members there's no cold-cache/202-polling dance here at all.
+
+    Query params (all optional, freely combinable):
+    - q: search text, matched against org_title/org_name/subject/notes.
+    - case_status: 'Open' | 'Closed' (the row's *case*, not the row itself).
+    - stale: '1' | '0' (the row's case's computed Case.is_stale).
+    - status: one of VALID_STATUSES (the row's own status).
+    - case_id / org / day: pin the result to one specific group's rows --
+      how a group gets "expanded" client-side (see group_by below). `org`
+      compares against the same org_title-or-org_name key group_by=org
+      groups by; `day` against contact_date verbatim.
+    - group_by: '' (default, flat paginated rows) | 'case' | 'org' | 'day'
+      -- returns lightweight per-group counts instead of rows; a group's
+      actual rows are fetched by re-calling this route with that group's
+      case_id/org/day pin set and group_by omitted, exactly the same
+      relationship /api/portal-members's org groups have to their expand.
+    - sort: 'contact_date' (default) | 'org_title' | 'subject' | 'status'
+      -- only meaningful for the flat/expand row response.
+    - dir: 'asc' | 'desc' (default 'desc').
+    - rows / start: page size (default 50, max 200) / offset -- for the
+      flat/expand row response and for group_by's own group listing alike.
+
+    Facet counts (case_status_counts/stale_counts/status_counts) are cross-
+    scoped the same way the Contacts tab's summary cards are -- each is
+    scoped by the *other* two filter dimensions, not its own -- and are
+    computed once per fresh (start=0) call only, mirroring Portal Members'
+    role_counts/state_counts/file_counts.
+    """
+    q_raw    = (freq.args.get("q") or "").strip()
+    q        = _search_normalize(q_raw)
+    case_status_f = (freq.args.get("case_status") or "").strip()
+    stale_f       = (freq.args.get("stale") or "").strip()
+    status_f      = (freq.args.get("status") or "").strip()
+    case_id_pin   = freq.args.get("case_id")
+    org_pin       = freq.args.get("org")
+    day_pin       = freq.args.get("day")
+    sort_key = (freq.args.get("sort") or "contact_date").strip()
+    sort_dir = (freq.args.get("dir") or "desc").strip()
+    group_by = (freq.args.get("group_by") or "").strip()
+    rows     = min(max(int(freq.args.get("rows", 50) or 50), 1), 200)
+    start    = max(int(freq.args.get("start", 0) or 0), 0)
+
+    # Eager-load every case's communications FIRST so every row's
+    # Communication.to_dict()/`.case.is_stale` access below resolves from
+    # SQLAlchemy's identity map (same session) instead of a fresh query per
+    # case -- avoids an N+1 across however many distinct cases this page's
+    # rows happen to touch.
+    cases = Case.query.options(db.selectinload(Case.communications)).all()
+    all_comms = Communication.query.all()
+
+    def matches_q(c):
+        if not q:
+            return True
+        hay = _search_normalize(" ".join(filter(None, [c.org_title, c.org_name, c.subject, c.notes])))
+        return q in hay
+
+    def matches_dims(c):
+        cs = c.case
+        if case_status_f and (cs.status if cs else None) != case_status_f:
+            return False
+        if stale_f and ((cs.is_stale if cs else False) != (stale_f == "1")):
+            return False
+        if status_f and c.status != status_f:
+            return False
+        return True
+
+    def matches_pins(c):
+        if case_id_pin is not None and str(c.case_id) != str(case_id_pin):
+            return False
+        if org_pin is not None and (c.org_title or c.org_name or "") != org_pin:
+            return False
+        if day_pin is not None and c.contact_date != day_pin:
+            return False
+        return True
+
+    filtered = [c for c in all_comms if matches_q(c) and matches_dims(c) and matches_pins(c)]
+
+    # Cross-scoped facet counts -- only computed on a fresh (first-page)
+    # call, same convention as Portal Members' role_counts/etc. case_status
+    # and stale are CASE-level counts (one per case, not per communication),
+    # matching the client's previous _casesData-based computation; status is
+    # a communication-level count scoped by the two case-level filters (but
+    # never by q, matching the old client behavior where the search box
+    # never affected the summary cards).
+    case_status_counts = stale_counts = status_counts = None
+    if start == 0:
+        def case_matches_status_scope(case):
+            if not status_f:
+                return True
+            return any(cm.status == status_f for cm in case.communications)
+
+        case_scope_for_case_status = [cs for cs in cases
+                                       if (not stale_f or cs.is_stale == (stale_f == "1"))
+                                       and case_matches_status_scope(cs)]
+        case_scope_for_stale = [cs for cs in cases
+                                 if (not case_status_f or cs.status == case_status_f)
+                                 and case_matches_status_scope(cs)]
+        case_status_counts = {
+            "total": len(case_scope_for_case_status),
+            "Open": sum(1 for cs in case_scope_for_case_status if cs.status == "Open"),
+            "Closed": sum(1 for cs in case_scope_for_case_status if cs.status == "Closed"),
+        }
+        stale_counts = {
+            "total": len(case_scope_for_stale),
+            "1": sum(1 for cs in case_scope_for_stale if cs.is_stale),
+            "0": sum(1 for cs in case_scope_for_stale if not cs.is_stale),
+        }
+        entry_scope = [c for c in all_comms
+                       if (not case_status_f or (c.case.status if c.case else None) == case_status_f)
+                       and (not stale_f or ((c.case.is_stale if c.case else False) == (stale_f == "1")))]
+        status_counts = {"total": len(entry_scope)}
+        for key in ("Initial Contact", "Intermediate Contact", "Positive Response", "Negative Response"):
+            status_counts[key] = sum(1 for c in entry_scope if c.status == key)
+
+    facets = {"case_status_counts": case_status_counts, "stale_counts": stale_counts, "status_counts": status_counts}
+
+    if group_by == "case":
+        case_ids = {c.case_id for c in filtered if c.case_id is not None}
+        group_cases = [cs for cs in cases if cs.id in case_ids]
+        group_cases.sort(key=lambda cs: cs.opened_at or datetime.min, reverse=True)
+        page = group_cases[start:start + rows]
+        return jsonify({"groups": [cs.to_dict() for cs in page], "total_groups": len(group_cases), **facets})
+
+    if group_by == "org":
+        groups = {}
+        for c in filtered:
+            key = c.org_title or c.org_name or ""
+            g = groups.setdefault(key, {"org_title": key, "org_name": c.org_name, "count": 0, "latest_date": None, "latest_status": None})
+            g["count"] += 1
+            if g["latest_date"] is None or c.contact_date > g["latest_date"]:
+                g["latest_date"] = c.contact_date
+                g["latest_status"] = c.status
+        group_list = sorted(groups.values(), key=lambda g: g["latest_date"] or "", reverse=True)
+        page = group_list[start:start + rows]
+        return jsonify({"groups": page, "total_groups": len(group_list), **facets})
+
+    if group_by == "day":
+        counts = {}
+        for c in filtered:
+            counts[c.contact_date] = counts.get(c.contact_date, 0) + 1
+        group_list = sorted(counts.items(), key=lambda kv: kv[0], reverse=True)
+        page = group_list[start:start + rows]
+        return jsonify({"groups": [{"day": d, "count": n} for d, n in page], "total_groups": len(group_list), **facets})
+
+    sort_map = {
+        "org_title": lambda c: _search_normalize(c.org_title or c.org_name or ""),
+        "subject":   lambda c: _search_normalize(c.subject or ""),
+        "status":    lambda c: _COMM_STATUS_ORDER.get(c.status, 99),
+    }
+    if sort_key in sort_map:
+        filtered.sort(key=sort_map[sort_key], reverse=(sort_dir == "desc"))
+    else:
+        filtered.sort(key=lambda c: (c.contact_date, c.created_at), reverse=(sort_dir != "asc"))
+
+    page = filtered[start:start + rows]
+    return jsonify({"rows": [c.to_dict() for c in page], "total": len(filtered), **facets})
+
+
+@app.route("/api/communications/subjects", methods=["GET"])
+def communications_subjects():
+    """Distinct historical subjects, newest-first, for the 'add communication'
+    modal's autocomplete datalist. Split out as its own lightweight endpoint
+    because that datalist genuinely needs every subject ever logged, not just
+    the current page -- the one place in this tab that still wants an
+    unpaginated view of the data, so it gets its own minimal query instead of
+    forcing /api/communications back into returning everything."""
+    rows = Communication.query.with_entities(Communication.subject, Communication.contact_date).all()
+    rows.sort(key=lambda r: r[1] or "", reverse=True)
+    seen = set()
+    subjects = []
+    for subj, _ in rows:
+        subj = (subj or "").strip()
+        if not subj:
+            continue
+        key = subj.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        subjects.append(subj)
+    return jsonify(subjects)
 
 
 @app.route("/api/communications", methods=["POST"])
