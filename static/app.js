@@ -569,6 +569,7 @@ const TRANSLATIONS = {
     'userPanel.org_file': 'Organization (file)',
     'userPanel.org_portal': 'Organization (portal)',
     'userPanel.org_mismatch': 'The contact file and the portal account disagree on this person\'s organization',
+    'userPanel.file_contact_only': 'No linked portal account',
     'userPanel.info': 'Info',
     'userPanel.portal': 'Portal',
     'userPanel.file': 'File',
@@ -1138,6 +1139,7 @@ const TRANSLATIONS = {
     'userPanel.org_file': 'Οργανισμός (αρχείο)',
     'userPanel.org_portal': 'Οργανισμός (πύλη)',
     'userPanel.org_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς τον οργανισμό αυτού του ατόμου',
+    'userPanel.file_contact_only': 'Χωρίς συνδεδεμένο λογαριασμό πύλης',
     'userPanel.info': 'Στοιχεία',
     'userPanel.portal': 'Πύλη',
     'userPanel.file': 'Αρχείο',
@@ -6494,6 +6496,28 @@ function openUserPanel(username) {
     });
 }
 
+// Same offcanvas as openUserPanel, for a File Contact that has no linked
+// portal account -- there's no /api/portal-user fetch to make (no CKAN
+// account exists), so this wraps the already-loaded contact record straight
+// into the same u-shaped object renderUserPanel expects, with every
+// portal-only field left null/empty. renderUserPanel's _hasPortal check
+// (username present or not) takes it from there: no Portal column, no
+// Registered/Last active/Datasets/Edits section.
+function openFileContactPanel(id) {
+  const c = _findLoadedFileContact(id) || (_pmUnmatched || []).find(x => x.id === id);
+  if (!c) return;
+  if (!_userPanel) _userPanel = new bootstrap.Offcanvas(document.getElementById('userPanel'));
+  _userDatasetsLoaded = null;
+  _userActivityLoaded = null;
+  _upEditing = false;
+  renderUserPanel({
+    username: null, contact: c, display_name: null, email: null,
+    state: null, sysadmin: false, created: null, last_active: null,
+    num_packages: 0, num_edits: 0, about: null,
+  });
+  _userPanel.show();
+}
+
 // Inline editing state for the user panel's Info/Organizations table -- lets
 // "Edit" turn the linked contact record's own fields into inputs in place
 // instead of opening the separate pmEditModal. _userPanelUser is kept so
@@ -6579,6 +6603,12 @@ async function saveUserPanelEdit() {
 
 function renderUserPanel(u) {
   _userPanelUser = u;
+  // Whether this person has an actual CKAN account at all -- false for a
+  // File Contact opened via openFileContactPanel (synthetic u with
+  // username: null). Gates every portal-only section: the state/sysadmin
+  // badges, the Portal column in Info/Organizations, and the whole Portal
+  // (registered/last active/datasets/edits) section further down.
+  const _hasPortal = !!u.username;
   const fmt = s => {
     if (!s) return '—';
     const d = new Date(s);
@@ -6589,8 +6619,9 @@ function renderUserPanel(u) {
   // CKAN profile is often a romanized username, the contact file has the real name.
   const _fileName = u.contact ? `${u.contact.first_name || ''} ${u.contact.last_name || ''}`.trim() : '';
   document.getElementById('userPanelName').textContent = _fileName || u.display_name || u.username;
-  document.getElementById('userPanelUsername').innerHTML =
-    `@${esc(u.username)}&ensp;<a href="https://data.gov.gr/user/${encodeURIComponent(u.username)}" target="_blank" rel="noopener" class="text-muted" title="${t('catalog.view_on_portal')}"><i class="bi bi-box-arrow-up-right"></i></a>`;
+  document.getElementById('userPanelUsername').innerHTML = _hasPortal
+    ? `@${esc(u.username)}&ensp;<a href="https://data.gov.gr/user/${encodeURIComponent(u.username)}" target="_blank" rel="noopener" class="text-muted" title="${t('catalog.view_on_portal')}"><i class="bi bi-box-arrow-up-right"></i></a>`
+    : `<span class="text-muted">${t('userPanel.file_contact_only')}</span>`;
 
   const _userOrgMemberships = (_portalMembersCache || []).filter(m => m.username === u.username && m.org_name);
   const orgs = _userOrgMemberships.map(m => `<a href="#" class="badge bg-light text-dark border text-decoration-none me-1 mb-1" style="white-space:normal;text-align:left"
@@ -6683,7 +6714,107 @@ function renderUserPanel(u) {
     ? `<option value="${esc(o.value)}"${_fileTypeKeys.includes(o.value) ? ' selected' : ''}>${esc(t(o.key))}</option>`
     : `<option disabled></option>`
   ).join('');
-  const infoHtml = c ? (_upEditing ? `
+  // No CKAN account at all (a File Contact opened via openFileContactPanel)
+  // -- same table shape, minus the Portal column since there's nothing to
+  // put in it. Reuses the exact same #upEdit*/#upOrg* element ids as the
+  // 3-column variant below; safe since only one of the two ever renders at
+  // a time (gated on _hasPortal, which doesn't change mid-panel).
+  const infoHtmlFileOnly = !c ? '' : (_upEditing ? `
+    <div class="mb-3">
+      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
+      <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
+        <thead><tr class="text-muted">
+          <th style="width:34%"></th>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</span>
+              <span class="d-flex gap-1">
+                <button class="btn btn-outline-success btn-sm py-0 px-1" title="${t('contacts.save')}"
+                  onclick="saveUserPanelEdit()"><i class="bi bi-check-lg"></i></button>
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('contacts.cancel')}"
+                  onclick="cancelUserPanelEdit()"><i class="bi bi-x-lg"></i></button>
+              </span>
+            </div>
+          </th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="text-muted">${t('contacts.col_name')}</td>
+            <td>
+              <input type="text" class="form-control form-control-sm mb-1" id="upEditFirstName" placeholder="${esc(t('contacts.first_name'))}" value="${esc(c.first_name || '')}">
+              <input type="text" class="form-control form-control-sm" id="upEditLastName" placeholder="${esc(t('contacts.last_name'))}" value="${esc(c.last_name || '')}">
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.email')}</td>
+            <td><input type="email" class="form-control form-control-sm" id="upEditEmail" value="${esc(c.email || '')}"></td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.col_role')}</td>
+            <td><select class="form-select form-select-sm" id="upEditContactType" multiple size="7">${_contactTypeOptionsHtml}</select></td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.tel')}</td>
+            <td><input type="text" class="form-control form-control-sm" id="upEditTel" value="${esc(c.tel || '')}"></td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.mobile')}</td>
+            <td><input type="text" class="form-control form-control-sm" id="upEditMobile" value="${esc(c.mobile || '')}"></td>
+          </tr>
+          <tr><td colspan="2" class="pt-3 pb-1"><span class="fw-semibold small text-uppercase text-muted">${t('contacts.organizations')}</span></td></tr>
+          <tr>
+            <td class="text-muted"></td>
+            <td>
+              <div id="upOrgTags" class="d-flex flex-wrap gap-1 mb-1"></div>
+              <div class="position-relative">
+                <input type="text" class="form-control form-control-sm" id="upOrgSearch" autocomplete="off"
+                       placeholder="${esc(t('contacts.add_org_placeholder'))}"
+                       oninput="_upOrgSearch(this.value)" onfocus="_upOrgSearch(this.value)"
+                       onblur="setTimeout(()=>document.getElementById('upOrgDropdown').classList.add('d-none'),150)">
+                <ul class="list-group shadow-sm position-absolute w-100 d-none" id="upOrgDropdown"
+                    style="z-index:1060;max-height:180px;overflow-y:auto;top:100%"></ul>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.position')}</td>
+            <td><input type="text" class="form-control form-control-sm" id="upEditPosition" value="${esc(c.position || '')}"></td>
+          </tr>
+        </tbody>
+      </table>
+      <div id="upEditStatus" class="text-danger small mt-1"></div>
+    </div>` : `
+    <div class="mb-3">
+      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
+      <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
+        <thead><tr class="text-muted">
+          <th style="width:34%"></th>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</span>
+              <span class="d-flex gap-1">
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('common.edit')}"
+                  onclick="startUserPanelEdit()"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('common.delete')}"
+                  onclick="deletePmContactRecord(${c.id}, null)"><i class="bi bi-trash"></i></button>
+              </span>
+            </div>
+          </th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="text-muted">${t('contacts.col_name')}</td><td>${_fileFullName ? esc(_fileFullName) : '—'}</td></tr>
+          <tr><td class="text-muted">${t('contacts.email')}</td><td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td></tr>
+          <tr><td class="text-muted">${t('contacts.col_role')}</td><td>${_fileTypeHtml}</td></tr>
+          <tr><td class="text-muted">${t('contacts.tel')}</td><td>${_telValue}</td></tr>
+          <tr><td class="text-muted">${t('contacts.mobile')}</td><td>${_mobileValue}</td></tr>
+          <tr><td colspan="2" class="pt-3 pb-1"><span class="fw-semibold small text-uppercase text-muted">${t('contacts.organizations')}</span></td></tr>
+          <tr><td class="text-muted"></td><td>${fileOrgHtml}</td></tr>
+          <tr><td class="text-muted">${t('contacts.position')}</td><td>${_positionValue}</td></tr>
+        </tbody>
+      </table>
+    </div>`);
+
+  const infoHtml = !_hasPortal ? infoHtmlFileOnly : (c ? (_upEditing ? `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
       <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
@@ -6813,7 +6944,7 @@ function renderUserPanel(u) {
           </tr>
         </tbody>
       </table>
-    </div>`) : '';
+    </div>`) : '');
 
   // Only the !c case still needs a standalone portal-fields block -- once a
   // contact file is linked, every one of these fields already has a row in
@@ -6833,10 +6964,10 @@ function renderUserPanel(u) {
       </dl>
     </div>` : '';
 
-  // Registered/last-active/datasets/edits are portal-account stats with no
-  // file-side counterpart at all -- always shown, regardless of whether a
-  // contact file is linked.
-  const portalStatsHtml = `
+  // Registered/last-active/datasets/edits are portal-account stats -- no
+  // file-side counterpart, and no meaning at all for a File Contact with no
+  // CKAN account, so this whole section is skipped when !_hasPortal.
+  const portalStatsHtml = _hasPortal ? `
     <div class="mt-3 pt-3 border-top">
       <div class="fw-semibold small text-uppercase text-muted mb-2"><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</div>
       <dl class="row g-1 small mb-0">
@@ -6849,7 +6980,7 @@ function renderUserPanel(u) {
         <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.edits')}</dt>
         <dd class="col-7 mb-1">${_editsValue}</dd>
       </dl>
-    </div>`;
+    </div>` : '';
 
   // c-truthy edit/delete now live next to the "File" column header in
   // infoHtml above -- this block only has a reason to exist for the
@@ -6866,10 +6997,10 @@ function renderUserPanel(u) {
     </div>` : '';
 
   document.getElementById('userPanelBody').innerHTML = `
-    <div class="d-flex align-items-center gap-2 mb-3">
+    ${_hasPortal ? `<div class="d-flex align-items-center gap-2 mb-3">
       <span class="badge bg-${stateCls}">${esc(_contactStateLabel(u.state))}</span>
       ${u.sysadmin ? `<span class="badge bg-danger">${t('contacts.role_sysadmin')}</span>` : ''}
-    </div>
+    </div>` : ''}
     ${infoHtml}
     ${_portalOnlyDl}
     ${!c ? `<div class="mt-3 pt-3 border-top">
@@ -8495,10 +8626,10 @@ function _fileContactRowHtml(c, index) {
               : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
     </td>
     <td onclick="event.stopPropagation()">${_fileContactActions(c)}</td>`;
-  // Only linked contacts have anywhere for a row click to go (the portal
-  // user panel) -- same condition _fileContactPortalBadge itself uses, just
-  // extended to the whole row instead of only the badge.
-  const rowOnclick = c.linked_username ? ` style="cursor:pointer" onclick="openUserPanel('${esc(c.linked_username)}')"` : '';
+  // Every row opens the same detail panel now -- linked contacts go to the
+  // portal user panel (openUserPanel), unlinked ones get the file-only
+  // variant (openFileContactPanel) since there's no CKAN account to fetch.
+  const rowOnclick = ` style="cursor:pointer" onclick="${c.linked_username ? `openUserPanel('${esc(c.linked_username)}')` : `openFileContactPanel(${c.id})`}"`;
   if (index == null) {
     return `<tr${rowOnclick}><td style="max-width:200px">${nameCell}</td>${tail}</tr>`;
   }
