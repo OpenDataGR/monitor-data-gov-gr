@@ -564,7 +564,6 @@ const TRANSLATIONS = {
     'contacts.add_org_placeholder': 'Add organization…',
     'contacts.fill_from_existing': 'Fill from existing',
     'contacts.ignore': 'Ignore',
-    'userPanel.contact_file': 'Contact File',
     'userPanel.email_file': 'Email (file)',
     'userPanel.org_file': 'Organization (file)',
     'userPanel.org_portal': 'Organization (portal)',
@@ -576,7 +575,6 @@ const TRANSLATIONS = {
     'userPanel.name_mismatch': 'The contact file and the portal account disagree on this person\'s name',
     'userPanel.email_mismatch': 'The contact file and the portal account disagree on this person\'s email',
     'userPanel.role_mismatch': 'The contact file and the portal account disagree on this person\'s role',
-    'userPanel.no_contact_record': 'No contact record linked.',
     'userPanel.add_contact_record': 'Add contact record',
     'userPanel.registered': 'Registered',
     'userPanel.last_active': 'Last active',
@@ -1134,7 +1132,6 @@ const TRANSLATIONS = {
     'contacts.add_org_placeholder': 'Προσθήκη οργανισμού…',
     'contacts.fill_from_existing': 'Συμπλήρωση από υπάρχουσα',
     'contacts.ignore': 'Παράβλεψη',
-    'userPanel.contact_file': 'Αρχείο Επαφής',
     'userPanel.email_file': 'Email (αρχείο)',
     'userPanel.org_file': 'Οργανισμός (αρχείο)',
     'userPanel.org_portal': 'Οργανισμός (πύλη)',
@@ -1146,7 +1143,6 @@ const TRANSLATIONS = {
     'userPanel.name_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς το όνομα αυτού του ατόμου',
     'userPanel.email_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς το email αυτού του ατόμου',
     'userPanel.role_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς τον ρόλο αυτού του ατόμου',
-    'userPanel.no_contact_record': 'Δεν υπάρχει συνδεδεμένη εγγραφή επαφής.',
     'userPanel.add_contact_record': 'Προσθήκη εγγραφής επαφής',
     'userPanel.registered': 'Εγγραφή',
     'userPanel.last_active': 'Τελευταία ενεργός',
@@ -6839,7 +6835,7 @@ function renderUserPanel(u) {
         </tbody>
       </table>
       <div id="upEditStatus" class="text-danger small mt-1"></div>
-    </div>` : (c ? `
+    </div>` : `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
       <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
@@ -6850,10 +6846,15 @@ function renderUserPanel(u) {
             <div class="d-flex align-items-center justify-content-between">
               <span><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</span>
               <span class="d-flex gap-1">
+                ${c ? `
                 <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('common.edit')}"
                   onclick="startUserPanelEdit()"><i class="bi bi-pencil"></i></button>
                 <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('common.delete')}"
                   onclick="deletePmContactRecord(${c.id}, ${_hasPortal ? `'${esc(u.username)}'` : 'null'})"><i class="bi bi-trash"></i></button>
+                ` : `
+                <button class="btn btn-outline-primary btn-sm py-0 px-1" title="${t('userPanel.add_contact_record')}"
+                  onclick="startUserPanelEditNew()"><i class="bi bi-person-plus"></i></button>
+                `}
               </span>
             </div>
           </th>
@@ -6867,7 +6868,7 @@ function renderUserPanel(u) {
           <tr>
             <td class="text-muted">${t('contacts.email')}${_emailDiffers ? _mismatchIcon('userPanel.email_mismatch') : ''}</td>
             <td>${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</td>
-            <td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td>
+            <td>${c && c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.col_role')}${_roleDiffers ? _mismatchIcon('userPanel.role_mismatch') : ''}</td>
@@ -6897,26 +6898,7 @@ function renderUserPanel(u) {
           </tr>
         </tbody>
       </table>
-    </div>` : '');
-
-  // Only the !c, not-editing case still needs a standalone portal-fields
-  // block -- once a contact file is linked (or is being created inline via
-  // startUserPanelEditNew), every one of these fields already has a row in
-  // infoHtml above.
-  const _portalOnlyDl = (!c && !_upEditing) ? `
-    <div class="mb-3">
-      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
-      <dl class="row g-1 small mb-0">
-        <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.first_name')}</dt>
-        <dd class="col-7 mb-1">${_portalFirst ? esc(_portalFirst) : '—'}</dd>
-        <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.last_name')}</dt>
-        <dd class="col-7 mb-1">${_portalLast ? esc(_portalLast) : '—'}</dd>
-        <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.col_role')}</dt>
-        <dd class="col-7 mb-1"><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></dd>
-        <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.email')}</dt>
-        <dd class="col-7 mb-1">${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</dd>
-      </dl>
-    </div>` : '';
+    </div>`;
 
   // Registered/last-active/datasets/edits are portal-account stats -- no
   // file-side counterpart, and no meaning at all for a File Contact with no
@@ -6936,32 +6918,12 @@ function renderUserPanel(u) {
       </dl>
     </div>` : '';
 
-  // c-truthy edit/delete now live next to the "File" column header in
-  // infoHtml above -- this block only has a reason to exist for the
-  // !c, not-editing case (nothing to edit yet, just an add-record button
-  // that jumps straight into the same inline editor via startUserPanelEditNew).
-  const contactHtml = (!c && !_upEditing) ? `
-    <div class="mt-3 pt-3 border-top">
-      <div class="d-flex align-items-center justify-content-between mb-2">
-        <div class="fw-semibold small text-uppercase text-muted">${t('userPanel.contact_file')}</div>
-        <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('userPanel.add_contact_record')}"
-          onclick="startUserPanelEditNew()">
-          <i class="bi bi-person-plus me-1"></i>${t('common.add')}</button>
-      </div>
-      <p class="text-muted small mb-0">${t('userPanel.no_contact_record')}</p>
-    </div>` : '';
-
   document.getElementById('userPanelBody').innerHTML = `
     ${_hasPortal ? `<div class="d-flex align-items-center gap-2 mb-3">
       <span class="badge bg-${stateCls}">${esc(_contactStateLabel(u.state))}</span>
       ${u.sysadmin ? `<span class="badge bg-danger">${t('contacts.role_sysadmin')}</span>` : ''}
     </div>` : ''}
     ${infoHtml}
-    ${_portalOnlyDl}
-    ${(!c && !_upEditing) ? `<div class="mt-3 pt-3 border-top">
-      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('contacts.organizations')}</div>
-      ${orgHtml}
-    </div>` : ''}
     ${portalStatsHtml}
     <div id="userPanelActivitySection" class="d-none mt-3 pt-3 border-top">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.recent_activity')}</div>
@@ -6975,7 +6937,6 @@ function renderUserPanel(u) {
         <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>
       </div>
     </div>
-    ${contactHtml}
     ${u.about ? `<div class="mt-3 pt-3 border-top"><div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.about')}</div><p class="small text-muted mb-0">${esc(u.about)}</p></div>` : ''}
   `;
   if (_upEditing) _upOrgRenderTags();
