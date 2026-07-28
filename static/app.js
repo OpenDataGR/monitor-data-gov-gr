@@ -6699,21 +6699,27 @@ function renderUserPanel(u) {
     ${infoHtml}
     ${_portalOnlyDl}
     <div class="mt-3 pt-3 border-top">
-      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('contacts.organizations')}${_orgsDiffer ? _mismatchIcon('userPanel.org_mismatch') : ''}</div>
-      <div class="row g-3">
-        <div class="${c ? 'col-6' : 'col-12'}">
-          <div class="text-muted small mb-1"><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</div>
-          ${orgHtml}
-        </div>
-        ${c ? `<div class="col-6">
-          <div class="text-muted small mb-1"><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</div>
-          ${fileOrgHtml}
-        </div>` : ''}
-      </div>
-      ${c ? `<dl class="row g-1 small mb-0 mt-2">
-        <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.position')}</dt>
-        <dd class="col-7 mb-1">${_positionValue}</dd>
-      </dl>` : ''}
+      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('contacts.organizations')}</div>
+      ${c ? `
+      <table class="table table-sm mb-0" style="font-size:.85rem">
+        <thead><tr class="text-muted">
+          <th style="width:34%"></th>
+          <th><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
+          <th><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="text-muted">${_orgsDiffer ? _mismatchIcon('userPanel.org_mismatch') : ''}</td>
+            <td>${orgHtml}</td>
+            <td>${fileOrgHtml}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.position')}</td>
+            <td class="text-muted">—</td>
+            <td>${_positionValue}</td>
+          </tr>
+        </tbody>
+      </table>` : orgHtml}
     </div>
     ${portalStatsHtml}
     <div id="userPanelActivitySection" class="d-none mt-3 pt-3 border-top">
