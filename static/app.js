@@ -6027,7 +6027,7 @@ function _renderOrgContactsPanel() {
           </div>
           <div class="d-flex gap-1 flex-shrink-0">
             ${hasFile
-              ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditByUsername('${esc(m.username)}')" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+              ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openUserPanel('${esc(m.username)}', true)" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
                  <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>`
               : `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="openPmEditNewForUser('${esc(m.username)}','${esc(m.email)}','${esc(ckanName || orgCode)}','${esc(orgLabel)}','${esc(m.capacity||'')}')" title="${t('userPanel.add_contact_record')}"><i class="bi bi-person-plus me-1"></i>${t('common.add')}</button>`}
           </div>
@@ -6055,7 +6055,7 @@ function _renderOrgContactsPanel() {
             ${c.mobile ? `<div class="small"><i class="bi bi-phone me-1 text-muted"></i><a href="tel:${esc(c.mobile)}">${esc(c.mobile)}</a></div>` : ''}
           </div>
           <div class="d-flex gap-1 flex-shrink-0">
-            <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openPmEditForUnmatched(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openFileContactPanel(${c.id}, true)" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
             <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${c.id}, null)" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
           </div>
         </div>
@@ -6070,32 +6070,6 @@ function _renderOrgContactsPanel() {
 
 function openPmEditNewForOrg() {
   openPmEditNewForUser('', '', _panelCkanName || _panelOrgCode, _panelOrgLabel);
-}
-
-function openPmEditForUnmatched(id) {
-  const c = (_pmUnmatched || []).find(c => c.id === id);
-  if (!c) return;
-  show('pmEditTitle').textContent   = (`${c.first_name || ''} ${c.last_name || ''}`).trim() || 'Edit Contact';
-  show('pmEditIcon').className      = 'bi bi-pencil me-2';
-  show('pmEditContactId').value     = c.id;
-  show('pmEditUsername').value      = '';
-  show('pmEditEmail').value         = c.email || '';
-  _pmEditOrgs = (c.org_codes && c.org_codes.length)
-    ? c.org_codes
-    : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
-  _pmOrgRenderTags();
-  show('pmEditFirstName').value     = c.first_name || '';
-  show('pmEditLastName').value      = c.last_name  || '';
-  show('pmEditPosition').value      = c.position   || '';
-  _pmSetContactType(c.contact_type  || '');
-  show('pmEditTel').value           = c.tel        || '';
-  show('pmEditMobile').value        = c.mobile     || '';
-  show('pmEditStatus').textContent  = '';
-  document.getElementById('pmEditEmailHint').classList.add('d-none');
-  _pmExistingMatch = null;
-  show('pmEditOrgRow').classList.remove('d-none');
-  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
-  _pmEditModal.show();
 }
 
 async function importContactsExcel(input) {
@@ -6473,7 +6447,10 @@ async function _loadRelatedDatasets(name, orgName) {
 // ── User detail panel ─────────────────────────────────────────────────────────
 let _userPanel = null;
 
-function openUserPanel(username) {
+// startEditing: true opens straight into inline-edit mode (used by the
+// table row-level edit-pencil buttons, which used to open pmEditModal) --
+// false is the plain row-click, read-only open.
+function openUserPanel(username, startEditing = false) {
   if (!username) return;
   if (!_userPanel) _userPanel = new bootstrap.Offcanvas(document.getElementById('userPanel'));
   _userDatasetsLoaded = null;
@@ -6489,7 +6466,10 @@ function openUserPanel(username) {
   // usernames that are personal emails ending in .com).
   fetch(API_BASE + 'api/portal-user?username=' + encodeURIComponent(username))
     .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.error || r.status)))
-    .then(data => renderUserPanel(data))
+    .then(data => {
+      if (startEditing && data.contact) { _upEditOrgs = _seedUpEditOrgs(data.contact); _upEditing = true; }
+      renderUserPanel(data);
+    })
     .catch(err => {
       document.getElementById('userPanelBody').innerHTML =
         `<div class="alert alert-danger mb-0">${t('userPanel.failed_load_user').replace('{msg}', err)}</div>`;
@@ -6503,13 +6483,14 @@ function openUserPanel(username) {
 // portal-only field left null/empty. renderUserPanel's _hasPortal check
 // (username present or not) takes it from there: no Portal column, no
 // Registered/Last active/Datasets/Edits section.
-function openFileContactPanel(id) {
+function openFileContactPanel(id, startEditing = false) {
   const c = _findLoadedFileContact(id) || (_pmUnmatched || []).find(x => x.id === id);
   if (!c) return;
   if (!_userPanel) _userPanel = new bootstrap.Offcanvas(document.getElementById('userPanel'));
   _userDatasetsLoaded = null;
   _userActivityLoaded = null;
   _upEditing = false;
+  if (startEditing) { _upEditOrgs = _seedUpEditOrgs(c); _upEditing = true; }
   renderUserPanel({
     username: null, contact: c, display_name: null, email: null,
     state: null, sysadmin: false, created: null, last_active: null,
@@ -6526,12 +6507,19 @@ let _userPanelUser = null;
 let _upEditing      = false;
 let _upEditOrgs     = [];  // [{code, label}, ...] -- mirrors _pmEditOrgs but for this picker
 
+// Shared by startUserPanelEdit and the startEditing=true paths in
+// openUserPanel/openFileContactPanel (row-level edit-pencil buttons that
+// jump straight into edit mode instead of opening the panel read-only first).
+function _seedUpEditOrgs(c) {
+  return (c.org_codes && c.org_codes.length)
+    ? c.org_codes.map(o => ({...o}))
+    : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
+}
+
 function startUserPanelEdit() {
   const c = _userPanelUser && _userPanelUser.contact;
   if (!c) return;
-  _upEditOrgs = (c.org_codes && c.org_codes.length)
-    ? c.org_codes.map(o => ({...o}))
-    : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
+  _upEditOrgs = _seedUpEditOrgs(c);
   _upEditing = true;
   renderUserPanel(_userPanelUser);
 }
@@ -7781,7 +7769,13 @@ function _pmRowHtml(m, index) {
   const roleLabel = _portalRoleLabel(m);
   const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
   const nameCell = `<span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${_pmFileBadge(m)}${_pmPosLine(m)}`;
-  const editOnclick = index == null ? `openPmEditByUsername('${esc(m.username)}')` : `openPmEdit(${index - 1})`;
+  // Editing an existing contact record now opens the same panel as a row
+  // click, straight into inline-edit mode -- pmEditModal is only still used
+  // for adding a brand-new record (m.contact_id falsy), which the inline
+  // editor doesn't support yet (it assumes an existing contact object).
+  const editOnclick = m.contact_id
+    ? `openUserPanel('${esc(m.username)}', true)`
+    : (index == null ? `openPmEditByUsername('${esc(m.username)}')` : `openPmEdit(${index - 1})`);
   const tail = `
     <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
     <td><span class="badge ${stateCls}">${esc(_contactStateLabel(state))}</span></td>
@@ -8507,9 +8501,15 @@ function _fileContactPortalBadge(c) {
   return `<span class="badge rounded-pill" style="${style}" title="${esc(t('contacts.has_portal_account'))}"${onclick}><i class="bi bi-globe2 me-1"></i>Portal</span>`;
 }
 function _fileContactActions(c) {
+  // Same panel the row click itself opens (openUserPanel for linked
+  // contacts, openFileContactPanel otherwise), just straight into edit mode
+  // -- pmEditModal (openPmEditFileContact) is retired from this button.
+  const editOnclick = c.linked_username
+    ? `openUserPanel('${esc(c.linked_username)}', true)`
+    : `openFileContactPanel(${c.id}, true)`;
   return `<div class="d-flex gap-1">
       <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${esc(t('common.edit'))}"
-        onclick="openPmEditFileContact(${c.id})"><i class="bi bi-pencil"></i></button>
+        onclick="${editOnclick}"><i class="bi bi-pencil"></i></button>
       <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${esc(t('common.delete'))}"
         onclick="deletePmContactRecord(${c.id}, ${c.linked_username ? `'${esc(c.linked_username)}'` : 'null'})"><i class="bi bi-trash"></i></button>
     </div>`;
@@ -8840,31 +8840,6 @@ function _findLoadedFileContact(id) {
     if (found) return found;
   }
   return null;
-}
-
-function openPmEditFileContact(id) {
-  const c = _findLoadedFileContact(id);
-  if (!c) return;
-  const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || '(no name)';
-  show('pmEditTitle').textContent   = name + ' — ' + (c.org_label || c.org_code);
-  show('pmEditIcon').className      = 'bi bi-pencil me-2';
-  show('pmEditContactId').value     = c.id        || '';
-  show('pmEditUsername').value      = '';
-  show('pmEditEmail').value         = c.email     || '';
-  _pmEditOrgs = (c.org_codes && c.org_codes.length)
-    ? c.org_codes
-    : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
-  _pmOrgRenderTags();
-  show('pmEditFirstName').value     = c.first_name || '';
-  show('pmEditLastName').value      = c.last_name  || '';
-  show('pmEditPosition').value      = c.position   || '';
-  _pmSetContactType(c.contact_type || '');
-  show('pmEditTel').value           = c.tel    || '';
-  show('pmEditMobile').value        = c.mobile || '';
-  show('pmEditStatus').textContent  = '';
-  show('pmEditOrgRow').classList.remove('d-none');
-  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
-  _pmEditModal.show();
 }
 
 function _pmSetContactType(val) {
