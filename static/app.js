@@ -6585,28 +6585,28 @@ function renderUserPanel(u) {
         <thead><tr class="text-muted">
           <th style="width:34%"></th>
           <th><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
-          <th><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</th>
+          <th class="border-start ps-2"><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</th>
         </tr></thead>
         <tbody>
           <tr>
             <td class="text-muted">${t('contacts.col_name')}${_nameDiffers ? _mismatchIcon('userPanel.name_mismatch') : ''}</td>
             <td>${_portalFullName ? esc(_portalFullName) : '—'}</td>
-            <td>${_fileFullName ? esc(_fileFullName) : '—'}</td>
+            <td class="border-start ps-2">${_fileFullName ? esc(_fileFullName) : '—'}</td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.email')}${_emailDiffers ? _mismatchIcon('userPanel.email_mismatch') : ''}</td>
             <td>${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</td>
-            <td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td>
+            <td class="border-start ps-2">${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.col_role')}${_roleDiffers ? _mismatchIcon('userPanel.role_mismatch') : ''}</td>
             <td><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></td>
-            <td>${_fileTypeHtml}</td>
+            <td class="border-start ps-2">${_fileTypeHtml}</td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.organizations')}${_orgsDiffer ? _mismatchIcon('userPanel.org_mismatch') : ''}</td>
             <td>${_portalOrgSummary}</td>
-            <td>${_fileOrgSummary}</td>
+            <td class="border-start ps-2">${_fileOrgSummary}</td>
           </tr>
         </tbody>
       </table>
