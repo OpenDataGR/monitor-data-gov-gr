@@ -575,7 +575,6 @@ const TRANSLATIONS = {
     'userPanel.name_mismatch': 'The contact file and the portal account disagree on this person\'s name',
     'userPanel.email_mismatch': 'The contact file and the portal account disagree on this person\'s email',
     'userPanel.role_mismatch': 'The contact file and the portal account disagree on this person\'s role',
-    'userPanel.no_extra_file_info': 'No position or phone number on file.',
     'userPanel.no_contact_record': 'No contact record linked.',
     'userPanel.add_contact_record': 'Add contact record',
     'userPanel.registered': 'Registered',
@@ -1145,7 +1144,6 @@ const TRANSLATIONS = {
     'userPanel.name_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς το όνομα αυτού του ατόμου',
     'userPanel.email_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς το email αυτού του ατόμου',
     'userPanel.role_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς τον ρόλο αυτού του ατόμου',
-    'userPanel.no_extra_file_info': 'Δεν υπάρχει θέση ή τηλέφωνο στο αρχείο.',
     'userPanel.no_contact_record': 'Δεν υπάρχει συνδεδεμένη εγγραφή επαφής.',
     'userPanel.add_contact_record': 'Προσθήκη εγγραφής επαφής',
     'userPanel.registered': 'Εγγραφή',
@@ -6568,16 +6566,25 @@ function renderUserPanel(u) {
     !_fileOrgCodes.some(o => _userOrgMemberships.some(m => _orgCodeMatches(o.code || '', m.org_name || ''))));
   if (!_orgLookupReady) _ensureOrgCkanBridge();
 
-  // Name and email exist on both sides once a contact file is linked --
-  // shown once, side by side, instead of twice in two separate blocks a
-  // reader has to scroll between and compare by memory. Registered/last-
-  // active/datasets/edits (portal-only) and position/tel/mobile (file-only)
-  // have no counterpart on the other side, so those stay in their own
-  // single-source sections as before -- only fields that exist on both
-  // sides belong in this table.
+  // Name/Email/Role/Organizations exist on both sides once a contact file is
+  // linked, so those compare side by side. Registered/last-active/datasets/
+  // edits only exist on the portal side and position/tel/mobile only exist
+  // on the file side -- rather than splitting those into their own separate
+  // blocks the reader has to hunt across, they get rows in this SAME table,
+  // just with the other column left as an em dash, so every field lands in
+  // the column it actually belongs to.
   const _nameDiffers  = !!(c && _fileFullName && _portalFullName && _fileFullName.trim().toLowerCase() !== _portalFullName.trim().toLowerCase());
   const _emailDiffers = !!(c && c.email && u.email && c.email !== u.email);
   const _mismatchIcon = (msgKey) => ` <i class="bi bi-exclamation-triangle-fill text-warning" title="${esc(t(msgKey))}"></i>`;
+  const _datasetsValue = u.num_packages > 0
+    ? `<a href="#" class="fw-semibold text-decoration-none" onclick="loadUserDatasets('${esc(u.username)}');return false;">${u.num_packages} <i class="bi bi-chevron-down small"></i></a>`
+    : '0';
+  const _editsValue = u.num_edits > 0
+    ? `<a href="#" class="fw-semibold text-decoration-none" onclick="loadUserActivity('${esc(u.username)}');return false;">${u.num_edits} <i class="bi bi-chevron-down small"></i></a>`
+    : '0';
+  const _positionValue = c && c.position ? esc(c.position) : '—';
+  const _telValue = c && c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a>` : '—';
+  const _mobileValue = c && c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a>` : '—';
   const comparisonHtml = c ? `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.comparison')}</div>
@@ -6585,36 +6592,94 @@ function renderUserPanel(u) {
         <thead><tr class="text-muted">
           <th style="width:34%"></th>
           <th><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
-          <th class="border-start ps-2"><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</th>
+          <th><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</th>
         </tr></thead>
         <tbody>
           <tr>
             <td class="text-muted">${t('contacts.col_name')}${_nameDiffers ? _mismatchIcon('userPanel.name_mismatch') : ''}</td>
             <td>${_portalFullName ? esc(_portalFullName) : '—'}</td>
-            <td class="border-start ps-2">${_fileFullName ? esc(_fileFullName) : '—'}</td>
+            <td>${_fileFullName ? esc(_fileFullName) : '—'}</td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.email')}${_emailDiffers ? _mismatchIcon('userPanel.email_mismatch') : ''}</td>
             <td>${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</td>
-            <td class="border-start ps-2">${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td>
+            <td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.col_role')}${_roleDiffers ? _mismatchIcon('userPanel.role_mismatch') : ''}</td>
             <td><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></td>
-            <td class="border-start ps-2">${_fileTypeHtml}</td>
+            <td>${_fileTypeHtml}</td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.organizations')}${_orgsDiffer ? _mismatchIcon('userPanel.org_mismatch') : ''}</td>
             <td>${_portalOrgSummary}</td>
-            <td class="border-start ps-2">${_fileOrgSummary}</td>
+            <td>${_fileOrgSummary}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('userPanel.registered')}</td>
+            <td>${fmt(u.created)}</td>
+            <td class="text-muted">—</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('userPanel.last_active')}</td>
+            <td>${fmt(u.last_active)}</td>
+            <td class="text-muted">—</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('userPanel.datasets')}</td>
+            <td>${_datasetsValue}</td>
+            <td class="text-muted">—</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('userPanel.edits')}</td>
+            <td>${_editsValue}</td>
+            <td class="text-muted">—</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.position')}</td>
+            <td class="text-muted">—</td>
+            <td>${_positionValue}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.tel')}</td>
+            <td class="text-muted">—</td>
+            <td>${_telValue}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.mobile')}</td>
+            <td class="text-muted">—</td>
+            <td>${_mobileValue}</td>
           </tr>
         </tbody>
       </table>
     </div>` : '';
 
+  // Only the !c case still needs a standalone portal-fields block -- once a
+  // contact file is linked, every one of these fields already has a row in
+  // comparisonHtml above.
+  const _portalOnlyDl = !c ? `
+    <dl class="row g-1 small mb-0">
+      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.first_name')}</dt>
+      <dd class="col-7 mb-1">${_portalFirst ? esc(_portalFirst) : '—'}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.last_name')}</dt>
+      <dd class="col-7 mb-1">${_portalLast ? esc(_portalLast) : '—'}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.col_role')}</dt>
+      <dd class="col-7 mb-1"><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></dd>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.email')}</dt>
+      <dd class="col-7 mb-1">${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.registered')}</dt>
+      <dd class="col-7 mb-1">${fmt(u.created)}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.last_active')}</dt>
+      <dd class="col-7 mb-1">${fmt(u.last_active)}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.datasets')}</dt>
+      <dd class="col-7 mb-1">${_datasetsValue}</dd>
+      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.edits')}</dt>
+      <dd class="col-7 mb-1">${_editsValue}</dd>
+    </dl>` : '';
+
   const contactHtml = `
     <div class="mt-3 pt-3 border-top">
-      <div class="d-flex align-items-center justify-content-between mb-2">
+      <div class="d-flex align-items-center justify-content-between${c ? '' : ' mb-2'}">
         <div class="fw-semibold small text-uppercase text-muted">${t('userPanel.contact_file')}</div>
         <div class="d-flex gap-1">
           ${c ? `
@@ -6629,11 +6694,7 @@ function renderUserPanel(u) {
           `}
         </div>
       </div>
-      ${c ? `<dl class="row g-1 small mb-0">
-        ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.position')}</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
-        ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.tel')}</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a></dd>` : ''}
-        ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.mobile')}</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a></dd>` : ''}
-      </dl>${!c.position && !c.tel && !c.mobile ? `<p class="text-muted small mb-0">${t('userPanel.no_extra_file_info')}</p>` : ''}` : `<p class="text-muted small mb-0">${t('userPanel.no_contact_record')}</p>`}
+      ${!c ? `<p class="text-muted small mb-0">${t('userPanel.no_contact_record')}</p>` : ''}
     </div>`;
 
   document.getElementById('userPanelBody').innerHTML = `
@@ -6642,33 +6703,7 @@ function renderUserPanel(u) {
       ${u.sysadmin ? `<span class="badge bg-danger">${t('contacts.role_sysadmin')}</span>` : ''}
     </div>
     ${comparisonHtml}
-    <dl class="row g-1 small mb-0">
-      ${!c ? `
-      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.first_name')}</dt>
-      <dd class="col-7 mb-1">${_portalFirst ? esc(_portalFirst) : '—'}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.last_name')}</dt>
-      <dd class="col-7 mb-1">${_portalLast ? esc(_portalLast) : '—'}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.col_role')}</dt>
-      <dd class="col-7 mb-1"><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></dd>
-      <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.email')}</dt>
-      <dd class="col-7 mb-1">${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</dd>` : ''}
-      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.registered')}</dt>
-      <dd class="col-7 mb-1">${fmt(u.created)}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.last_active')}</dt>
-      <dd class="col-7 mb-1">${fmt(u.last_active)}</dd>
-      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.datasets')}</dt>
-      <dd class="col-7 mb-1">
-        ${u.num_packages > 0
-          ? `<a href="#" class="fw-semibold text-decoration-none" onclick="loadUserDatasets('${esc(u.username)}');return false;">${u.num_packages} <i class="bi bi-chevron-down small"></i></a>`
-          : '0'}
-      </dd>
-      <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.edits')}</dt>
-      <dd class="col-7 mb-1">
-        ${u.num_edits > 0
-          ? `<a href="#" class="fw-semibold text-decoration-none" onclick="loadUserActivity('${esc(u.username)}');return false;">${u.num_edits} <i class="bi bi-chevron-down small"></i></a>`
-          : '0'}
-      </dd>
-    </dl>
+    ${_portalOnlyDl}
     <div id="userPanelActivitySection" class="d-none mt-3 pt-3 border-top">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.recent_activity')}</div>
       <div id="userPanelActivityList">
