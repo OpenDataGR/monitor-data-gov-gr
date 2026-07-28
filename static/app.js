@@ -569,7 +569,6 @@ const TRANSLATIONS = {
     'userPanel.org_file': 'Organization (file)',
     'userPanel.org_portal': 'Organization (portal)',
     'userPanel.org_mismatch': 'The contact file and the portal account disagree on this person\'s organization',
-    'userPanel.comparison': 'Comparison',
     'userPanel.portal': 'Portal',
     'userPanel.file': 'File',
     'userPanel.name_mismatch': 'The contact file and the portal account disagree on this person\'s name',
@@ -1138,7 +1137,6 @@ const TRANSLATIONS = {
     'userPanel.org_file': 'Οργανισμός (αρχείο)',
     'userPanel.org_portal': 'Οργανισμός (πύλη)',
     'userPanel.org_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς τον οργανισμό αυτού του ατόμου',
-    'userPanel.comparison': 'Σύγκριση',
     'userPanel.portal': 'Πύλη',
     'userPanel.file': 'Αρχείο',
     'userPanel.name_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς το όνομα αυτού του ατόμου',
@@ -6598,7 +6596,6 @@ function renderUserPanel(u) {
   const _mobileValue = c && c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a>` : '—';
   const comparisonHtml = c ? `
     <div class="mb-3">
-      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.comparison')}</div>
       <table class="table table-sm mb-0" style="font-size:.85rem">
         <thead><tr class="text-muted">
           <th style="width:34%"></th>
@@ -6647,16 +6644,6 @@ function renderUserPanel(u) {
             <td class="text-muted">—</td>
           </tr>
           <tr>
-            <td class="text-muted">${t('userPanel.datasets')}</td>
-            <td>${_datasetsValue}</td>
-            <td class="text-muted">—</td>
-          </tr>
-          <tr>
-            <td class="text-muted">${t('userPanel.edits')}</td>
-            <td>${_editsValue}</td>
-            <td class="text-muted">—</td>
-          </tr>
-          <tr>
             <td class="text-muted">${t('contacts.position')}</td>
             <td class="text-muted">—</td>
             <td>${_positionValue}</td>
@@ -6670,6 +6657,16 @@ function renderUserPanel(u) {
             <td class="text-muted">${t('contacts.mobile')}</td>
             <td class="text-muted">—</td>
             <td>${_mobileValue}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('userPanel.datasets')}</td>
+            <td>${_datasetsValue}</td>
+            <td class="text-muted">—</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('userPanel.edits')}</td>
+            <td>${_editsValue}</td>
+            <td class="text-muted">—</td>
           </tr>
         </tbody>
       </table>
