@@ -8172,13 +8172,17 @@ function _fileContactRowHtml(c, index) {
               : c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none"><i class="bi bi-phone me-1"></i>${esc(c.mobile)}</a>` : ''}
     </td>
     <td onclick="event.stopPropagation()">${_fileContactActions(c)}</td>`;
+  // Only linked contacts have anywhere for a row click to go (the portal
+  // user panel) -- same condition _fileContactPortalBadge itself uses, just
+  // extended to the whole row instead of only the badge.
+  const rowOnclick = c.linked_username ? ` style="cursor:pointer" onclick="openUserPanel('${esc(c.linked_username)}')"` : '';
   if (index == null) {
-    return `<tr><td style="max-width:200px">${nameCell}</td>${tail}</tr>`;
+    return `<tr${rowOnclick}><td style="max-width:200px">${nameCell}</td>${tail}</tr>`;
   }
   const orgBadge = (c.org_label || c.org_code)
     ? `<span class="badge bg-light text-dark border" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
          title="${esc(c.org_label || c.org_code)}">${esc(c.org_label || c.org_code)}</span>` : '—';
-  return `<tr>
+  return `<tr${rowOnclick}>
     <td class="text-muted small">${index}</td>
     <td style="max-width:200px">${nameCell}</td>
     <td style="max-width:180px">${orgBadge}</td>
