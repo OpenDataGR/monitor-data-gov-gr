@@ -564,6 +564,7 @@ const TRANSLATIONS = {
     'contacts.add_org_placeholder': 'Add organization…',
     'contacts.fill_from_existing': 'Fill from existing',
     'contacts.ignore': 'Ignore',
+    'contacts.email_duplicate_found': 'A contact with this email already exists: {who}',
     'userPanel.email_file': 'Email (file)',
     'userPanel.org_file': 'Organization (file)',
     'userPanel.org_portal': 'Organization (portal)',
@@ -1132,6 +1133,7 @@ const TRANSLATIONS = {
     'contacts.add_org_placeholder': 'Προσθήκη οργανισμού…',
     'contacts.fill_from_existing': 'Συμπλήρωση από υπάρχουσα',
     'contacts.ignore': 'Παράβλεψη',
+    'contacts.email_duplicate_found': 'Υπάρχει ήδη επαφή με αυτό το email: {who}',
     'userPanel.email_file': 'Email (αρχείο)',
     'userPanel.org_file': 'Οργανισμός (αρχείο)',
     'userPanel.org_portal': 'Οργανισμός (πύλη)',
@@ -4344,7 +4346,7 @@ function renderAllOrgsTable(orgs) {
             <td class="text-end fw-bold small">${o.ckan ? fmt(o.ckan.package_count) : '—'}</td>
             <td class="text-center">${(() => {
               // Contacts added directly against an unregistered (HRMS-only) org are saved
-              // under its raw HRMS code (see openPmEditNewForOrg), not its label -- and
+              // under its raw HRMS code (see the org panel's "add" button, openNewContactPanel), not its label -- and
               // there's no CKAN slug to cross-reference through for those, unlike orgs that
               // are also on the portal. Fall back to the code so the badge still finds them.
               const cnt = _contactSummary[o.label] || _contactSummary[o.code] || 0;
@@ -5576,7 +5578,7 @@ function _openAddContactForComm() {
   const orgCode  = show('commOrgCode').value;
   const orgLabel = show('commOrgLabel').value;
   if (!orgCode) return;
-  openPmEditNewForUser('', '', orgCode, orgLabel);
+  openNewContactPanel(orgCode, orgLabel);
 }
 
 function onCommOrgInput(preselectName) {
@@ -5986,7 +5988,7 @@ function _renderOrgContactsPanel() {
     return false;
   });
 
-  const addBtn = `<button class="btn btn-primary btn-sm mb-3 w-100" onclick="openPmEditNewForOrg()">
+  const addBtn = `<button class="btn btn-primary btn-sm mb-3 w-100" onclick="openNewContactPanel(_panelCkanName || _panelOrgCode, _panelOrgLabel)">
     <i class="bi bi-person-plus me-1"></i>${t('contacts.add')}
   </button>`;
 
@@ -6062,10 +6064,6 @@ function _renderOrgContactsPanel() {
   const allCards = [...memberCards, ...unmatchedCards];
   show('orgContactsBody').innerHTML = addBtn +
     (allCards.length ? allCards.join('') : `<p class="text-muted small mt-2">${t('contacts.none')}</p>`);
-}
-
-function openPmEditNewForOrg() {
-  openPmEditNewForUser('', '', _panelCkanName || _panelOrgCode, _panelOrgLabel);
 }
 
 async function importContactsExcel(input) {
@@ -6503,6 +6501,29 @@ function openFileContactPanel(id, startEditing = false) {
   _userPanel.show();
 }
 
+// Same panel again, for a contact with no anchor identity at all -- no
+// portal account, no existing file record, nothing but maybe an org
+// (org-scoped "add contact" buttons pass one in). Straight into edit mode
+// on a fully blank u/contact; _isBlankNew in renderUserPanel (username and
+// contact both null) is what turns on the email-duplicate check below, since
+// that's only meaningful when there's no already-known identity to conflict
+// with.
+function openNewContactPanel(orgCode, orgLabel) {
+  if (!_userPanel) _userPanel = new bootstrap.Modal(document.getElementById('userPanel'));
+  _userDatasetsLoaded = null;
+  _userActivityLoaded = null;
+  _upEditOrgs = orgCode ? [{code: orgCode, label: orgLabel || orgCode}] : [];
+  _upEditing = true;
+  renderUserPanel({
+    username: null, contact: null, display_name: null, email: null,
+    state: null, sysadmin: false, created: null, last_active: null,
+    num_packages: 0, num_edits: 0, about: null,
+  });
+  _userPanel.show();
+  // Preload HRMS orgs in background so they appear in the org picker.
+  if (!_publicOrgs.length) fetch(API_BASE + 'api/public-orgs').then(r => r.json()).then(d => { if (Array.isArray(d)) _publicOrgs = d; }).catch(() => {});
+}
+
 // Inline editing state for the user panel's Info/Organizations table -- lets
 // "Edit" turn the linked contact record's own fields into inputs in place
 // instead of opening the separate pmEditModal. _userPanelUser is kept so
@@ -6595,6 +6616,66 @@ function _upOrgSelect(code, label) {
   document.getElementById('upOrgDropdown').classList.add('d-none');
 }
 function _upOrgSearch(q) { _orgSearchDropdown(q, 'upOrgDropdown', '_upOrgSelect'); }
+
+// Only wired up when _isBlankNew (see renderUserPanel) -- there's no already-
+// known identity to conflict with once u.username or c is set, so the check
+// only fires for the fully-blank openNewContactPanel flow. Rather than
+// copying the matched person's fields into this blank form (which would let
+// Save create a second, duplicate contact record for them), this reopens the
+// panel on the ALREADY-EXISTING record -- same fix, no duplicate risk, and
+// the Portal|File columns immediately reflect who they really are.
+let _upExistingMatch = null;
+function _upCheckEmailDuplicate() {
+  const emailInput = document.getElementById('upEditEmail');
+  const hint = document.getElementById('upEmailHint');
+  if (!emailInput || !hint) return;
+  const email = emailInput.value.trim().toLowerCase();
+  if (!email) { hint.classList.add('d-none'); _upExistingMatch = null; return; }
+
+  // Unmatched file contacts first, then portal members -- same priority the
+  // old pmEditModal used.
+  let found = null;
+  for (const c of (_pmUnmatched || [])) {
+    if ((c.email || '').toLowerCase() === email) {
+      found = { type: 'file', id: c.id,
+        label: [c.first_name, c.last_name].filter(Boolean).join(' ') || email,
+        org: c.org_label || c.org_code || '' };
+      break;
+    }
+  }
+  if (!found) {
+    const seen = new Set();
+    for (const m of (_portalMembersCache || [])) {
+      if ((m.email || '').toLowerCase() !== email || seen.has(m.username)) continue;
+      seen.add(m.username);
+      found = { type: 'portal', username: m.username,
+        label: m.contact_name || m.display_name || email,
+        org: m.org_title || m.org_name || '' };
+      break;
+    }
+  }
+
+  if (found) {
+    _upExistingMatch = found;
+    document.getElementById('upEmailHintMsg').textContent =
+      t('contacts.email_duplicate_found').replace('{who}', [found.label, found.org].filter(Boolean).join(' — '));
+    hint.classList.remove('d-none');
+  } else {
+    _upExistingMatch = null;
+    hint.classList.add('d-none');
+  }
+}
+function _upUseExistingMatch() {
+  if (!_upExistingMatch) return;
+  const m = _upExistingMatch;
+  _upExistingMatch = null;
+  if (m.type === 'portal') openUserPanel(m.username, true);
+  else openFileContactPanel(m.id, true);
+}
+function _upDismissEmailHint() {
+  document.getElementById('upEmailHint')?.classList.add('d-none');
+  _upExistingMatch = null;
+}
 
 // c may be null here (creating a brand-new contact record via
 // startUserPanelEditNew) -- payload.id stays undefined in that case, which
@@ -6750,6 +6831,11 @@ function renderUserPanel(u) {
   // `ec` -- view mode still reads straight from `c`.
   const ec = c || (_upEditing ? _newContactDefaults(u) : null);
   const _editTypeKeys = ec ? (ec.contact_type || '').split(',').map(s => s.trim()).filter(Boolean) : [];
+  // No anchor identity at all (openNewContactPanel) -- the only case where
+  // typing an email that already belongs to someone is actually ambiguous
+  // enough to warn about. Once u.username or c is set, we already know
+  // exactly who this record is for.
+  const _isBlankNew = _upEditing && !c && !u.username;
   const _contactTypeOptionsHtml = _CONTACT_TYPE_OPTIONS.map(o => o
     ? `<option value="${esc(o.value)}"${_editTypeKeys.includes(o.value) ? ' selected' : ''}>${esc(t(o.key))}</option>`
     : `<option disabled></option>`
@@ -6794,7 +6880,17 @@ function renderUserPanel(u) {
           <tr>
             <td class="text-muted">${t('contacts.email')}</td>
             <td>${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</td>
-            <td><input type="email" class="form-control form-control-sm" id="upEditEmail" value="${esc(ec.email || '')}"></td>
+            <td>
+              <input type="email" class="form-control form-control-sm" id="upEditEmail" value="${esc(ec.email || '')}"
+                     ${_isBlankNew ? 'onblur="_upCheckEmailDuplicate()"' : ''}>
+              ${_isBlankNew ? `<div id="upEmailHint" class="d-none mt-1 p-2 rounded border border-warning-subtle bg-warning-subtle small">
+                <span id="upEmailHintMsg"></span>
+                <div class="mt-1">
+                  <button type="button" class="btn btn-warning btn-sm py-0 px-2 me-1" onclick="_upUseExistingMatch()">${t('contacts.fill_from_existing')}</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="_upDismissEmailHint()">${t('contacts.ignore')}</button>
+                </div>
+              </div>` : ''}
+            </td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.col_role')}</td>
@@ -8355,8 +8451,6 @@ function collapseAllContacts() {
 }
 
 let _pmUnmatched = [];
-let _pmEditModal = null;
-let _pmEditOrgs  = [];  // [{code, label}, ...] — orgs selected in the edit modal
 
 // ── File Contacts view — every org_contacts row (Excel import / manual entry),
 // matched or not, independent of whether it also has a portal account. Backs
@@ -8860,12 +8954,6 @@ function _findLoadedFileContact(id) {
   return null;
 }
 
-function _pmSetContactType(val) {
-  const sel = show('pmEditContactType');
-  const active = new Set((val || '').split(',').map(s => s.trim()).filter(Boolean));
-  for (const opt of sel.options) opt.selected = active.has(opt.value);
-}
-
 // Org search picker helpers
 function _orgSearchDropdown(q, dropdownId, selectFn) {
   const dd = document.getElementById(dropdownId);
@@ -8899,8 +8987,6 @@ function _orgSearchDropdown(q, dropdownId, selectFn) {
   ].join('');
   dd.classList.remove('d-none');
 }
-function _pmOrgSearch(q) { _orgSearchDropdown(q, 'pmEditOrgDropdown', '_pmOrgSelect'); }
-
 function _commAllContacts() {
   const contacts = [];
   const seen = new Set();
@@ -8987,53 +9073,6 @@ function _commContactPick(i) {
   _commOrgSet(ckanCode, c.org_label);
   onCommOrgInput(_commContactLabel(c));
 }
-function _pmOrgRenderTags() {
-  const container = document.getElementById('pmEditOrgTags');
-  if (!container) return;
-  container.innerHTML = _pmEditOrgs.map(o =>
-    `<span class="badge ${o.locked ? 'bg-primary' : 'bg-secondary'} d-inline-flex align-items-center gap-1" style="font-size:.8em">` +
-    (o.locked ? `<i class="bi bi-lock-fill" style="font-size:.7em"></i>` : '') +
-    `${esc(o.label || o.code)}` +
-    (!o.locked
-      ? `<button type="button" class="btn-close btn-close-white" style="font-size:.55em;margin-left:.25em"` +
-        ` onclick="_pmOrgRemove('${esc(o.code)}')" title="${t('common.remove')}"></button>`
-      : '') +
-    `</span>`
-  ).join('');
-}
-function _pmOrgRemove(code) {
-  _pmEditOrgs = _pmEditOrgs.filter(o => o.code !== code || o.locked);
-  _pmOrgRenderTags();
-}
-function _pmOrgSelect(code, label) {
-  if (!code || _pmEditOrgs.some(o => o.code === code)) return;
-  _pmEditOrgs.push({code, label: label || code});
-  _pmOrgRenderTags();
-  const s = document.getElementById('pmEditOrgSearch');
-  if (s) s.value = '';
-  document.getElementById('pmEditOrgDropdown').classList.add('d-none');
-}
-function _pmOrgClear() {
-  _pmEditOrgs = [];
-  _pmOrgRenderTags();
-  const s = document.getElementById('pmEditOrgSearch');
-  if (s) { s.value = ''; s.focus(); }
-  document.getElementById('pmEditOrgDropdown').classList.add('d-none');
-}
-function _pmOrgSetFixed(code, label) {
-  _pmEditOrgs = code ? [{code, label: label || code}] : [];
-  _pmOrgRenderTags();
-  const s = document.getElementById('pmEditOrgSearch');
-  if (s) s.value = '';
-  document.getElementById('pmEditOrgDropdown').classList.add('d-none');
-}
-function _pmOrgReset() {
-  _pmEditOrgs = [];
-  _pmOrgRenderTags();
-  const s = document.getElementById('pmEditOrgSearch');
-  if (s) s.value = '';
-  document.getElementById('pmEditOrgDropdown').classList.add('d-none');
-}
 function _commOrgSet(code, label) {
   show('commOrgCode').value  = code;
   show('commOrgLabel').value = label;
@@ -9109,175 +9148,8 @@ function deletePmContactRecord(contactId, username) {
   });
 }
 
-// Email duplicate check for new contacts
-let _pmExistingMatch = null;
-function _pmCheckEmailDuplicate() {
-  // Only run for new contacts (no existing contact id)
-  if (show('pmEditContactId').value) return;
-  const email = show('pmEditEmail').value.trim().toLowerCase();
-  const hint  = document.getElementById('pmEditEmailHint');
-  if (!email) { hint.classList.add('d-none'); _pmExistingMatch = null; return; }
-
-  // Search unmatched contacts and portal member contacts
-  let found = null;
-  for (const c of (_pmUnmatched || [])) {
-    if ((c.email || '').toLowerCase() === email) { found = {
-      first_name: c.first_name, last_name: c.last_name,
-      position: c.position, contact_type: c.contact_type,
-      tel: c.tel, mobile: c.mobile,
-      org_code: c.org_code, org_label: c.org_label, org_codes: c.org_codes || [],
-      _label: [c.first_name, c.last_name].filter(Boolean).join(' ') || email,
-      _org: c.org_label || c.org_code || '',
-    }; break; }
-  }
-  if (!found) {
-    const _seenPortalEmail = new Set();
-    for (const m of (_portalMembersCache || [])) {
-      if ((m.email || '').toLowerCase() !== email) continue;
-      if (_seenPortalEmail.has(m.username)) continue;
-      _seenPortalEmail.add(m.username);
-      const _dn = (m.display_name || '').trim();
-      const _dnParts = (_dn && !_dn.includes('@') && _dn.toLowerCase() !== (m.username || '').toLowerCase())
-        ? _dn.split(/\s+/) : [];
-      found = {
-        first_name: m.contact_first_name || (_dnParts.length ? (_dnParts.slice(0, -1).join(' ') || _dnParts[0]) : ''),
-        last_name:  m.contact_last_name  || (_dnParts.length > 1 ? _dnParts[_dnParts.length - 1] : ''),
-        position:   m.contact_position   || '',
-        contact_type: m.contact_type || _capacityToType(m.capacity),
-        tel: m.contact_tel || '', mobile: m.contact_mobile || '',
-        org_code: m.org_name, org_label: m.org_title || m.org_name,
-        username: m.username || '',
-        contact_org_codes: m.contact_org_codes || [],
-        _label: m.contact_name || m.display_name || email,
-        _org: m.org_title || m.org_name || '',
-      }; break;
-    }
-  }
-
-  if (found) {
-    _pmExistingMatch = found;
-    const parts = [found._label, found._org].filter(Boolean);
-    show('pmEditEmailHintMsg').textContent =
-      `A contact with this email already exists: ${parts.join(' — ')}`;
-    hint.classList.remove('d-none');
-  } else {
-    _pmExistingMatch = null;
-    hint.classList.add('d-none');
-  }
-}
-function _pmFillFromExisting() {
-  if (!_pmExistingMatch) return;
-  const f = _pmExistingMatch;
-  show('pmEditFirstName').value = f.first_name || '';
-  show('pmEditLastName').value  = f.last_name  || '';
-  show('pmEditPosition').value  = f.position   || '';
-  _pmSetContactType(f.contact_type || '');
-  show('pmEditTel').value    = f.tel    || '';
-  show('pmEditMobile').value = f.mobile || '';
-  if (f.username) show('pmEditUsername').value = f.username;
-  if (f.contact_org_codes && f.contact_org_codes.length) {
-    _pmEditOrgs = f.contact_org_codes.map(o => ({...o}));
-  } else if (f.org_codes && f.org_codes.length) {
-    _pmEditOrgs = f.org_codes.map(o => ({...o}));
-  } else if (f.org_code && !_pmEditOrgs.some(o => o.code === f.org_code)) {
-    _pmEditOrgs.push({code: f.org_code, label: f.org_label || f.org_code});
-  }
-  if (f.username) _pmApplyPortalOrgLocks(f.username);
-  _pmOrgRenderTags();
-  const _s = document.getElementById('pmEditOrgSearch');
-  if (_s) _s.value = '';
-  document.getElementById('pmEditOrgDropdown').classList.add('d-none');
-  document.getElementById('pmEditEmailHint').classList.add('d-none');
-  _pmExistingMatch = null;
-}
-
-function openPmEditNew() {
-  show('pmEditTitle').textContent   = 'New Contact';
-  show('pmEditIcon').className      = 'bi bi-person-plus me-2';
-  show('pmEditContactId').value     = '';
-  show('pmEditUsername').value      = '';
-  show('pmEditEmail').value         = '';
-  _pmOrgReset();
-  show('pmEditFirstName').value     = '';
-  show('pmEditLastName').value      = '';
-  show('pmEditPosition').value      = '';
-  _pmSetContactType('');
-  show('pmEditTel').value           = '';
-  show('pmEditMobile').value        = '';
-  document.getElementById('pmEditEmailHint').classList.add('d-none');
-  _pmExistingMatch = null;
-  show('pmEditStatus').textContent  = '';
-  show('pmEditOrgRow').classList.remove('d-none');
-  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
-  // Preload HRMS orgs in background so they appear in the picker
-  if (!_publicOrgs.length) fetch(API_BASE + 'api/public-orgs').then(r => r.json()).then(d => { if (Array.isArray(d)) _publicOrgs = d; }).catch(() => {});
-  _pmEditModal.show();
-}
-
-function openPmEditNewForUser(username, email, orgCode, orgLabel, capacity = '') {
-  show('pmEditTitle').textContent   = 'New Contact';
-  show('pmEditIcon').className      = 'bi bi-person-plus me-2';
-  show('pmEditContactId').value     = '';
-  show('pmEditUsername').value      = username || '';
-  show('pmEditEmail').value         = email    || '';
-  _pmEditOrgs = [];
-  _pmApplyPortalOrgLocks(username);
-  // Fallback when cache not yet loaded — use the org passed in
-  if (!_pmEditOrgs.length && orgCode)
-    _pmEditOrgs = [{code: orgCode, label: orgLabel || orgCode, locked: !!username}];
-  _pmOrgRenderTags();
-  // Pre-fill name from portal display_name when a portal member is known
-  const m = username ? (_portalMembersCache || []).find(x => x.username === username) : null;
-  const np = m ? _pmPortalNameParts(m) : {first: '', last: ''};
-  show('pmEditFirstName').value     = np.first;
-  show('pmEditLastName').value      = np.last;
-  show('pmEditPosition').value      = '';
-  const cap = capacity || (m && m.capacity) || '';
-  _pmSetContactType(cap ? _capacityToType(cap) : '');
-  show('pmEditTel').value           = '';
-  show('pmEditMobile').value        = '';
-  document.getElementById('pmEditEmailHint').classList.add('d-none');
-  _pmExistingMatch = null;
-  show('pmEditStatus').textContent  = '';
-  show('pmEditOrgRow').classList.remove('d-none');
-  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
-  if (email && !username) _pmCheckEmailDuplicate();
-  _pmEditModal.show();
-}
-
-function _pmApplyPortalOrgLocks(username) {
-  if (!username) return;
-  (_portalMembersCache || [])
-    .filter(x => x.username === username && x.org_name)
-    .forEach(x => _pmLockPortalOrg(x.org_name, x.org_title || x.org_name));
-}
-
-function _pmLockPortalOrg(portalOrgCode, portalOrgLabel) {
-  if (!portalOrgCode) return;
-  let found = false;
-  _pmEditOrgs = _pmEditOrgs.map(o => {
-    if (_orgCodeMatches(o.code, portalOrgCode) || o.code === portalOrgCode) {
-      found = true;
-      return {code: o.code, label: o.label, locked: true};
-    }
-    return o;
-  });
-  if (!found) _pmEditOrgs.unshift({code: portalOrgCode, label: portalOrgLabel || portalOrgCode, locked: true});
-}
-
-function _pmPortalNameParts(m) {
-  const dn = (m.display_name || '').trim();
-  const parts = (dn && !dn.includes('@') && dn.toLowerCase() !== (m.username || '').toLowerCase())
-    ? dn.split(/\s+/) : [];
-  return {
-    first: parts.length ? (parts.slice(0, -1).join(' ') || parts[0]) : '',
-    last:  parts.length > 1 ? parts[parts.length - 1] : '',
-  };
-}
-
-// Shared by savePmContact (modal) and saveUserPanelEdit (inline, in the user
-// panel) -- everything a save needs to do to the in-memory caches once
-// /api/contacts/save has responded, regardless of which UI triggered it.
+// Shared by saveUserPanelEdit -- everything a save needs to do to the
+// in-memory caches once /api/contacts/save has responded.
 function _applyContactSaveResult(data, username, contactId) {
   const savedEmail = (data.email || '').toLowerCase().trim();
   const applyToPortalRow = m => {
@@ -9343,39 +9215,6 @@ function _applyContactSaveResult(data, username, contactId) {
     const newName = [data.first_name, data.last_name].filter(Boolean).join(' ');
     onCommOrgInput(newName || undefined);
   }
-}
-
-async function savePmContact() {
-  const contactId = show('pmEditContactId').value;
-  if (!_pmEditOrgs.length) {
-    show('pmEditStatus').textContent = t('contacts.select_org_required');
-    document.getElementById('pmEditOrgSearch').focus();
-    return;
-  }
-  const payload = {
-    id:           contactId || undefined,
-    org_codes:    _pmEditOrgs.map(({code, label}) => ({code, label})),
-    org_code:     _pmEditOrgs[0].code,
-    org_label:    _pmEditOrgs[0].label,
-    email:        show('pmEditEmail').value,
-    first_name:   show('pmEditFirstName').value.trim(),
-    last_name:    show('pmEditLastName').value.trim(),
-    position:     show('pmEditPosition').value.trim(),
-    contact_type: Array.from(show('pmEditContactType').selectedOptions).map(o => o.value).join(','),
-    tel:          show('pmEditTel').value.trim(),
-    mobile:       show('pmEditMobile').value.trim(),
-  };
-  show('pmEditStatus').textContent = t('common.saving');
-  const resp = await fetch(API_BASE + 'api/contacts/save', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload),
-  });
-  const data = await resp.json();
-  if (data.error) { show('pmEditStatus').textContent = data.error; return; }
-
-  _applyContactSaveResult(data, show('pmEditUsername').value, contactId);
-  _pmEditModal.hide();
 }
 
 const CONTACTS_EXPORT_COLUMNS = [

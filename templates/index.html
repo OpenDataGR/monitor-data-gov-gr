@@ -1085,7 +1085,7 @@
                 <button class="btn btn-outline-secondary btn-sm" id="contactsReloadBtn" onclick="reloadContactsTab()">
                   <i class="bi bi-arrow-repeat me-1"></i><span data-i18n="contacts.reload">Reload</span>
                 </button>
-                <button class="btn btn-outline-primary btn-sm d-none" id="contactsAddBtn" onclick="openPmEditNew()">
+                <button class="btn btn-outline-primary btn-sm d-none" id="contactsAddBtn" onclick="openNewContactPanel()">
                   <i class="bi bi-person-plus me-1"></i><span data-i18n="contacts.add_contact">Add contact</span>
                 </button>
                 <button class="btn btn-outline-secondary btn-sm" onclick="openContactsExportModal()">
@@ -1370,8 +1370,10 @@
   </div>
 </div>
 
-<!-- Portal user / file contact detail modal -->
-<div class="modal fade" tabindex="-1" id="userPanel">
+<!-- Portal user / file contact detail modal -- z-index above the default
+     modal stack, since openNewContactPanel can open this from within the
+     still-open Communications modal. -->
+<div class="modal fade" tabindex="-1" id="userPanel" style="z-index:1075">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header border-bottom">
@@ -1387,90 +1389,6 @@
     </div>
   </div>
 </div>
-
-<!-- Portal member contact-file edit modal -->
-<div class="modal fade" id="pmEditModal" tabindex="-1" style="z-index:1075">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header border-bottom">
-        <h6 class="modal-title"><i class="bi bi-pencil me-2" id="pmEditIcon"></i><span id="pmEditTitle"></span></h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="pmEditContactId">
-        <input type="hidden" id="pmEditUsername">
-        <div class="mb-2" id="pmEditOrgRow">
-          <label class="form-label small mb-1" data-i18n="contacts.organizations">Organizations</label> <span class="text-danger">*</span>
-          <div id="pmEditOrgTags" class="d-flex flex-wrap gap-1 mb-1"></div>
-          <div class="position-relative">
-            <input type="text" class="form-control form-control-sm" id="pmEditOrgSearch"
-                   placeholder="Add organization…" data-i18n-ph="contacts.add_org_placeholder" autocomplete="off"
-                   oninput="_pmOrgSearch(this.value)" onfocus="_pmOrgSearch(this.value)"
-                   onblur="setTimeout(()=>document.getElementById('pmEditOrgDropdown').classList.add('d-none'),150)">
-            <ul class="list-group shadow-sm position-absolute w-100 d-none"
-                id="pmEditOrgDropdown" style="z-index:1060;max-height:180px;overflow-y:auto;top:100%"></ul>
-          </div>
-        </div>
-        <div class="mb-2">
-          <label class="form-label small mb-1" data-i18n="contacts.email">Email</label>
-          <input type="email" class="form-control form-control-sm" id="pmEditEmail"
-                 onblur="_pmCheckEmailDuplicate()">
-          <div id="pmEditEmailHint" class="d-none mt-1 p-2 rounded border border-warning-subtle bg-warning-subtle small">
-            <span id="pmEditEmailHintMsg"></span>
-            <div class="mt-1">
-              <button type="button" class="btn btn-warning btn-sm py-0 px-2 me-1" onclick="_pmFillFromExisting()" data-i18n="contacts.fill_from_existing">Fill from existing</button>
-              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="document.getElementById('pmEditEmailHint').classList.add('d-none')" data-i18n="contacts.ignore">Ignore</button>
-            </div>
-          </div>
-        </div>
-        <div class="row g-2 mb-2">
-          <div class="col-6">
-            <label class="form-label small mb-1" data-i18n="contacts.first_name">First name</label>
-            <input type="text" class="form-control form-control-sm" id="pmEditFirstName">
-          </div>
-          <div class="col-6">
-            <label class="form-label small mb-1" data-i18n="contacts.last_name">Last name</label>
-            <input type="text" class="form-control form-control-sm" id="pmEditLastName">
-          </div>
-        </div>
-        <div class="mb-2">
-          <label class="form-label small mb-1" data-i18n="contacts.position">Position / Title</label>
-          <input type="text" class="form-control form-control-sm" id="pmEditPosition">
-        </div>
-        <div class="mb-2">
-          <label class="form-label small mb-1" data-i18n="contacts.type">Contact type</label>
-          <select class="form-select form-select-sm" id="pmEditContactType" multiple size="7">
-            <option value="Κεντρικός Διαχειριστής Οργανισμού" data-i18n="contacts.type_contact_point">Κεντρικός Διαχειριστής Οργανισμού 🎩</option>
-            <option value="Org Administrator" data-i18n="contacts.type_org_administrator">Org Administrator</option>
-            <option value="Org Editor" data-i18n="contacts.type_org_editor">Org Editor</option>
-            <option value="Org Member" data-i18n="contacts.type_org_member">Org Member</option>
-            <option disabled class="type-spacer"></option>
-            <option value="Data Governance Officer" data-i18n="contacts.type_data_officer">Data Governance Officer</option>
-            <option value="Data Steward" data-i18n="contacts.type_data_steward">Data Steward</option>
-          </select>
-          <div class="form-text small" data-i18n="contacts.type_multiselect_hint">Hold Ctrl (Windows) or ⌘ (Mac) and click to select or deselect multiple roles.</div>
-        </div>
-        <div class="row g-2">
-          <div class="col-6">
-            <label class="form-label small mb-1" data-i18n="contacts.tel">Tel</label>
-            <input type="text" class="form-control form-control-sm" id="pmEditTel">
-          </div>
-          <div class="col-6">
-            <label class="form-label small mb-1" data-i18n="contacts.mobile">Mobile</label>
-            <input type="text" class="form-control form-control-sm" id="pmEditMobile">
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer border-top">
-        <span id="pmEditStatus" class="text-muted small me-auto"></span>
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" data-i18n="contacts.cancel">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm" onclick="savePmContact()" data-i18n="contacts.save">Save</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-
 
 <!-- Org detail offcanvas -->
 <div class="offcanvas offcanvas-end" tabindex="-1" id="orgDetailPanel" style="width:440px;max-width:95vw">
