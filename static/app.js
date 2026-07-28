@@ -6714,107 +6714,13 @@ function renderUserPanel(u) {
     ? `<option value="${esc(o.value)}"${_fileTypeKeys.includes(o.value) ? ' selected' : ''}>${esc(t(o.key))}</option>`
     : `<option disabled></option>`
   ).join('');
-  // No CKAN account at all (a File Contact opened via openFileContactPanel)
-  // -- same table shape, minus the Portal column since there's nothing to
-  // put in it. Reuses the exact same #upEdit*/#upOrg* element ids as the
-  // 3-column variant below; safe since only one of the two ever renders at
-  // a time (gated on _hasPortal, which doesn't change mid-panel).
-  const infoHtmlFileOnly = !c ? '' : (_upEditing ? `
-    <div class="mb-3">
-      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
-      <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
-        <thead><tr class="text-muted">
-          <th style="width:34%"></th>
-          <th>
-            <div class="d-flex align-items-center justify-content-between">
-              <span><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</span>
-              <span class="d-flex gap-1">
-                <button class="btn btn-outline-success btn-sm py-0 px-1" title="${t('contacts.save')}"
-                  onclick="saveUserPanelEdit()"><i class="bi bi-check-lg"></i></button>
-                <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('contacts.cancel')}"
-                  onclick="cancelUserPanelEdit()"><i class="bi bi-x-lg"></i></button>
-              </span>
-            </div>
-          </th>
-        </tr></thead>
-        <tbody>
-          <tr>
-            <td class="text-muted">${t('contacts.col_name')}</td>
-            <td>
-              <input type="text" class="form-control form-control-sm mb-1" id="upEditFirstName" placeholder="${esc(t('contacts.first_name'))}" value="${esc(c.first_name || '')}">
-              <input type="text" class="form-control form-control-sm" id="upEditLastName" placeholder="${esc(t('contacts.last_name'))}" value="${esc(c.last_name || '')}">
-            </td>
-          </tr>
-          <tr>
-            <td class="text-muted">${t('contacts.email')}</td>
-            <td><input type="email" class="form-control form-control-sm" id="upEditEmail" value="${esc(c.email || '')}"></td>
-          </tr>
-          <tr>
-            <td class="text-muted">${t('contacts.col_role')}</td>
-            <td><select class="form-select form-select-sm" id="upEditContactType" multiple size="7">${_contactTypeOptionsHtml}</select></td>
-          </tr>
-          <tr>
-            <td class="text-muted">${t('contacts.tel')}</td>
-            <td><input type="text" class="form-control form-control-sm" id="upEditTel" value="${esc(c.tel || '')}"></td>
-          </tr>
-          <tr>
-            <td class="text-muted">${t('contacts.mobile')}</td>
-            <td><input type="text" class="form-control form-control-sm" id="upEditMobile" value="${esc(c.mobile || '')}"></td>
-          </tr>
-          <tr><td colspan="2" class="pt-3 pb-1"><span class="fw-semibold small text-uppercase text-muted">${t('contacts.organizations')}</span></td></tr>
-          <tr>
-            <td class="text-muted"></td>
-            <td>
-              <div id="upOrgTags" class="d-flex flex-wrap gap-1 mb-1"></div>
-              <div class="position-relative">
-                <input type="text" class="form-control form-control-sm" id="upOrgSearch" autocomplete="off"
-                       placeholder="${esc(t('contacts.add_org_placeholder'))}"
-                       oninput="_upOrgSearch(this.value)" onfocus="_upOrgSearch(this.value)"
-                       onblur="setTimeout(()=>document.getElementById('upOrgDropdown').classList.add('d-none'),150)">
-                <ul class="list-group shadow-sm position-absolute w-100 d-none" id="upOrgDropdown"
-                    style="z-index:1060;max-height:180px;overflow-y:auto;top:100%"></ul>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="text-muted">${t('contacts.position')}</td>
-            <td><input type="text" class="form-control form-control-sm" id="upEditPosition" value="${esc(c.position || '')}"></td>
-          </tr>
-        </tbody>
-      </table>
-      <div id="upEditStatus" class="text-danger small mt-1"></div>
-    </div>` : `
-    <div class="mb-3">
-      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
-      <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
-        <thead><tr class="text-muted">
-          <th style="width:34%"></th>
-          <th>
-            <div class="d-flex align-items-center justify-content-between">
-              <span><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</span>
-              <span class="d-flex gap-1">
-                <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('common.edit')}"
-                  onclick="startUserPanelEdit()"><i class="bi bi-pencil"></i></button>
-                <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('common.delete')}"
-                  onclick="deletePmContactRecord(${c.id}, null)"><i class="bi bi-trash"></i></button>
-              </span>
-            </div>
-          </th>
-        </tr></thead>
-        <tbody>
-          <tr><td class="text-muted">${t('contacts.col_name')}</td><td>${_fileFullName ? esc(_fileFullName) : '—'}</td></tr>
-          <tr><td class="text-muted">${t('contacts.email')}</td><td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td></tr>
-          <tr><td class="text-muted">${t('contacts.col_role')}</td><td>${_fileTypeHtml}</td></tr>
-          <tr><td class="text-muted">${t('contacts.tel')}</td><td>${_telValue}</td></tr>
-          <tr><td class="text-muted">${t('contacts.mobile')}</td><td>${_mobileValue}</td></tr>
-          <tr><td colspan="2" class="pt-3 pb-1"><span class="fw-semibold small text-uppercase text-muted">${t('contacts.organizations')}</span></td></tr>
-          <tr><td class="text-muted"></td><td>${fileOrgHtml}</td></tr>
-          <tr><td class="text-muted">${t('contacts.position')}</td><td>${_positionValue}</td></tr>
-        </tbody>
-      </table>
-    </div>`);
-
-  const infoHtml = !_hasPortal ? infoHtmlFileOnly : (c ? (_upEditing ? `
+  // One unified table regardless of _hasPortal -- a File Contact with no
+  // linked CKAN account just shows its Portal column fields as empty ('—'),
+  // the same way a linked contact shows an empty File column when some file
+  // field is blank. _portalFullName/u.email/_uPortalRoleLabel/orgHtml are
+  // already '—'/blank-safe when u.username is null (no portal member row
+  // matches a null username), so no extra branching is needed here.
+  const infoHtml = c ? (_upEditing ? `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
       <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
@@ -6900,7 +6806,7 @@ function renderUserPanel(u) {
                 <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('common.edit')}"
                   onclick="startUserPanelEdit()"><i class="bi bi-pencil"></i></button>
                 <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('common.delete')}"
-                  onclick="deletePmContactRecord(${c.id},'${esc(u.username)}')"><i class="bi bi-trash"></i></button>
+                  onclick="deletePmContactRecord(${c.id}, ${_hasPortal ? `'${esc(u.username)}'` : 'null'})"><i class="bi bi-trash"></i></button>
               </span>
             </div>
           </th>
@@ -6944,7 +6850,7 @@ function renderUserPanel(u) {
           </tr>
         </tbody>
       </table>
-    </div>`) : '');
+    </div>`) : '';
 
   // Only the !c case still needs a standalone portal-fields block -- once a
   // contact file is linked, every one of these fields already has a row in
