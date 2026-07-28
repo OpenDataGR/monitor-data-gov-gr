@@ -6476,6 +6476,7 @@ function openUserPanel(username) {
   if (!_userPanel) _userPanel = new bootstrap.Offcanvas(document.getElementById('userPanel'));
   _userDatasetsLoaded = null;
   _userActivityLoaded = null;
+  _upEditing = false;
   document.getElementById('userPanelName').textContent = username;
   document.getElementById('userPanelUsername').textContent = '@' + username;
   document.getElementById('userPanelBody').innerHTML =
@@ -6493,7 +6494,91 @@ function openUserPanel(username) {
     });
 }
 
+// Inline editing state for the user panel's Info/Organizations table -- lets
+// "Edit" turn the linked contact record's own fields into inputs in place
+// instead of opening the separate pmEditModal. _userPanelUser is kept so
+// cancel/save can re-render from the last-fetched data without a refetch.
+let _userPanelUser = null;
+let _upEditing      = false;
+let _upEditOrgs     = [];  // [{code, label}, ...] -- mirrors _pmEditOrgs but for this picker
+
+function startUserPanelEdit() {
+  const c = _userPanelUser && _userPanelUser.contact;
+  if (!c) return;
+  _upEditOrgs = (c.org_codes && c.org_codes.length)
+    ? c.org_codes.map(o => ({...o}))
+    : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
+  _upEditing = true;
+  renderUserPanel(_userPanelUser);
+}
+
+function cancelUserPanelEdit() {
+  _upEditing = false;
+  renderUserPanel(_userPanelUser);
+}
+
+function _upOrgRenderTags() {
+  const container = document.getElementById('upOrgTags');
+  if (!container) return;
+  container.innerHTML = _upEditOrgs.map(o =>
+    `<span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em">${esc(o.label || o.code)}` +
+    `<button type="button" class="btn-close btn-close-white" style="font-size:.55em;margin-left:.25em"` +
+    ` onclick="_upOrgRemove('${esc(o.code)}')" title="${t('common.remove')}"></button></span>`
+  ).join('');
+}
+function _upOrgRemove(code) {
+  _upEditOrgs = _upEditOrgs.filter(o => o.code !== code);
+  _upOrgRenderTags();
+}
+function _upOrgSelect(code, label) {
+  if (!code || _upEditOrgs.some(o => o.code === code)) return;
+  _upEditOrgs.push({code, label: label || code});
+  _upOrgRenderTags();
+  const s = document.getElementById('upOrgSearch');
+  if (s) s.value = '';
+  document.getElementById('upOrgDropdown').classList.add('d-none');
+}
+function _upOrgSearch(q) { _orgSearchDropdown(q, 'upOrgDropdown', '_upOrgSelect'); }
+
+async function saveUserPanelEdit() {
+  const u = _userPanelUser;
+  const c = u && u.contact;
+  if (!c) return;
+  if (!_upEditOrgs.length) {
+    show('upEditStatus').textContent = t('contacts.select_org_required');
+    document.getElementById('upOrgSearch')?.focus();
+    return;
+  }
+  const payload = {
+    id:           c.id,
+    org_codes:    _upEditOrgs.map(({code, label}) => ({code, label})),
+    org_code:     _upEditOrgs[0].code,
+    org_label:    _upEditOrgs[0].label,
+    email:        show('upEditEmail').value,
+    first_name:   show('upEditFirstName').value.trim(),
+    last_name:    show('upEditLastName').value.trim(),
+    position:     show('upEditPosition').value.trim(),
+    contact_type: Array.from(show('upEditContactType').selectedOptions).map(o => o.value).join(','),
+    tel:          show('upEditTel').value.trim(),
+    mobile:       show('upEditMobile').value.trim(),
+  };
+  show('upEditStatus').textContent = t('common.saving');
+  const resp = await fetch(API_BASE + 'api/contacts/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json();
+  if (data.error) { show('upEditStatus').textContent = data.error; return; }
+
+  _applyContactSaveResult(data, u.username, c.id);
+  u.contact = data;
+  _upEditing = false;
+  renderUserPanel(u);
+}
+
 function renderUserPanel(u) {
+  _userPanelUser = u;
   const fmt = s => {
     if (!s) return '—';
     const d = new Date(s);
@@ -6594,7 +6679,83 @@ function renderUserPanel(u) {
   const _positionValue = c && c.position ? esc(c.position) : '—';
   const _telValue = c && c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a>` : '—';
   const _mobileValue = c && c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a>` : '—';
-  const infoHtml = c ? `
+  const _contactTypeOptionsHtml = _CONTACT_TYPE_OPTIONS.map(o => o
+    ? `<option value="${esc(o.value)}"${_fileTypeKeys.includes(o.value) ? ' selected' : ''}>${esc(t(o.key))}</option>`
+    : `<option disabled></option>`
+  ).join('');
+  const infoHtml = c ? (_upEditing ? `
+    <div class="mb-3">
+      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
+      <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
+        <thead><tr class="text-muted">
+          <th style="width:34%"></th>
+          <th><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</span>
+              <span class="d-flex gap-1">
+                <button class="btn btn-outline-success btn-sm py-0 px-1" title="${t('contacts.save')}"
+                  onclick="saveUserPanelEdit()"><i class="bi bi-check-lg"></i></button>
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('contacts.cancel')}"
+                  onclick="cancelUserPanelEdit()"><i class="bi bi-x-lg"></i></button>
+              </span>
+            </div>
+          </th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="text-muted">${t('contacts.col_name')}</td>
+            <td>${_portalFullName ? esc(_portalFullName) : '—'}</td>
+            <td>
+              <input type="text" class="form-control form-control-sm mb-1" id="upEditFirstName" placeholder="${esc(t('contacts.first_name'))}" value="${esc(c.first_name || '')}">
+              <input type="text" class="form-control form-control-sm" id="upEditLastName" placeholder="${esc(t('contacts.last_name'))}" value="${esc(c.last_name || '')}">
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.email')}</td>
+            <td>${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</td>
+            <td><input type="email" class="form-control form-control-sm" id="upEditEmail" value="${esc(c.email || '')}"></td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.col_role')}</td>
+            <td><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></td>
+            <td><select class="form-select form-select-sm" id="upEditContactType" multiple size="7">${_contactTypeOptionsHtml}</select></td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.tel')}</td>
+            <td class="text-muted">—</td>
+            <td><input type="text" class="form-control form-control-sm" id="upEditTel" value="${esc(c.tel || '')}"></td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.mobile')}</td>
+            <td class="text-muted">—</td>
+            <td><input type="text" class="form-control form-control-sm" id="upEditMobile" value="${esc(c.mobile || '')}"></td>
+          </tr>
+          <tr><td colspan="3" class="pt-3 pb-1"><span class="fw-semibold small text-uppercase text-muted">${t('contacts.organizations')}</span></td></tr>
+          <tr>
+            <td class="text-muted"></td>
+            <td>${orgHtml}</td>
+            <td>
+              <div id="upOrgTags" class="d-flex flex-wrap gap-1 mb-1"></div>
+              <div class="position-relative">
+                <input type="text" class="form-control form-control-sm" id="upOrgSearch" autocomplete="off"
+                       placeholder="${esc(t('contacts.add_org_placeholder'))}"
+                       oninput="_upOrgSearch(this.value)" onfocus="_upOrgSearch(this.value)"
+                       onblur="setTimeout(()=>document.getElementById('upOrgDropdown').classList.add('d-none'),150)">
+                <ul class="list-group shadow-sm position-absolute w-100 d-none" id="upOrgDropdown"
+                    style="z-index:1060;max-height:180px;overflow-y:auto;top:100%"></ul>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.position')}</td>
+            <td class="text-muted">—</td>
+            <td><input type="text" class="form-control form-control-sm" id="upEditPosition" value="${esc(c.position || '')}"></td>
+          </tr>
+        </tbody>
+      </table>
+      <div id="upEditStatus" class="text-danger small mt-1"></div>
+    </div>` : `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
       <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
@@ -6606,7 +6767,7 @@ function renderUserPanel(u) {
               <span><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</span>
               <span class="d-flex gap-1">
                 <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('common.edit')}"
-                  onclick="openPmEditByUsername('${esc(u.username)}')"><i class="bi bi-pencil"></i></button>
+                  onclick="startUserPanelEdit()"><i class="bi bi-pencil"></i></button>
                 <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('common.delete')}"
                   onclick="deletePmContactRecord(${c.id},'${esc(u.username)}')"><i class="bi bi-trash"></i></button>
               </span>
@@ -6652,7 +6813,7 @@ function renderUserPanel(u) {
           </tr>
         </tbody>
       </table>
-    </div>` : '';
+    </div>`) : '';
 
   // Only the !c case still needs a standalone portal-fields block -- once a
   // contact file is linked, every one of these fields already has a row in
@@ -6731,6 +6892,7 @@ function renderUserPanel(u) {
     ${contactHtml}
     ${u.about ? `<div class="mt-3 pt-3 border-top"><div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.about')}</div><p class="small text-muted mb-0">${esc(u.about)}</p></div>` : ''}
   `;
+  if (_upEditing && c) _upOrgRenderTags();
 }
 
 let _userDatasetsLoaded = null;
@@ -7415,6 +7577,18 @@ const _CONTACT_TYPE_I18N_KEY = {
   'Data Steward':             'contacts.type_data_steward',
   'Κεντρικός Διαχειριστής Οργανισμού': 'contacts.type_contact_point',
 };
+
+// Same option list/order as #pmEditContactType in index.html -- kept here too
+// so the inline user-panel editor can build an identical <select> in JS.
+const _CONTACT_TYPE_OPTIONS = [
+  { value: 'Κεντρικός Διαχειριστής Οργανισμού', key: 'contacts.type_contact_point' },
+  { value: 'Org Administrator', key: 'contacts.type_org_administrator' },
+  { value: 'Org Editor', key: 'contacts.type_org_editor' },
+  { value: 'Org Member', key: 'contacts.type_org_member' },
+  null,
+  { value: 'Data Governance Officer', key: 'contacts.type_data_officer' },
+  { value: 'Data Steward', key: 'contacts.type_data_steward' },
+];
 
 function _portalRoleLabel(m) {
   if (m.sysadmin) return t('contacts.role_sysadmin');
@@ -9130,37 +9304,10 @@ function openPmEdit(idx) {
   _pmEditModal.show();
 }
 
-async function savePmContact() {
-  const contactId = show('pmEditContactId').value;
-  if (!_pmEditOrgs.length) {
-    show('pmEditStatus').textContent = t('contacts.select_org_required');
-    document.getElementById('pmEditOrgSearch').focus();
-    return;
-  }
-  const payload = {
-    id:           contactId || undefined,
-    org_codes:    _pmEditOrgs.map(({code, label}) => ({code, label})),
-    org_code:     _pmEditOrgs[0].code,
-    org_label:    _pmEditOrgs[0].label,
-    email:        show('pmEditEmail').value,
-    first_name:   show('pmEditFirstName').value.trim(),
-    last_name:    show('pmEditLastName').value.trim(),
-    position:     show('pmEditPosition').value.trim(),
-    contact_type: Array.from(show('pmEditContactType').selectedOptions).map(o => o.value).join(','),
-    tel:          show('pmEditTel').value.trim(),
-    mobile:       show('pmEditMobile').value.trim(),
-  };
-  show('pmEditStatus').textContent = t('common.saving');
-  const resp = await fetch(API_BASE + 'api/contacts/save', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(payload),
-  });
-  const data = await resp.json();
-  if (data.error) { show('pmEditStatus').textContent = data.error; return; }
-
-  // Update the right cache depending on context
-  const username   = show('pmEditUsername').value;
+// Shared by savePmContact (modal) and saveUserPanelEdit (inline, in the user
+// panel) -- everything a save needs to do to the in-memory caches once
+// /api/contacts/save has responded, regardless of which UI triggered it.
+function _applyContactSaveResult(data, username, contactId) {
   const savedEmail = (data.email || '').toLowerCase().trim();
   const applyToPortalRow = m => {
     m.contact_id         = data.id;
@@ -9218,7 +9365,6 @@ async function savePmContact() {
     _fileContactsGroupsLoaded = false;
   }
   _pmSaveCache(_portalMembersCache, _pmUnmatched);
-  _pmEditModal.hide();
   if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel();
   loadContactSummary();
   // If opened from the comm modal, refresh its contact list and auto-select the new person
@@ -9226,6 +9372,39 @@ async function savePmContact() {
     const newName = [data.first_name, data.last_name].filter(Boolean).join(' ');
     onCommOrgInput(newName || undefined);
   }
+}
+
+async function savePmContact() {
+  const contactId = show('pmEditContactId').value;
+  if (!_pmEditOrgs.length) {
+    show('pmEditStatus').textContent = t('contacts.select_org_required');
+    document.getElementById('pmEditOrgSearch').focus();
+    return;
+  }
+  const payload = {
+    id:           contactId || undefined,
+    org_codes:    _pmEditOrgs.map(({code, label}) => ({code, label})),
+    org_code:     _pmEditOrgs[0].code,
+    org_label:    _pmEditOrgs[0].label,
+    email:        show('pmEditEmail').value,
+    first_name:   show('pmEditFirstName').value.trim(),
+    last_name:    show('pmEditLastName').value.trim(),
+    position:     show('pmEditPosition').value.trim(),
+    contact_type: Array.from(show('pmEditContactType').selectedOptions).map(o => o.value).join(','),
+    tel:          show('pmEditTel').value.trim(),
+    mobile:       show('pmEditMobile').value.trim(),
+  };
+  show('pmEditStatus').textContent = t('common.saving');
+  const resp = await fetch(API_BASE + 'api/contacts/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json();
+  if (data.error) { show('pmEditStatus').textContent = data.error; return; }
+
+  _applyContactSaveResult(data, show('pmEditUsername').value, contactId);
+  _pmEditModal.hide();
 }
 
 const CONTACTS_EXPORT_COLUMNS = [
