@@ -6029,7 +6029,7 @@ function _renderOrgContactsPanel() {
             ${hasFile
               ? `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openUserPanel('${esc(m.username)}', true)" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
                  <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deletePmContactRecord(${m.contact_id},'${esc(m.username)}')" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>`
-              : `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="openPmEditNewForUser('${esc(m.username)}','${esc(m.email)}','${esc(ckanName || orgCode)}','${esc(orgLabel)}','${esc(m.capacity||'')}')" title="${t('userPanel.add_contact_record')}"><i class="bi bi-person-plus me-1"></i>${t('common.add')}</button>`}
+              : `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="openUserPanel('${esc(m.username)}', true)" title="${t('userPanel.add_contact_record')}"><i class="bi bi-person-plus me-1"></i>${t('common.add')}</button>`}
           </div>
         </div>
       </div>
@@ -6467,7 +6467,15 @@ function openUserPanel(username, startEditing = false) {
   fetch(API_BASE + 'api/portal-user?username=' + encodeURIComponent(username))
     .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.error || r.status)))
     .then(data => {
-      if (startEditing && data.contact) { _upEditOrgs = _seedUpEditOrgs(data.contact); _upEditing = true; }
+      if (startEditing) {
+        // Two cases: editing an existing linked contact (seed from it), or
+        // this portal member has no contact file yet -- same edit mode, but
+        // seeded from their own portal org membership(s) instead, so the
+        // panel goes straight into "create" rather than showing the
+        // separate Add-record button first.
+        _upEditOrgs = data.contact ? _seedUpEditOrgs(data.contact) : _seedUpEditOrgsFromPortal(data.username);
+        _upEditing = true;
+      }
       renderUserPanel(data);
     })
     .catch(err => {
@@ -6516,12 +6524,52 @@ function _seedUpEditOrgs(c) {
     : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
 }
 
+// For a portal member with no contact file yet -- pre-fill the org picker
+// from their actual portal org membership(s) rather than starting empty,
+// same idea as pmEditModal's old _pmApplyPortalOrgLocks (minus the "locked"
+// tag styling, which this simpler picker doesn't have).
+function _seedUpEditOrgsFromPortal(username) {
+  return (_portalMembersCache || [])
+    .filter(m => m.username === username && m.org_name)
+    .map(m => ({code: m.org_name, label: m.org_title || m.org_name}));
+}
+
+// Blank/prefilled field values for a contact that doesn't exist yet --
+// renderUserPanel's edit-mode template reads from this (via `ec`) instead of
+// `c` when creating, so the same inputs/ids serve both create and update.
+function _newContactDefaults(u) {
+  const parts = (u.display_name || '').trim().split(/\s+/).filter(Boolean);
+  const bestRole = _dedupeContacts(_portalMembersCache || []).find(m => m.username === u.username);
+  return {
+    id: null,
+    first_name: parts[0] || '',
+    last_name: parts.slice(1).join(' '),
+    email: u.email || '',
+    position: '',
+    contact_type: (!u.sysadmin && bestRole) ? _capacityToType(bestRole.capacity) : '',
+    tel: '',
+    mobile: '',
+  };
+}
+
 function startUserPanelEdit() {
   const c = _userPanelUser && _userPanelUser.contact;
   if (!c) return;
   _upEditOrgs = _seedUpEditOrgs(c);
   _upEditing = true;
   renderUserPanel(_userPanelUser);
+}
+
+// Counterpart to startUserPanelEdit for a portal member with no contact file
+// yet -- same inline editor, seeded from their portal identity instead of an
+// existing contact. Replaces the old "Add contact record" button opening
+// pmEditModal.
+function startUserPanelEditNew() {
+  const u = _userPanelUser;
+  if (!u || u.contact) return;
+  _upEditOrgs = _seedUpEditOrgsFromPortal(u.username);
+  _upEditing = true;
+  renderUserPanel(u);
 }
 
 function cancelUserPanelEdit() {
@@ -6552,17 +6600,20 @@ function _upOrgSelect(code, label) {
 }
 function _upOrgSearch(q) { _orgSearchDropdown(q, 'upOrgDropdown', '_upOrgSelect'); }
 
+// c may be null here (creating a brand-new contact record via
+// startUserPanelEditNew) -- payload.id stays undefined in that case, which
+// /api/contacts/save treats as a create rather than an update.
 async function saveUserPanelEdit() {
   const u = _userPanelUser;
-  const c = u && u.contact;
-  if (!c) return;
+  if (!u) return;
+  const c = u.contact;
   if (!_upEditOrgs.length) {
     show('upEditStatus').textContent = t('contacts.select_org_required');
     document.getElementById('upOrgSearch')?.focus();
     return;
   }
   const payload = {
-    id:           c.id,
+    id:           c ? c.id : undefined,
     org_codes:    _upEditOrgs.map(({code, label}) => ({code, label})),
     org_code:     _upEditOrgs[0].code,
     org_label:    _upEditOrgs[0].label,
@@ -6583,7 +6634,7 @@ async function saveUserPanelEdit() {
   const data = await resp.json();
   if (data.error) { show('upEditStatus').textContent = data.error; return; }
 
-  _applyContactSaveResult(data, u.username, c.id);
+  _applyContactSaveResult(data, u.username, c ? c.id : null);
   u.contact = data;
   _upEditing = false;
   renderUserPanel(u);
@@ -6620,8 +6671,6 @@ function renderUserPanel(u) {
     : `<span class="text-muted small">${t('userPanel.no_organization')}</span>`;
 
   const c = u.contact;
-  // find the org this user belongs to (first one) for pre-filling new contact
-  const _uOrg = (_portalMembersCache || []).find(m => m.username === u.username && m.org_name);
 
   // Portal's own name, split from display_name (CKAN has no separate first/last fields)
   const _portalNameParts = (u.display_name || '').trim().split(/\s+/).filter(Boolean);
@@ -6698,8 +6747,15 @@ function renderUserPanel(u) {
   const _positionValue = c && c.position ? esc(c.position) : '—';
   const _telValue = c && c.tel ? `<a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a>` : '—';
   const _mobileValue = c && c.mobile ? `<a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a>` : '—';
+  // Effective contact for edit-mode purposes: the real thing when editing an
+  // existing record, or blank/portal-derived defaults when _upEditing was
+  // entered via startUserPanelEditNew for someone with no contact file yet
+  // (see _newContactDefaults). Only the edit-mode template below reads from
+  // `ec` -- view mode still reads straight from `c`.
+  const ec = c || (_upEditing ? _newContactDefaults(u) : null);
+  const _editTypeKeys = ec ? (ec.contact_type || '').split(',').map(s => s.trim()).filter(Boolean) : [];
   const _contactTypeOptionsHtml = _CONTACT_TYPE_OPTIONS.map(o => o
-    ? `<option value="${esc(o.value)}"${_fileTypeKeys.includes(o.value) ? ' selected' : ''}>${esc(t(o.key))}</option>`
+    ? `<option value="${esc(o.value)}"${_editTypeKeys.includes(o.value) ? ' selected' : ''}>${esc(t(o.key))}</option>`
     : `<option disabled></option>`
   ).join('');
   // One unified table regardless of _hasPortal -- a File Contact with no
@@ -6708,7 +6764,10 @@ function renderUserPanel(u) {
   // field is blank. _portalFullName/u.email/_uPortalRoleLabel/orgHtml are
   // already '—'/blank-safe when u.username is null (no portal member row
   // matches a null username), so no extra branching is needed here.
-  const infoHtml = c ? (_upEditing ? `
+  // Edit mode also has to work with no `c` at all (creating a brand-new
+  // record via startUserPanelEditNew), so it's gated on _upEditing first,
+  // falling back to the read-only view only when a contact actually exists.
+  const infoHtml = _upEditing ? `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
       <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
@@ -6732,14 +6791,14 @@ function renderUserPanel(u) {
             <td class="text-muted">${t('contacts.col_name')}</td>
             <td>${_portalFullName ? esc(_portalFullName) : '—'}</td>
             <td>
-              <input type="text" class="form-control form-control-sm mb-1" id="upEditFirstName" placeholder="${esc(t('contacts.first_name'))}" value="${esc(c.first_name || '')}">
-              <input type="text" class="form-control form-control-sm" id="upEditLastName" placeholder="${esc(t('contacts.last_name'))}" value="${esc(c.last_name || '')}">
+              <input type="text" class="form-control form-control-sm mb-1" id="upEditFirstName" placeholder="${esc(t('contacts.first_name'))}" value="${esc(ec.first_name || '')}">
+              <input type="text" class="form-control form-control-sm" id="upEditLastName" placeholder="${esc(t('contacts.last_name'))}" value="${esc(ec.last_name || '')}">
             </td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.email')}</td>
             <td>${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</td>
-            <td><input type="email" class="form-control form-control-sm" id="upEditEmail" value="${esc(c.email || '')}"></td>
+            <td><input type="email" class="form-control form-control-sm" id="upEditEmail" value="${esc(ec.email || '')}"></td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.col_role')}</td>
@@ -6749,12 +6808,12 @@ function renderUserPanel(u) {
           <tr>
             <td class="text-muted">${t('contacts.tel')}</td>
             <td class="text-muted">—</td>
-            <td><input type="text" class="form-control form-control-sm" id="upEditTel" value="${esc(c.tel || '')}"></td>
+            <td><input type="text" class="form-control form-control-sm" id="upEditTel" value="${esc(ec.tel || '')}"></td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.mobile')}</td>
             <td class="text-muted">—</td>
-            <td><input type="text" class="form-control form-control-sm" id="upEditMobile" value="${esc(c.mobile || '')}"></td>
+            <td><input type="text" class="form-control form-control-sm" id="upEditMobile" value="${esc(ec.mobile || '')}"></td>
           </tr>
           <tr><td colspan="3" class="pt-3 pb-1"><span class="fw-semibold small text-uppercase text-muted">${t('contacts.organizations')}</span></td></tr>
           <tr>
@@ -6775,12 +6834,12 @@ function renderUserPanel(u) {
           <tr>
             <td class="text-muted">${t('contacts.position')}</td>
             <td class="text-muted">—</td>
-            <td><input type="text" class="form-control form-control-sm" id="upEditPosition" value="${esc(c.position || '')}"></td>
+            <td><input type="text" class="form-control form-control-sm" id="upEditPosition" value="${esc(ec.position || '')}"></td>
           </tr>
         </tbody>
       </table>
       <div id="upEditStatus" class="text-danger small mt-1"></div>
-    </div>` : `
+    </div>` : (c ? `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
       <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
@@ -6838,12 +6897,13 @@ function renderUserPanel(u) {
           </tr>
         </tbody>
       </table>
-    </div>`) : '';
+    </div>` : '');
 
-  // Only the !c case still needs a standalone portal-fields block -- once a
-  // contact file is linked, every one of these fields already has a row in
+  // Only the !c, not-editing case still needs a standalone portal-fields
+  // block -- once a contact file is linked (or is being created inline via
+  // startUserPanelEditNew), every one of these fields already has a row in
   // infoHtml above.
-  const _portalOnlyDl = !c ? `
+  const _portalOnlyDl = (!c && !_upEditing) ? `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
       <dl class="row g-1 small mb-0">
@@ -6878,13 +6938,14 @@ function renderUserPanel(u) {
 
   // c-truthy edit/delete now live next to the "File" column header in
   // infoHtml above -- this block only has a reason to exist for the
-  // !c case (nothing to edit yet, just an add-record button).
-  const contactHtml = !c ? `
+  // !c, not-editing case (nothing to edit yet, just an add-record button
+  // that jumps straight into the same inline editor via startUserPanelEditNew).
+  const contactHtml = (!c && !_upEditing) ? `
     <div class="mt-3 pt-3 border-top">
       <div class="d-flex align-items-center justify-content-between mb-2">
         <div class="fw-semibold small text-uppercase text-muted">${t('userPanel.contact_file')}</div>
         <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('userPanel.add_contact_record')}"
-          onclick="openPmEditNewForUser('${esc(u.username)}','${esc(u.email)}','${esc(_uOrg ? _uOrg.org_name : '')}','${esc(_uOrg ? (_uOrg.org_title||_uOrg.org_name) : '')}','${esc(_uOrg ? (_uOrg.capacity||'') : '')}')">
+          onclick="startUserPanelEditNew()">
           <i class="bi bi-person-plus me-1"></i>${t('common.add')}</button>
       </div>
       <p class="text-muted small mb-0">${t('userPanel.no_contact_record')}</p>
@@ -6897,7 +6958,7 @@ function renderUserPanel(u) {
     </div>` : ''}
     ${infoHtml}
     ${_portalOnlyDl}
-    ${!c ? `<div class="mt-3 pt-3 border-top">
+    ${(!c && !_upEditing) ? `<div class="mt-3 pt-3 border-top">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('contacts.organizations')}</div>
       ${orgHtml}
     </div>` : ''}
@@ -6917,7 +6978,7 @@ function renderUserPanel(u) {
     ${contactHtml}
     ${u.about ? `<div class="mt-3 pt-3 border-top"><div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.about')}</div><p class="small text-muted mb-0">${esc(u.about)}</p></div>` : ''}
   `;
-  if (_upEditing && c) _upOrgRenderTags();
+  if (_upEditing) _upOrgRenderTags();
 }
 
 let _userDatasetsLoaded = null;
@@ -7769,13 +7830,11 @@ function _pmRowHtml(m, index) {
   const roleLabel = _portalRoleLabel(m);
   const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
   const nameCell = `<span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${_pmFileBadge(m)}${_pmPosLine(m)}`;
-  // Editing an existing contact record now opens the same panel as a row
-  // click, straight into inline-edit mode -- pmEditModal is only still used
-  // for adding a brand-new record (m.contact_id falsy), which the inline
-  // editor doesn't support yet (it assumes an existing contact object).
-  const editOnclick = m.contact_id
-    ? `openUserPanel('${esc(m.username)}', true)`
-    : (index == null ? `openPmEditByUsername('${esc(m.username)}')` : `openPmEdit(${index - 1})`);
+  // Same panel as a row click either way, straight into inline-edit mode --
+  // openUserPanel's startEditing flag seeds from the existing contact when
+  // there is one, or from this portal member's own identity/org when not
+  // (pmEditModal is no longer used for either case).
+  const editOnclick = `openUserPanel('${esc(m.username)}', true)`;
   const tail = `
     <td><span class="badge ${roleCls}">${esc(roleLabel)}</span></td>
     <td><span class="badge ${stateCls}">${esc(_contactStateLabel(state))}</span></td>
@@ -7851,7 +7910,7 @@ function _pmQueryParams() {
 let _pmLoadedFingerprint = null;
 
 const PORTAL_MEMBERS_PAGE_SIZE = 30;
-let _pmCache = [];          // rows loaded so far, in the active view's order (== _pmRows)
+let _pmCache = [];          // rows loaded so far, in the active view's order
 let _pmStart = 0;           // next offset to fetch
 let _pmTotalCount = 0;
 let _pmFlatLoaded = false;  // distinguishes "never loaded" from "loaded, zero results"
@@ -7960,7 +8019,6 @@ async function loadPortalMembersTab(append = false, attempt = 0, generation = nu
     }
     const newRows = data.members || [];
     _pmCache = _pmCache.concat(newRows);
-    _pmRows = _pmCache;
     _pmFlatCountLabel();
 
     if (!append && !newRows.length) {
@@ -8335,7 +8393,6 @@ function collapseAllContacts() {
   collapseAllPortalMembers();
 }
 
-let _pmRows = [];
 let _pmUnmatched = [];
 let _pmEditModal = null;
 let _pmEditOrgs  = [];  // [{code, label}, ...] — orgs selected in the edit modal
@@ -9255,65 +9312,6 @@ function _pmPortalNameParts(m) {
     first: parts.length ? (parts.slice(0, -1).join(' ') || parts[0]) : '',
     last:  parts.length > 1 ? parts[parts.length - 1] : '',
   };
-}
-
-function openPmEditByUsername(username) {
-  // Find in _pmRows first (flat view), fall back to full cache
-  const pool = (_pmRows && _pmRows.length ? _pmRows : null)
-    || (_portalMembersCache || []);
-  const idx = pool.findIndex(m => m.username === username);
-  if (idx !== -1 && pool === _pmRows) { openPmEdit(idx); return; }
-  // Use cache directly if not in current filtered rows
-  const m = (_portalMembersCache || []).find(m => m.username === username);
-  if (!m) return;
-  show('pmEditTitle').textContent   = m.display_name + ' — ' + (m.org_title || m.org_name);
-  show('pmEditIcon').className      = 'bi bi-pencil me-2';
-  show('pmEditContactId').value     = m.contact_id   || '';
-  show('pmEditUsername').value      = m.username     || '';
-  show('pmEditEmail').value         = m.email        || '';
-  _pmEditOrgs = (m.contact_org_codes && m.contact_org_codes.length)
-    ? m.contact_org_codes.map(o => ({...o}))
-    : [];
-  _pmApplyPortalOrgLocks(m.username);
-  _pmOrgRenderTags();
-  { const np = _pmPortalNameParts(m);
-    show('pmEditFirstName').value = m.contact_first_name || np.first;
-    show('pmEditLastName').value  = m.contact_last_name  || np.last; }
-  show('pmEditPosition').value      = m.contact_position   || '';
-  _pmSetContactType(m.contact_type || _capacityToType(m.capacity));
-  show('pmEditTel').value           = m.contact_tel        || '';
-  show('pmEditMobile').value        = m.contact_mobile     || '';
-  show('pmEditStatus').textContent  = '';
-  document.getElementById('pmEditEmailHint').classList.add('d-none');
-  show('pmEditOrgRow').classList.remove('d-none');
-  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
-  _pmEditModal.show();
-}
-
-function openPmEdit(idx) {
-  const m = _pmRows[idx];
-  if (!m) return;
-  show('pmEditTitle').textContent   = m.display_name + ' — ' + (m.org_title || m.org_name);
-  show('pmEditIcon').className      = 'bi bi-pencil me-2';
-  show('pmEditContactId').value     = m.contact_id   || '';
-  show('pmEditUsername').value      = m.username     || '';
-  show('pmEditEmail').value         = m.email        || '';
-  _pmEditOrgs = (m.contact_org_codes && m.contact_org_codes.length)
-    ? m.contact_org_codes.map(o => ({...o}))
-    : [];
-  _pmApplyPortalOrgLocks(m.username);
-  _pmOrgRenderTags();
-  { const np = _pmPortalNameParts(m);
-    show('pmEditFirstName').value = m.contact_first_name || np.first;
-    show('pmEditLastName').value  = m.contact_last_name  || np.last; }
-  show('pmEditPosition').value      = m.contact_position   || '';
-  _pmSetContactType(m.contact_type || _capacityToType(m.capacity));
-  show('pmEditTel').value           = m.contact_tel        || '';
-  show('pmEditMobile').value        = m.contact_mobile     || '';
-  show('pmEditStatus').textContent  = '';
-  show('pmEditOrgRow').classList.remove('d-none');
-  if (!_pmEditModal) _pmEditModal = new bootstrap.Modal(document.getElementById('pmEditModal'));
-  _pmEditModal.show();
 }
 
 // Shared by savePmContact (modal) and saveUserPanelEdit (inline, in the user
