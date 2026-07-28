@@ -23,6 +23,17 @@ jobs:
 
       - name: Reload service
         run: |
+          # Clears any rate-limit lockout (systemd's StartLimitBurst/
+          # StartLimitIntervalSec) from a PRIOR failed deploy before this
+          # one's own restart attempt -- without this, a service that once
+          # crash-looped past the burst limit stays permanently refusing to
+          # even try starting again, silently, since nothing new gets
+          # logged until someone notices and runs this by hand. Every
+          # subsequent deploy's is-active check then keeps failing on that
+          # same stale state regardless of whether the actual code that
+          # caused the original crash was ever fixed (see 2026-07-28
+          # incident in deploy/README.md).
+          sudo systemctl reset-failed monitor-data-gov-gr monitor-data-gov-gr-worker || true
           pkill -TERM -u localadmin -f "gunicorn.*app:app" || true
           pkill -TERM -u localadmin -f "python.*background_worker.py" || true
           sleep 15

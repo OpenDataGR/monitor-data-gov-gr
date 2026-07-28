@@ -104,6 +104,28 @@ sudo systemctl status monitor-data-gov-gr --no-pager
   quickly` in the log -- that means systemd stopped trying altogether, and
   `systemctl reset-failed` is needed before the next attempt means anything.
 
+**Follow-up, same day -- the worker stayed dead for 11 hours after the fix above:**
+the code fix landed and the *web* service recovered fine, but
+`monitor-data-gov-gr-worker` did not -- `systemctl status` showed
+`Active: failed ... since <original incident time>; 11h ago`. Every deploy
+in between kept reporting the same failure, which looked like a *recurring*
+crash but was actually the opposite problem: systemd's rate-limit lockout
+(see above) was never cleared for the worker specifically, so it silently
+stopped attempting to start at all. Each subsequent deploy's `pkill` had
+nothing to kill (the process was already dead) and its `journalctl -n 30`
+dump just kept re-showing the *same* 11-hour-old log lines, since nothing
+new had been logged -- easy to misread as "still failing the same way on
+every new attempt" when the real story was "hasn't tried again since the
+original incident." `sudo systemctl status <service> --no-pager -l` (not
+just the journal tail) is what actually reveals this -- the `Active:
+failed ... since <timestamp>; <duration> ago` line is the tell.
+
+**Fixed for good:** `deploy.yml`'s "Reload service" step now runs `sudo
+systemctl reset-failed monitor-data-gov-gr monitor-data-gov-gr-worker`
+immediately before every restart attempt, so a lockout from an earlier
+failed deploy can never silently persist into later ones -- every deploy
+now gets a genuine fresh attempt regardless of what happened before it.
+
 ## Redis (rate-limit storage + shared caches + sessions + comms-stream fanout)
 
 Redis backs four independent things in production, all optional and all
