@@ -6506,7 +6506,7 @@ function renderUserPanel(u) {
     `@${esc(u.username)}&ensp;<a href="https://data.gov.gr/user/${encodeURIComponent(u.username)}" target="_blank" rel="noopener" class="text-muted" title="${t('catalog.view_on_portal')}"><i class="bi bi-box-arrow-up-right"></i></a>`;
 
   const _userOrgMemberships = (_portalMembersCache || []).filter(m => m.username === u.username && m.org_name);
-  const orgs = _userOrgMemberships.map(m => `<a href="#" class="badge bg-light text-dark border text-decoration-none me-1 mb-1"
+  const orgs = _userOrgMemberships.map(m => `<a href="#" class="badge bg-light text-dark border text-decoration-none me-1 mb-1" style="white-space:normal;text-align:left"
         onclick="event.stopPropagation();openOrgPanel('${esc(m.org_name)}');return false;">${esc(m.org_title || m.org_name)}</a>`);
 
   const orgHtml = orgs.length
@@ -6566,9 +6566,9 @@ function renderUserPanel(u) {
     ? `<div>${_fileOrgCodes.map(o => {
         const ckanSlug = _ckanByHrms ? (_ckanByHrms.get(o.code) || _ckanByHrms.get(o.label)) : null;
         return ckanSlug
-          ? `<a href="#" class="badge bg-light text-dark border text-decoration-none me-1 mb-1"
+          ? `<a href="#" class="badge bg-light text-dark border text-decoration-none me-1 mb-1" style="white-space:normal;text-align:left"
                 onclick="event.stopPropagation();openOrgPanel('${esc(ckanSlug)}');return false;">${esc(o.label || o.code)}</a>`
-          : `<span class="badge bg-light text-dark border me-1 mb-1">${esc(o.label || o.code)}</span>`;
+          : `<span class="badge bg-light text-dark border me-1 mb-1" style="white-space:normal;text-align:left">${esc(o.label || o.code)}</span>`;
       }).join('')}</div>`
     : `<span class="text-muted small">${t('userPanel.no_organization')}</span>`;
   const _orgsDiffer = !!(_orgLookupReady && c && _fileOrgCodes.length && _userOrgMemberships.length &&
