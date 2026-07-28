@@ -6558,8 +6558,6 @@ function renderUserPanel(u) {
   // silence is the safe default, not a false positive.
   const _orgLookupReady = !!(_hrmsLookup && _ckanByHrms);
   const _fileOrgCodes = (c && c.org_codes) || [];
-  const _fileOrgSummary = _fileOrgCodes.length ? esc(_fileOrgCodes.map(o => o.label || o.code).join(', ')) : '—';
-  const _portalOrgSummary = _userOrgMemberships.length ? esc(_userOrgMemberships.map(m => m.org_title || m.org_name).join(', ')) : '—';
   // Same HRMS-code-to-CKAN-slug resolution as the org-code matching above --
   // link to the org panel when we can resolve it, otherwise a plain badge.
   const fileOrgHtml = _fileOrgCodes.length
@@ -6627,11 +6625,6 @@ function renderUserPanel(u) {
             <td class="text-muted">${t('contacts.col_role')}${_roleDiffers ? _mismatchIcon('userPanel.role_mismatch') : ''}</td>
             <td><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></td>
             <td>${_fileTypeHtml}</td>
-          </tr>
-          <tr>
-            <td class="text-muted">${t('contacts.organizations')}${_orgsDiffer ? _mismatchIcon('userPanel.org_mismatch') : ''}</td>
-            <td>${_portalOrgSummary}</td>
-            <td>${_fileOrgSummary}</td>
           </tr>
           <tr>
             <td class="text-muted">${t('userPanel.registered')}</td>
@@ -6729,7 +6722,7 @@ function renderUserPanel(u) {
       </div>
     </div>
     <div class="mt-3 pt-3 border-top">
-      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('contacts.organizations')}</div>
+      <div class="fw-semibold small text-uppercase text-muted mb-2">${t('contacts.organizations')}${_orgsDiffer ? _mismatchIcon('userPanel.org_mismatch') : ''}</div>
       <div class="row g-3">
         <div class="${c ? 'col-6' : 'col-12'}">
           <div class="text-muted small mb-1"><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</div>
