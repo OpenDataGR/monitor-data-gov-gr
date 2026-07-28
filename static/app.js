@@ -6575,11 +6575,13 @@ function renderUserPanel(u) {
     !_fileOrgCodes.some(o => _userOrgMemberships.some(m => _orgCodeMatches(o.code || '', m.org_name || ''))));
   if (!_orgLookupReady) _ensureOrgCkanBridge();
 
-  // Name/Email/Role exist on both sides once a contact file is linked, so
-  // those compare side by side in the Info table; Tel/Mobile are file-only
-  // (Portal column left as an em dash). Organizations gets its own section
-  // (badges, both sides) and Registered/last-active/datasets/edits get a
-  // portal-only "Portal" section further down.
+  // Name/Email/Role/Tel/Mobile/Organizations/Position all live in ONE table
+  // (infoHtml) when a contact file is linked, so the Portal|File columns
+  // stay pixel-aligned across the whole thing -- splitting them into
+  // separate <table>s per section let each one size its columns slightly
+  // differently. A colspan divider row marks where "Organizations" starts.
+  // Registered/last-active/datasets/edits have no file-side counterpart at
+  // all, so they get their own single-column "Portal" section further down.
   const _nameDiffers  = !!(c && _fileFullName && _portalFullName && _fileFullName.trim().toLowerCase() !== _portalFullName.trim().toLowerCase());
   const _emailDiffers = !!(c && c.email && u.email && c.email !== u.email);
   const _mismatchIcon = (msgKey) => ` <i class="bi bi-exclamation-triangle-fill text-warning" title="${esc(t(msgKey))}"></i>`;
@@ -6595,7 +6597,7 @@ function renderUserPanel(u) {
   const infoHtml = c ? `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
-      <table class="table table-sm mb-0" style="font-size:.85rem">
+      <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
         <thead><tr class="text-muted">
           <th style="width:34%"></th>
           <th><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
@@ -6636,6 +6638,17 @@ function renderUserPanel(u) {
             <td class="text-muted">${t('contacts.mobile')}</td>
             <td class="text-muted">—</td>
             <td>${_mobileValue}</td>
+          </tr>
+          <tr><td colspan="3" class="pt-3 pb-1"><span class="fw-semibold small text-uppercase text-muted">${t('contacts.organizations')}</span></td></tr>
+          <tr>
+            <td class="text-muted">${_orgsDiffer ? _mismatchIcon('userPanel.org_mismatch') : ''}</td>
+            <td>${orgHtml}</td>
+            <td>${fileOrgHtml}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.position')}</td>
+            <td class="text-muted">—</td>
+            <td>${_positionValue}</td>
           </tr>
         </tbody>
       </table>
@@ -6698,29 +6711,10 @@ function renderUserPanel(u) {
     </div>
     ${infoHtml}
     ${_portalOnlyDl}
-    <div class="mt-3 pt-3 border-top">
+    ${!c ? `<div class="mt-3 pt-3 border-top">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('contacts.organizations')}</div>
-      ${c ? `
-      <table class="table table-sm mb-0" style="font-size:.85rem">
-        <thead><tr class="text-muted">
-          <th style="width:34%"></th>
-          <th><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
-          <th><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</th>
-        </tr></thead>
-        <tbody>
-          <tr>
-            <td class="text-muted">${_orgsDiffer ? _mismatchIcon('userPanel.org_mismatch') : ''}</td>
-            <td>${orgHtml}</td>
-            <td>${fileOrgHtml}</td>
-          </tr>
-          <tr>
-            <td class="text-muted">${t('contacts.position')}</td>
-            <td class="text-muted">—</td>
-            <td>${_positionValue}</td>
-          </tr>
-        </tbody>
-      </table>` : orgHtml}
-    </div>
+      ${orgHtml}
+    </div>` : ''}
     ${portalStatsHtml}
     <div id="userPanelActivitySection" class="d-none mt-3 pt-3 border-top">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.recent_activity')}</div>
