@@ -6562,6 +6562,17 @@ function renderUserPanel(u) {
   const _fileOrgCodes = (c && c.org_codes) || [];
   const _fileOrgSummary = _fileOrgCodes.length ? esc(_fileOrgCodes.map(o => o.label || o.code).join(', ')) : '—';
   const _portalOrgSummary = _userOrgMemberships.length ? esc(_userOrgMemberships.map(m => m.org_title || m.org_name).join(', ')) : '—';
+  // Same HRMS-code-to-CKAN-slug resolution as the org-code matching above --
+  // link to the org panel when we can resolve it, otherwise a plain badge.
+  const fileOrgHtml = _fileOrgCodes.length
+    ? `<div>${_fileOrgCodes.map(o => {
+        const ckanSlug = _ckanByHrms ? (_ckanByHrms.get(o.code) || _ckanByHrms.get(o.label)) : null;
+        return ckanSlug
+          ? `<a href="#" class="badge bg-light text-dark border text-decoration-none me-1 mb-1"
+                onclick="event.stopPropagation();openOrgPanel('${esc(ckanSlug)}');return false;">${esc(o.label || o.code)}</a>`
+          : `<span class="badge bg-light text-dark border me-1 mb-1">${esc(o.label || o.code)}</span>`;
+      }).join('')}</div>`
+    : `<span class="text-muted small">${t('userPanel.no_organization')}</span>`;
   const _orgsDiffer = !!(_orgLookupReady && c && _fileOrgCodes.length && _userOrgMemberships.length &&
     !_fileOrgCodes.some(o => _userOrgMemberships.some(m => _orgCodeMatches(o.code || '', m.org_name || ''))));
   if (!_orgLookupReady) _ensureOrgCkanBridge();
@@ -6592,7 +6603,17 @@ function renderUserPanel(u) {
         <thead><tr class="text-muted">
           <th style="width:34%"></th>
           <th><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
-          <th><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</th>
+          <th>
+            <div class="d-flex align-items-center justify-content-between">
+              <span><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</span>
+              <span class="d-flex gap-1">
+                <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('common.edit')}"
+                  onclick="openPmEditByUsername('${esc(u.username)}')"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('common.delete')}"
+                  onclick="deletePmContactRecord(${c.id},'${esc(u.username)}')"><i class="bi bi-trash"></i></button>
+              </span>
+            </div>
+          </th>
         </tr></thead>
         <tbody>
           <tr>
@@ -6677,25 +6698,19 @@ function renderUserPanel(u) {
       <dd class="col-7 mb-1">${_editsValue}</dd>
     </dl>` : '';
 
-  const contactHtml = `
+  // c-truthy edit/delete now live next to the "File" column header in
+  // comparisonHtml above -- this block only has a reason to exist for the
+  // !c case (nothing to edit yet, just an add-record button).
+  const contactHtml = !c ? `
     <div class="mt-3 pt-3 border-top">
-      <div class="d-flex align-items-center justify-content-between${c ? '' : ' mb-2'}">
+      <div class="d-flex align-items-center justify-content-between mb-2">
         <div class="fw-semibold small text-uppercase text-muted">${t('userPanel.contact_file')}</div>
-        <div class="d-flex gap-1">
-          ${c ? `
-          <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="${t('common.edit')}"
-            onclick="openPmEditByUsername('${esc(u.username)}')"><i class="bi bi-pencil"></i></button>
-          <button class="btn btn-outline-danger btn-sm py-0 px-1" title="${t('common.delete')}"
-            onclick="deletePmContactRecord(${c.id},'${esc(u.username)}')"><i class="bi bi-trash"></i></button>
-          ` : `
-          <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('userPanel.add_contact_record')}"
-            onclick="openPmEditNewForUser('${esc(u.username)}','${esc(u.email)}','${esc(_uOrg ? _uOrg.org_name : '')}','${esc(_uOrg ? (_uOrg.org_title||_uOrg.org_name) : '')}','${esc(_uOrg ? (_uOrg.capacity||'') : '')}')">
-            <i class="bi bi-person-plus me-1"></i>${t('common.add')}</button>
-          `}
-        </div>
+        <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('userPanel.add_contact_record')}"
+          onclick="openPmEditNewForUser('${esc(u.username)}','${esc(u.email)}','${esc(_uOrg ? _uOrg.org_name : '')}','${esc(_uOrg ? (_uOrg.org_title||_uOrg.org_name) : '')}','${esc(_uOrg ? (_uOrg.capacity||'') : '')}')">
+          <i class="bi bi-person-plus me-1"></i>${t('common.add')}</button>
       </div>
-      ${!c ? `<p class="text-muted small mb-0">${t('userPanel.no_contact_record')}</p>` : ''}
-    </div>`;
+      <p class="text-muted small mb-0">${t('userPanel.no_contact_record')}</p>
+    </div>` : '';
 
   document.getElementById('userPanelBody').innerHTML = `
     <div class="d-flex align-items-center gap-2 mb-3">
@@ -6718,7 +6733,16 @@ function renderUserPanel(u) {
     </div>
     <div class="mt-3 pt-3 border-top">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('contacts.organizations')}</div>
-      ${orgHtml}
+      <div class="row g-3">
+        <div class="${c ? 'col-6' : 'col-12'}">
+          <div class="text-muted small mb-1"><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</div>
+          ${orgHtml}
+        </div>
+        ${c ? `<div class="col-6">
+          <div class="text-muted small mb-1"><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</div>
+          ${fileOrgHtml}
+        </div>` : ''}
+      </div>
     </div>
     ${contactHtml}
     ${u.about ? `<div class="mt-3 pt-3 border-top"><div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.about')}</div><p class="small text-muted mb-0">${esc(u.about)}</p></div>` : ''}
