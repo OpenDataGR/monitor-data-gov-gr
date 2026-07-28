@@ -4237,6 +4237,24 @@ async function _loadPublicOrgsForPortal() {
   }
 }
 
+// Warms the HRMS<->CKAN code bridge (_hrmsLookup/_ckanByHrms, built by
+// _buildCkanLookup above) in the background for callers -- like the user
+// panel's org-mismatch check -- that need _orgCodeMatches to actually
+// resolve codes across the two systems, not just fall back to exact-string
+// comparison. Unlike _loadPublicOrgsForPortal, this also fetches _orgsData
+// itself if it's missing (quietly, via _loadOrgsBackground, not the
+// Organizations tab's own loadOrgs -- no need to touch that tab's visible
+// state just to build this). Only warms the CURRENT session forward, not
+// retroactively -- a panel already open when this resolves doesn't
+// re-render; the next one opened will just find the bridge ready.
+let _orgCkanBridgeWarming = false;
+function _ensureOrgCkanBridge() {
+  if (_hrmsLookup || _orgCkanBridgeWarming) return;
+  _orgCkanBridgeWarming = true;
+  const ready = _orgsData.length ? Promise.resolve() : _loadOrgsBackground();
+  ready.then(_loadPublicOrgsForPortal).finally(() => { _orgCkanBridgeWarming = false; });
+}
+
 function _portalContactCell(orgName, orgTitle) {
   const cnt = _contactSummary[orgName] || 0;
   return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + orgName + '\',\'' + esc(orgTitle) + '\',\'' + orgName + '\')" title="' + esc(t('contacts.view_contacts')) + '">'
@@ -6533,11 +6551,22 @@ function renderUserPanel(u) {
   // Same "genuinely conflicting, not just missing" bar as name/email --
   // only flagged when both sides actually name an org and neither matches
   // the other, mirroring the org panel's own member-card mismatch check.
+  // _orgCodeMatches can only resolve an HRMS code to its CKAN slug (or vice
+  // versa) once _hrmsLookup/_ckanByHrms are built -- which only happens
+  // once the Organizations tab has loaded both the CKAN org list and the
+  // HRMS public-org list (_buildCkanLookup). Opening this panel from
+  // Contacts without ever visiting Organizations left that bridge unbuilt,
+  // so a genuinely-matching org (linked by HRMS code on the file side, CKAN
+  // slug on the portal side) looked like a mismatch -- _ensureOrgCkanBridge
+  // (below) warms it in the background, but until it's actually ready,
+  // silence is the safe default, not a false positive.
+  const _orgLookupReady = !!(_hrmsLookup && _ckanByHrms);
   const _fileOrgCodes = (c && c.org_codes) || [];
   const _fileOrgSummary = _fileOrgCodes.length ? esc(_fileOrgCodes.map(o => o.label || o.code).join(', ')) : '—';
   const _portalOrgSummary = _userOrgMemberships.length ? esc(_userOrgMemberships.map(m => m.org_title || m.org_name).join(', ')) : '—';
-  const _orgsDiffer = !!(c && _fileOrgCodes.length && _userOrgMemberships.length &&
+  const _orgsDiffer = !!(_orgLookupReady && c && _fileOrgCodes.length && _userOrgMemberships.length &&
     !_fileOrgCodes.some(o => _userOrgMemberships.some(m => _orgCodeMatches(o.code || '', m.org_name || ''))));
+  if (!_orgLookupReady) _ensureOrgCkanBridge();
 
   // Name and email exist on both sides once a contact file is linked --
   // shown once, side by side, instead of twice in two separate blocks a
