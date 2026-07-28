@@ -6448,7 +6448,7 @@ let _userPanel = null;
 // false is the plain row-click, read-only open.
 function openUserPanel(username, startEditing = false) {
   if (!username) return;
-  if (!_userPanel) _userPanel = new bootstrap.Offcanvas(document.getElementById('userPanel'));
+  if (!_userPanel) _userPanel = new bootstrap.Modal(document.getElementById('userPanel'));
   _userDatasetsLoaded = null;
   _userActivityLoaded = null;
   _upEditing = false;
@@ -6490,7 +6490,7 @@ function openUserPanel(username, startEditing = false) {
 function openFileContactPanel(id, startEditing = false) {
   const c = _findLoadedFileContact(id) || (_pmUnmatched || []).find(x => x.id === id);
   if (!c) return;
-  if (!_userPanel) _userPanel = new bootstrap.Offcanvas(document.getElementById('userPanel'));
+  if (!_userPanel) _userPanel = new bootstrap.Modal(document.getElementById('userPanel'));
   _userDatasetsLoaded = null;
   _userActivityLoaded = null;
   _upEditing = false;
@@ -6577,8 +6577,8 @@ function _upOrgRenderTags() {
   const container = document.getElementById('upOrgTags');
   if (!container) return;
   container.innerHTML = _upEditOrgs.map(o =>
-    `<span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em">${esc(o.label || o.code)}` +
-    `<button type="button" class="btn-close btn-close-white" style="font-size:.55em;margin-left:.25em"` +
+    `<span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em;white-space:normal;text-align:left">${esc(o.label || o.code)}` +
+    `<button type="button" class="btn-close btn-close-white flex-shrink-0" style="font-size:.55em;margin-left:.25em"` +
     ` onclick="_upOrgRemove('${esc(o.code)}')" title="${t('common.remove')}"></button></span>`
   ).join('');
 }
@@ -6766,11 +6766,11 @@ function renderUserPanel(u) {
   const infoHtml = _upEditing ? `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
-      <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
+      <table class="table table-sm table-borderless mb-0" style="font-size:.85rem;table-layout:fixed;width:100%">
         <thead><tr class="text-muted">
-          <th style="width:34%"></th>
-          <th><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
-          <th>
+          <th style="width:20%"></th>
+          <th style="width:35%"><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
+          <th style="width:45%">
             <div class="d-flex align-items-center justify-content-between">
               <span><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</span>
               <span class="d-flex gap-1">
@@ -6838,11 +6838,11 @@ function renderUserPanel(u) {
     </div>` : `
     <div class="mb-3">
       <div class="fw-semibold small text-uppercase text-muted mb-2">${t('userPanel.info')}</div>
-      <table class="table table-sm table-borderless mb-0" style="font-size:.85rem">
+      <table class="table table-sm table-borderless mb-0" style="font-size:.85rem;table-layout:fixed;width:100%">
         <thead><tr class="text-muted">
-          <th style="width:34%"></th>
-          <th><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
-          <th>
+          <th style="width:20%"></th>
+          <th style="width:35%"><i class="bi bi-globe2 me-1"></i>${t('userPanel.portal')}</th>
+          <th style="width:45%">
             <div class="d-flex align-items-center justify-content-between">
               <span><i class="bi bi-file-earmark-person me-1"></i>${t('userPanel.file')}</span>
               <span class="d-flex gap-1">

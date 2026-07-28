@@ -1370,17 +1370,21 @@
   </div>
 </div>
 
-<!-- Portal user detail offcanvas -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="userPanel" style="width:540px;max-width:95vw">
-  <div class="offcanvas-header border-bottom">
-    <div>
-      <h5 class="offcanvas-title fw-bold mb-0" id="userPanelName"></h5>
-      <div class="text-muted small font-monospace" id="userPanelUsername"></div>
+<!-- Portal user / file contact detail modal -->
+<div class="modal fade" tabindex="-1" id="userPanel">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header border-bottom">
+        <div>
+          <h5 class="modal-title fw-bold mb-0" id="userPanelName"></h5>
+          <div class="text-muted small font-monospace" id="userPanelUsername"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="userPanelBody">
+        <div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>
+      </div>
     </div>
-    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
-  </div>
-  <div class="offcanvas-body" id="userPanelBody">
-    <div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>
   </div>
 </div>
 
