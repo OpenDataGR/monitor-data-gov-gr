@@ -574,6 +574,8 @@ const TRANSLATIONS = {
     'userPanel.file': 'File',
     'userPanel.name_mismatch': 'The contact file and the portal account disagree on this person\'s name',
     'userPanel.email_mismatch': 'The contact file and the portal account disagree on this person\'s email',
+    'userPanel.role_mismatch': 'The contact file and the portal account disagree on this person\'s role',
+    'userPanel.no_extra_file_info': 'No position or phone number on file.',
     'userPanel.no_contact_record': 'No contact record linked.',
     'userPanel.add_contact_record': 'Add contact record',
     'userPanel.registered': 'Registered',
@@ -1142,6 +1144,8 @@ const TRANSLATIONS = {
     'userPanel.file': 'Αρχείο',
     'userPanel.name_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς το όνομα αυτού του ατόμου',
     'userPanel.email_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς το email αυτού του ατόμου',
+    'userPanel.role_mismatch': 'Το αρχείο επαφής και ο λογαριασμός πύλης διαφωνούν ως προς τον ρόλο αυτού του ατόμου',
+    'userPanel.no_extra_file_info': 'Δεν υπάρχει θέση ή τηλέφωνο στο αρχείο.',
     'userPanel.no_contact_record': 'Δεν υπάρχει συνδεδεμένη εγγραφή επαφής.',
     'userPanel.add_contact_record': 'Προσθήκη εγγραφής επαφής',
     'userPanel.registered': 'Εγγραφή',
@@ -6487,9 +6491,8 @@ function renderUserPanel(u) {
   document.getElementById('userPanelUsername').innerHTML =
     `@${esc(u.username)}&ensp;<a href="https://data.gov.gr/user/${encodeURIComponent(u.username)}" target="_blank" rel="noopener" class="text-muted" title="${t('catalog.view_on_portal')}"><i class="bi bi-box-arrow-up-right"></i></a>`;
 
-  const orgs = (_portalMembersCache || [])
-    .filter(m => m.username === u.username && m.org_name)
-    .map(m => `<a href="#" class="badge bg-light text-dark border text-decoration-none me-1 mb-1"
+  const _userOrgMemberships = (_portalMembersCache || []).filter(m => m.username === u.username && m.org_name);
+  const orgs = _userOrgMemberships.map(m => `<a href="#" class="badge bg-light text-dark border text-decoration-none me-1 mb-1"
         onclick="event.stopPropagation();openOrgPanel('${esc(m.org_name)}');return false;">${esc(m.org_title || m.org_name)}</a>`);
 
   const orgHtml = orgs.length
@@ -6513,12 +6516,36 @@ function renderUserPanel(u) {
   const _uPortalRoleLabel = u.sysadmin ? t('contacts.role_sysadmin') : _portalRoleLabel({ capacity: _bestRole?.capacity });
   const _portalRoleCls   = u.sysadmin ? ROLE_BADGE_CLS.sysadmin : (_bestRole ? (ROLE_BADGE_CLS[_bestRole.capacity] || 'bg-secondary') : 'bg-secondary');
 
+  // Portal role and file contact_type are the same underlying concept, not
+  // two different things that happen to overlap -- CONTACT_TYPE_CLS's own
+  // keys include "Org Administrator"/"Org Editor"/"Org Member" (the exact
+  // strings _capacityToType()/_PORTAL_ROLE_LOOKUP_KEY derive from capacity)
+  // alongside file-only categories like "Data Steward". Compared on that
+  // shared fixed-English-key vocabulary; sysadmin has no per-org capacity
+  // to map from, so it's never flagged as disagreeing with anything.
+  const _fileTypeKeys = c && c.contact_type ? c.contact_type.split(',').map(s => s.trim()).filter(Boolean) : [];
+  const _portalRoleKey = !u.sysadmin && _bestRole ? _PORTAL_ROLE_LOOKUP_KEY[_bestRole.capacity] : null;
+  const _roleDiffers = !!(c && _fileTypeKeys.length && _portalRoleKey && !_fileTypeKeys.includes(_portalRoleKey));
+  const _fileTypeHtml = _fileTypeKeys.length
+    ? _fileTypeKeys.map(s => `<span class="badge me-1 mb-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(_CONTACT_TYPE_I18N_KEY[s] ? t(_CONTACT_TYPE_I18N_KEY[s]) : s)}</span>`).join('')
+    : '—';
+
+  // Same "genuinely conflicting, not just missing" bar as name/email --
+  // only flagged when both sides actually name an org and neither matches
+  // the other, mirroring the org panel's own member-card mismatch check.
+  const _fileOrgCodes = (c && c.org_codes) || [];
+  const _fileOrgSummary = _fileOrgCodes.length ? esc(_fileOrgCodes.map(o => o.label || o.code).join(', ')) : '—';
+  const _portalOrgSummary = _userOrgMemberships.length ? esc(_userOrgMemberships.map(m => m.org_title || m.org_name).join(', ')) : '—';
+  const _orgsDiffer = !!(c && _fileOrgCodes.length && _userOrgMemberships.length &&
+    !_fileOrgCodes.some(o => _userOrgMemberships.some(m => _orgCodeMatches(o.code || '', m.org_name || ''))));
+
   // Name and email exist on both sides once a contact file is linked --
   // shown once, side by side, instead of twice in two separate blocks a
-  // reader has to scroll between and compare by memory. Everything below
-  // (role, registered/last-active/datasets/edits on the portal side;
-  // position/tel/mobile/type on the file side) has no counterpart on the
-  // other side, so those stay in their own single-source sections as before.
+  // reader has to scroll between and compare by memory. Registered/last-
+  // active/datasets/edits (portal-only) and position/tel/mobile (file-only)
+  // have no counterpart on the other side, so those stay in their own
+  // single-source sections as before -- only fields that exist on both
+  // sides belong in this table.
   const _nameDiffers  = !!(c && _fileFullName && _portalFullName && _fileFullName.trim().toLowerCase() !== _portalFullName.trim().toLowerCase());
   const _emailDiffers = !!(c && c.email && u.email && c.email !== u.email);
   const _mismatchIcon = (msgKey) => ` <i class="bi bi-exclamation-triangle-fill text-warning" title="${esc(t(msgKey))}"></i>`;
@@ -6542,6 +6569,16 @@ function renderUserPanel(u) {
             <td>${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</td>
             <td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td>
           </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.col_role')}${_roleDiffers ? _mismatchIcon('userPanel.role_mismatch') : ''}</td>
+            <td><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></td>
+            <td>${_fileTypeHtml}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">${t('contacts.organizations')}${_orgsDiffer ? _mismatchIcon('userPanel.org_mismatch') : ''}</td>
+            <td>${_portalOrgSummary}</td>
+            <td>${_fileOrgSummary}</td>
+          </tr>
         </tbody>
       </table>
     </div>` : '';
@@ -6564,15 +6601,10 @@ function renderUserPanel(u) {
         </div>
       </div>
       ${c ? `<dl class="row g-1 small mb-0">
-        ${(c.org_codes || []).length ? `<dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.org_file')}</dt><dd class="col-7 mb-1">${esc((c.org_codes || []).map(o => o.label || o.code).join(', '))}</dd>` : ''}
         ${c.position ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.position')}</dt><dd class="col-7 mb-1">${esc(c.position)}</dd>` : ''}
         ${c.tel ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.tel')}</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.tel)}" class="text-decoration-none">${esc(c.tel)}</a></dd>` : ''}
         ${c.mobile ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.mobile')}</dt><dd class="col-7 mb-1"><a href="tel:${esc(c.mobile)}" class="text-decoration-none">${esc(c.mobile)}</a></dd>` : ''}
-        ${c.contact_type ? `<dt class="col-5 text-muted fw-normal mb-1">${t('contacts.col_type')}</dt><dd class="col-7 mb-1">${
-          c.contact_type.split(',').map(s => s.trim()).filter(Boolean)
-            .map(s => `<span class="badge me-1 mb-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(_CONTACT_TYPE_I18N_KEY[s] ? t(_CONTACT_TYPE_I18N_KEY[s]) : s)}</span>`).join('')
-        }</dd>` : ''}
-      </dl>` : `<p class="text-muted small mb-0">${t('userPanel.no_contact_record')}</p>`}
+      </dl>${!c.position && !c.tel && !c.mobile ? `<p class="text-muted small mb-0">${t('userPanel.no_extra_file_info')}</p>` : ''}` : `<p class="text-muted small mb-0">${t('userPanel.no_contact_record')}</p>`}
     </div>`;
 
   document.getElementById('userPanelBody').innerHTML = `
@@ -6586,10 +6618,9 @@ function renderUserPanel(u) {
       <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.first_name')}</dt>
       <dd class="col-7 mb-1">${_portalFirst ? esc(_portalFirst) : '—'}</dd>
       <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.last_name')}</dt>
-      <dd class="col-7 mb-1">${_portalLast ? esc(_portalLast) : '—'}</dd>` : ''}
+      <dd class="col-7 mb-1">${_portalLast ? esc(_portalLast) : '—'}</dd>
       <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.col_role')}</dt>
       <dd class="col-7 mb-1"><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></dd>
-      ${!c ? `
       <dt class="col-5 text-muted fw-normal mb-1">${t('contacts.email')}</dt>
       <dd class="col-7 mb-1">${u.email ? `<a href="mailto:${esc(u.email)}">${esc(u.email)}</a>` : '—'}</dd>` : ''}
       <dt class="col-5 text-muted fw-normal mb-1">${t('userPanel.registered')}</dt>
