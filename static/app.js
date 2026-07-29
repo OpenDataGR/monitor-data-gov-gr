@@ -7958,9 +7958,32 @@ function _pmRowMismatch(m) {
     portalOrgName: m.org_name || '', fileOrgCodes: m.contact_org_codes || [],
   });
 }
+// Lazily built and cached against the current _portalMembersCache array
+// reference -- rebuilt only when that reference actually changes (a fresh
+// fetch/filter swaps the array wholesale; per-row property mutations like
+// _applyContactSaveResult's don't), so _fileRowMismatch doesn't rescan the
+// whole portal-members list for every file-contact row when many render at
+// once (e.g. several expanded groups in the "By Organization" view). First
+// occurrence per username wins, matching what the old .find() would have
+// picked for someone with multiple org-membership rows.
+let _portalMembersByUsernameCache = null;
+let _portalMembersByUsernameSource = null;
+function _portalMembersByUsername() {
+  if (_portalMembersByUsernameSource !== _portalMembersCache) {
+    _portalMembersByUsernameCache = new Map();
+    for (const m of (_portalMembersCache || [])) {
+      if (m.username && !_portalMembersByUsernameCache.has(m.username)) {
+        _portalMembersByUsernameCache.set(m.username, m);
+      }
+    }
+    _portalMembersByUsernameSource = _portalMembersCache;
+  }
+  return _portalMembersByUsernameCache;
+}
+
 function _fileRowMismatch(c) {
   if (!c.linked_username) return false;
-  const m = (_portalMembersCache || []).find(x => x.username === c.linked_username);
+  const m = _portalMembersByUsername().get(c.linked_username);
   if (!m) return false;
   const fileOrgCodes = (c.org_codes && c.org_codes.length) ? c.org_codes
     : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
