@@ -4297,6 +4297,7 @@ async function _loadPublicOrgsForPortal() {
 // retroactively -- a panel already open when this resolves doesn't
 // re-render; the next one opened will just find the bridge ready.
 let _orgCkanBridgeWarming = false;
+let _pmCacheWarmingForPanel = false;
 function _ensureOrgCkanBridge() {
   if (_hrmsLookup || _orgCkanBridgeWarming) return;
   _orgCkanBridgeWarming = true;
@@ -6809,6 +6810,29 @@ function renderUserPanel(u) {
     ? `@${esc(u.username)}&ensp;<a href="https://data.gov.gr/user/${encodeURIComponent(u.username)}" target="_blank" rel="noopener" class="text-muted" title="${t('catalog.view_on_portal')}"><i class="bi bi-box-arrow-up-right"></i></a>`
     : `<span class="text-muted">${t('userPanel.file_contact_only')}</span>`;
 
+  // _portalMembersCache only gets populated once the Contacts tab has fetched
+  // portal members at least once this session -- opening this panel from the
+  // org panel (or anywhere else that skips Contacts) left it null, silently
+  // showing "No organization" for members who actually have plenty. Unlike
+  // _ensureOrgCkanBridge (a background-only warm for a decorative mismatch
+  // icon), the org list IS the content here, so re-render once it lands
+  // rather than staying silent -- but only if this is still the panel
+  // showing this same user by the time it resolves.
+  if (!_portalMembersCache && !_pmCacheWarmingForPanel) {
+    _pmCacheWarmingForPanel = true;
+    loadContactsTab();
+    const _waitForPmCache = () => {
+      if (_portalMembersCache) {
+        _pmCacheWarmingForPanel = false;
+        if (_userPanelUser === u) renderUserPanel(u);
+      } else if (_userPanelUser === u) {
+        setTimeout(_waitForPmCache, 300);
+      } else {
+        _pmCacheWarmingForPanel = false;
+      }
+    };
+    setTimeout(_waitForPmCache, 300);
+  }
   const _userOrgMemberships = (_portalMembersCache || []).filter(m => m.username === u.username && m.org_name);
   const orgs = _userOrgMemberships.map(m => `<a href="#" class="badge bg-light text-dark border text-decoration-none me-1 mb-1" style="white-space:normal;text-align:left"
         onclick="event.stopPropagation();openOrgPanel('${esc(m.org_name)}');return false;">${esc(m.org_title || m.org_name)}</a>`);
