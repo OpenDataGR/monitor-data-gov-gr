@@ -190,6 +190,37 @@
     [data-bs-theme="dark"] * { scrollbar-color: rgba(255,255,255,.25) transparent; }
     [data-bs-theme="dark"] *::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,.2); }
     [data-bs-theme="dark"] *::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.32); }
+
+    /* Bootstrap's own .dropdown-menu has no open animation at all -- it's
+       display:none one frame and display:block (fully visible) the next.
+       A keyframe animation (not a transition) is what actually works here:
+       transitions need the element already rendered when a property
+       changes, but this element goes from not-rendered to rendered in one
+       step, so there's no "before" state for a transition to interpolate
+       from. Covers every Bootstrap dropdown in the app (the account menu,
+       the contact panel's Role picker, etc.) with no per-instance markup. */
+    .dropdown-menu.show { animation: ddFadeIn .15s ease-out; }
+    @keyframes ddFadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: none; }
+    }
+    /* Same technique for the custom (non-Bootstrap) org-search autocomplete
+       lists in the New Communication / inbound-attach modals, which show
+       and hide via a plain .d-none toggle instead of Bootstrap's .show. */
+    #commOrgDropdown:not(.d-none), #inboundAttachOrgDropdown:not(.d-none) { animation: ddFadeIn .15s ease-out; }
+
+    /* Expanding a Case/Organization/Timeline-day group in Communications
+       shows a spinner immediately, then replaces it with the fetched rows
+       a moment later -- that swap reads as an abrupt "jump" without this,
+       since the incoming rows just pop in at full opacity. A plain fade
+       (no vertical motion -- these sit in a table/list already pushing
+       everything below them down) softens the swap without pretending the
+       fetch itself was instant. */
+    .comm-hist-row, .comm-timeline-item { animation: commRowFadeIn .25s ease; }
+    @keyframes commRowFadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
   </style>
 </head>
 <body>
