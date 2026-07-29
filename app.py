@@ -3839,45 +3839,40 @@ def organization_detail(org_name):
                 data = r.json()
                 if data.get("success"):
                     raw_users = data["result"].get("users") or []
-                    members = [
-                        {
-                            "name":         u.get("name", ""),
-                            "display_name": u.get("display_name") or u.get("fullname") or u.get("name", ""),
+
+                    # Email/state per username already sit in _pm_cache --
+                    # populated by _do_fetch_portal_members's single bulk
+                    # user_list call -- so look them up there instead of a
+                    # user_show call per member (this route fires on every
+                    # openOrgPanel() click; an org with 20-50 members used to
+                    # mean 20-50 synchronous outbound CKAN calls just to
+                    # render one side panel). Any occurrence of a username is
+                    # fine as the lookup source: email/state come from the
+                    # same per-user user_list entry regardless of which org
+                    # membership row it's attached to.
+                    pm_members = (_pm_cache["data"] or {}).get("members") or []
+                    user_info_by_name = {}
+                    for m in pm_members:
+                        uname = m.get("username")
+                        if uname and uname not in user_info_by_name:
+                            user_info_by_name[uname] = m
+                    # Cold cache (never fetched yet) -- kick off the same
+                    # background fetch /api/portal-members uses so it's warm
+                    # next time, without blocking this response on it.
+                    if not _pm_cache["data"] and not _pm_cache["loading"]:
+                        threading.Thread(target=_do_fetch_portal_members, daemon=True).start()
+
+                    members = []
+                    for u in raw_users:
+                        uname = u.get("name", "")
+                        info = user_info_by_name.get(uname, {})
+                        members.append({
+                            "name":         uname,
+                            "display_name": u.get("display_name") or u.get("fullname") or uname,
                             "capacity":     u.get("capacity", "member"),
-                            "email":        "",
-                            "state":        u.get("state", "active"),
-                        }
-                        for u in raw_users
-                    ]
-
-                    # Fetch email + state per user in parallel via user_show
-                    def _user_show(username):
-                        try:
-                            resp = requests.get(
-                                f"{config.PORTAL_BASE}/api/3/action/user_show",
-                                params={"id": username},
-                                timeout=8,
-                                headers=auth_headers,
-                            )
-                            if resp.status_code == 200:
-                                ud = resp.json()
-                                if ud.get("success"):
-                                    return username, ud["result"]
-                        except Exception:
-                            pass
-                        return username, {}
-
-                    with ThreadPoolExecutor(max_workers=10) as pool:
-                        futures = {pool.submit(_user_show, m["name"]): m["name"] for m in members}
-                        user_details = {}
-                        for fut in as_completed(futures):
-                            uname, details = fut.result()
-                            user_details[uname] = details
-
-                    for m in members:
-                        d = user_details.get(m["name"], {})
-                        m["email"] = (d.get("email") or "").lower().strip()
-                        m["state"] = d.get("state", m["state"])
+                            "email":        info.get("email", ""),
+                            "state":        u.get("state") or info.get("state", "active"),
+                        })
 
                     result["org"]["members"] = members
         except Exception:
