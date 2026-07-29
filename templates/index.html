@@ -28,7 +28,7 @@
     #pmEditContactType option.type-spacer { min-height: 1px; height: 1px; padding: 0; margin: 4px 0; border-top: 1px solid #dee2e6; }
     body { background: #f0f2f5; }
     .navbar { background: linear-gradient(135deg, #003366 0%, #0057b8 100%); }
-    .stat-card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); transition: transform .2s; }
+    .stat-card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); transition: transform .2s, background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease; }
     .stat-card:hover { transform: translateY(-2px); }
     .stat-value { font-size: 2rem; font-weight: 700; line-height: 1.1; }
     .stat-row-sm .stat-card { box-shadow: 0 1px 4px rgba(0,0,0,.05); }
@@ -41,7 +41,7 @@
       width: 220px; flex-shrink: 0; background: #fff; border-radius: 12px;
       box-shadow: 0 2px 8px rgba(0,0,0,.08); padding: .6rem; margin-right: 1rem;
       margin-bottom: 1.5rem; position: sticky; top: 1rem;
-      transition: width .2s ease;
+      transition: width .2s ease, background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
     }
     .dashboard-sidebar .nav-link {
       display: flex; align-items: center; gap: .65rem; color: #6c757d; font-weight: 500;
@@ -153,6 +153,43 @@
        anchoring against in the first place, since new rows only ever land
        below the fold. */
     #catalogResults { overflow-anchor: none; }
+
+    /* ── General polish ───────────────────────────────────────────────── */
+    /* Flipping the theme toggle currently snaps every color instantly --
+       fading it instead reads as far more deliberate. Scoped to elements
+       that actually change between themes and have no transition of their
+       own already (.stat-card/.dashboard-sidebar already declare one --
+       merged into those directly above instead of duplicated here, since a
+       second `transition` on the same selector would replace the first
+       rather than combine with it). Deliberately excludes .modal-content/
+       .offcanvas -- Bootstrap's own show/hide slide-and-fade transitions
+       live on those and a second `transition` declaration here would
+       silently replace them instead of stacking. */
+    body, .card, .table, .table th, .table td,
+    .comm-group-row, .filter-summary-panel {
+      transition: background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
+    }
+    /* A branded focus ring instead of each browser's own default blue --
+       consistent across Chrome/Firefox/Edge and matches the rest of the UI. */
+    :focus-visible { outline: 2px solid #0057b8; outline-offset: 2px; }
+    [data-bs-theme="dark"] :focus-visible { outline-color: #6ea8fe; }
+    /* Bootstrap's own .btn already transitions color/background on hover;
+       this adds a small tactile "press" on click, which it doesn't. */
+    .btn:active { transform: translateY(1px); }
+    /* table-hover's own highlight snaps on/off with no transition by default. */
+    .table-hover > tbody > tr { transition: background-color .12s ease; }
+    /* Slim, themed scrollbar -- this is a data-dense dashboard with a lot of
+       scrollable tables/panels, and the browser default looks out of place
+       next to everything else here being deliberately styled. Firefox uses
+       scrollbar-color/-width; the ::-webkit- rules cover Chrome/Edge/Safari. */
+    * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,.25) transparent; }
+    *::-webkit-scrollbar { width: 10px; height: 10px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,.25); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+    *::-webkit-scrollbar-thumb:hover { background-color: rgba(0,0,0,.4); }
+    [data-bs-theme="dark"] * { scrollbar-color: rgba(255,255,255,.25) transparent; }
+    [data-bs-theme="dark"] *::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,.2); }
+    [data-bs-theme="dark"] *::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.32); }
   </style>
 </head>
 <body>
