@@ -565,6 +565,7 @@ const TRANSLATIONS = {
     'contacts.fill_from_existing': 'Fill from existing',
     'contacts.ignore': 'Ignore',
     'contacts.email_duplicate_found': 'A contact with this email already exists: {who}',
+    'contacts.row_mismatch': 'Portal and file info disagree for this person',
     'userPanel.email_file': 'Email (file)',
     'userPanel.org_file': 'Organization (file)',
     'userPanel.org_portal': 'Organization (portal)',
@@ -1134,6 +1135,7 @@ const TRANSLATIONS = {
     'contacts.fill_from_existing': 'Συμπλήρωση από υπάρχουσα',
     'contacts.ignore': 'Παράβλεψη',
     'contacts.email_duplicate_found': 'Υπάρχει ήδη επαφή με αυτό το email: {who}',
+    'contacts.row_mismatch': 'Τα στοιχεία πύλης και αρχείου διαφωνούν για αυτό το άτομο',
     'userPanel.email_file': 'Email (αρχείο)',
     'userPanel.org_file': 'Οργανισμός (αρχείο)',
     'userPanel.org_portal': 'Οργανισμός (πύλη)',
@@ -7893,10 +7895,6 @@ function filterContactsTab() {
   filterPortalMembersTab();
 }
 
-function _pmPosLine(m) {
-  return m.contact_position
-    ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(m.contact_position)}">${esc(m.contact_position)}</div>` : '';
-}
 function _pmOrgsHtml(m) {
   const userOrgs = m.org_memberships || [];
   const MAX_ORGS = 2;
@@ -7907,6 +7905,54 @@ function _pmOrgsHtml(m) {
     ).join('') +
     (userOrgs.length > MAX_ORGS ? `<span class="text-muted small">+${userOrgs.length - MAX_ORGS}</span>` : '');
 }
+// Same "genuinely conflicting, not just missing" comparison renderUserPanel
+// does per-field (name/email/role/org), condensed into one yes/no so the
+// Portal Members and File Contacts tables can flag it next to the name
+// without opening the full panel. Org comparison is silently skipped until
+// the HRMS<->CKAN bridge is built (_hrmsLookup/_ckanByHrms), same as the
+// panel -- a false positive there is worse than a brief false silence.
+function _rowFieldsDiffer({ portalName, fileName, portalEmail, fileEmail, portalRoleKey, fileTypeKeys, portalOrgName, fileOrgCodes }) {
+  const nameDiffers  = !!(fileName && portalName && fileName.trim().toLowerCase() !== portalName.trim().toLowerCase());
+  const emailDiffers = !!(fileEmail && portalEmail && fileEmail.toLowerCase() !== portalEmail.toLowerCase());
+  const roleDiffers  = !!(fileTypeKeys.length && portalRoleKey && !fileTypeKeys.includes(portalRoleKey));
+  const orgsDiffer   = !!(_hrmsLookup && _ckanByHrms && fileOrgCodes.length && portalOrgName &&
+    !fileOrgCodes.some(o => _orgCodeMatches(o.code || '', portalOrgName || '')));
+  return nameDiffers || emailDiffers || roleDiffers || orgsDiffer;
+}
+function _pmRowMismatch(m) {
+  if (!m.contact_id) return false;
+  return _rowFieldsDiffer({
+    portalName: m.display_name || '',
+    fileName: [m.contact_first_name, m.contact_last_name].filter(Boolean).join(' '),
+    portalEmail: m.email || '', fileEmail: m.contact_email || '',
+    portalRoleKey: !m.sysadmin ? _PORTAL_ROLE_LOOKUP_KEY[m.capacity] : null,
+    fileTypeKeys: (m.contact_type || '').split(',').map(s => s.trim()).filter(Boolean),
+    portalOrgName: m.org_name || '', fileOrgCodes: m.contact_org_codes || [],
+  });
+}
+function _fileRowMismatch(c) {
+  if (!c.linked_username) return false;
+  const m = (_portalMembersCache || []).find(x => x.username === c.linked_username);
+  if (!m) return false;
+  const fileOrgCodes = (c.org_codes && c.org_codes.length) ? c.org_codes
+    : (c.org_code ? [{code: c.org_code, label: c.org_label || c.org_code}] : []);
+  return _rowFieldsDiffer({
+    portalName: m.display_name || '',
+    fileName: [c.first_name, c.last_name].filter(Boolean).join(' '),
+    portalEmail: m.email || '', fileEmail: c.email || '',
+    portalRoleKey: !m.sysadmin ? _PORTAL_ROLE_LOOKUP_KEY[m.capacity] : null,
+    fileTypeKeys: (c.contact_type || '').split(',').map(s => s.trim()).filter(Boolean),
+    portalOrgName: m.org_name || '', fileOrgCodes,
+  });
+}
+// Shared icon for both tables -- same warning-triangle-with-tooltip
+// convention as renderUserPanel's own per-field mismatch icons.
+function _rowMismatchIcon(hasMismatch) {
+  return hasMismatch
+    ? ` <i class="bi bi-exclamation-triangle-fill text-warning" title="${esc(t('contacts.row_mismatch'))}"></i>`
+    : '';
+}
+
 // index === null renders the compact grouped-view row (no #/org columns,
 // since a group card's own header already says which org); otherwise the
 // full flat-view row -- same convention as _fileContactRowHtml.
@@ -7915,7 +7961,7 @@ function _pmRowHtml(m, index) {
   const roleCls   = _portalRoleClass(m);
   const roleLabel = _portalRoleLabel(m);
   const stateCls  = STATE_BADGE_CLS[state] || 'bg-secondary';
-  const nameCell = `<span class="fw-semibold">${esc(_pmDisplayName(m))}</span> ${_pmFileBadge(m)}${_pmPosLine(m)}`;
+  const nameCell = `<span class="fw-semibold">${esc(_pmDisplayName(m))}</span>${_rowMismatchIcon(_pmRowMismatch(m))} ${_pmFileBadge(m)}`;
   // Same panel as a row click either way, straight into inline-edit mode --
   // openUserPanel's startEditing flag seeds from the existing contact when
   // there is one, or from this portal member's own identity/org when not
@@ -8614,10 +8660,6 @@ function _fileContactsQueryParams() {
   return p;
 }
 
-function _fileContactPosLine(c) {
-  return c.position
-    ? `<div class="text-muted small text-truncate" style="max-width:200px" title="${esc(c.position)}">${esc(c.position)}</div>` : '';
-}
 function _fileContactTypeBadges(c) {
   const badges = (c.contact_type || '').split(',').map(s => s.trim()).filter(Boolean)
     .map(s => `<span class="badge me-1 ${CONTACT_TYPE_CLS[s] || 'bg-secondary'}" style="font-size:.7rem">${esc(_CONTACT_TYPE_I18N_KEY[s] ? t(_CONTACT_TYPE_I18N_KEY[s]) : s)}</span>`).join('');
@@ -8660,9 +8702,7 @@ function _fileContactActions(c) {
 // full flat-view row.
 function _fileContactRowHtml(c, index) {
   const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
-  const nameCell = `
-    <span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span> ${_fileContactPortalBadge(c)}
-    ${_fileContactPosLine(c)}`;
+  const nameCell = `<span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>${_rowMismatchIcon(_fileRowMismatch(c))} ${_fileContactPortalBadge(c)}`;
   const tail = `
     <td>${_fileContactTypeBadges(c)}</td>
     <td class="small" style="max-width:150px;overflow:hidden" onclick="event.stopPropagation()">
