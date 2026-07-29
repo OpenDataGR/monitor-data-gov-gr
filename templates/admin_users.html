@@ -1299,14 +1299,6 @@
     function confirmClearDcatCache() { _confirmClearCache('dcatClearModal', '../api/quality/dcat-check/clear', 'dcatClearResult'); }
     function confirmClearGeoDcatCache() { _confirmClearCache('geodcatClearModal', '../api/quality/geodcat-check/clear', 'geodcatClearResult'); }
 
-    function _b64enc(obj) {
-      // Encode any object as a base64 string so WAF rules cannot inspect field values.
-      const bytes = new TextEncoder().encode(JSON.stringify(obj));
-      let bin = '';
-      bytes.forEach(b => bin += String.fromCharCode(b));
-      return encodeURIComponent(btoa(bin));
-    }
-
     async function confirmReset() {
       const pw    = document.getElementById('resetPassword').value;
       const errEl = document.getElementById('resetError');

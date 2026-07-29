@@ -2233,6 +2233,14 @@ function _renderStatsChart(history, growth) {
 async function _pollDatasetGrowth(attempts = 0) {
   if (attempts > 12) return;  // give up after ~2 min
   await new Promise(r => setTimeout(r, 10000));
+  // Skip the fetch+rebuild while nobody's looking at this tab -- otherwise
+  // it keeps re-fetching and fully destroying/rebuilding the Chart.js chart
+  // (silently reverting any legend-series toggle) in the background,
+  // regardless of which tab is actually open.
+  if (!_isTabActive('tab-stats') || document.visibilityState !== 'visible') {
+    _pollDatasetGrowth(attempts + 1);
+    return;
+  }
   try {
     const [history, growth] = await Promise.all([
       fetch(API_BASE + 'api/stats/history?days=365&step=week').then(r => r.json()),
@@ -2301,6 +2309,12 @@ async function loadGeoDatasetsMap() {
 async function _pollGeoDatasetsMap(attempts = 0) {
   if (attempts > 12) return;  // give up after ~2 min
   await new Promise(r => setTimeout(r, 10000));
+  // Same reasoning as _pollDatasetGrowth -- don't re-fetch and rebuild every
+  // Leaflet marker while this tab isn't the one showing.
+  if (!_isTabActive('tab-geo-insights') || document.visibilityState !== 'visible') {
+    _pollGeoDatasetsMap(attempts + 1);
+    return;
+  }
   try {
     const data = await fetch(API_BASE + 'api/datasets/geo-locations').then(r => r.json());
     const locations = data.locations || [];
@@ -5461,7 +5475,11 @@ async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefi
   show('commSaveBtn').disabled = false;
   _commOrgReset();
   _resetCommContact();
-  if (!_commContactsPrefetchStarted && _portalMembersCache === null) {
+  // A comms-only user (no "contacts" tab) 403s on this every time the modal
+  // opens -- caught and silent, so nothing visibly breaks, but it's a
+  // guaranteed-failing request for that user on every single open.
+  const _canPrefetchContacts = !ALLOWED_TABS || ALLOWED_TABS.includes('contacts');
+  if (_canPrefetchContacts && !_commContactsPrefetchStarted && _portalMembersCache === null) {
     _commContactsPrefetchStarted = true;
     loadContactsTab();  // warm the contacts cache so the org search can also match by contact name
   }
