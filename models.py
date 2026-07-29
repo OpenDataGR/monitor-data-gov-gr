@@ -539,7 +539,7 @@ class InboundEmail(db.Model):
     detected_name  = db.Column(db.String(200))  # display-only hint: best-guess correspondent name/email found in a
     detected_email = db.Column(db.String(320))  # quoted thread when nothing resolved to a registered contact
     status         = db.Column(db.String(20), nullable=False, default="pending_review")  # attached | pending_review | dismissed
-    reason         = db.Column(db.String(50))  # why pending: no_contact_match | multiple_contacts_match | no_open_case | multiple_open_cases
+    reason         = db.Column(db.String(50))  # why pending: no_contact_match | multiple_contacts_match | no_open_case | multiple_open_cases | communication_deleted | processing_error
     communication_id = db.Column(db.Integer, db.ForeignKey("communications.id"))
 
     matched_contact = db.relationship("OrgContact")

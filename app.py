@@ -4634,39 +4634,69 @@ def email_inbound_webhook(secret):
     from_field = freq.form.get("from", "")
     to_field   = freq.form.get("to", "")
     cc_field   = freq.form.get("cc", "")
-    subject    = (freq.form.get("subject") or "").strip()
+    # Truncated to fit their columns -- SendGrid's fields are attacker/sender
+    # controlled and otherwise unbounded (a long "Re: Re: Fwd: ..." subject
+    # line is entirely plausible), and Postgres raises a hard DataError on
+    # any INSERT past a varchar's declared length rather than truncating
+    # like SQLite does.
+    subject    = (freq.form.get("subject") or "").strip()[:500]
     from_name, from_addr = parseaddr(from_field)
+    from_name  = (from_name or "")[:200]
+    from_addr  = (from_addr or "")[:320]
+    to_field   = to_field[:320]
     body_text  = _extract_email_body(freq.form.get("email", ""))
 
-    match  = _match_inbound_email(from_field, to_field, cc_field, subject, body_text)
-    contact = match["contact"]
+    try:
+        match  = _match_inbound_email(from_field, to_field, cc_field, subject, body_text)
+        contact = match["contact"]
 
-    inbound = InboundEmail(
-        from_email=from_addr or None,
-        from_name=from_name or None,
-        to_email=to_field or None,
-        subject=subject or None,
-        body_text=body_text or None,
-        matched_contact_id=contact.id if contact else None,
-        matched_org_code=contact.org_code if contact else None,
-        matched_org_label=contact.org_label if contact else None,
-    )
+        inbound = InboundEmail(
+            from_email=from_addr or None,
+            from_name=from_name or None,
+            to_email=to_field or None,
+            subject=subject or None,
+            body_text=body_text or None,
+            matched_contact_id=contact.id if contact else None,
+            matched_org_code=contact.org_code if contact else None,
+            matched_org_label=contact.org_label if contact else None,
+        )
 
-    if match["case"]:
-        comm = _create_email_communication(inbound, match["case"], contact, "Intermediate Contact")
-        inbound.status = "attached"
-        inbound.communication_id = comm.id
-    else:
-        inbound.status = "pending_review"
-        inbound.reason = match["reason"]
-        if match["reason"] == "multiple_contacts_match":
-            inbound.candidate_contact_ids = json.dumps([c.id for c in match["candidates"]])
-        elif match["reason"] == "no_contact_match":
-            inbound.detected_name  = match.get("detected_name") or None
-            inbound.detected_email = match.get("detected_email") or None
+        if match["case"]:
+            comm = _create_email_communication(inbound, match["case"], contact, "Intermediate Contact")
+            inbound.status = "attached"
+            inbound.communication_id = comm.id
+        else:
+            inbound.status = "pending_review"
+            inbound.reason = match["reason"]
+            if match["reason"] == "multiple_contacts_match":
+                inbound.candidate_contact_ids = json.dumps([c.id for c in match["candidates"]])
+            elif match["reason"] == "no_contact_match":
+                inbound.detected_name  = (match.get("detected_name") or "")[:200] or None
+                inbound.detected_email = (match.get("detected_email") or "")[:320] or None
 
-    db.session.add(inbound)
-    db.session.commit()
+        db.session.add(inbound)
+        db.session.commit()
+    except Exception as exc:
+        # Matching/insert blowing up must never mean the email just vanishes --
+        # that's exactly the "silently mis-file/lose a reply" outcome this
+        # whole pending_review design exists to prevent. Roll back whatever
+        # partial state the failed attempt left, and queue a bare-bones row
+        # so a human still sees it, instead of a swallowed 500 with nothing
+        # to show for it but a server log line.
+        db.session.rollback()
+        print(f"[email-sync] webhook FAILED to process -- from={from_addr!r} subject={subject!r} error={exc!r}", flush=True)
+        try:
+            inbound = InboundEmail(
+                from_email=from_addr or None, from_name=from_name or None, to_email=to_field or None,
+                subject=subject or None, body_text=body_text or None,
+                status="pending_review", reason="processing_error",
+            )
+            db.session.add(inbound)
+            db.session.commit()
+        except Exception as exc2:
+            db.session.rollback()
+            print(f"[email-sync] webhook fallback insert ALSO failed -- {exc2!r}", flush=True)
+        return jsonify({"ok": True}), 200
 
     print(f"[email-sync] webhook hit -- from={from_addr!r} subject={subject!r} "
           f"status={inbound.status!r} reason={inbound.reason!r} comm_id={inbound.communication_id}", flush=True)
@@ -4965,6 +4995,9 @@ def inbound_email_attach(inbound_id):
     if case_id:
         case = Case.query.get_or_404(int(case_id))
         comm_status = "Intermediate Contact"
+        if case.status == "Closed":  # same reopen-on-new-entry rule communications_create() applies --
+            case.status = "Open"     # the case dropdown only offers Open cases at modal-open time, but
+            case.closed_at = None    # another admin may have closed it in the meantime (concurrent editing)
     else:
         # No existing case picked -> open a new one, using the email itself as
         # its Initial Contact entry (mirrors communications_create's own

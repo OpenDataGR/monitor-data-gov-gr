@@ -394,6 +394,7 @@ const TRANSLATIONS = {
     'inbound.reason_multiple_cases': 'Multiple open cases',
     'inbound.reason_multiple_contacts': 'Multiple possible contacts',
     'inbound.reason_comm_deleted': 'Communication was deleted',
+    'inbound.reason_processing_error': 'Could not be processed automatically',
     'inbound.toast_title': 'New email needs review',
     'inbound.toast_multi': '{n} new emails need review',
     'inbound.toast_title_comm': 'New communication logged',
@@ -965,6 +966,7 @@ const TRANSLATIONS = {
     'inbound.reason_multiple_cases': 'Πολλαπλές ενεργές υποθέσεις',
     'inbound.reason_multiple_contacts': 'Πολλαπλές πιθανές επαφές',
     'inbound.reason_comm_deleted': 'Η επικοινωνία διαγράφηκε',
+    'inbound.reason_processing_error': 'Δεν ήταν δυνατή η αυτόματη επεξεργασία',
     'inbound.toast_title': 'Νέο email προς έλεγχο',
     'inbound.toast_multi': '{n} νέα email προς έλεγχο',
     'inbound.toast_title_comm': 'Νέα επικοινωνία καταχωρήθηκε',
@@ -4687,6 +4689,7 @@ const INBOUND_REASON_KEY = {
   multiple_open_cases:    'inbound.reason_multiple_cases',
   multiple_contacts_match: 'inbound.reason_multiple_contacts',
   communication_deleted:  'inbound.reason_comm_deleted',
+  processing_error:       'inbound.reason_processing_error',
 };
 
 function renderCommsReviewSection() {
