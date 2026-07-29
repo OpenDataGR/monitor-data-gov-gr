@@ -7142,7 +7142,11 @@ function renderUserPanel(u) {
     const d = new Date(s);
     return isNaN(d) ? s : d.toLocaleDateString('el-GR', {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
   };
-  const stateCls = u.state === 'active' ? 'success' : 'secondary';
+  // Same three-way mapping (active/pending/deleted) the Contacts list uses
+  // (STATE_BADGE_CLS/STATE_BADGE) -- this used to only distinguish active
+  // vs. everything else, so "Pending" showed as a plain gray badge here
+  // instead of the same orange it gets in the list.
+  const stateCls = STATE_BADGE_CLS[u.state] || 'bg-secondary';
   // Prefer the name on file over the portal account's own display name — the
   // CKAN profile is often a romanized username, the contact file has the real name.
   const _fileName = u.contact ? `${u.contact.first_name || ''} ${u.contact.last_name || ''}`.trim() : '';
@@ -7479,7 +7483,7 @@ function renderUserPanel(u) {
 
   document.getElementById('userPanelBody').innerHTML = `
     ${_hasPortal ? `<div class="d-flex align-items-center gap-2 mb-3">
-      <span class="badge bg-${stateCls}">${esc(_contactStateLabel(u.state))}</span>
+      <span class="badge ${stateCls}">${esc(_contactStateLabel(u.state))}</span>
       ${u.sysadmin ? `<span class="badge bg-danger">${t('contacts.role_sysadmin')}</span>` : ''}
     </div>` : ''}
     ${infoHtml}
