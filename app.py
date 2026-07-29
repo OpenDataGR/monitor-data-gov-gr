@@ -433,6 +433,12 @@ _TAB_ROUTE_RULES = [
     ("/api/communications",        ("comms",)),
     ("/api/cases",                 ("comms",)),
     ("/api/inbound-emails",        ("comms",)),
+    # New Communication modal's "add contact for this organization" button
+    # (offered whenever no existing contact matches the picked org) saves
+    # through here -- comms-only users need that too, without granting the
+    # rest of /api/contacts (listing, export, id-based edits/delete, which
+    # stay contacts-exclusive via the broader rule right below).
+    ("/api/contacts/save",         ("contacts", "comms")),
     ("/api/contacts",              ("contacts",)),
     ("/api/portal-members",        ("contacts",)),
     ("/api/portal-user",           ("contacts",)),

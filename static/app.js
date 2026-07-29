@@ -4295,16 +4295,19 @@ async function _loadPublicOrgsForPortal() {
 // comparison. Unlike _loadPublicOrgsForPortal, this also fetches _orgsData
 // itself if it's missing (quietly, via _loadOrgsBackground, not the
 // Organizations tab's own loadOrgs -- no need to touch that tab's visible
-// state just to build this). Only warms the CURRENT session forward, not
-// retroactively -- a panel already open when this resolves doesn't
-// re-render; the next one opened will just find the bridge ready.
-let _orgCkanBridgeWarming = false;
+// state just to build this). Returns a promise so a caller that actually
+// needs to react once the bridge lands (re-render, re-check) can -- most
+// callers just fire-and-forget it and let the next panel opened find it
+// ready, which is still fine, since a resolved/in-flight promise costs
+// nothing extra to ignore.
+let _orgCkanBridgePromise = null;
 let _pmCacheWarmingForPanel = false;
 function _ensureOrgCkanBridge() {
-  if (_hrmsLookup || _orgCkanBridgeWarming) return;
-  _orgCkanBridgeWarming = true;
+  if (_hrmsLookup) return Promise.resolve();
+  if (_orgCkanBridgePromise) return _orgCkanBridgePromise;
   const ready = _orgsData.length ? Promise.resolve() : _loadOrgsBackground();
-  ready.then(_loadPublicOrgsForPortal).finally(() => { _orgCkanBridgeWarming = false; });
+  _orgCkanBridgePromise = ready.then(_loadPublicOrgsForPortal).finally(() => { _orgCkanBridgePromise = null; });
+  return _orgCkanBridgePromise;
 }
 
 function _portalContactCell(orgName, orgTitle) {
@@ -6061,6 +6064,21 @@ function _renderOrgContactsPanel() {
     return;
   }
 
+  // _orgCodeMatches (used both for member inclusion below and for the
+  // orgsDiffer mismatch flag further down) silently degrades to exact-string
+  // comparison until _hrmsLookup/_ckanByHrms are built -- unlike this same
+  // comparison everywhere else it's used (renderUserPanel, _rowFieldsDiffer),
+  // this panel never warmed that bridge, so opening it before ever visiting
+  // Organizations this session could both wrongly flag a genuinely-matching
+  // HRMS<->CKAN org pair as a mismatch AND silently drop a member who's only
+  // tied to this org through that file-side code. Warm it and re-render once
+  // it lands -- cheap to call again, this function always reads live module
+  // state (_panelOrgCode etc.), not a snapshot, so re-invoking it later for
+  // whatever org is currently selected is always correct.
+  if (!(_hrmsLookup && _ckanByHrms)) {
+    _ensureOrgCkanBridge().then(() => { if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel(); });
+  }
+
   // All portal members for this org (dedup by username, highest role) -- match
   // both by live CKAN org membership AND by what the linked contact file says.
   // A member's portal account can have no CKAN org (or a different one) while
@@ -6858,7 +6876,16 @@ function renderUserPanel(u) {
     const _waitForPmCache = () => {
       if (_portalMembersCache) {
         _pmCacheWarmingForPanel = false;
-        if (_userPanelUser === u) renderUserPanel(u);
+        if (_userPanelUser === u) {
+          // The edit-mode org picker for a portal member with no contact
+          // file yet is seeded from this same cache (_seedUpEditOrgsFromPortal,
+          // called by openUserPanel/startUserPanelEditNew before this cache
+          // was ready) -- if it came up empty because of that, and nothing's
+          // been added to it since, re-seed it now instead of leaving the
+          // picker looking like the member has no orgs at all.
+          if (_upEditing && !u.contact && !_upEditOrgs.length) _upEditOrgs = _seedUpEditOrgsFromPortal(u.username);
+          renderUserPanel(u);
+        }
       } else if (_userPanelUser === u) {
         setTimeout(_waitForPmCache, 300);
       } else {
