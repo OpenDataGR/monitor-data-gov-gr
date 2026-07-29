@@ -4609,15 +4609,36 @@ async function _loadInboundEmails() {
 
 // Called whenever the underlying data changed elsewhere -- this admin's own
 // edit, another admin's edit (the 20s multi-editor poll), or an auto-captured
-// inbound email (the SSE new_communication event). Unlike filterComms() (for
-// when the user actually changed a filter/search/sort), this doesn't need to
-// distinguish "did anything really change" the way the old JSON-snapshot-diff
-// did -- refetching a page is cheap now that it's paginated instead of the
-// whole table, so it just always refreshes. Accepted tradeoff: this collapses
-// any expanded groups and resets flat-view scroll to the top, even if nothing
-// relevant to the current view actually changed -- a minor, infrequent cost
-// (this fires at most every 20s) that isn't worth re-introducing the diffing
-// complexity for.
+// inbound email (the SSE new_communication event). Refetches the active
+// view's data every time (cheap now that it's paginated instead of the whole
+// table) but WITHOUT filterComms()'s full reset -- that used to collapse
+// every expanded group and jump flat-view scroll back to the top on every
+// single tick, which reads as a jarring "the page just refreshed" even
+// though nothing the user was looking at necessarily changed. Whichever
+// groups are already expanded get their rows refreshed too (so this still
+// picks up someone else's edit to something you already have open), just
+// without the visual reset.
+async function _commsRefreshInPlace() {
+  if (_commsViewMode === 'cases') {
+    await _loadCommsCaseGroups(true);
+    const stillExpanded = [..._expandedCases].filter(id => _commsCaseGroups.some(cs => cs.id === id));
+    await Promise.all(stillExpanded.map(id => { _commsCaseExpandRows.delete(id); return _fetchCommsCaseRows(id); }));
+    _renderCommsCaseGroups();
+  } else if (_commsViewMode === 'grouped') {
+    await _loadCommsOrgGroups(true);
+    const stillExpanded = [..._expandedOrgs].filter(k => _commsOrgGroups.some(g => g.org_title === k));
+    await Promise.all(stillExpanded.map(k => { _commsOrgExpandRows.delete(k); return _fetchCommsOrgRows(k); }));
+    _renderCommsOrgGroups();
+  } else if (_commsViewMode === 'timeline') {
+    await _loadCommsDayGroups(true);
+    const stillExpanded = [..._expandedTimelineDays].filter(d => _commsDayGroups.some(g => g.day === d));
+    await Promise.all(stillExpanded.map(d => { _commsDayExpandRows.delete(d); return _fetchCommsDayRows(d); }));
+    _renderCommsDayGroups();
+  } else {
+    await loadCommsFlat(false, true);
+  }
+}
+
 async function _reloadCasesAndComms() {
   if (!_isTabActive('tab-comms')) {
     // Not looking at the tab right now -- just mark every view stale so the
@@ -4626,7 +4647,11 @@ async function _reloadCasesAndComms() {
     return;
   }
   await _loadInboundEmails();
-  filterComms();
+  if (_commsFlatLoaded || _commsCaseGroupsLoaded || _commsOrgGroupsLoaded || _commsDayGroupsLoaded) {
+    await _commsRefreshInPlace();
+  } else {
+    filterComms();
+  }
 }
 
 async function _refreshCommSubjectDatalist() {
@@ -4941,12 +4966,12 @@ function _commsFlatLoadMoreTrigger() {
   loadCommsFlat(true);
 }
 
-async function loadCommsFlat(append = false) {
+async function loadCommsFlat(append = false, background = false) {
   if (_commsViewMode !== 'flat') return;
   if (!append) _commsFlatStart = 0;
   if (append) {
     _commsFlatLoadingMore = true;
-  } else {
+  } else if (!background) {
     if (_commsFlatObserver) _commsFlatObserver.disconnect();
     show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
   }
@@ -4974,7 +4999,7 @@ async function loadCommsFlat(append = false) {
     }
     _commsFlatLoaded = true;
   } catch (e) {
-    if (!append) show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+    if (!append && !background) show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
   } finally {
     _commsFlatLoadingMore = false;
   }
@@ -5066,9 +5091,13 @@ let _commsOrgGroupsLoaded = false;
 const _commsOrgExpandRows = new Map();     // org_title -> rows[]
 const _commsOrgExpandLoading = new Set();  // org_titles currently fetching
 
-async function _loadCommsOrgGroups() {
+// background=true is the 20s/SSE poll's quiet refresh: keep whatever's
+// already on screen (and whichever groups are expanded) instead of flashing
+// a full-page spinner and wiping every group's cached rows, both of which
+// only make sense for an actual first load or a real filter change.
+async function _loadCommsOrgGroups(background = false) {
   if (_commsViewMode !== 'grouped') return;
-  show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
+  if (!background) show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
   try {
     const params = _commsQueryParams();
     params.set('group_by', 'org');
@@ -5077,12 +5106,12 @@ async function _loadCommsOrgGroups() {
     const data = await _fetchJsonOrThrow(resp);
     _commsOrgGroups = data.groups || [];
     _commsOrgGroupsLoaded = true;
-    _commsOrgExpandRows.clear();
+    if (!background) _commsOrgExpandRows.clear();
     _applyCommsFacets(data);
     _commsLoadedFingerprint = _commsQueryParams().toString();
     _renderCommsOrgGroups();
   } catch (e) {
-    show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+    if (!background) show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
   }
 }
 
@@ -5166,9 +5195,10 @@ let _commsCaseGroupsLoaded = false;
 const _commsCaseExpandRows = new Map();     // caseId -> rows[]
 const _commsCaseExpandLoading = new Set();  // caseIds currently fetching
 
-async function _loadCommsCaseGroups() {
+// background=true: see _loadCommsOrgGroups's comment -- same quiet-refresh shape.
+async function _loadCommsCaseGroups(background = false) {
   if (_commsViewMode !== 'cases') return;
-  show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
+  if (!background) show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
   try {
     const params = _commsQueryParams();
     params.set('group_by', 'case');
@@ -5177,12 +5207,12 @@ async function _loadCommsCaseGroups() {
     const data = await _fetchJsonOrThrow(resp);
     _commsCaseGroups = data.groups || [];
     _commsCaseGroupsLoaded = true;
-    _commsCaseExpandRows.clear();
+    if (!background) _commsCaseExpandRows.clear();
     _applyCommsFacets(data);
     _commsLoadedFingerprint = _commsQueryParams().toString();
     _renderCommsCaseGroups();
   } catch (e) {
-    show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+    if (!background) show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
   }
 }
 
@@ -5298,9 +5328,10 @@ let _commsDayGroupsLoaded = false;
 const _commsDayExpandRows = new Map();     // day -> rows[]
 const _commsDayExpandLoading = new Set();  // days currently fetching
 
-async function _loadCommsDayGroups() {
+// background=true: see _loadCommsOrgGroups's comment -- same quiet-refresh shape.
+async function _loadCommsDayGroups(background = false) {
   if (_commsViewMode !== 'timeline') return;
-  show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
+  if (!background) show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
   try {
     const params = _commsQueryParams();
     params.set('group_by', 'day');
@@ -5309,7 +5340,7 @@ async function _loadCommsDayGroups() {
     const data = await _fetchJsonOrThrow(resp);
     _commsDayGroups = data.groups || [];
     _commsDayGroupsLoaded = true;
-    _commsDayExpandRows.clear();
+    if (!background) _commsDayExpandRows.clear();
     _applyCommsFacets(data);
     _commsLoadedFingerprint = _commsQueryParams().toString();
     const todayIso = new Date().toISOString().slice(0, 10);
@@ -5322,7 +5353,7 @@ async function _loadCommsDayGroups() {
       _fetchCommsDayRows(todayIso).then(_renderCommsDayGroups);
     }
   } catch (e) {
-    show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+    if (!background) show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
   }
 }
 
