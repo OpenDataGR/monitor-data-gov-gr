@@ -145,6 +145,14 @@
        invert them (markers/popups live in other Leaflet panes, unaffected). */
     [data-bs-theme="dark"] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); }
     [data-bs-theme="dark"] .leaflet-container { background: #1a1d20; }
+    /* Infinite-scroll appends 20 rows at a time while this list is actively
+       being scrolled -- the browser's scroll-anchoring heuristic tries (and
+       fails) to compensate for the appended content and gives up after a few
+       tries, logging a harmless but noisy console warning. Opting this
+       container out of anchoring silences it; there's nothing here worth
+       anchoring against in the first place, since new rows only ever land
+       below the fold. */
+    #catalogResults { overflow-anchor: none; }
   </style>
 </head>
 <body>
