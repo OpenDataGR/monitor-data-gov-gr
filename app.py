@@ -439,8 +439,11 @@ _TAB_ROUTE_RULES = [
     # data source for creating a communication, adding a contact, AND the
     # Organizations tab's own "All Public Sector" view. Not orgs-exclusive.
     ("/api/public-orgs",           ("orgs", "comms", "contacts")),
-    # Catalog org filter dropdown also reads this, not just the Organizations tab.
-    ("/api/organizations",         ("orgs", "datasets")),
+    # Catalog org filter dropdown also reads this, not just the Organizations
+    # tab -- and org links/badges rendered inside other tabs' own panels
+    # (Contacts' user/file panels, a dataset panel opened from Quality, the
+    # Insights geo map's marker click) all open the same org panel too.
+    ("/api/organizations",         ("orgs", "datasets", "contacts", "quality", "stats")),
     # loadOverview() -- runs for every user regardless of restriction, since
     # "overview" is always allowed -- also calls health/summary and
     # stats/latest+live for its own summary cards, not just the dedicated
@@ -452,8 +455,13 @@ _TAB_ROUTE_RULES = [
     ("/api/stats/live",            ("overview",)),
     ("/api/datasets/geo-locations", ("stats",)),
     ("/api/datasets/formats",      ("datasets", "stats")),
-    ("/api/datasets/search",       ("datasets", "orgs")),
-    ("/api/datasets/",             ("datasets", "orgs", "quality")),  # dataset detail panel
+    # Same set as the dataset detail panel below -- "related datasets" is
+    # part of that same panel, opened from every one of those tabs.
+    ("/api/datasets/search",       ("datasets", "orgs", "quality", "traffic", "contacts")),
+    # Dataset detail panel -- also opened from Traffic's "top datasets" list
+    # and the Contacts user-panel's own Datasets/Activity sections, not just
+    # Datasets/Organizations/Quality's own tables.
+    ("/api/datasets/",             ("datasets", "orgs", "quality", "traffic", "contacts")),
     ("/api/matomo/live",           ("overview",)),
     ("/api/matomo/today",          ("overview",)),
     ("/api/matomo/",               ("traffic",)),
@@ -3772,6 +3780,16 @@ def organization_detail(org_name):
     headers = {"User-Agent": "DataGovGR-Dashboard/1.0"}
     result = {}
 
+    # This route only requires "orgs" or "datasets" access (see
+    # _TAB_ROUTE_RULES) -- but some of what it returns (member emails,
+    # comms_summary) is otherwise gated behind "contacts"/"comms"
+    # specifically, so a requester without those still needs those pieces
+    # left out below rather than just being handed them because they came
+    # along for the ride on an allowed route.
+    _allowed_tabs = _session_allowed_tabs()
+    _has_contacts_access = _allowed_tabs is None or "contacts" in _allowed_tabs
+    _has_comms_access = _allowed_tabs is None or "comms" in _allowed_tabs
+
     try:
         r = requests.get(
             f"{config.PORTAL_BASE}/api/3/action/organization_show",
@@ -3862,14 +3880,6 @@ def organization_detail(org_name):
                     if not _pm_cache["data"] and not _pm_cache["loading"]:
                         threading.Thread(target=_do_fetch_portal_members, daemon=True).start()
 
-                    # This route only requires "orgs" or "datasets" access
-                    # (see _TAB_ROUTE_RULES), not "contacts" -- but email is
-                    # otherwise contacts-scoped data, so someone with
-                    # Organizations-only access shouldn't see it here just
-                    # because it happens to already be sitting in _pm_cache.
-                    _allowed_tabs = _session_allowed_tabs()
-                    _has_contacts_access = _allowed_tabs is None or "contacts" in _allowed_tabs
-
                     members = []
                     for u in raw_users:
                         uname = u.get("name", "")
@@ -3886,33 +3896,38 @@ def organization_detail(org_name):
         except Exception:
             pass
 
-    # Communications summary for this org
-    try:
-        comms = Communication.query.filter(Communication.org_name == org_name).all()
-        if not comms:
-            # org_name is a free-text field (see models.Communication) -- some rows
-            # were saved with an HRMS org code/label picked via a contact instead of
-            # the CKAN slug, so the exact match above misses them. Only worth the
-            # full-table scan when the fast path found nothing.
-            org_title_key = _norm_org_text(result["org"]["title"])
-            if org_title_key:
-                comms = [
-                    c for c in Communication.query.filter(Communication.org_title.isnot(None)).all()
-                    if _norm_org_text(c.org_title) == org_title_key
-                ]
-        status_counts = {}
-        latest_date = None
-        for c in comms:
-            status_counts[c.status] = status_counts.get(c.status, 0) + 1
-            if latest_date is None or c.contact_date > latest_date:
-                latest_date = c.contact_date
-        result["comms_summary"] = {
-            "total":       len(comms),
-            "by_status":   status_counts,
-            "latest_date": latest_date,
-        }
-    except Exception:
-        result["comms_summary"] = {"total": 0, "by_status": {}, "latest_date": None}
+    # Communications summary for this org -- this route only requires "orgs"
+    # or "datasets" access (see _TAB_ROUTE_RULES), not "comms", so skip the
+    # query entirely (rather than just hiding the result) for a requester who
+    # doesn't actually have Communications access. Same reasoning as the
+    # member-email gate above.
+    if _has_comms_access:
+        try:
+            comms = Communication.query.filter(Communication.org_name == org_name).all()
+            if not comms:
+                # org_name is a free-text field (see models.Communication) -- some rows
+                # were saved with an HRMS org code/label picked via a contact instead of
+                # the CKAN slug, so the exact match above misses them. Only worth the
+                # full-table scan when the fast path found nothing.
+                org_title_key = _norm_org_text(result["org"]["title"])
+                if org_title_key:
+                    comms = [
+                        c for c in Communication.query.filter(Communication.org_title.isnot(None)).all()
+                        if _norm_org_text(c.org_title) == org_title_key
+                    ]
+            status_counts = {}
+            latest_date = None
+            for c in comms:
+                status_counts[c.status] = status_counts.get(c.status, 0) + 1
+                if latest_date is None or c.contact_date > latest_date:
+                    latest_date = c.contact_date
+            result["comms_summary"] = {
+                "total":       len(comms),
+                "by_status":   status_counts,
+                "latest_date": latest_date,
+            }
+        except Exception:
+            result["comms_summary"] = {"total": 0, "by_status": {}, "latest_date": None}
 
     return jsonify(result)
 
