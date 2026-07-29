@@ -205,18 +205,26 @@
       to   { opacity: 1; transform: none; }
     }
     /* Same technique for the custom (non-Bootstrap) org-search autocomplete
-       lists in the New Communication / inbound-attach modals, which show
-       and hide via a plain .d-none toggle instead of Bootstrap's .show. */
-    #commOrgDropdown:not(.d-none), #inboundAttachOrgDropdown:not(.d-none) { animation: ddFadeIn .15s ease-out; }
+       lists -- New Communication, inbound-attach, and the contact panel's
+       own org picker all share this exact markup (a <ul class="list-group
+       ... position-absolute ... d-none">), and show/hide via a plain
+       .d-none toggle instead of Bootstrap's .show, so this targets the
+       shared class combo rather than each dropdown's own id. */
+    ul.list-group.position-absolute:not(.d-none) { animation: ddFadeIn .15s ease-out; }
 
-    /* Expanding a Case/Organization/Timeline-day group in Communications
-       shows a spinner immediately, then replaces it with the fetched rows
-       a moment later -- that swap reads as an abrupt "jump" without this,
-       since the incoming rows just pop in at full opacity. A plain fade
-       (no vertical motion -- these sit in a table/list already pushing
+    /* Expanding a group -- a Case/Organization/Timeline-day in
+       Communications, an organization in Contacts' Portal Members/File
+       Contacts grouped views, or an organization in Quality's HVD/DCAT-AP/
+       GeoDCAT-AP "By Organization" results -- shows a spinner (or, for
+       Quality, builds the rows fresh) and swaps them in a moment later;
+       that swap reads as an abrupt "jump" without this, since the incoming
+       rows previously just popped in at full opacity. A plain fade (no
+       vertical motion -- these sit in a table/list already pushing
        everything below them down) softens the swap without pretending the
-       fetch itself was instant. */
-    .comm-hist-row, .comm-timeline-item { animation: commRowFadeIn .25s ease; }
+       fetch/build itself was instant. .reveal-row is applied to the same
+       row template regardless of context (Comms' own grouped rows keep
+       their pre-existing .comm-hist-row/.comm-timeline-item classes). */
+    .comm-hist-row, .comm-timeline-item, .reveal-row { animation: commRowFadeIn .25s ease; }
     @keyframes commRowFadeIn {
       from { opacity: 0; }
       to   { opacity: 1; }

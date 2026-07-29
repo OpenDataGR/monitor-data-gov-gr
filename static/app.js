@@ -3061,7 +3061,7 @@ function collapseAllHvd() {
 
 function _hvdRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}) {
   return `
-      <tr${hidden ? ' style="display:none"' : ''}>
+      <tr${hidden ? ' style="display:none"' : ''}${indent ? ' class="reveal-row"' : ''}>
         <td${indent ? ' class="ps-4"' : ''}><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
         ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
         <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
@@ -3477,7 +3477,7 @@ function collapseAllDcat() {
 
 function _dcatRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}) {
   return `
-      <tr${hidden ? ' style="display:none"' : ''}>
+      <tr${hidden ? ' style="display:none"' : ''}${indent ? ' class="reveal-row"' : ''}>
         <td${indent ? ' class="ps-4"' : ''}><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
         ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
         <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
@@ -3845,7 +3845,7 @@ function collapseAllGeoDcat() {
 
 function _geodcatRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}) {
   return `
-      <tr${hidden ? ' style="display:none"' : ''}>
+      <tr${hidden ? ' style="display:none"' : ''}${indent ? ' class="reveal-row"' : ''}>
         <td${indent ? ' class="ps-4"' : ''}><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
         ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
         <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
@@ -8179,7 +8179,7 @@ function _pmRowHtml(m, index) {
     </td>`;
   const rowStyle = `cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}`;
   if (index == null) {
-    return `<tr style="${rowStyle}" onclick="openUserPanel('${esc(m.username)}')">
+    return `<tr class="reveal-row" style="${rowStyle}" onclick="openUserPanel('${esc(m.username)}')">
       <td style="max-width:200px">${nameCell}</td>${tail}
     </tr>`;
   }
@@ -8909,7 +8909,7 @@ function _fileContactRowHtml(c, index) {
   // variant (openFileContactPanel) since there's no CKAN account to fetch.
   const rowOnclick = ` style="cursor:pointer" onclick="${c.linked_username ? `openUserPanel('${esc(c.linked_username)}')` : `openFileContactPanel(${c.id})`}"`;
   if (index == null) {
-    return `<tr${rowOnclick}><td style="max-width:200px">${nameCell}</td>${tail}</tr>`;
+    return `<tr class="reveal-row"${rowOnclick}><td style="max-width:200px">${nameCell}</td>${tail}</tr>`;
   }
   const orgBadge = (c.org_label || c.org_code)
     ? `<span class="badge bg-light text-dark border" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
