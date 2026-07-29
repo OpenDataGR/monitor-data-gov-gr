@@ -3059,7 +3059,10 @@ function toggleHvdOrg(idx) {
   const [orgTitle] = entry;
   if (_hvdExpandedOrgs.has(orgTitle)) _hvdExpandedOrgs.delete(orgTitle);
   else _hvdExpandedOrgs.add(orgTitle);
-  _renderHvdTable();
+  // No fetch involved here (every dataset's result is already in memory),
+  // so unlike Comms' toggles this only ever needs the height smoothing, not
+  // a spinner -- _renderHvdTable runs synchronously either way.
+  _animateHeightSwap(show('hvdTableWrap'), _renderHvdTable);
 }
 
 function expandAllHvd() {
@@ -3475,7 +3478,8 @@ function toggleDcatOrg(idx) {
   const [orgTitle] = entry;
   if (_dcatExpandedOrgs.has(orgTitle)) _dcatExpandedOrgs.delete(orgTitle);
   else _dcatExpandedOrgs.add(orgTitle);
-  _renderDcatTable();
+  // See toggleHvdOrg's comment -- no fetch involved, just the height smoothing.
+  _animateHeightSwap(show('dcatTableWrap'), _renderDcatTable);
 }
 
 function expandAllDcat() {
@@ -3843,7 +3847,8 @@ function toggleGeoDcatOrg(idx) {
   const [orgTitle] = entry;
   if (_geodcatExpandedOrgs.has(orgTitle)) _geodcatExpandedOrgs.delete(orgTitle);
   else _geodcatExpandedOrgs.add(orgTitle);
-  _renderGeoDcatTable();
+  // See toggleHvdOrg's comment -- no fetch involved, just the height smoothing.
+  _animateHeightSwap(show('geodcatTableWrap'), _renderGeoDcatTable);
 }
 
 function expandAllGeoDcat() {
