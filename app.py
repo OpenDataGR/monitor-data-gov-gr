@@ -443,8 +443,8 @@ _TAB_ROUTE_RULES = [
     # Catalog org filter dropdown also reads this, not just the Organizations
     # tab -- and org links/badges rendered inside other tabs' own panels
     # (Contacts' user/file panels, a dataset panel opened from Quality, the
-    # Insights geo map's marker click) all open the same org panel too.
-    ("/api/organizations",         ("orgs", "datasets", "contacts", "quality", "stats")),
+    # Geospatial Insights map's marker click) all open the same org panel too.
+    ("/api/organizations",         ("orgs", "datasets", "contacts", "quality", "stats", "geo-insights")),
     # loadOverview() -- runs for every user regardless of restriction, since
     # "overview" is always allowed -- also calls health/summary and
     # stats/latest+live for its own summary cards, not just the dedicated
@@ -465,6 +465,11 @@ _TAB_ROUTE_RULES = [
     ("/api/datasets/",             ("datasets", "orgs", "quality", "traffic", "contacts")),
     ("/api/matomo/live",           ("overview",)),
     ("/api/matomo/today",          ("overview",)),
+    # These two back the same dataset detail panel's stats widget/analytics
+    # link, not just Traffic's own view of it -- same tab set as
+    # /api/datasets/ above, since that's exactly where this panel opens from.
+    ("/api/matomo/dataset-stats",     ("datasets", "orgs", "quality", "traffic", "contacts")),
+    ("/api/matomo/dataset-analytics", ("datasets", "orgs", "quality", "traffic", "contacts")),
     ("/api/matomo/",               ("traffic",)),
     ("/api/stats/",                ("stats",)),
     ("/api/quality/",              ("quality",)),
