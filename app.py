@@ -414,7 +414,8 @@ if config.EMAIL_INBOUND_SECRET:
 
 # Dashboard sidebar tabs, in the order they appear. "overview" is the landing
 # tab and is always included so a restricted user is never left with nothing.
-ALL_TABS = ["overview", "comms", "contacts", "orgs", "health", "traffic", "datasets", "stats", "quality"]
+ALL_TABS = ["overview", "comms", "contacts", "orgs", "health", "traffic", "datasets", "stats",
+            "geo-insights", "temporal-insights", "quality"]
 
 
 # API path prefixes -> the sidebar tab(s) whose UI legitimately calls them,
@@ -453,7 +454,7 @@ _TAB_ROUTE_RULES = [
     ("/api/health/",               ("health",)),
     ("/api/stats/latest",          ("overview",)),
     ("/api/stats/live",            ("overview",)),
-    ("/api/datasets/geo-locations", ("stats",)),
+    ("/api/datasets/geo-locations", ("stats", "geo-insights")),
     ("/api/datasets/formats",      ("datasets", "stats")),
     # Same set as the dataset detail panel below -- "related datasets" is
     # part of that same panel, opened from every one of those tabs.
