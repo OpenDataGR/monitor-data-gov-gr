@@ -245,7 +245,18 @@
        fetch/build itself was instant. .reveal-row is applied to the same
        row template regardless of context (Comms' own grouped rows keep
        their pre-existing .comm-hist-row/.comm-timeline-item classes). */
-    .comm-hist-row, .comm-timeline-item, .reveal-row { animation: commRowFadeIn .25s ease; }
+    /* Deliberately NOT bound to .comm-hist-row/.comm-timeline-item/
+       .reveal-row directly -- those render functions always rebuild their
+       *entire* group list on every call (not just the one group being
+       toggled), so every already-expanded group's rows get torn down and
+       recreated as fresh DOM nodes too, replaying the animation on all of
+       them: toggling one case made every other open case flash, and the
+       20s background refresh made them all flash on a timer even with no
+       user action at all. .just-revealed is added in JS only to the
+       specific group actually being expanded right now (see
+       _commsRevealKey below), so a full rebuild elsewhere no longer
+       triggers it. */
+    .just-revealed { animation: commRowFadeIn .25s ease; }
     @keyframes commRowFadeIn {
       from { opacity: 0; }
       to   { opacity: 1; }

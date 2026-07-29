@@ -4470,6 +4470,11 @@ let _expandedOrgs   = new Set();
 let _expandedCases  = new Set();
 let _expandedTimelineDays = new Set();
 let _timelineDaysInitialized = false;
+// Set right before a render call that should reveal-animate exactly one
+// group (the one the user just expanded), consumed and cleared by that
+// render function on its very next call -- see the render functions'
+// comments for why a blanket per-class animation doesn't work here.
+let _commsRevealKey = null;
 
 // Server-computed cross-scoped facet counts (case_status/stale/status),
 // replacing the old client-side computation over full _commsData/_casesData
@@ -5067,10 +5072,10 @@ function _renderCommsFlat(rows, append) {
 // Shared by the org and case grouped views' expanded rows -- identical
 // markup except the case view omits the case badge (redundant once you're
 // already looking inside that case's own group).
-function _commsHistRowHtml(c, showCaseBadge) {
+function _commsHistRowHtml(c, showCaseBadge, reveal = false) {
   const statusLabel = _commsStatusLabels();
   return `
-    <tr class="comm-hist-row">
+    <tr class="comm-hist-row${reveal ? ' just-revealed' : ''}">
       <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
       <td class="small">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${contactPersonHtml(c)}</td>
       <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
@@ -5141,6 +5146,14 @@ function _renderCommsOrgGroups() {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
+  // Every call rebuilds every group's rows, not just the one actually being
+  // toggled -- capturing (and immediately clearing) the key here means only
+  // the group that just got explicitly expanded gets the reveal animation
+  // this pass; a full rebuild triggered by something else (a background
+  // refresh, or toggling a *different* group) leaves _commsRevealKey unset
+  // and so animates nothing.
+  const revealKey = _commsRevealKey;
+  _commsRevealKey = null;
   const statusLabel = _commsStatusLabels();
   const rows = _commsOrgGroups.map(g => {
     const orgTitle   = g.org_title;
@@ -5148,11 +5161,12 @@ function _renderCommsOrgGroups() {
     const cachedRows = _commsOrgExpandRows.get(orgTitle);
     const isLoading  = _commsOrgExpandLoading.has(orgTitle);
     const safeAttr   = orgTitle.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+    const reveal     = orgTitle === revealKey;
     let body = '';
     if (isExpanded) {
       body = (isLoading || !cachedRows)
-        ? `<tr class="comm-hist-row"><td colspan="6" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>`
-        : cachedRows.map(c => _commsHistRowHtml(c, true)).join('');
+        ? `<tr class="comm-hist-row${reveal ? ' just-revealed' : ''}"><td colspan="6" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>`
+        : cachedRows.map(c => _commsHistRowHtml(c, true, reveal)).join('');
     }
     return `
       <tr class="comm-group-row" style="cursor:pointer" data-org="${safeAttr}" onclick="toggleOrgComms(this.dataset.org)">
@@ -5217,8 +5231,9 @@ function toggleOrgComms(orgTitle) {
     return;
   }
   _expandedOrgs.add(orgTitle);
+  _commsRevealKey = orgTitle;
   _animateHeightSwap(el, _renderCommsOrgGroups);  // show the per-group spinner immediately
-  _fetchCommsOrgRows(orgTitle).then(() => _animateHeightSwap(el, _renderCommsOrgGroups));
+  _fetchCommsOrgRows(orgTitle).then(() => { _commsRevealKey = orgTitle; _animateHeightSwap(el, _renderCommsOrgGroups); });
 }
 
 async function _fetchCommsOrgRows(orgTitle) {
@@ -5275,16 +5290,22 @@ function _renderCommsCaseGroups() {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
+  // See _renderCommsOrgGroups's comment -- same capture-and-clear so a full
+  // rebuild triggered by something other than expanding this exact case
+  // doesn't replay the reveal animation on it.
+  const revealKey = _commsRevealKey;
+  _commsRevealKey = null;
   const rows = _commsCaseGroups.map(cs => {
     const isExpanded = _expandedCases.has(cs.id);
     const isClosed    = cs.status === 'Closed';
     const cachedRows = _commsCaseExpandRows.get(cs.id);
     const isLoading  = _commsCaseExpandLoading.has(cs.id);
+    const reveal     = cs.id === revealKey;
     let body = '';
     if (isExpanded) {
       body = (isLoading || !cachedRows)
-        ? `<tr class="comm-hist-row"><td colspan="6" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>`
-        : cachedRows.map(c => _commsHistRowHtml(c, false)).join('');
+        ? `<tr class="comm-hist-row${reveal ? ' just-revealed' : ''}"><td colspan="6" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>`
+        : cachedRows.map(c => _commsHistRowHtml(c, false, reveal)).join('');
     }
     return `
       <tr class="comm-group-row" style="cursor:pointer" onclick="toggleCaseExpand(${cs.id})">
@@ -5324,8 +5345,9 @@ function toggleCaseExpand(caseId) {
     return;
   }
   _expandedCases.add(caseId);
+  _commsRevealKey = caseId;
   _animateHeightSwap(el, _renderCommsCaseGroups);  // show the per-group spinner immediately
-  _fetchCommsCaseRows(caseId).then(() => _animateHeightSwap(el, _renderCommsCaseGroups));
+  _fetchCommsCaseRows(caseId).then(() => { _commsRevealKey = caseId; _animateHeightSwap(el, _renderCommsCaseGroups); });
 }
 
 async function _fetchCommsCaseRows(caseId) {
@@ -5420,10 +5442,10 @@ function _commsDayLabel(iso) {
   return d.toLocaleDateString(_lang === 'el' ? 'el-GR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-function _commsTimelineItemHtml(c) {
+function _commsTimelineItemHtml(c, reveal = false) {
   const statusLabel = _commsStatusLabels();
   return `
-    <div class="comm-timeline-item">
+    <div class="comm-timeline-item${reveal ? ' just-revealed' : ''}">
       <span class="comm-dot" style="background:${COMM_STATUS_DOT[c.status] || '#6c757d'}"></span>
       <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
         <div>
@@ -5454,9 +5476,13 @@ function _renderCommsDayGroups() {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
+  // See _renderCommsOrgGroups's comment -- same capture-and-clear.
+  const revealKey = _commsRevealKey;
+  _commsRevealKey = null;
   let html = '<div class="comm-timeline">';
   for (const g of _commsDayGroups) {
     const isExpanded = _expandedTimelineDays.has(g.day);
+    const reveal = g.day === revealKey;
     html += `
       <div class="comm-timeline-day" style="cursor:pointer" data-day="${g.day}" onclick="toggleTimelineDay(this.dataset.day)">
         <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} me-1" style="font-size:.75rem"></i>${_commsDayLabel(g.day)}
@@ -5467,7 +5493,7 @@ function _renderCommsDayGroups() {
     const isLoading  = _commsDayExpandLoading.has(g.day);
     html += (isLoading || !cachedRows)
       ? `<div class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div></div>`
-      : cachedRows.map(_commsTimelineItemHtml).join('');
+      : cachedRows.map(c => _commsTimelineItemHtml(c, reveal)).join('');
   }
   html += '</div>';
   el.innerHTML = html;
@@ -5481,8 +5507,9 @@ function toggleTimelineDay(day) {
     return;
   }
   _expandedTimelineDays.add(day);
+  _commsRevealKey = day;
   _animateHeightSwap(el, _renderCommsDayGroups);  // show the per-group spinner immediately
-  _fetchCommsDayRows(day).then(() => _animateHeightSwap(el, _renderCommsDayGroups));
+  _fetchCommsDayRows(day).then(() => { _commsRevealKey = day; _animateHeightSwap(el, _renderCommsDayGroups); });
 }
 
 async function _fetchCommsDayRows(day) {
