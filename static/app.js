@@ -2085,14 +2085,21 @@ async function loadResponseTimeChart() {
     const ctx  = show('responseTimeChart').getContext('2d');
     if (_rtChart) _rtChart.destroy();
 
-    const pts  = data.filter(d => d.response_time_ms != null).map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.response_time_ms }));
+    // Keep every point, including null-response ones (outage / a check that
+    // couldn't measure a response time), instead of filtering them out --
+    // dropping them entirely gave Chart.js no idea a gap ever existed, just
+    // two real points that happened to be far apart in time, which with
+    // tension+monotone interpolation it drew as one smooth curve gradually
+    // climbing/falling across the whole gap -- reading as real, gradually-
+    // changing response times rather than the missing data it actually was.
+    const pts  = data.map(d => ({ x: new Date(d.timestamp + 'Z'), y: d.response_time_ms }));
     const down = data.filter(d => !d.is_up).map(d => ({ x: new Date(d.timestamp + 'Z'), y: 0 }));
 
     _rtChart = new Chart(ctx, {
       type: 'line',
       data: {
         datasets: [
-          { label: 'Response (ms)', data: pts,  borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.35, cubicInterpolationMode: 'monotone', pointRadius: 2, pointHoverRadius: 4 },
+          { label: 'Response (ms)', data: pts,  borderColor: '#0057b8', backgroundColor: 'rgba(0,87,184,.08)', fill: true, tension: 0.35, cubicInterpolationMode: 'monotone', pointRadius: 2, pointHoverRadius: 4, spanGaps: false },
           { label: 'Outage',        data: down, borderColor: '#dc3545', backgroundColor: '#dc354566', pointStyle: 'triangle', pointRadius: 8, showLine: false }
         ]
       },
