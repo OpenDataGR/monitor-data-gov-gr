@@ -2671,6 +2671,9 @@ let _hvdSortCol = 'violation_count';
 let _hvdSortDir = 'desc';
 let _hvdViewMode = 'grouped';
 let _hvdExpandedOrgs = new Set();
+// Set right before a render call that should reveal-animate exactly the one
+// group just toggled -- see _renderHvdTable's comment.
+let _hvdRevealKey = null;
 let _hvdGroupsCache = [];  // [[orgTitle, datasets[]], ...] from the most recent table render
 let _hvdActiveFilters = new Set();  // summary-card filter keys currently toggled on
 let _hvdSummaryCards = [];
@@ -3057,8 +3060,12 @@ function toggleHvdOrg(idx) {
   const entry = _hvdGroupsCache[idx];
   if (!entry) return;
   const [orgTitle] = entry;
-  if (_hvdExpandedOrgs.has(orgTitle)) _hvdExpandedOrgs.delete(orgTitle);
-  else _hvdExpandedOrgs.add(orgTitle);
+  if (_hvdExpandedOrgs.has(orgTitle)) {
+    _hvdExpandedOrgs.delete(orgTitle);
+  } else {
+    _hvdExpandedOrgs.add(orgTitle);
+    _hvdRevealKey = orgTitle;  // only fade in on expand, not collapse
+  }
   // No fetch involved here (every dataset's result is already in memory),
   // so unlike Comms' toggles this only ever needs the height smoothing, not
   // a spinner -- _renderHvdTable runs synchronously either way.
@@ -3075,9 +3082,9 @@ function collapseAllHvd() {
   _renderHvdTable();
 }
 
-function _hvdRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}) {
+function _hvdRowHtml(d, { indent = false, hidden = false, showOrg = false, reveal = false } = {}) {
   return `
-      <tr${hidden ? ' style="display:none"' : ''}${indent ? ' class="reveal-row"' : ''}>
+      <tr${hidden ? ' style="display:none"' : ''}${reveal ? ' class="just-revealed"' : ''}>
         <td${indent ? ' class="ps-4"' : ''}><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
         ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
         <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
@@ -3170,8 +3177,16 @@ function _renderHvdTable() {
   // large result set could block the main thread for seconds on tab open,
   // for rows nobody was even looking at. Only expanded groups get their rows
   // built; toggling a group re-renders (cheap: everyone else stays header-only).
+  // _hvdRevealKey (set by toggleHvdOrg, consumed here) limits the fade-in to
+  // the one group actually being toggled -- every render rebuilds every
+  // expanded group's rows, not just that one, so animating all of them
+  // unconditionally would replay the fade on every already-open group any
+  // time any one of them is toggled (the same bug Comms' grouped views had).
+  const revealKey = _hvdRevealKey;
+  _hvdRevealKey = null;
   const bodyRows = _hvdGroupsCache.map(([orgTitle, list], idx) => {
     const isExpanded = _hvdExpandedOrgs.has(orgTitle);
+    const reveal = orgTitle === revealKey;
     const groupRow = `
       <tr class="comm-group-row" style="cursor:pointer" onclick="toggleHvdOrg(${idx})">
         <td colspan="7">
@@ -3182,7 +3197,7 @@ function _renderHvdTable() {
           </div>
         </td>
       </tr>`;
-    const datasetRows = isExpanded ? list.map(d => _hvdRowHtml(d, { indent: true })).join('') : '';
+    const datasetRows = isExpanded ? list.map(d => _hvdRowHtml(d, { indent: true, reveal })).join('') : '';
     return groupRow + datasetRows;
   }).join('');
 
@@ -3250,6 +3265,9 @@ let _dcatSortCol = 'violation_count';
 let _dcatSortDir = 'desc';
 let _dcatViewMode = 'grouped';
 let _dcatExpandedOrgs = new Set();
+// Set right before a render call that should reveal-animate exactly the one
+// group just toggled -- see _renderDcatTable's comment.
+let _dcatRevealKey = null;
 let _dcatGroupsCache = [];
 let _dcatActiveFilters = new Set();
 let _dcatSummaryCards = [];
@@ -3492,8 +3510,12 @@ function toggleDcatOrg(idx) {
   const entry = _dcatGroupsCache[idx];
   if (!entry) return;
   const [orgTitle] = entry;
-  if (_dcatExpandedOrgs.has(orgTitle)) _dcatExpandedOrgs.delete(orgTitle);
-  else _dcatExpandedOrgs.add(orgTitle);
+  if (_dcatExpandedOrgs.has(orgTitle)) {
+    _dcatExpandedOrgs.delete(orgTitle);
+  } else {
+    _dcatExpandedOrgs.add(orgTitle);
+    _dcatRevealKey = orgTitle;  // only fade in on expand, not collapse
+  }
   // See toggleHvdOrg's comment -- no fetch involved, just the height smoothing.
   _animateHeightSwap(show('dcatTableWrap'), _renderDcatTable);
 }
@@ -3508,9 +3530,9 @@ function collapseAllDcat() {
   _renderDcatTable();
 }
 
-function _dcatRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}) {
+function _dcatRowHtml(d, { indent = false, hidden = false, showOrg = false, reveal = false } = {}) {
   return `
-      <tr${hidden ? ' style="display:none"' : ''}${indent ? ' class="reveal-row"' : ''}>
+      <tr${hidden ? ' style="display:none"' : ''}${reveal ? ' class="just-revealed"' : ''}>
         <td${indent ? ' class="ps-4"' : ''}><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
         ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
         <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
@@ -3581,8 +3603,13 @@ function _renderDcatTable() {
     ([an, al], [bn, bl]) => bl.length - al.length || an.localeCompare(bn)
   );
 
+  // See toggleHvdOrg/_renderHvdTable's comments -- same capture-and-clear
+  // reveal key so only the group just toggled fades in.
+  const revealKey = _dcatRevealKey;
+  _dcatRevealKey = null;
   const bodyRows = _dcatGroupsCache.map(([orgTitle, list], idx) => {
     const isExpanded = _dcatExpandedOrgs.has(orgTitle);
+    const reveal = orgTitle === revealKey;
     const groupRow = `
       <tr class="comm-group-row" style="cursor:pointer" onclick="toggleDcatOrg(${idx})">
         <td colspan="5">
@@ -3593,7 +3620,7 @@ function _renderDcatTable() {
           </div>
         </td>
       </tr>`;
-    const datasetRows = isExpanded ? list.map(d => _dcatRowHtml(d, { indent: true })).join('') : '';
+    const datasetRows = isExpanded ? list.map(d => _dcatRowHtml(d, { indent: true, reveal })).join('') : '';
     return groupRow + datasetRows;
   }).join('');
 
@@ -3636,6 +3663,9 @@ let _geodcatSortCol = 'violation_count';
 let _geodcatSortDir = 'desc';
 let _geodcatViewMode = 'grouped';
 let _geodcatExpandedOrgs = new Set();
+// Set right before a render call that should reveal-animate exactly the one
+// group just toggled -- see _renderGeoDcatTable's comment.
+let _geodcatRevealKey = null;
 let _geodcatGroupsCache = [];
 let _geodcatActiveFilters = new Set();
 let _geodcatSummaryCards = [];
@@ -3870,8 +3900,12 @@ function toggleGeoDcatOrg(idx) {
   const entry = _geodcatGroupsCache[idx];
   if (!entry) return;
   const [orgTitle] = entry;
-  if (_geodcatExpandedOrgs.has(orgTitle)) _geodcatExpandedOrgs.delete(orgTitle);
-  else _geodcatExpandedOrgs.add(orgTitle);
+  if (_geodcatExpandedOrgs.has(orgTitle)) {
+    _geodcatExpandedOrgs.delete(orgTitle);
+  } else {
+    _geodcatExpandedOrgs.add(orgTitle);
+    _geodcatRevealKey = orgTitle;  // only fade in on expand, not collapse
+  }
   // See toggleHvdOrg's comment -- no fetch involved, just the height smoothing.
   _animateHeightSwap(show('geodcatTableWrap'), _renderGeoDcatTable);
 }
@@ -3886,9 +3920,9 @@ function collapseAllGeoDcat() {
   _renderGeoDcatTable();
 }
 
-function _geodcatRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}) {
+function _geodcatRowHtml(d, { indent = false, hidden = false, showOrg = false, reveal = false } = {}) {
   return `
-      <tr${hidden ? ' style="display:none"' : ''}${indent ? ' class="reveal-row"' : ''}>
+      <tr${hidden ? ' style="display:none"' : ''}${reveal ? ' class="just-revealed"' : ''}>
         <td${indent ? ' class="ps-4"' : ''}><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
         ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
         <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
@@ -3955,8 +3989,13 @@ function _renderGeoDcatTable() {
     ([an, al], [bn, bl]) => bl.length - al.length || an.localeCompare(bn)
   );
 
+  // See toggleHvdOrg/_renderHvdTable's comments -- same capture-and-clear
+  // reveal key so only the group just toggled fades in.
+  const revealKey = _geodcatRevealKey;
+  _geodcatRevealKey = null;
   const bodyRows = _geodcatGroupsCache.map(([orgTitle, list], idx) => {
     const isExpanded = _geodcatExpandedOrgs.has(orgTitle);
+    const reveal = orgTitle === revealKey;
     const groupRow = `
       <tr class="comm-group-row" style="cursor:pointer" onclick="toggleGeoDcatOrg(${idx})">
         <td colspan="3">
@@ -3967,7 +4006,7 @@ function _renderGeoDcatTable() {
           </div>
         </td>
       </tr>`;
-    const datasetRows = isExpanded ? list.map(d => _geodcatRowHtml(d, { indent: true })).join('') : '';
+    const datasetRows = isExpanded ? list.map(d => _geodcatRowHtml(d, { indent: true, reveal })).join('') : '';
     return groupRow + datasetRows;
   }).join('');
 
@@ -8379,7 +8418,7 @@ function _rowMismatchIcon(hasMismatch) {
 // index === null renders the compact grouped-view row (no #/org columns,
 // since a group card's own header already says which org); otherwise the
 // full flat-view row -- same convention as _fileContactRowHtml.
-function _pmRowHtml(m, index) {
+function _pmRowHtml(m, index, reveal = false) {
   const state     = m.state || 'active';
   const roleCls   = _portalRoleClass(m);
   const roleLabel = _portalRoleLabel(m);
@@ -8411,7 +8450,7 @@ function _pmRowHtml(m, index) {
     </td>`;
   const rowStyle = `cursor:pointer;${state !== 'active' ? 'opacity:.6' : ''}`;
   if (index == null) {
-    return `<tr class="reveal-row" style="${rowStyle}" onclick="openUserPanel('${esc(m.username)}')">
+    return `<tr${reveal ? ' class="just-revealed"' : ''} style="${rowStyle}" onclick="openUserPanel('${esc(m.username)}')">
       <td style="max-width:200px">${nameCell}</td>${tail}
     </tr>`;
   }
@@ -8620,6 +8659,9 @@ let _pmGroupsLoaded = false;
 let _pmExpandedOrgs = new Set(); // slugs ('__none__' for no-org)
 const _pmGroupRows = new Map();    // slug -> rows[]
 const _pmGroupLoading = new Set(); // slugs currently fetching
+// Set right before a render call that should reveal-animate exactly the one
+// group just toggled -- see _renderPortalMembersGroups's comment.
+let _pmRevealKey = null;
 
 function _pmGroupSlug(orgCode) { return orgCode || '__none__'; }
 function _pmSlugToOrgParam(slug) { return slug === '__none__' ? '' : slug; }
@@ -8677,18 +8719,24 @@ function _renderPortalMembersGroups() {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('contacts.no_results')}</p>`;
     return;
   }
+  // Every call rebuilds every group, not just the one being toggled -- see
+  // Comms' _renderCommsOrgGroups for the full reasoning. Capture-and-clear
+  // means only the group actually just expanded gets the reveal animation.
+  const revealKey = _pmRevealKey;
+  _pmRevealKey = null;
   el.innerHTML = _pmGroups.map(g => {
     const slug       = _pmGroupSlug(g.org_code);
     const isNone     = slug === '__none__';
     const isExpanded = _pmExpandedOrgs.has(slug);
     const isLoading  = _pmGroupLoading.has(slug);
     const cachedRows = _pmGroupRows.get(slug);
+    const reveal     = slug === revealKey;
     const gId = 'cg_' + slug.replace(/\W/g, '_');
     let body = '';
     if (isExpanded) {
       body = (isLoading || !cachedRows)
         ? `<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>`
-        : `<table class="table table-hover table-sm align-middle mb-0"><tbody>${cachedRows.map(m => _pmRowHtml(m, null)).join('')}</tbody></table>`;
+        : `<table class="table table-hover table-sm align-middle mb-0"><tbody>${cachedRows.map(m => _pmRowHtml(m, null, reveal)).join('')}</tbody></table>`;
     }
     return `
     <div class="border rounded mb-2" ${isNone ? 'style="border-color:#fd7e14!important"' : ''}>
@@ -8729,14 +8777,22 @@ async function _fetchPortalMembersGroupRows(slug) {
 }
 
 function togglePortalMembersOrg(slug) {
+  const el = show('contactsGroupedView');
   if (_pmExpandedOrgs.has(slug)) {
     _pmExpandedOrgs.delete(slug);
-    _renderPortalMembersGroups();
+    _animateHeightSwap(el, _renderPortalMembersGroups);
     return;
   }
   _pmExpandedOrgs.add(slug);
-  _renderPortalMembersGroups(); // show the per-group spinner immediately
-  _fetchPortalMembersGroupRows(slug).then(_renderPortalMembersGroups);
+  // Delay the spinner (see Comms' toggleOrgComms for the full reasoning) --
+  // these per-group fetches are usually fast enough that showing one
+  // immediately just to replace it a beat later is itself the visible jump.
+  const spinnerTimer = setTimeout(() => { _pmRevealKey = slug; _animateHeightSwap(el, _renderPortalMembersGroups); }, COMMS_SPINNER_DELAY_MS);
+  _fetchPortalMembersGroupRows(slug).then(() => {
+    clearTimeout(spinnerTimer);
+    _pmRevealKey = slug;
+    _animateHeightSwap(el, _renderPortalMembersGroups);
+  });
 }
 
 // Throttled (not all-at-once), same reasoning as expandAllFileContacts.
@@ -9125,7 +9181,7 @@ function _fileContactActions(c) {
 // index === null renders the compact grouped-view row (no #/org columns,
 // since a group card's own header already says which org); otherwise the
 // full flat-view row.
-function _fileContactRowHtml(c, index) {
+function _fileContactRowHtml(c, index, reveal = false) {
   const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
   const nameCell = `<span class="fw-semibold">${esc(name) || '<span class="text-muted fst-italic">—</span>'}</span>${_rowMismatchIcon(_fileRowMismatch(c))} ${_fileContactPortalBadge(c)}`;
   const tail = `
@@ -9143,7 +9199,7 @@ function _fileContactRowHtml(c, index) {
   // variant (openFileContactPanel) since there's no CKAN account to fetch.
   const rowOnclick = ` style="cursor:pointer" onclick="${c.linked_username ? `openUserPanel('${esc(c.linked_username)}')` : `openFileContactPanel(${c.id})`}"`;
   if (index == null) {
-    return `<tr class="reveal-row"${rowOnclick}><td style="max-width:200px">${nameCell}</td>${tail}</tr>`;
+    return `<tr${reveal ? ' class="just-revealed"' : ''}${rowOnclick}><td style="max-width:200px">${nameCell}</td>${tail}</tr>`;
   }
   const orgBadge = (c.org_label || c.org_code)
     ? `<span class="badge bg-light text-dark border" style="font-size:.7rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap"
@@ -9273,6 +9329,9 @@ let _fileContactsGroupsLoaded = false;
 let _fileContactsExpandedOrgs = new Set();    // slugs ('__none__' for no-org)
 const _fileContactsGroupRows = new Map();     // slug -> rows[]
 const _fileContactsGroupLoading = new Set();  // slugs currently fetching
+// Set right before a render call that should reveal-animate exactly the one
+// group just toggled -- see _renderFileContactsGroups's comment.
+let _fileContactsRevealKey = null;
 
 function _fcGroupSlug(orgCode) { return orgCode || '__none__'; }
 function _fcSlugToOrgParam(slug) { return slug === '__none__' ? '' : slug; }
@@ -9311,18 +9370,23 @@ function _renderFileContactsGroups() {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('contacts.no_results')}</p>`;
     return;
   }
+  // See Comms' _renderCommsOrgGroups / Portal Members' _renderPortalMembersGroups
+  // -- same capture-and-clear reveal key.
+  const revealKey = _fileContactsRevealKey;
+  _fileContactsRevealKey = null;
   el.innerHTML = _fileContactsGroups.map(g => {
     const slug       = _fcGroupSlug(g.org_code);
     const isNone      = slug === '__none__';
     const isExpanded  = _fileContactsExpandedOrgs.has(slug);
     const isLoading   = _fileContactsGroupLoading.has(slug);
     const cachedRows  = _fileContactsGroupRows.get(slug);
+    const reveal      = slug === revealKey;
     const gId = 'fcg_' + slug.replace(/\W/g, '_');
     let body = '';
     if (isExpanded) {
       body = (isLoading || !cachedRows)
         ? `<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>`
-        : `<table class="table table-hover table-sm align-middle mb-0"><tbody>${cachedRows.map(c => _fileContactRowHtml(c, null)).join('')}</tbody></table>`;
+        : `<table class="table table-hover table-sm align-middle mb-0"><tbody>${cachedRows.map(c => _fileContactRowHtml(c, null, reveal)).join('')}</tbody></table>`;
     }
     return `
     <div class="border rounded mb-2" ${isNone ? 'style="border-color:#fd7e14!important"' : ''}>
@@ -9363,14 +9427,20 @@ async function _fetchFileContactsGroupRows(slug) {
 }
 
 function toggleFileContactsOrg(slug) {
+  const el = show('fileContactsGroupedView');
   if (_fileContactsExpandedOrgs.has(slug)) {
     _fileContactsExpandedOrgs.delete(slug);
-    _renderFileContactsGroups();
+    _animateHeightSwap(el, _renderFileContactsGroups);
     return;
   }
   _fileContactsExpandedOrgs.add(slug);
-  _renderFileContactsGroups();  // show the per-group spinner immediately
-  _fetchFileContactsGroupRows(slug).then(_renderFileContactsGroups);
+  // See Comms' toggleOrgComms for the full reasoning behind the delay.
+  const spinnerTimer = setTimeout(() => { _fileContactsRevealKey = slug; _animateHeightSwap(el, _renderFileContactsGroups); }, COMMS_SPINNER_DELAY_MS);
+  _fetchFileContactsGroupRows(slug).then(() => {
+    clearTimeout(spinnerTimer);
+    _fileContactsRevealKey = slug;
+    _animateHeightSwap(el, _renderFileContactsGroups);
+  });
 }
 
 // Throttled (not all-at-once): fires a bounded number of concurrent
