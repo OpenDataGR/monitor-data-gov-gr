@@ -181,15 +181,23 @@
     /* Slim, themed scrollbar -- this is a data-dense dashboard with a lot of
        scrollable tables/panels, and the browser default looks out of place
        next to everything else here being deliberately styled. Firefox uses
-       scrollbar-color/-width; the ::-webkit- rules cover Chrome/Edge/Safari. */
-    * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,.25) transparent; }
-    *::-webkit-scrollbar { width: 10px; height: 10px; }
-    *::-webkit-scrollbar-track { background: transparent; }
-    *::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,.25); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
-    *::-webkit-scrollbar-thumb:hover { background-color: rgba(0,0,0,.4); }
-    [data-bs-theme="dark"] * { scrollbar-color: rgba(255,255,255,.25) transparent; }
-    [data-bs-theme="dark"] *::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,.2); }
-    [data-bs-theme="dark"] *::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.32); }
+       scrollbar-color/-width; the ::-webkit- rules cover Chrome/Edge/Safari.
+       Deliberately excludes html/body: opening any modal OR offcanvas locks
+       body scroll and adds a compensating padding-right sized to the page's
+       *actual* scrollbar width, so the page doesn't visibly grow wider once
+       its real scrollbar disappears -- shrinking the real body scrollbar via
+       this same rule throws that measurement off, and the page visibly
+       expanded to the right every time an overlay opened. Every other
+       scrollable container (tables, offcanvas/modal bodies, dropdowns) isn't
+       involved in that compensation at all, so they keep the slim styling. */
+    *:not(html, body) { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,.25) transparent; }
+    *:not(html, body)::-webkit-scrollbar { width: 10px; height: 10px; }
+    *:not(html, body)::-webkit-scrollbar-track { background: transparent; }
+    *:not(html, body)::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,.25); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+    *:not(html, body)::-webkit-scrollbar-thumb:hover { background-color: rgba(0,0,0,.4); }
+    [data-bs-theme="dark"] *:not(html, body) { scrollbar-color: rgba(255,255,255,.25) transparent; }
+    [data-bs-theme="dark"] *:not(html, body)::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,.2); }
+    [data-bs-theme="dark"] *:not(html, body)::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.32); }
 
     /* Bootstrap's own .dropdown-menu has no open animation at all -- it's
        display:none one frame and display:block (fully visible) the next.
