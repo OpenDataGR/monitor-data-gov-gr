@@ -6677,6 +6677,16 @@ function _upDismissEmailHint() {
   _upExistingMatch = null;
 }
 
+// Keeps the collapsed dropdown button's label in sync with whichever role
+// checkboxes are currently ticked (see the Role row in renderUserPanel).
+function _upUpdateContactTypeLabel() {
+  const menu = document.getElementById('upEditContactTypeMenu');
+  const label = document.getElementById('upEditContactTypeLabel');
+  if (!menu || !label) return;
+  const checked = Array.from(menu.querySelectorAll('input:checked'));
+  label.textContent = checked.length ? checked.map(cb => cb.dataset.label).join(', ') : '—';
+}
+
 // c may be null here (creating a brand-new contact record via
 // startUserPanelEditNew) -- payload.id stays undefined in that case, which
 // /api/contacts/save treats as a create rather than an update.
@@ -6698,7 +6708,7 @@ async function saveUserPanelEdit() {
     first_name:   show('upEditFirstName').value.trim(),
     last_name:    show('upEditLastName').value.trim(),
     position:     show('upEditPosition').value.trim(),
-    contact_type: Array.from(show('upEditContactType').selectedOptions).map(o => o.value).join(','),
+    contact_type: Array.from(document.querySelectorAll('#upEditContactTypeMenu input:checked')).map(cb => cb.value).join(','),
     tel:          show('upEditTel').value.trim(),
     mobile:       show('upEditMobile').value.trim(),
   };
@@ -6836,10 +6846,21 @@ function renderUserPanel(u) {
   // enough to warn about. Once u.username or c is set, we already know
   // exactly who this record is for.
   const _isBlankNew = _upEditing && !c && !u.username;
-  const _contactTypeOptionsHtml = _CONTACT_TYPE_OPTIONS.map(o => o
-    ? `<option value="${esc(o.value)}"${_editTypeKeys.includes(o.value) ? ' selected' : ''}>${esc(t(o.key))}</option>`
-    : `<option disabled></option>`
+  // A native <select multiple size="7"> always renders all 7 rows open,
+  // which is a lot of vertical space for a field that's usually one or two
+  // values -- a checkbox dropdown collapses to a single line, only
+  // expanding while it's actually being changed.
+  const _contactTypeMenuHtml = _CONTACT_TYPE_OPTIONS.map((o, i) => o
+    ? `<div class="form-check">
+         <input class="form-check-input" type="checkbox" value="${esc(o.value)}" data-label="${esc(t(o.key))}"
+                id="upEditCt${i}" ${_editTypeKeys.includes(o.value) ? 'checked' : ''} onchange="_upUpdateContactTypeLabel()">
+         <label class="form-check-label small" for="upEditCt${i}">${esc(t(o.key))}</label>
+       </div>`
+    : `<hr class="dropdown-divider my-1">`
   ).join('');
+  const _contactTypeLabel = _editTypeKeys.length
+    ? esc(_editTypeKeys.map(k => _CONTACT_TYPE_I18N_KEY[k] ? t(_CONTACT_TYPE_I18N_KEY[k]) : k).join(', '))
+    : '—';
   // One unified table regardless of _hasPortal -- a File Contact with no
   // linked CKAN account just shows its Portal column fields as empty ('—'),
   // the same way a linked contact shows an empty File column when some file
@@ -6895,7 +6916,15 @@ function renderUserPanel(u) {
           <tr>
             <td class="text-muted">${t('contacts.col_role')}</td>
             <td><span class="badge ${_portalRoleCls}">${esc(_uPortalRoleLabel)}</span></td>
-            <td><select class="form-select form-select-sm" id="upEditContactType" multiple size="7">${_contactTypeOptionsHtml}</select></td>
+            <td>
+              <div class="dropdown">
+                <button class="btn btn-outline-secondary btn-sm form-select-sm w-100 text-start text-truncate dropdown-toggle"
+                        type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" data-bs-strategy="fixed" aria-expanded="false">
+                  <span id="upEditContactTypeLabel">${_contactTypeLabel}</span>
+                </button>
+                <div class="dropdown-menu p-2" id="upEditContactTypeMenu" style="max-height:220px;overflow-y:auto">${_contactTypeMenuHtml}</div>
+              </div>
+            </td>
           </tr>
           <tr>
             <td class="text-muted">${t('contacts.tel')}</td>
