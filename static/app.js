@@ -4488,6 +4488,14 @@ let _timelineDaysInitialized = false;
 // render function on its very next call -- see the render functions'
 // comments for why a blanket per-class animation doesn't work here.
 let _commsRevealKey = null;
+// A spinner shown immediately, then replaced a beat later by the real rows
+// once the (usually fast) per-group fetch resolves, is itself the visible
+// "flash"/jump -- delaying it this long means a fetch that resolves faster
+// than this never shows a spinner at all, going straight from collapsed to
+// the final content in one clean transition. Long enough that a genuinely
+// slow fetch still gets feedback, short enough that it doesn't read as
+// unresponsive.
+const COMMS_SPINNER_DELAY_MS = 150;
 
 // Server-computed cross-scoped facet counts (case_status/stale/status),
 // replacing the old client-side computation over full _commsData/_casesData
@@ -5295,9 +5303,16 @@ function toggleOrgComms(orgTitle) {
     return;
   }
   _expandedOrgs.add(orgTitle);
-  _commsRevealKey = orgTitle;
-  _animateHeightSwap(el, _renderCommsOrgGroups);  // show the per-group spinner immediately
-  _fetchCommsOrgRows(orgTitle).then(() => { _commsRevealKey = orgTitle; _animateHeightSwap(el, _renderCommsOrgGroups); });
+  // Rendering the spinner immediately, then replacing it with the real rows
+  // a beat later once the (usually fast) fetch resolves, is itself the
+  // "flash" that reads as a jump -- delay showing it until the fetch has
+  // actually taken long enough to need one (see COMMS_SPINNER_DELAY_MS).
+  const spinnerTimer = setTimeout(() => { _commsRevealKey = orgTitle; _animateHeightSwap(el, _renderCommsOrgGroups); }, COMMS_SPINNER_DELAY_MS);
+  _fetchCommsOrgRows(orgTitle).then(() => {
+    clearTimeout(spinnerTimer);
+    _commsRevealKey = orgTitle;
+    _animateHeightSwap(el, _renderCommsOrgGroups);
+  });
 }
 
 async function _fetchCommsOrgRows(orgTitle) {
@@ -5414,9 +5429,14 @@ function toggleCaseExpand(caseId) {
     return;
   }
   _expandedCases.add(caseId);
-  _commsRevealKey = caseId;
-  _animateHeightSwap(el, _renderCommsCaseGroups);  // show the per-group spinner immediately
-  _fetchCommsCaseRows(caseId).then(() => { _commsRevealKey = caseId; _animateHeightSwap(el, _renderCommsCaseGroups); });
+  // See toggleOrgComms's comment -- delay the spinner instead of showing it
+  // immediately.
+  const spinnerTimer = setTimeout(() => { _commsRevealKey = caseId; _animateHeightSwap(el, _renderCommsCaseGroups); }, COMMS_SPINNER_DELAY_MS);
+  _fetchCommsCaseRows(caseId).then(() => {
+    clearTimeout(spinnerTimer);
+    _commsRevealKey = caseId;
+    _animateHeightSwap(el, _renderCommsCaseGroups);
+  });
 }
 
 async function _fetchCommsCaseRows(caseId) {
@@ -5584,9 +5604,14 @@ function toggleTimelineDay(day) {
     return;
   }
   _expandedTimelineDays.add(day);
-  _commsRevealKey = day;
-  _animateHeightSwap(el, _renderCommsDayGroups);  // show the per-group spinner immediately
-  _fetchCommsDayRows(day).then(() => { _commsRevealKey = day; _animateHeightSwap(el, _renderCommsDayGroups); });
+  // See toggleOrgComms's comment -- delay the spinner instead of showing it
+  // immediately.
+  const spinnerTimer = setTimeout(() => { _commsRevealKey = day; _animateHeightSwap(el, _renderCommsDayGroups); }, COMMS_SPINNER_DELAY_MS);
+  _fetchCommsDayRows(day).then(() => {
+    clearTimeout(spinnerTimer);
+    _commsRevealKey = day;
+    _animateHeightSwap(el, _renderCommsDayGroups);
+  });
 }
 
 async function _fetchCommsDayRows(day) {
