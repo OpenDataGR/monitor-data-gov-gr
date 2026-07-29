@@ -5242,18 +5242,36 @@ function _animateHeightSwap(el, updateFn) {
   void el.offsetHeight;  // force layout so the explicit height above actually commits before the swap
   updateFn();
   const toHeight = el.scrollHeight;
+  const release = () => {
+    el.style.transition = '';
+    el.style.height = '';
+    el.style.overflow = '';
+  };
+  // Setting height to the SAME value it's already at never fires a CSS
+  // transition (nothing actually changed for the browser to animate), so
+  // transitionend would never come and this container would stay pinned at
+  // that height with overflow:hidden forever -- clipping whatever content
+  // came after, since nothing would ever release it. A same-height toggle
+  // is a real, fairly common coincidence (similarly-sized entries), not an
+  // edge case worth ignoring.
+  if (Math.round(fromHeight) === toHeight) { release(); return; }
   requestAnimationFrame(() => {
     el.style.transition = 'height .2s ease';
     el.style.height = toHeight + 'px';
   });
   const done = (ev) => {
     if (ev && ev.target !== el) return;  // ignore bubbled transitions from children
-    el.style.transition = '';
-    el.style.height = '';
-    el.style.overflow = '';
+    release();
     el.removeEventListener('transitionend', done);
+    clearTimeout(fallback);
   };
   el.addEventListener('transitionend', done);
+  // Defensive fallback in case transitionend never fires for some other
+  // reason too (backgrounded tab throttling, element removed mid-transition,
+  // etc.) -- comfortably longer than the transition itself so it never
+  // fires first under normal conditions, just guarantees this can't stay
+  // pinned indefinitely no matter what goes wrong.
+  const fallback = setTimeout(() => { release(); el.removeEventListener('transitionend', done); }, 500);
 }
 
 function toggleOrgComms(orgTitle) {
