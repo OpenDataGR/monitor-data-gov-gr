@@ -6504,6 +6504,7 @@ let _userPanel = null;
 function openUserPanel(username, startEditing = false) {
   if (!username) return;
   if (!_userPanel) _userPanel = new bootstrap.Modal(document.getElementById('userPanel'));
+  _bringOverlayToFront(document.getElementById('userPanel'));
   _userDatasetsLoaded = null;
   _userActivityLoaded = null;
   _upEditing = false;
@@ -6546,6 +6547,7 @@ function openFileContactPanel(id, startEditing = false) {
   const c = _findLoadedFileContact(id) || (_pmUnmatched || []).find(x => x.id === id);
   if (!c) return;
   if (!_userPanel) _userPanel = new bootstrap.Modal(document.getElementById('userPanel'));
+  _bringOverlayToFront(document.getElementById('userPanel'));
   _userDatasetsLoaded = null;
   _userActivityLoaded = null;
   _upEditing = false;
@@ -6567,6 +6569,7 @@ function openFileContactPanel(id, startEditing = false) {
 // with.
 function openNewContactPanel(orgCode, orgLabel) {
   if (!_userPanel) _userPanel = new bootstrap.Modal(document.getElementById('userPanel'));
+  _bringOverlayToFront(document.getElementById('userPanel'));
   _userDatasetsLoaded = null;
   _userActivityLoaded = null;
   _upEditOrgs = orgCode ? [{code: orgCode, label: orgLabel || orgCode}] : [];
