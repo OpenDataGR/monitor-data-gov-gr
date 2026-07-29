@@ -7292,6 +7292,11 @@ function renderOrgPanel(data) {
     : `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-envelope me-1 text-primary"></i>Communications</h6>
        <p class="text-muted small">No communications recorded.</p>`;
 
+  // Clicking through to a member's own panel needs the same "contacts" access
+  // that panel's own data (/api/portal-user) is gated behind -- without this
+  // check an orgs/datasets-only user could click a row here and just get an
+  // error where the panel used to load.
+  const canOpenMember = !ALLOWED_TABS || ALLOWED_TABS.includes('contacts');
   const membersHtml = `
     <h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-person-badge me-1 text-primary"></i>Portal Members</h6>
     ${members.length
@@ -7300,9 +7305,11 @@ function renderOrgPanel(data) {
              const state     = m.state || 'active';
              const stateCls  = STATE_BADGE[state]  || 'bg-secondary';
              const stateIcon = STATE_ICON[state]   || 'bi-circle';
+             const rowStyle  = [state !== 'active' ? 'opacity:.7' : '', canOpenMember ? 'cursor:pointer' : ''].filter(Boolean).join(';');
              return `
-             <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center gap-2"
-                  style="${state !== 'active' ? 'opacity:.7' : ''}">
+             <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center gap-2${canOpenMember ? ' list-group-item-action' : ''}"
+                  style="${rowStyle}"
+                  ${canOpenMember ? `onclick="openUserPanel('${esc(m.name)}')"` : ''}>
                <div>
                  <div class="small fw-semibold">${m.display_name.replace(/</g,'&lt;')}</div>
                  <div class="text-muted" style="font-size:.72rem">@${m.name.replace(/</g,'&lt;')}</div>
