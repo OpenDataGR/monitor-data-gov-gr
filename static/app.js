@@ -4286,6 +4286,11 @@ function _ensureOrgCkanBridge() {
 }
 
 function _portalContactCell(orgName, orgTitle) {
+  // The panel this opens needs contacts access (see _renderOrgContactsPanel) --
+  // don't offer the button at all to someone who'd just hit its permission
+  // message, same as how restricted nav tabs are hidden outright rather than
+  // shown-then-blocked.
+  if (ALLOWED_TABS && !ALLOWED_TABS.includes('contacts')) return '';
   const cnt = _contactSummary[orgName] || 0;
   return '<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactsPanel(\'' + orgName + '\',\'' + esc(orgTitle) + '\',\'' + orgName + '\')" title="' + esc(t('contacts.view_contacts')) + '">'
     + '<i class="bi bi-people"></i>'
