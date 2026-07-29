@@ -5036,12 +5036,41 @@ function _commsFlatLoadMoreTrigger() {
   loadCommsFlat(true);
 }
 
+// Quiet background refresh for the flat view -- unlike a normal (re)load,
+// this has to re-fetch EVERYTHING currently loaded (not just page 1), or a
+// 20s tick would silently discard any extra pages scrolled into via
+// infinite scroll and reset the view back to just the first page. Diffs
+// before rendering, same reasoning as the other 3 views' quiet refresh
+// (_commsRefreshInPlace) -- skips the rebuild (and the hover-flash that
+// comes with tearing down and recreating every row) when nothing changed.
+async function _refreshCommsFlatInPlace() {
+  try {
+    const currentCount = _commsFlatRows.length || COMMS_PAGE_SIZE;
+    const params = _commsQueryParams();
+    params.set('sort', _commsSortCol);
+    params.set('dir', _commsSortDir);
+    params.set('rows', currentCount);
+    params.set('start', 0);
+    const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
+    const data = await _fetchJsonOrThrow(resp);
+    const newRows = data.rows || [];
+    _applyCommsFacets(data);
+    _commsLoadedFingerprint = _commsQueryParams().toString();
+    _commsFlatTotal = data.total || 0;
+    if (JSON.stringify(newRows) === JSON.stringify(_commsFlatRows)) return;
+    _commsFlatRows = newRows;
+    _commsFlatStart = newRows.length;
+    _renderCommsFlat(_commsFlatRows, false);
+  } catch (e) { /* quiet -- leave whatever's already on screen rather than disrupt it */ }
+}
+
 async function loadCommsFlat(append = false, background = false) {
   if (_commsViewMode !== 'flat') return;
+  if (background && !append) return _refreshCommsFlatInPlace();
   if (!append) _commsFlatStart = 0;
   if (append) {
     _commsFlatLoadingMore = true;
-  } else if (!background) {
+  } else {
     if (_commsFlatObserver) _commsFlatObserver.disconnect();
     show('commsTable').innerHTML = `<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>`;
   }
