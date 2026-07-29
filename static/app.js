@@ -400,6 +400,7 @@ const TRANSLATIONS = {
     'inbound.auto_badge': 'Auto',
     'inbound.auto_badge_title': 'Auto-captured from an inbound email',
     'contacts.panel_title': 'Contacts',
+    'contacts.org_panel_no_access': 'You don\'t have access to Contacts, so member details can\'t be shown here.',
     'contacts.add': 'Add Contact',
     'contacts.none': 'No contacts yet — click Add to start.',
     'contacts.modal_add': 'Add Contact',
@@ -970,6 +971,7 @@ const TRANSLATIONS = {
     'inbound.auto_badge': 'Αυτόματο',
     'inbound.auto_badge_title': 'Καταγράφηκε αυτόματα από εισερχόμενο email',
     'contacts.panel_title': 'Επαφές',
+    'contacts.org_panel_no_access': 'Δεν έχετε πρόσβαση στις Επαφές, οπότε τα στοιχεία μελών δεν μπορούν να εμφανιστούν εδώ.',
     'contacts.add': 'Προσθήκη Επαφής',
     'contacts.none': 'Δεν υπάρχουν επαφές — κάντε κλικ στο «Προσθήκη».',
     'contacts.modal_add': 'Προσθήκη Επαφής',
@@ -5980,6 +5982,16 @@ function _renderOrgContactsPanel() {
   const orgCode  = _panelOrgCode;
   const orgLabel = _panelOrgLabel;
   const ckanName = _panelCkanName;
+
+  // This panel is reachable from Organizations (which doesn't require
+  // "contacts" access), but its data comes from the contacts-gated
+  // /api/portal-members -- without this check, a contacts-less user's fetch
+  // 403s silently and the spinner below waits forever for a cache that will
+  // never populate.
+  if (ALLOWED_TABS && !ALLOWED_TABS.includes('contacts')) {
+    show('orgContactsBody').innerHTML = `<div class="alert alert-warning mb-0">${t('contacts.org_panel_no_access')}</div>`;
+    return;
+  }
 
   if (!_portalMembersCache) {
     show('orgContactsBody').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';

@@ -3862,6 +3862,14 @@ def organization_detail(org_name):
                     if not _pm_cache["data"] and not _pm_cache["loading"]:
                         threading.Thread(target=_do_fetch_portal_members, daemon=True).start()
 
+                    # This route only requires "orgs" or "datasets" access
+                    # (see _TAB_ROUTE_RULES), not "contacts" -- but email is
+                    # otherwise contacts-scoped data, so someone with
+                    # Organizations-only access shouldn't see it here just
+                    # because it happens to already be sitting in _pm_cache.
+                    _allowed_tabs = _session_allowed_tabs()
+                    _has_contacts_access = _allowed_tabs is None or "contacts" in _allowed_tabs
+
                     members = []
                     for u in raw_users:
                         uname = u.get("name", "")
@@ -3870,7 +3878,7 @@ def organization_detail(org_name):
                             "name":         uname,
                             "display_name": u.get("display_name") or u.get("fullname") or uname,
                             "capacity":     u.get("capacity", "member"),
-                            "email":        info.get("email", ""),
+                            "email":        info.get("email", "") if _has_contacts_access else "",
                             "state":        u.get("state") or info.get("state", "active"),
                         })
 
