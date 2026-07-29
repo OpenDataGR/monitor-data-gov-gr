@@ -198,19 +198,32 @@
        changes, but this element goes from not-rendered to rendered in one
        step, so there's no "before" state for a transition to interpolate
        from. Covers every Bootstrap dropdown in the app (the account menu,
-       the contact panel's Role picker, etc.) with no per-instance markup. */
+       the contact panel's Role picker, etc.) with no per-instance markup.
+       Opacity only, deliberately no transform: Bootstrap positions these
+       via Popper.js, which sets its own inline transform for placement --
+       animating transform here fights that positioning for the animation's
+       whole duration (the menu renders at the animation's translateY
+       offset, ignoring Popper's real computed position, until the
+       animation ends and Popper's own value can finally show through) and
+       reads as the menu appearing in the wrong spot before snapping down
+       to the right one. */
     .dropdown-menu.show { animation: ddFadeIn .15s ease-out; }
     @keyframes ddFadeIn {
-      from { opacity: 0; transform: translateY(-6px); }
-      to   { opacity: 1; transform: none; }
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
-    /* Same technique for the custom (non-Bootstrap) org-search autocomplete
+    /* Same idea for the custom (non-Bootstrap) org-search autocomplete
        lists -- New Communication, inbound-attach, and the contact panel's
        own org picker all share this exact markup (a <ul class="list-group
        ... position-absolute ... d-none">), and show/hide via a plain
-       .d-none toggle instead of Bootstrap's .show, so this targets the
-       shared class combo rather than each dropdown's own id. */
-    ul.list-group.position-absolute:not(.d-none) { animation: ddFadeIn .15s ease-out; }
+       .d-none toggle instead of Bootstrap's .show. These aren't
+       Popper-positioned (plain CSS top:100%), so a small slide-in is safe
+       here, unlike the Bootstrap dropdowns above. */
+    ul.list-group.position-absolute:not(.d-none) { animation: ddSlideFadeIn .15s ease-out; }
+    @keyframes ddSlideFadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: none; }
+    }
 
     /* Expanding a group -- a Case/Organization/Timeline-day in
        Communications, an organization in Contacts' Portal Members/File
