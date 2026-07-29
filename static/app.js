@@ -4642,22 +4642,46 @@ async function _loadInboundEmails() {
 // groups are already expanded get their rows refreshed too (so this still
 // picks up someone else's edit to something you already have open), just
 // without the visual reset.
+// Re-fetches whichever groups are already expanded so a quiet background
+// refresh still picks up someone else's edit to them -- but only actually
+// re-renders (tearing down and recreating every row as fresh DOM nodes,
+// which is what made a row's hover highlight visibly flash) if something in
+// there genuinely changed. Re-fetching unconditionally while rendering
+// conditionally keeps data fresh without the visible churn when it wasn't.
 async function _commsRefreshInPlace() {
   if (_commsViewMode === 'cases') {
     await _loadCommsCaseGroups(true);
     const stillExpanded = [..._expandedCases].filter(id => _commsCaseGroups.some(cs => cs.id === id));
-    await Promise.all(stillExpanded.map(id => { _commsCaseExpandRows.delete(id); return _fetchCommsCaseRows(id); }));
-    _renderCommsCaseGroups();
+    let rowsChanged = false;
+    await Promise.all(stillExpanded.map(async id => {
+      const before = _commsCaseExpandRows.get(id);
+      _commsCaseExpandRows.delete(id);
+      await _fetchCommsCaseRows(id);
+      if (JSON.stringify(before) !== JSON.stringify(_commsCaseExpandRows.get(id))) rowsChanged = true;
+    }));
+    if (rowsChanged) _renderCommsCaseGroups();
   } else if (_commsViewMode === 'grouped') {
     await _loadCommsOrgGroups(true);
     const stillExpanded = [..._expandedOrgs].filter(k => _commsOrgGroups.some(g => g.org_title === k));
-    await Promise.all(stillExpanded.map(k => { _commsOrgExpandRows.delete(k); return _fetchCommsOrgRows(k); }));
-    _renderCommsOrgGroups();
+    let rowsChanged = false;
+    await Promise.all(stillExpanded.map(async k => {
+      const before = _commsOrgExpandRows.get(k);
+      _commsOrgExpandRows.delete(k);
+      await _fetchCommsOrgRows(k);
+      if (JSON.stringify(before) !== JSON.stringify(_commsOrgExpandRows.get(k))) rowsChanged = true;
+    }));
+    if (rowsChanged) _renderCommsOrgGroups();
   } else if (_commsViewMode === 'timeline') {
     await _loadCommsDayGroups(true);
     const stillExpanded = [..._expandedTimelineDays].filter(d => _commsDayGroups.some(g => g.day === d));
-    await Promise.all(stillExpanded.map(d => { _commsDayExpandRows.delete(d); return _fetchCommsDayRows(d); }));
-    _renderCommsDayGroups();
+    let rowsChanged = false;
+    await Promise.all(stillExpanded.map(async d => {
+      const before = _commsDayExpandRows.get(d);
+      _commsDayExpandRows.delete(d);
+      await _fetchCommsDayRows(d);
+      if (JSON.stringify(before) !== JSON.stringify(_commsDayExpandRows.get(d))) rowsChanged = true;
+    }));
+    if (rowsChanged) _renderCommsDayGroups();
   } else {
     await loadCommsFlat(false, true);
   }
@@ -5129,11 +5153,20 @@ async function _loadCommsOrgGroups(background = false) {
     params.set('rows', 500);  // groups are bounded by org count, not total comms -- one shot, no scrolling needed
     const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
     const data = await _fetchJsonOrThrow(resp);
-    _commsOrgGroups = data.groups || [];
+    const newGroups = data.groups || [];
+    // A background refresh whose group list came back byte-for-byte
+    // identical has nothing to actually show -- re-rendering anyway would
+    // tear down and recreate every row as fresh DOM nodes for no reason,
+    // which is what made whichever row your mouse happened to be resting
+    // on visibly flash its hover highlight every 20s even when nothing
+    // had changed (the browser has to recompute :hover on the new node).
+    const unchanged = background && JSON.stringify(newGroups) === JSON.stringify(_commsOrgGroups);
     _commsOrgGroupsLoaded = true;
-    if (!background) _commsOrgExpandRows.clear();
     _applyCommsFacets(data);
     _commsLoadedFingerprint = _commsQueryParams().toString();
+    if (unchanged) return;
+    _commsOrgGroups = newGroups;
+    if (!background) _commsOrgExpandRows.clear();
     _renderCommsOrgGroups();
   } catch (e) {
     if (!background) show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
@@ -5273,11 +5306,16 @@ async function _loadCommsCaseGroups(background = false) {
     params.set('rows', 500);  // groups are bounded by case count, not total comms -- one shot, no scrolling needed
     const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
     const data = await _fetchJsonOrThrow(resp);
-    _commsCaseGroups = data.groups || [];
+    const newGroups = data.groups || [];
+    // See _loadCommsOrgGroups's comment -- skip the rebuild entirely when a
+    // background refresh found nothing actually different.
+    const unchanged = background && JSON.stringify(newGroups) === JSON.stringify(_commsCaseGroups);
     _commsCaseGroupsLoaded = true;
-    if (!background) _commsCaseExpandRows.clear();
     _applyCommsFacets(data);
     _commsLoadedFingerprint = _commsQueryParams().toString();
+    if (unchanged) return;
+    _commsCaseGroups = newGroups;
+    if (!background) _commsCaseExpandRows.clear();
     _renderCommsCaseGroups();
   } catch (e) {
     if (!background) show('commsTable').innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
@@ -5414,16 +5452,24 @@ async function _loadCommsDayGroups(background = false) {
     params.set('rows', 1000);  // groups are bounded by distinct days logged, not total comms -- one shot
     const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
     const data = await _fetchJsonOrThrow(resp);
-    _commsDayGroups = data.groups || [];
+    const newGroups = data.groups || [];
+    // See _loadCommsOrgGroups's comment -- skip the rebuild entirely when a
+    // background refresh found nothing actually different. firstInit still
+    // forces a render regardless, since that's the one-time today-auto-expand
+    // (background refreshes normally never coincide with it, but just in case).
+    const firstInit = !_timelineDaysInitialized;
+    const unchanged = background && !firstInit && JSON.stringify(newGroups) === JSON.stringify(_commsDayGroups);
     _commsDayGroupsLoaded = true;
-    if (!background) _commsDayExpandRows.clear();
     _applyCommsFacets(data);
     _commsLoadedFingerprint = _commsQueryParams().toString();
     const todayIso = new Date().toISOString().slice(0, 10);
-    if (!_timelineDaysInitialized) {
+    if (firstInit) {
       _expandedTimelineDays.add(todayIso);
       _timelineDaysInitialized = true;
     }
+    if (unchanged) return;
+    _commsDayGroups = newGroups;
+    if (!background) _commsDayExpandRows.clear();
     _renderCommsDayGroups();
     if (_expandedTimelineDays.has(todayIso) && _commsDayGroups.some(g => g.day === todayIso)) {
       _fetchCommsDayRows(todayIso).then(_renderCommsDayGroups);
