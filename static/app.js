@@ -7639,20 +7639,17 @@ function renderOrgPanel(data) {
        </div>`
     : `<p class="text-muted small mt-3">${t('userPanel.no_recent_datasets')}</p>`;
 
-  const ROLE_BADGE  = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary' };
-  const STATE_BADGE = { active: 'bg-success', deleted: 'bg-danger', pending: 'bg-warning text-dark' };
+  // Role/state/comm-status badge colors all reuse the same top-level maps
+  // everything else in the app uses (ROLE_BADGE_CLS/STATE_BADGE_CLS/
+  // STATUS_BADGE) instead of keeping their own local copies -- this panel
+  // used to have its own near-identical copies, which is exactly how the
+  // "Pending" badge silently drifted to plain gray here while staying
+  // orange in the Contacts list.
   const STATE_ICON  = { active: 'bi-check-circle-fill', deleted: 'bi-x-circle-fill', pending: 'bi-hourglass-split' };
   const members = (org.members || []).sort((a, b) => {
     const order = { admin: 0, editor: 1, member: 2 };
     return (order[a.capacity] ?? 3) - (order[b.capacity] ?? 3);
   });
-  const COMM_STATUS_CLS = {
-    'Initial Contact':      'bg-primary',
-    'Intermediate Contact': 'bg-info text-dark',
-    'Positive Response':    'bg-success',
-    'Negative Response':    'bg-danger',
-    'No Response':          'bg-secondary',
-  };
   const PENDING_STATUSES = new Set(['Initial Contact', 'Intermediate Contact']);
   const cs = data.comms_summary || {};
   const byStatus = cs.by_status || {};
@@ -7661,7 +7658,7 @@ function renderOrgPanel(data) {
     ? `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-envelope me-1 text-primary"></i>Communications</h6>
        <div class="d-flex flex-wrap gap-2 mb-1">
          ${statusOrder.filter(s => byStatus[s]).map(s => `
-           <span class="badge ${COMM_STATUS_CLS[s]} d-flex align-items-center gap-1${PENDING_STATUSES.has(s) ? '' : ''}">
+           <span class="badge ${STATUS_BADGE[s]} d-flex align-items-center gap-1${PENDING_STATUSES.has(s) ? '' : ''}">
              ${PENDING_STATUSES.has(s) ? '<i class="bi bi-clock-history"></i>' : ''}
              ${s} <span class="ms-1 fw-bold">${byStatus[s]}</span>
            </span>`).join('')}
@@ -7681,7 +7678,7 @@ function renderOrgPanel(data) {
       ? `<div class="list-group list-group-flush">
            ${members.map(m => {
              const state     = m.state || 'active';
-             const stateCls  = STATE_BADGE[state]  || 'bg-secondary';
+             const stateCls  = STATE_BADGE_CLS[state]  || 'bg-secondary';
              const stateIcon = STATE_ICON[state]   || 'bi-circle';
              const rowStyle  = [state !== 'active' ? 'opacity:.7' : '', canOpenMember ? 'cursor:pointer' : ''].filter(Boolean).join(';');
              return `
@@ -7693,7 +7690,7 @@ function renderOrgPanel(data) {
                  <div class="text-muted" style="font-size:.72rem">@${m.name.replace(/</g,'&lt;')}</div>
                </div>
                <div class="d-flex gap-1 flex-wrap justify-content-end">
-                 <span class="badge ${ROLE_BADGE[m.capacity] || 'bg-secondary'}">${m.capacity}</span>
+                 <span class="badge ${ROLE_BADGE_CLS[m.capacity] || 'bg-secondary'}">${m.capacity}</span>
                  <span class="badge ${stateCls}" title="Account status: ${state}">
                    <i class="bi ${stateIcon} me-1"></i>${state}
                  </span>
