@@ -5177,15 +5177,48 @@ function _renderCommsOrgGroups() {
   el.innerHTML = _commsGroupTableShell(rows);
 }
 
+// A group's spinner-row is short; the rows that replace it usually aren't --
+// swapping between them with no transition snaps #commsTable to its new
+// height in one frame, instantly shoving everything below it down (or up,
+// on collapse). This fades the *content* (see the .comm-hist-row/
+// .comm-timeline-item CSS animation), but never smoothed the *height*
+// change itself, which is the bigger part of what actually reads as a
+// jump. Wraps a render call so the container's height animates from its
+// old value to its new one instead of snapping -- same idea as a CSS
+// height transition, just done in JS because "auto" heights aren't
+// transitionable directly.
+function _animateHeightSwap(el, updateFn) {
+  const fromHeight = el.getBoundingClientRect().height;
+  el.style.transition = 'none';
+  el.style.height = fromHeight + 'px';
+  el.style.overflow = 'hidden';
+  void el.offsetHeight;  // force layout so the explicit height above actually commits before the swap
+  updateFn();
+  const toHeight = el.scrollHeight;
+  requestAnimationFrame(() => {
+    el.style.transition = 'height .2s ease';
+    el.style.height = toHeight + 'px';
+  });
+  const done = (ev) => {
+    if (ev && ev.target !== el) return;  // ignore bubbled transitions from children
+    el.style.transition = '';
+    el.style.height = '';
+    el.style.overflow = '';
+    el.removeEventListener('transitionend', done);
+  };
+  el.addEventListener('transitionend', done);
+}
+
 function toggleOrgComms(orgTitle) {
+  const el = show('commsTable');
   if (_expandedOrgs.has(orgTitle)) {
     _expandedOrgs.delete(orgTitle);
-    _renderCommsOrgGroups();
+    _animateHeightSwap(el, _renderCommsOrgGroups);
     return;
   }
   _expandedOrgs.add(orgTitle);
-  _renderCommsOrgGroups();  // show the per-group spinner immediately
-  _fetchCommsOrgRows(orgTitle).then(_renderCommsOrgGroups);
+  _animateHeightSwap(el, _renderCommsOrgGroups);  // show the per-group spinner immediately
+  _fetchCommsOrgRows(orgTitle).then(() => _animateHeightSwap(el, _renderCommsOrgGroups));
 }
 
 async function _fetchCommsOrgRows(orgTitle) {
@@ -5284,14 +5317,15 @@ function _renderCommsCaseGroups() {
 }
 
 function toggleCaseExpand(caseId) {
+  const el = show('commsTable');
   if (_expandedCases.has(caseId)) {
     _expandedCases.delete(caseId);
-    _renderCommsCaseGroups();
+    _animateHeightSwap(el, _renderCommsCaseGroups);
     return;
   }
   _expandedCases.add(caseId);
-  _renderCommsCaseGroups();  // show the per-group spinner immediately
-  _fetchCommsCaseRows(caseId).then(_renderCommsCaseGroups);
+  _animateHeightSwap(el, _renderCommsCaseGroups);  // show the per-group spinner immediately
+  _fetchCommsCaseRows(caseId).then(() => _animateHeightSwap(el, _renderCommsCaseGroups));
 }
 
 async function _fetchCommsCaseRows(caseId) {
@@ -5440,14 +5474,15 @@ function _renderCommsDayGroups() {
 }
 
 function toggleTimelineDay(day) {
+  const el = show('commsTable');
   if (_expandedTimelineDays.has(day)) {
     _expandedTimelineDays.delete(day);
-    _renderCommsDayGroups();
+    _animateHeightSwap(el, _renderCommsDayGroups);
     return;
   }
   _expandedTimelineDays.add(day);
-  _renderCommsDayGroups();  // show the per-group spinner immediately
-  _fetchCommsDayRows(day).then(_renderCommsDayGroups);
+  _animateHeightSwap(el, _renderCommsDayGroups);  // show the per-group spinner immediately
+  _fetchCommsDayRows(day).then(() => _animateHeightSwap(el, _renderCommsDayGroups));
 }
 
 async function _fetchCommsDayRows(day) {
