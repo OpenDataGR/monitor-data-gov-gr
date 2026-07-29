@@ -172,17 +172,23 @@
             <div class="card p-4 mb-4">
               <h6 class="fw-semibold mb-3" data-i18n="admin.invite_title">Invite a new user</h6>
               <form id="inviteForm" class="row g-2 align-items-end" onsubmit="return inviteUser(event)">
-                <div class="col-sm-4">
+                <div class="col-sm-3">
                   <label class="form-label small mb-1" data-i18n="admin.email">Email</label>
                   <input type="email" id="inviteEmail" class="form-control form-control-sm" required>
                 </div>
-                <div class="col-sm-4">
+                <div class="col-sm-3">
                   <label class="form-label small mb-1" data-i18n="admin.name">Name</label>
                   <input type="text" id="inviteName" class="form-control form-control-sm">
                 </div>
-                <div class="col-sm-2 form-check ms-1 mb-1">
-                  <input type="checkbox" id="inviteAdmin" class="form-check-input">
-                  <label class="form-check-label small" for="inviteAdmin" data-i18n="admin.admin_checkbox">Admin</label>
+                <div class="col-sm-4 d-flex align-items-center gap-2 mb-1">
+                  <div class="form-check ms-1 mb-0">
+                    <input type="checkbox" id="inviteAdmin" class="form-check-input" onchange="_onInviteAdminToggle()">
+                    <label class="form-check-label small" for="inviteAdmin" data-i18n="admin.admin_checkbox">Admin</label>
+                  </div>
+                  <button type="button" id="inviteTabsBtn" class="btn btn-outline-secondary btn-sm py-1 px-2"
+                          data-i18n-title="admin.set_tab_access" title="Set tab access" onclick="openInviteTabsModal()">
+                    <i class="bi bi-ui-checks-grid"></i>
+                  </button>
                 </div>
                 <div class="col-sm-2">
                   <button type="submit" class="btn btn-primary btn-sm w-100">
@@ -607,6 +613,9 @@
         'admin.resend_invite_tooltip': 'Resend invite / reset link',
         'admin.admins_always_all_tabs': 'Admins always see every tab',
         'admin.manage_tab_access': 'Manage tab access', 'admin.never': 'Never',
+        'admin.set_tab_access': 'Set tab access before inviting',
+        'admin.tabs_selected_tooltip': '{n} tab(s) selected — click to change',
+        'admin.new_user_label': 'New user',
         'admin.invite_sent': "Invite sent. If the email doesn't arrive, share this link directly: ",
         'admin.failed_to_invite': 'Failed to invite user',
         'admin.link_sent': 'Link sent. Fallback link: {link}', 'admin.failed': 'Failed',
@@ -699,6 +708,9 @@
         'admin.resend_invite_tooltip': 'Επαναποστολή πρόσκλησης / συνδέσμου επαναφοράς',
         'admin.admins_always_all_tabs': 'Οι διαχειριστές βλέπουν πάντα όλες τις καρτέλες',
         'admin.manage_tab_access': 'Διαχείριση πρόσβασης καρτελών', 'admin.never': 'Ποτέ',
+        'admin.set_tab_access': 'Ορισμός πρόσβασης καρτελών πριν την πρόσκληση',
+        'admin.tabs_selected_tooltip': 'Επιλεγμένες καρτέλες: {n} — κλικ για αλλαγή',
+        'admin.new_user_label': 'Νέος χρήστης',
         'admin.invite_sent': "Η πρόσκληση στάλθηκε. Αν το email δεν φτάσει, μοιραστείτε απευθείας αυτόν τον σύνδεσμο: ",
         'admin.failed_to_invite': 'Αποτυχία πρόσκλησης χρήστη',
         'admin.link_sent': 'Ο σύνδεσμος στάλθηκε. Εναλλακτικός σύνδεσμος: {link}', 'admin.failed': 'Αποτυχία',
@@ -1062,13 +1074,21 @@
       try {
         const resp = await fetch('../api/users', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({email, name, is_admin}),
+          body: JSON.stringify({
+            email, name, is_admin,
+            restricted: !is_admin && _inviteTabsRestricted,
+            tabs: _inviteTabsSelected,
+          }),
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || t('admin.failed_to_invite'));
         resultEl.className = 'mt-2 small alert alert-success';
         resultEl.innerHTML = `${t('admin.invite_sent')}<a href="${data.invite_link}">${data.invite_link}</a>`;
         document.getElementById('inviteForm').reset();
+        _onInviteAdminToggle();
+        _inviteTabsRestricted = false;
+        _inviteTabsSelected = [];
+        _updateInviteTabsBtnState();
         loadUsers();
       } catch (e) {
         resultEl.className = 'mt-2 small alert alert-danger';
@@ -1104,8 +1124,21 @@
       {key: 'temporal-insights', labelKey: 'tab.temporal_insights', icon: 'bi-clock-history'},
       {key: 'quality',  labelKey: 'tab.quality',   icon: 'bi-shield-check'},
     ];
-    let _tabsModalUserId = null;
+    let _tabsModalUserId = null; // null while the modal is editing the not-yet-created invite user
     let _tabsModal = null;
+    let _inviteTabsRestricted = false;
+    let _inviteTabsSelected = [];
+
+    function _renderTabsChecklist(restricted, selectedTabs) {
+      document.getElementById('tabsRestrictSwitch').checked = restricted;
+      document.getElementById('tabsChecklist').innerHTML = TAB_DEFS.map(td => `
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="${td.key}" id="tabChk-${td.key}"
+                 ${restricted && selectedTabs.includes(td.key) ? 'checked' : ''}>
+          <label class="form-check-label" for="tabChk-${td.key}"><i class="bi ${td.icon} me-1"></i>${t(td.labelKey)}</label>
+        </div>`).join('');
+      _renderTabsChecklistState();
+    }
 
     function openTabsModal(id) {
       const u = _usersCache.find(x => x.id === id);
@@ -1113,14 +1146,16 @@
       _tabsModalUserId = id;
       document.getElementById('tabsModalUserLabel').textContent = u.name;
       const restricted = Array.isArray(u.allowed_tabs);
-      document.getElementById('tabsRestrictSwitch').checked = restricted;
-      document.getElementById('tabsChecklist').innerHTML = TAB_DEFS.map(td => `
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" value="${td.key}" id="tabChk-${td.key}"
-                 ${restricted && u.allowed_tabs.includes(td.key) ? 'checked' : ''}>
-          <label class="form-check-label" for="tabChk-${td.key}"><i class="bi ${td.icon} me-1"></i>${t(td.labelKey)}</label>
-        </div>`).join('');
-      _renderTabsChecklistState();
+      _renderTabsChecklist(restricted, restricted ? u.allowed_tabs : []);
+      if (!_tabsModal) _tabsModal = new bootstrap.Modal(document.getElementById('tabsModal'));
+      _tabsModal.show();
+    }
+
+    function openInviteTabsModal() {
+      _tabsModalUserId = null;
+      document.getElementById('tabsModalUserLabel').textContent =
+        document.getElementById('inviteEmail').value.trim() || t('admin.new_user_label');
+      _renderTabsChecklist(_inviteTabsRestricted, _inviteTabsSelected);
       if (!_tabsModal) _tabsModal = new bootstrap.Modal(document.getElementById('tabsModal'));
       _tabsModal.show();
     }
@@ -1131,9 +1166,29 @@
       document.getElementById('tabsUnrestrictedHint').classList.toggle('d-none', restricted);
     }
 
+    function _onInviteAdminToggle() {
+      document.getElementById('inviteTabsBtn').disabled = document.getElementById('inviteAdmin').checked;
+    }
+
+    function _updateInviteTabsBtnState() {
+      const btn = document.getElementById('inviteTabsBtn');
+      btn.classList.toggle('btn-outline-secondary', !_inviteTabsRestricted);
+      btn.classList.toggle('btn-secondary', _inviteTabsRestricted);
+      btn.title = _inviteTabsRestricted
+        ? t('admin.tabs_selected_tooltip').replace('{n}', _inviteTabsSelected.length)
+        : t('admin.set_tab_access');
+    }
+
     async function saveTabsModal() {
       const restricted = document.getElementById('tabsRestrictSwitch').checked;
       const tabs = Array.from(document.querySelectorAll('#tabsChecklist input:checked')).map(el => el.value);
+      if (_tabsModalUserId === null) {
+        _inviteTabsRestricted = restricted;
+        _inviteTabsSelected = tabs;
+        _updateInviteTabsBtnState();
+        _tabsModal.hide();
+        return;
+      }
       const resp = await fetch(`../api/users/${_tabsModalUserId}/tabs`, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({restricted, tabs}),

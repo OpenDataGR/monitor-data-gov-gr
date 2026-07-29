@@ -53,7 +53,7 @@ ROUTES = {
         {"methods": ["GET"], "path": "/admin/users", "admin": True,
          "desc": "Renders the admin user-management page."},
         {"methods": ["GET", "POST"], "path": "/api/users", "admin": True, "limit": "20/hr POST",
-         "desc": "Lists all users (GET) or creates one + sends an invite link (POST)."},
+         "desc": "Lists all users (GET) or creates one + sends an invite link (POST). POST may optionally set an initial tab restriction (restricted + tabs, same shape as /api/users/<id>/tabs) for a non-admin user before the invite email goes out."},
         {"methods": ["POST"], "path": "/api/users/<int:user_id>/resend-invite", "admin": True,
          "desc": "Re-sends an invite, or a reset link if the user already set a password."},
         {"methods": ["POST"], "path": "/api/users/<int:user_id>/toggle-admin", "admin": "superadmin",

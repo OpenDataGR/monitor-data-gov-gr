@@ -1012,6 +1012,13 @@ def api_tokens_revoke(token_id):
     return jsonify({"ok": True})
 
 
+def _clean_allowed_tabs(restricted, tabs):
+    if not restricted:
+        return None  # unrestricted — an empty tab list still means "restricted to Overview only"
+    cleaned = [t for t in (tabs or []) if t in ALL_TABS and t != "overview"]
+    return ",".join(cleaned) if cleaned else "overview"
+
+
 @app.route("/api/users", methods=["GET", "POST"])
 @limiter.limit("20 per hour", methods=["POST"])
 def users_collection():
@@ -1026,7 +1033,10 @@ def users_collection():
             return jsonify({"error": "A valid email is required"}), 400
         user = User.query.filter_by(email=email).first()
         if not user:
-            user = User(email=email, name=name or None, is_admin=bool(body.get("is_admin")))
+            is_admin = bool(body.get("is_admin"))
+            user = User(email=email, name=name or None, is_admin=is_admin)
+            if not is_admin:
+                user.allowed_tabs = _clean_allowed_tabs(body.get("restricted"), body.get("tabs"))
             db.session.add(user)
             db.session.commit()
         elif name and not user.name:
@@ -1070,12 +1080,7 @@ def users_set_tabs(user_id):
         return err
     user = User.query.get_or_404(user_id)
     body = _decode_payload()
-    if not body.get("restricted"):
-        user.allowed_tabs = None  # unrestricted — an empty tab list still means "restricted to Overview only"
-    else:
-        tabs = body.get("tabs") or []
-        cleaned = [t for t in tabs if t in ALL_TABS and t != "overview"]
-        user.allowed_tabs = ",".join(cleaned) if cleaned else "overview"
+    user.allowed_tabs = _clean_allowed_tabs(body.get("restricted"), body.get("tabs"))
     db.session.commit()
     return jsonify({"ok": True, "user": _user_dict_for_viewer(user)})
 
