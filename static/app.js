@@ -3095,8 +3095,24 @@ function _hvdRowHtml(d, { indent = false, hidden = false, showOrg = false } = {}
       </tr>`;
 }
 
+// Fixed column widths, matched to _hvdRowHtml's own td order -- without
+// these the table has no explicit column widths at all, so the browser
+// sizes them from whatever's actually in the tbody. A collapsed group row
+// is one single colspan cell with no per-column content to size against;
+// an expanded one suddenly has real per-column content. Toggling a group
+// was recalculating every column's width (and often wrapping header text
+// differently) each time, on top of the height transition -- table-layout:
+// fixed + this colgroup keeps every column's width constant regardless of
+// which rows are currently expanded.
+function _hvdColgroup(showOrg) {
+  return showOrg
+    ? '<colgroup><col style="width:24%"><col style="width:16%"><col style="width:9%"><col style="width:12%"><col style="width:9%"><col style="width:11%"><col style="width:10%"><col style="width:9%"></colgroup>'
+    : '<colgroup><col style="width:32%"><col style="width:11%"><col style="width:14%"><col style="width:11%"><col style="width:13%"><col style="width:11%"><col style="width:8%"></colgroup>';
+}
+
 function _hvdTableHead(showOrg) {
   return `
+      ${_hvdColgroup(showOrg)}
       <thead><tr>
         <th style="cursor:pointer" onclick="sortHvdTable('title')">${t('quality.col_dataset')}${hvdSortArrow('title')}</th>
         ${showOrg ? `<th>${t('quality.col_org')}</th>` : ''}
@@ -3125,7 +3141,7 @@ function _renderHvdTable() {
   if (_hvdViewMode === 'flat') {
     const sorted = [...datasets].sort((a, b) => dir * _hvdCompare(a, b, _hvdSortCol));
     wrap.innerHTML = `
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
       ${_hvdTableHead(true)}
       <tbody>${sorted.map(d => _hvdRowHtml(d, { showOrg: true })).join('')}</tbody>
     </table>`;
@@ -3171,7 +3187,7 @@ function _renderHvdTable() {
   }).join('');
 
   wrap.innerHTML = `
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
       ${_hvdTableHead(false)}
       <tbody>${bodyRows}</tbody>
     </table>`;
@@ -3506,8 +3522,17 @@ function _dcatRowHtml(d, { indent = false, hidden = false, showOrg = false } = {
       </tr>`;
 }
 
+// See _hvdColgroup's comment -- same reasoning, matched to _dcatRowHtml's
+// own td order.
+function _dcatColgroup(showOrg) {
+  return showOrg
+    ? '<colgroup><col style="width:34%"><col style="width:18%"><col style="width:11%"><col style="width:13%"><col style="width:13%"><col style="width:11%"></colgroup>'
+    : '<colgroup><col style="width:46%"><col style="width:14%"><col style="width:16%"><col style="width:15%"><col style="width:9%"></colgroup>';
+}
+
 function _dcatTableHead(showOrg) {
   return `
+      ${_dcatColgroup(showOrg)}
       <thead><tr>
         <th style="cursor:pointer" onclick="sortDcatTable('title')">${t('quality.col_dataset')}${dcatSortArrow('title')}</th>
         ${showOrg ? `<th>${t('quality.col_org')}</th>` : ''}
@@ -3534,7 +3559,7 @@ function _renderDcatTable() {
   if (_dcatViewMode === 'flat') {
     const sorted = [...datasets].sort((a, b) => dir * _dcatCompare(a, b, _dcatSortCol));
     wrap.innerHTML = `
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
       ${_dcatTableHead(true)}
       <tbody>${sorted.map(d => _dcatRowHtml(d, { showOrg: true })).join('')}</tbody>
     </table>`;
@@ -3560,7 +3585,7 @@ function _renderDcatTable() {
     const isExpanded = _dcatExpandedOrgs.has(orgTitle);
     const groupRow = `
       <tr class="comm-group-row" style="cursor:pointer" onclick="toggleDcatOrg(${idx})">
-        <td colspan="4">
+        <td colspan="5">
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
             <span class="fw-semibold">${esc(orgTitle)}</span>
@@ -3573,7 +3598,7 @@ function _renderDcatTable() {
   }).join('');
 
   wrap.innerHTML = `
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
       ${_dcatTableHead(false)}
       <tbody>${bodyRows}</tbody>
     </table>`;
@@ -3873,8 +3898,17 @@ function _geodcatRowHtml(d, { indent = false, hidden = false, showOrg = false } 
       </tr>`;
 }
 
+// See _hvdColgroup's comment -- same reasoning, matched to _geodcatRowHtml's
+// own td order.
+function _geodcatColgroup(showOrg) {
+  return showOrg
+    ? '<colgroup><col style="width:50%"><col style="width:24%"><col style="width:15%"><col style="width:11%"></colgroup>'
+    : '<colgroup><col style="width:70%"><col style="width:18%"><col style="width:12%"></colgroup>';
+}
+
 function _geodcatTableHead(showOrg) {
   return `
+      ${_geodcatColgroup(showOrg)}
       <thead><tr>
         <th style="cursor:pointer" onclick="sortGeoDcatTable('title')">${t('quality.col_dataset')}${geodcatSortArrow('title')}</th>
         ${showOrg ? `<th>${t('quality.col_org')}</th>` : ''}
@@ -3899,7 +3933,7 @@ function _renderGeoDcatTable() {
   if (_geodcatViewMode === 'flat') {
     const sorted = [...datasets].sort((a, b) => dir * _geodcatCompare(a, b, _geodcatSortCol));
     wrap.innerHTML = `
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
       ${_geodcatTableHead(true)}
       <tbody>${sorted.map(d => _geodcatRowHtml(d, { showOrg: true })).join('')}</tbody>
     </table>`;
@@ -3938,7 +3972,7 @@ function _renderGeoDcatTable() {
   }).join('');
 
   wrap.innerHTML = `
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover align-middle mb-0" style="table-layout:fixed">
       ${_geodcatTableHead(false)}
       <tbody>${bodyRows}</tbody>
     </table>`;
