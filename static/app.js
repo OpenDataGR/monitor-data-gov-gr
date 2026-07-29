@@ -8679,11 +8679,13 @@ function setContactsScope(scope) {
 
   const isFile = scope === 'file';
   // "Add contact" always creates an org_contacts (file) record -- there's no
-  // way to create a portal account from this dashboard, CKAN owns that --
-  // so it only makes sense in File Contacts scope. Enriching an existing
-  // portal member with file info is done via that row's own edit pencil,
-  // not this toolbar button.
-  show('contactsAddBtn').classList.toggle('d-none', !isFile);
+  // way to create a portal account from this dashboard, CKAN owns that.
+  // Shown in both scopes: from Portal Members it's still useful for adding
+  // someone who isn't a portal member at all yet (e.g. a phone/paper-only
+  // contact for an org), and the blank-new flow's own email-duplicate check
+  // (_upCheckEmailDuplicate) already redirects to an existing portal
+  // member's record instead of creating a duplicate if the email matches.
+  show('contactsAddBtn').classList.remove('d-none');
   show('contactsFilterSummaryPanel').classList.toggle('d-none', isFile);
   show('fileContactsFilterSummaryPanel').classList.toggle('d-none', !isFile);
   show('fileContactsView').classList.toggle('d-none', !isFile);
