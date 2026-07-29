@@ -1929,6 +1929,12 @@ function _catalogModifiedLabel(iso) {
 // IntersectionObserver only fires on enter/exit, so a short result list that
 // never fully leaves the viewport would otherwise stop after one page.
 function _catalogMaybeAutoLoadMore() {
+  // Bootstrap hides an inactive tab-pane with display:none, which collapses
+  // getBoundingClientRect() to all zeros -- that still satisfies the "on
+  // screen" check below, so without this guard switching away from Datasets
+  // never stops the loop: it free-runs through the entire catalog in the
+  // background regardless of which tab is actually showing.
+  if (!_isTabActive('tab-datasets')) return;
   const sentinel = document.getElementById('catalogLoadMoreSentinel');
   if (!sentinel || _catalogLoadingMore || _catalogStart >= _catalogTotalCount) return;
   const rect = sentinel.getBoundingClientRect();
