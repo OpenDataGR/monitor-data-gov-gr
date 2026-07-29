@@ -261,6 +261,29 @@
       from { opacity: 0; }
       to   { opacity: 1; }
     }
+
+    /* Reusable clear ("x") button for every search box in the app -- shown
+       via a pure-CSS sibling selector (input:not(:placeholder-shown), true
+       exactly when the input has a value) rather than JS toggling it on
+       every keystroke. type="search" inputs already get a native clear
+       button in Chrome/Edge/Safari but NOT Firefox, and it looks different
+       in each -- hidden everywhere in favor of this one so it's consistent
+       and also covers the type="text" search boxes (Quality's HVD/DCAT-AP/
+       GeoDCAT-AP result filters), which never get a native one at all. */
+    .search-clear-wrap { position: relative; display: inline-block; }
+    .search-clear-wrap > input { padding-right: 1.9rem; }
+    .search-clear-wrap > input[type="search"]::-webkit-search-cancel-button { display: none; -webkit-appearance: none; }
+    .search-clear-btn {
+      position: absolute; right: .3rem; top: 50%; transform: translateY(-50%);
+      display: none; align-items: center; justify-content: center;
+      width: 1.3rem; height: 1.3rem; padding: 0; border: none; border-radius: 50%;
+      background: transparent; color: #6c757d; font-size: 1.05rem; line-height: 1;
+      cursor: pointer;
+    }
+    .search-clear-wrap > input:not(:placeholder-shown) ~ .search-clear-btn { display: flex; }
+    .search-clear-btn:hover { background: rgba(0,0,0,.08); color: #212529; }
+    [data-bs-theme="dark"] .search-clear-btn { color: #adb5bd; }
+    [data-bs-theme="dark"] .search-clear-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
   </style>
 </head>
 <body>
@@ -638,8 +661,11 @@
                   <input type="date" id="catalogSinceFilter" class="form-control form-control-sm" style="width:150px"
                          onchange="_catalogStart=0;loadCatalog();">
                 </div>
-                <input type="search" id="catalogSearch" class="form-control form-control-sm" style="width:220px"
-                       placeholder="Search datasets…" data-i18n-ph="catalog.search_ph" oninput="_catalogSearchDebounced()">
+                <div class="search-clear-wrap" style="width:220px">
+                  <input type="search" id="catalogSearch" class="form-control form-control-sm w-100"
+                         placeholder="Search datasets…" data-i18n-ph="catalog.search_ph" oninput="_catalogSearchDebounced()">
+                  <button type="button" class="search-clear-btn" tabindex="-1" data-i18n-title="common.clear" title="Clear" onclick="_clearSearchInput('catalogSearch')">&times;</button>
+                </div>
               </div>
             </div>
             <div class="p-2 rounded-3 mb-3 filter-summary-panel">
@@ -845,10 +871,11 @@
               </div>
             </div>
             <p class="text-muted small" data-i18n="quality.hvd_desc">Validates every HVD-tagged dataset's real DCAT-AP RDF metadata against the EU's official DCAT-AP-HVD SHACL shapes (Regulation (EU) 2023/138) &mdash; not just whether it carries the hvd_category tag.</p>
-            <div class="mb-3" style="width:340px;max-width:100%">
-              <input type="text" id="hvdResultsSearchInput" class="form-control form-control-sm"
+            <div class="mb-3 search-clear-wrap" style="width:340px;max-width:100%">
+              <input type="text" id="hvdResultsSearchInput" class="form-control form-control-sm w-100"
                      placeholder="Search results by title…" data-i18n-ph="quality.hvd_results_search_placeholder"
                      autocomplete="off" oninput="debouncedRenderHvdTable()">
+              <button type="button" class="search-clear-btn" tabindex="-1" data-i18n-title="common.clear" title="Clear" onclick="_clearSearchInput('hvdResultsSearchInput')">&times;</button>
             </div>
             <div id="hvdProgressWrap" class="mb-3 d-none">
               <div class="d-flex justify-content-between small text-muted mb-1">
@@ -893,10 +920,11 @@
               </div>
             </div>
             <p class="text-muted small" data-i18n="quality.dcat_desc">Validates every dataset's real DCAT-AP RDF metadata against the EU's baseline DCAT-AP structural shapes and MDR controlled-vocabulary shapes (vendored from SEMICeu's dcat-ap_shacl repo) &mdash; the same rules data.europa.eu itself checks harvested metadata against.</p>
-            <div class="mb-3" style="width:340px;max-width:100%">
-              <input type="text" id="dcatResultsSearchInput" class="form-control form-control-sm"
+            <div class="mb-3 search-clear-wrap" style="width:340px;max-width:100%">
+              <input type="text" id="dcatResultsSearchInput" class="form-control form-control-sm w-100"
                      placeholder="Search results by title…" data-i18n-ph="quality.hvd_results_search_placeholder"
                      autocomplete="off" oninput="debouncedRenderDcatTable()">
+              <button type="button" class="search-clear-btn" tabindex="-1" data-i18n-title="common.clear" title="Clear" onclick="_clearSearchInput('dcatResultsSearchInput')">&times;</button>
             </div>
             <div id="dcatProgressWrap" class="mb-3 d-none">
               <div class="d-flex justify-content-between small text-muted mb-1">
@@ -941,10 +969,11 @@
               </div>
             </div>
             <p class="text-muted small" data-i18n="quality.geodcat_desc">Validates every geospatial-tagged dataset's real DCAT-AP RDF metadata against the EU's official GeoDCAT-AP geospatial extension SHACL shapes (SEMICeu GeoDCAT-AP 3.1.0) &mdash; covers the ~12,500 datasets the portal itself classifies as geospatial (GIS layers, WMS/WFS services, etc).</p>
-            <div class="mb-3" style="width:340px;max-width:100%">
-              <input type="text" id="geodcatResultsSearchInput" class="form-control form-control-sm"
+            <div class="mb-3 search-clear-wrap" style="width:340px;max-width:100%">
+              <input type="text" id="geodcatResultsSearchInput" class="form-control form-control-sm w-100"
                      placeholder="Search results by title…" data-i18n-ph="quality.hvd_results_search_placeholder"
                      autocomplete="off" oninput="debouncedRenderGeoDcatTable()">
+              <button type="button" class="search-clear-btn" tabindex="-1" data-i18n-title="common.clear" title="Clear" onclick="_clearSearchInput('geodcatResultsSearchInput')">&times;</button>
             </div>
             <div id="geodcatProgressWrap" class="mb-3 d-none">
               <div class="d-flex justify-content-between small text-muted mb-1">
@@ -1093,7 +1122,10 @@
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span id="orgsFetchedAt" class="text-muted small"></span>
-                <input type="search" id="orgSearch" class="form-control form-control-sm" placeholder="Search organizations…" data-i18n-ph="orgs.search" style="width:200px" oninput="debouncedFilterOrgs()">
+                <div class="search-clear-wrap" style="width:200px">
+                  <input type="search" id="orgSearch" class="form-control form-control-sm w-100" placeholder="Search organizations…" data-i18n-ph="orgs.search" oninput="debouncedFilterOrgs()">
+                  <button type="button" class="search-clear-btn" tabindex="-1" data-i18n-title="common.clear" title="Clear" onclick="_clearSearchInput('orgSearch')">&times;</button>
+                </div>
                 <button id="orgsRefreshBtn" class="btn btn-outline-primary btn-sm" onclick="loadOrgs(true)"><i class="bi bi-arrow-repeat me-1"></i><span data-i18n="orgs.refresh">Refresh</span></button>
               </div>
             </div>
@@ -1121,7 +1153,10 @@
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <button id="commsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="expandAllComms()" data-i18n-title="comms.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="commsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="collapseAllComms()" data-i18n-title="comms.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
-                <input type="search" id="commsSearch" class="form-control form-control-sm" placeholder="Search communications…" data-i18n-ph="comms.search" style="width:180px" oninput="debouncedFilterComms()">
+                <div class="search-clear-wrap" style="width:180px">
+                  <input type="search" id="commsSearch" class="form-control form-control-sm w-100" placeholder="Search communications…" data-i18n-ph="comms.search" oninput="debouncedFilterComms()">
+                  <button type="button" class="search-clear-btn" tabindex="-1" data-i18n-title="common.clear" title="Clear" onclick="_clearSearchInput('commsSearch')">&times;</button>
+                </div>
                 <button class="btn btn-outline-secondary btn-sm" onclick="downloadCommsExcel()" data-i18n-title="comms.download_excel_title" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span></button>
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
               </div>
@@ -1194,8 +1229,11 @@
               </div>
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <span id="contactsFetchedAt" class="text-muted small"></span>
-                <input type="search" id="contactsSearch" class="form-control form-control-sm" style="width:180px"
-                  placeholder="Search contacts…" data-i18n-ph="contacts.search_ph" oninput="debouncedFilterContactsTab()">
+                <div class="search-clear-wrap" style="width:180px">
+                  <input type="search" id="contactsSearch" class="form-control form-control-sm w-100"
+                    placeholder="Search contacts…" data-i18n-ph="contacts.search_ph" oninput="debouncedFilterContactsTab()">
+                  <button type="button" class="search-clear-btn" tabindex="-1" data-i18n-title="common.clear" title="Clear" onclick="_clearSearchInput('contactsSearch')">&times;</button>
+                </div>
                 <button id="contactsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="expandAllContacts()" data-i18n-title="common.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
                 <button id="contactsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm d-none" onclick="collapseAllContacts()" data-i18n-title="common.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
                 <button class="btn btn-outline-secondary btn-sm" id="contactsReloadBtn" onclick="reloadContactsTab()">

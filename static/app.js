@@ -1514,6 +1514,19 @@ function debounce(fn, wait) {
   };
 }
 
+// Shared by every search box's clear ("x") button (see .search-clear-wrap
+// CSS) -- dispatches a real 'input' event instead of calling each box's own
+// filter function by name, so one generic handler works for all of them
+// regardless of which (possibly debounced) oninput handler each already has
+// wired up.
+function _clearSearchInput(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = '';
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.focus();
+}
+
 // Debounced search-input handlers — the underlying functions each re-filter/sort
 // the full dataset and rebuild a table's innerHTML, so running them on every
 // keystroke is what made typing in these boxes feel laggy. Programmatic callers
