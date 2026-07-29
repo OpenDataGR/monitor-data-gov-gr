@@ -48,16 +48,29 @@ if (!window.__csrfFetchPatched) {
 // whichever element was just shown -- covers every current and future
 // modal/offcanvas without per-element z-index tuning.
 let _topOverlayZ = 1055;
+// Maps an overlay element to its own backdrop -- needed because callers also
+// invoke this directly (not just via the show.bs.* events below) to re-front
+// a panel that's already open and just being reused for new content (e.g.
+// clicking a related dataset, or a dataset link from inside the org panel).
+// Bootstrap's .show() is a no-op there (no fresh backdrop gets inserted), so
+// "grab whichever backdrop is last in the DOM" would grab someone else's --
+// remembering each element's actual backdrop keeps the pairing correct.
+const _overlayBackdrops = new WeakMap();
 function _bringOverlayToFront(el) {
   _topOverlayZ += 20;
-  el.style.zIndex = _topOverlayZ;
+  const z = _topOverlayZ;
+  el.style.zIndex = z;
   // The backdrop is a sibling Bootstrap inserts into <body> right as it
   // shows this element -- not present yet on this same event tick, so grab
-  // the last one on the next frame instead of guessing an id/selector for it.
+  // it on the next frame instead of guessing an id/selector for it.
   requestAnimationFrame(() => {
-    const backdrops = document.querySelectorAll('.modal-backdrop, .offcanvas-backdrop');
-    const backdrop = backdrops[backdrops.length - 1];
-    if (backdrop) backdrop.style.zIndex = _topOverlayZ - 1;
+    let backdrop = _overlayBackdrops.get(el);
+    if (!backdrop || !backdrop.isConnected) {
+      const backdrops = document.querySelectorAll('.modal-backdrop, .offcanvas-backdrop');
+      backdrop = backdrops[backdrops.length - 1];
+      if (backdrop) _overlayBackdrops.set(el, backdrop);
+    }
+    if (backdrop) backdrop.style.zIndex = z - 1;
   });
 }
 document.addEventListener('show.bs.modal', e => _bringOverlayToFront(e.target));
@@ -5983,6 +5996,7 @@ function openContactsPanel(orgCode, orgLabel, ckanName = null) {
   _panelOrgLabel = orgLabel;
   _panelCkanName = ckanName;
   if (!_contactsPanel) _contactsPanel = new bootstrap.Offcanvas(document.getElementById('orgContactsPanel'));
+  _bringOverlayToFront(document.getElementById('orgContactsPanel'));
   show('orgContactsTitle').textContent    = t('contacts.panel_title');
   show('orgContactsSubtitle').textContent = orgLabel;
   _contactsPanel.show();
@@ -6225,22 +6239,12 @@ async function loadContactSummary() {
     if (_orgsViewMode === 'all') filterOrgs();
   }
 }
-// Detail offcanvases (org/dataset) can open one from within the other in either
-// direction, and Bootstrap gives every offcanvas the same default z-index — ties
-// fall back to DOM order, which doesn't track "which one was opened most
-// recently". Explicitly bumping the just-opened panel above a running counter
-// keeps whichever one the user navigated to on top, regardless of direction.
-let _offcanvasZTop = 1045;
-function _bringOffcanvasToFront(id) {
-  document.getElementById(id).style.zIndex = ++_offcanvasZTop;
-}
-
 // ── Org detail panel ─────────────────────────────────────────────────────────
 let _orgPanel = null;
 
 function openOrgPanel(name) {
   if (!_orgPanel) _orgPanel = new bootstrap.Offcanvas(document.getElementById('orgDetailPanel'));
-  _bringOffcanvasToFront('orgDetailPanel');
+  _bringOverlayToFront(document.getElementById('orgDetailPanel'));
   document.getElementById('orgDetailTitle').textContent = t('loading');
   document.getElementById('orgDetailIdLink').classList.add('d-none');
   document.getElementById('orgDetailBody').innerHTML =
@@ -6260,7 +6264,7 @@ let _datasetPanel = null;
 
 function openDatasetPanel(name) {
   if (!_datasetPanel) _datasetPanel = new bootstrap.Offcanvas(document.getElementById('datasetDetailPanel'));
-  _bringOffcanvasToFront('datasetDetailPanel');
+  _bringOverlayToFront(document.getElementById('datasetDetailPanel'));
   show('datasetDetailTitle').textContent = t('loading');
   document.getElementById('datasetDetailIdLink').classList.add('d-none');
   show('datasetDetailBody').innerHTML =
@@ -6382,7 +6386,7 @@ let _datasetAnalyticsChart = null;
 
 function openDatasetAnalyticsPanel(name, title, resources) {
   if (!_datasetAnalyticsPanel) _datasetAnalyticsPanel = new bootstrap.Offcanvas(document.getElementById('datasetAnalyticsPanel'));
-  _bringOffcanvasToFront('datasetAnalyticsPanel');
+  _bringOverlayToFront(document.getElementById('datasetAnalyticsPanel'));
   document.getElementById('datasetAnalyticsSubtitle').textContent = title || '';
   document.getElementById('datasetAnalyticsBody').innerHTML =
     '<div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>';
