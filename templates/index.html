@@ -1370,10 +1370,11 @@
   </div>
 </div>
 
-<!-- Portal user / file contact detail modal -- z-index above the default
-     modal stack, since openNewContactPanel can open this from within the
-     still-open Communications modal. -->
-<div class="modal fade" tabindex="-1" id="userPanel" style="z-index:1075">
+<!-- Portal user / file contact detail modal -- z-index stacking above/below
+     other modals and offcanvases (e.g. the org panel, the delete-confirm
+     dialog, the Communications modal) is handled dynamically, see
+     _bringOverlayToFront in app.js. -->
+<div class="modal fade" tabindex="-1" id="userPanel">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header border-bottom">

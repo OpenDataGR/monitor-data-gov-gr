@@ -35,6 +35,34 @@ if (!window.__csrfFetchPatched) {
   }
 }
 
+// ── Overlay stacking ─────────────────────────────────────────────────────────
+// Modals and offcanvases in this app can legitimately open each other in
+// either direction (e.g. the user panel opens the org panel via an org
+// badge, but the org panel can also open the user panel via a member's edit
+// button) -- a fixed z-index per element only ever gets one of those two
+// directions right, since whichever has the lower static value always ends
+// up behind the other regardless of open order. Instead, bump whichever one
+// is shown *most recently* (and its backdrop) above everything already open,
+// so the last thing you opened is always the one on top and interactive.
+// Delegated on document since show.bs.modal/show.bs.offcanvas bubble from
+// whichever element was just shown -- covers every current and future
+// modal/offcanvas without per-element z-index tuning.
+let _topOverlayZ = 1055;
+function _bringOverlayToFront(el) {
+  _topOverlayZ += 20;
+  el.style.zIndex = _topOverlayZ;
+  // The backdrop is a sibling Bootstrap inserts into <body> right as it
+  // shows this element -- not present yet on this same event tick, so grab
+  // the last one on the next frame instead of guessing an id/selector for it.
+  requestAnimationFrame(() => {
+    const backdrops = document.querySelectorAll('.modal-backdrop, .offcanvas-backdrop');
+    const backdrop = backdrops[backdrops.length - 1];
+    if (backdrop) backdrop.style.zIndex = _topOverlayZ - 1;
+  });
+}
+document.addEventListener('show.bs.modal', e => _bringOverlayToFront(e.target));
+document.addEventListener('show.bs.offcanvas', e => _bringOverlayToFront(e.target));
+
 // ── i18n ─────────────────────────────────────────────────────────────────────
 const TRANSLATIONS = {
   en: {
