@@ -284,6 +284,13 @@
     .search-clear-btn:hover { background: rgba(0,0,0,.08); color: #212529; }
     [data-bs-theme="dark"] .search-clear-btn { color: #adb5bd; }
     [data-bs-theme="dark"] .search-clear-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+
+    /* Tri-state pill toggle (comm modal's Direction field) -- a plain
+       btn-group's ends only round by ~.25rem and its middle button stays
+       square; clipping the whole strip with overflow:hidden inside a
+       fully-rounded container turns it into one continuous pill instead. */
+    .pill-toggle { border-radius: 999px; overflow: hidden; }
+    .pill-toggle .btn { border-radius: 0; }
   </style>
 </head>
 <body>
@@ -1438,11 +1445,17 @@
           </div>
           <div class="col-md-4">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.direction">Direction</label>
-            <select id="commDirection" class="form-select form-select-sm">
-              <option value="" data-i18n="comm_modal.direction_ph">— select direction —</option>
-              <option value="Inbound" data-i18n="comms.direction_inbound">Inbound</option>
-              <option value="Outbound" data-i18n="comms.direction_outbound">Outbound</option>
-            </select>
+            <div class="btn-group w-100 pill-toggle" role="group" aria-label="Direction">
+              <input type="radio" class="btn-check" name="commDirectionRadio" id="commDirNone" autocomplete="off" checked onchange="setCommDirectionPill('')">
+              <label class="btn btn-outline-secondary btn-sm" for="commDirNone" data-i18n-title="comms.direction_unset" title="Direction not set"><i class="bi bi-dash-lg"></i></label>
+
+              <input type="radio" class="btn-check" name="commDirectionRadio" id="commDirIn" autocomplete="off" onchange="setCommDirectionPill('Inbound')">
+              <label class="btn btn-outline-info btn-sm" for="commDirIn" data-i18n-title="comms.direction_inbound" title="Inbound"><i class="bi bi-arrow-down-circle me-1"></i><span data-i18n="comms.direction_inbound">Inbound</span></label>
+
+              <input type="radio" class="btn-check" name="commDirectionRadio" id="commDirOut" autocomplete="off" onchange="setCommDirectionPill('Outbound')">
+              <label class="btn btn-outline-primary btn-sm" for="commDirOut" data-i18n-title="comms.direction_outbound" title="Outbound"><i class="bi bi-arrow-up-circle me-1"></i><span data-i18n="comms.direction_outbound">Outbound</span></label>
+            </div>
+            <input type="hidden" id="commDirection" value="">
           </div>
           <div class="col-12">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.notes">Notes</label>

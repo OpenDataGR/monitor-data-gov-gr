@@ -384,7 +384,6 @@ const TRANSLATIONS = {
     'comm_modal.medium': 'Medium',
     'comm_modal.medium_ph': '— select medium —',
     'comm_modal.direction': 'Direction',
-    'comm_modal.direction_ph': '— select direction —',
     'comm_modal.status_closes_case': 'This will close the case.',
     'comm_modal.notes': 'Notes',
     'comm_modal.notes_ph': 'Any additional context…',
@@ -961,7 +960,6 @@ const TRANSLATIONS = {
     'comm_modal.medium': 'Μέσο',
     'comm_modal.medium_ph': '— επιλογή μέσου —',
     'comm_modal.direction': 'Κατεύθυνση',
-    'comm_modal.direction_ph': '— επιλογή κατεύθυνσης —',
     'comm_modal.status_closes_case': 'Αυτό θα κλείσει την υπόθεση.',
     'comm_modal.notes': 'Σημειώσεις',
     'comm_modal.notes_ph': 'Επιπλέον πλαίσιο…',
@@ -4708,58 +4706,27 @@ function mediumLabel(medium) {
   return KEY[medium] ? t(KEY[medium]) : '';
 }
 // Independent of status/medium -- who this specific entry was actually
-// from. A 3-state switch (unset -> Inbound -> Outbound -> unset) rather
-// than a static icon -- click cycles it in place without opening the full
-// edit modal. Always renders something (even unset), so the control stays
-// discoverable instead of only appearing once a value has been picked.
-const DIRECTION_CYCLE = ['', 'Inbound', 'Outbound'];
+// from. Read-only signal in the list (see the direction pill in the edit
+// modal for actually changing it) -- blank for unset rather than a dash
+// icon, so it doesn't read as a button when there's nothing to show.
 const DIRECTION_META = {
-  '':         { icon: 'bi-dash-circle',            cls: 'text-muted',  key: 'comms.direction_unset' },
-  'Inbound':  { icon: 'bi-arrow-down-circle-fill',  cls: 'text-info',   key: 'comms.direction_inbound' },
-  'Outbound': { icon: 'bi-arrow-up-circle-fill',    cls: 'text-primary', key: 'comms.direction_outbound' },
+  'Inbound':  { icon: 'bi-arrow-down-circle-fill',  cls: 'text-info',    key: 'comms.direction_inbound' },
+  'Outbound': { icon: 'bi-arrow-up-circle-fill',     cls: 'text-primary', key: 'comms.direction_outbound' },
 };
 function directionIcon(c) {
-  const dir = c.direction || '';
-  const meta = DIRECTION_META[dir];
-  return `<i class="bi ${meta.icon} me-1 ${meta.cls}" id="dirsw-${c.id}" style="cursor:pointer" onclick="event.stopPropagation();cycleCommDirection(${c.id},'${dir}')" title="${esc(t(meta.key))}"></i>`;
+  if (!c.direction) return '';
+  const meta = DIRECTION_META[c.direction];
+  return `<i class="bi ${meta.icon} me-1 ${meta.cls}" title="${esc(t(meta.key))}"></i>`;
 }
-function _updateDirectionSwitchDom(id, dir) {
-  const el = document.getElementById('dirsw-' + id);
-  if (!el) return;
-  const meta = DIRECTION_META[dir || ''];
-  el.className = `bi ${meta.icon} me-1 ${meta.cls}`;
-  el.title = t(meta.key);
-}
-// Same Communication can be cached by more than one already-visited view
-// (flat/cases/organization/timeline) at once -- update every cached copy,
-// not just whichever view is currently on screen, so switching views later
-// doesn't show a stale direction.
-function _updateCommDirectionInCaches(id, dir) {
-  const pools = [_commsFlatRows, ..._commsCaseExpandRows.values(), ..._commsOrgExpandRows.values(), ..._commsDayExpandRows.values()];
-  for (const pool of pools) {
-    const found = pool.find(c => c.id === id);
-    if (found) found.direction = dir || '';
-  }
-}
-async function cycleCommDirection(id, cur) {
-  const next = DIRECTION_CYCLE[(DIRECTION_CYCLE.indexOf(cur) + 1) % DIRECTION_CYCLE.length];
-  _updateDirectionSwitchDom(id, next);
-  _updateCommDirectionInCaches(id, next);
-  const el = document.getElementById('dirsw-' + id);
-  if (el) el.setAttribute('onclick', `event.stopPropagation();cycleCommDirection(${id},'${next}')`);
-  try {
-    const resp = await fetch(API_BASE + 'api/communications/' + id, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ direction: next }),
-    });
-    await _fetchJsonOrThrow(resp);
-  } catch (e) {
-    _updateDirectionSwitchDom(id, cur);
-    _updateCommDirectionInCaches(id, cur);
-    if (el) el.setAttribute('onclick', `event.stopPropagation();cycleCommDirection(${id},'${cur}')`);
-    alert(e.message);
-  }
+// Comm modal's Direction field -- a 3-way pill (radio buttons styled as a
+// segmented control) rather than a dropdown. saveComm()/openCommModal() only
+// ever touch the hidden #commDirection input, so this is the one place that
+// also keeps the visible pill's checked state in sync with it.
+const DIRECTION_RADIO_ID = { '': 'commDirNone', 'Inbound': 'commDirIn', 'Outbound': 'commDirOut' };
+function setCommDirectionPill(dir) {
+  show('commDirection').value = dir || '';
+  const id = DIRECTION_RADIO_ID[dir || ''];
+  if (id) show(id).checked = true;
 }
 function autoEmailBadge(c) {
   // Distinguishes a Communication that was auto-captured (or approved) from an
@@ -5744,7 +5711,7 @@ function _commsTimelineItemHtml(c, reveal = false) {
       </div>
       <div class="small mt-1">${esc(c.subject)}</div>
       ${c.contact_person ? `<div class="text-muted" style="font-size:.72rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>` : ''}
-      <div class="text-muted" style="font-size:.72rem" onclick="event.stopPropagation()">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</div>
+      ${(c.medium || c.direction) ? `<div class="text-muted" style="font-size:.72rem">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</div>` : ''}
       ${c.notes ? `<div class="text-muted small mt-1">${esc(c.notes)}</div>` : ''}
     </div>`;
 }
@@ -5847,7 +5814,7 @@ async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefi
     show('commStatus').disabled = c.status === 'Initial Contact';  // the entry that opened the case must stay Initial Contact
     show('commStatusInitialOption').hidden = false;
     show('commMedium').value  = c.medium || '';
-    show('commDirection').value = c.direction || '';
+    setCommDirectionPill(c.direction || '');
     show('commNotes').value   = c.notes;
     _commOrgSet(c.org_name, c.org_title);
     _setOrgLocked(false);
@@ -5865,7 +5832,7 @@ async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefi
     show('commStatusInitialOption').hidden = !!prefillCaseId;  // reserved for the entry that opens a case
     show('commStatus').value  = prefillCaseId ? 'Intermediate Contact' : 'Initial Contact';
     show('commMedium').value  = prefillMedium || '';
-    show('commDirection').value = '';
+    setCommDirectionPill('');
     show('commNotes').value   = '';
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(prefillContactPerson || ''); }
     _setOrgLocked(!!prefillCaseId);  // a follow-up stays tied to its case's organization
