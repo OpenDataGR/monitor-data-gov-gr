@@ -6827,44 +6827,19 @@ def matomo_top_datasets():
         return jsonify({"error": str(exc)}), 503
 
 
-# Lowercased labels (Greek + English) for the EU's standard MDR "data-theme"
-# controlled vocabulary (http://publications.europa.eu/resource/authority/data-theme/*)
-# -- confirmed via a live dataset's own `theme` field (e.g.
-# ".../data-theme/ENVI") that this is what the portal's front-page theme
-# buttons actually filter by. An earlier version of this list tried to
-# derive it from CKAN's own group_list instead, on the assumption that
-# "theme buttons" meant CKAN groups -- but this portal's group_list comes
-# back empty (it doesn't use CKAN groups for theming at all), so that
-# lookup silently returned an empty set forever and nothing was ever
-# filtered. This vocabulary is small, fixed, and standardized across every
-# DCAT-AP-compliant EU open-data portal, so a hardcoded list is both
-# accurate and simpler than fetching it -- no cache/network-failure
-# handling needed for something that doesn't change.
-_CKAN_THEME_TITLES = {
-    label.strip().lower()
-    for pair in (
-        ("agriculture, fisheries, forestry and food", "γεωργία, αλιεία, δασοκομία και τρόφιμα"),
-        ("economy and finance", "οικονομία και χρηματοδότηση"),
-        ("education, culture and sport", "εκπαίδευση, πολιτισμός και αθλητισμός"),
-        ("energy", "ενέργεια"),
-        ("environment", "περιβάλλον"),
-        ("government and public sector", "κυβέρνηση και δημόσιος τομέας"),
-        ("health", "υγεία"),
-        ("international issues", "διεθνή θέματα"),
-        ("justice, legal system and public safety", "δικαιοσύνη, νομικό σύστημα και δημόσια ασφάλεια"),
-        ("regions and cities", "περιφέρειες και πόλεις"),
-        ("population and society", "πληθυσμός και κοινωνία"),
-        ("science and technology", "επιστήμη και τεχνολογία"),
-        ("transport", "μεταφορές"),
-    )
-    for label in pair
-}
-
-def _ckan_theme_titles():
-    """See _CKAN_THEME_TITLES's comment -- kept as a function (rather than
-    inlining the constant at the call site) so Top Searches' filter doesn't
-    care whether the list is hardcoded or fetched."""
-    return _CKAN_THEME_TITLES
+# The portal's front-page theme buttons (Health, Environment, etc.) don't
+# fire a real search -- they build a CKAN field-scoped query literally
+# shaped like `theme:*ENVI*` (a wildcard match against the EU MDR
+# "data-theme" controlled vocabulary code), and Matomo logs that raw query
+# string as a site-search keyword, indistinguishable in shape from someone
+# actually typing a search. Confirmed against the live Matomo dashboard:
+# every one of the 13 EU data-theme codes (AGRI/ECON/EDUC/ENER/ENVI/GOVE/
+# HEAL/INTR/JUST/REGI/SOCI/TECH/TRAN) shows up as exactly `theme:*CODE*`,
+# nothing else. An earlier version of this filter tried to match against
+# human-readable theme labels instead (first guessing CKAN group names,
+# then EU vocabulary translations) -- both wrong, since the logged keyword
+# was never a label at all, just the literal query syntax.
+_THEME_SEARCH_RE = re.compile(r"^theme:\*[a-z]+\*$", re.IGNORECASE)
 
 
 @app.route("/api/matomo/top-searches")
@@ -6874,7 +6849,6 @@ def matomo_top_searches():
     limit = min(int(freq.args.get("limit", 20)), 100)
     days, start, end = _matomo_resolve_range()
     try:
-        themes = _ckan_theme_titles()
         # Fetch a bigger pool than requested -- filtering out theme-button
         # hits below shrinks the list, and without this a page dominated by
         # themes could come back with fewer than `limit` real searches.
@@ -6883,7 +6857,7 @@ def matomo_top_searches():
         result = []
         for item in items:
             keyword = item.get("label", "")
-            if keyword.strip().lower() in themes:
+            if _THEME_SEARCH_RE.match(keyword.strip()):
                 continue
             result.append({
                 "keyword": keyword,
