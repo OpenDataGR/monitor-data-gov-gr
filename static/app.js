@@ -4736,28 +4736,33 @@ function _applyDirectionSwitchVisual(el, dir) {
   label.textContent = t(key);
 }
 function setCommDirectionPill(dir) {
-  dir = dir || '';
-  show('commDirection').value = dir;
-  const el = show('commDirectionSwitch');
-  el.dataset.heading = 'in';  // reset: next click from unset always heads to Inbound first
-  _applyDirectionSwitchVisual(el, dir);
+  show('commDirection').value = dir || '';
+  _applyDirectionSwitchVisual(show('commDirectionSwitch'), dir || '');
 }
-// A center-off rocker, not a plain 3-way cycle: leaving either end always
-// bounces back through the middle (Inbound -> unset -> Outbound -> unset ->
-// Inbound -> ...), so which extreme a click from the middle lands on
-// depends on which side it last came from -- data-heading is that one bit
-// of memory (meaningless at the extremes themselves, where the next hop is
-// always back to the middle regardless).
-function cycleCommDirectionPill() {
-  const el = show('commDirectionSwitch');
-  const cur = el.dataset.state || '';
-  let next, heading = el.dataset.heading || 'in';
-  if (cur === 'Inbound')       { next = ''; heading = 'out'; }
-  else if (cur === 'Outbound') { next = ''; heading = 'in'; }
-  else                         { next = heading === 'out' ? 'Outbound' : 'Inbound'; }
+const DIRECTION_ORDER = ['Inbound', '', 'Outbound'];
+// Sets whichever of the 3 positions was actually clicked -- left third is
+// Inbound, middle is unset, right third is Outbound -- rather than cycling
+// through them regardless of where the click landed.
+function clickDirectionSwitch(ev) {
+  const el = ev.currentTarget;
+  const rect = el.getBoundingClientRect();
+  const frac = (ev.clientX - rect.left) / rect.width;
+  const next = frac < 1 / 3 ? 'Inbound' : frac < 2 / 3 ? '' : 'Outbound';
   show('commDirection').value = next;
-  el.dataset.heading = heading;
   _applyDirectionSwitchVisual(el, next);
+}
+// Keyboard equivalent, since arrow keys have no "click position" -- Left/
+// Right move one position at a time, Enter/Space cycles forward.
+function keyDirectionSwitch(ev) {
+  let idx = DIRECTION_ORDER.indexOf(show('commDirectionSwitch').dataset.state || '');
+  if (ev.key === 'ArrowLeft') idx = Math.max(0, idx - 1);
+  else if (ev.key === 'ArrowRight') idx = Math.min(DIRECTION_ORDER.length - 1, idx + 1);
+  else if (ev.key === 'Enter' || ev.key === ' ') idx = (idx + 1) % DIRECTION_ORDER.length;
+  else return;
+  ev.preventDefault();
+  const next = DIRECTION_ORDER[idx];
+  show('commDirection').value = next;
+  _applyDirectionSwitchVisual(show('commDirectionSwitch'), next);
 }
 function autoEmailBadge(c) {
   // Distinguishes a Communication that was auto-captured (or approved) from an

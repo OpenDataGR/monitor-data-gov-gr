@@ -285,34 +285,33 @@
     [data-bs-theme="dark"] .search-clear-btn { color: #adb5bd; }
     [data-bs-theme="dark"] .search-clear-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
 
-    /* Direction field's 3-position toggle switch (comm modal) -- a single
-       sliding knob (Inbound/unset/Outbound), wider than a normal 2-state
-       switch to fit a center position rather than scaled up in every
-       direction. The current state is spelled out in the text label next
-       to it, not on the switch itself. */
+    /* Direction field's 3-position toggle switch (comm modal) -- click
+       directly sets whichever third was clicked (left=Inbound, middle=
+       unset, right=Outbound) rather than cycling regardless of where the
+       click landed. Track stays a fixed neutral color; the knob itself is
+       the red/gray/green signal. The current state is also spelled out in
+       the text label next to it, not on the switch itself. */
     .direction-switch {
       position: relative; flex: none;
       width: 70px; height: 28px;
       border-radius: 999px;
       cursor: pointer;
-      background: #ced4da;
-      transition: background-color .25s ease;
+      background: #e9ecef;
     }
     .direction-switch:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
     .direction-switch-knob {
       position: absolute; top: 3px; left: 3px;
       width: 22px; height: 22px;
       border-radius: 50%;
-      background: #fff;
+      background: #adb5bd;
       box-shadow: 0 1px 3px rgba(0,0,0,.35);
-      transition: transform .25s ease;
+      transition: transform .25s ease, background-color .25s ease;
     }
-    .direction-switch[data-state="Inbound"] { background: var(--bs-info); }
-    .direction-switch[data-state="Inbound"] .direction-switch-knob { transform: translateX(0); }
-    .direction-switch[data-state="Outbound"] { background: var(--bs-primary); }
-    .direction-switch[data-state="Outbound"] .direction-switch-knob { transform: translateX(42px); }
+    .direction-switch[data-state="Inbound"] .direction-switch-knob { transform: translateX(0); background: var(--bs-danger); }
+    .direction-switch[data-state="Outbound"] .direction-switch-knob { transform: translateX(42px); background: var(--bs-success); }
     .direction-switch:not([data-state="Inbound"]):not([data-state="Outbound"]) .direction-switch-knob { transform: translateX(21px); }
-    [data-bs-theme="dark"] .direction-switch { background: #495057; }
+    [data-bs-theme="dark"] .direction-switch { background: #343a40; }
+    [data-bs-theme="dark"] .direction-switch-knob { background: #6c757d; }
   </style>
 </head>
 <body>
@@ -1468,10 +1467,10 @@
           <div class="col-md-4">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.direction">Direction</label>
             <div class="d-flex align-items-center gap-2" style="height:calc(1.5em + .5rem + 2px)">
-              <div class="direction-switch" id="commDirectionSwitch" data-state="" data-heading="in"
+              <div class="direction-switch" id="commDirectionSwitch" data-state=""
                    role="button" tabindex="0" aria-label="Direction"
-                   onclick="cycleCommDirectionPill()"
-                   onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();cycleCommDirectionPill();}"
+                   onclick="clickDirectionSwitch(event)"
+                   onkeydown="keyDirectionSwitch(event)"
                    data-i18n-title="comms.direction_unset" title="Direction not set">
                 <div class="direction-switch-knob"></div>
               </div>
