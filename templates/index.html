@@ -285,12 +285,34 @@
     [data-bs-theme="dark"] .search-clear-btn { color: #adb5bd; }
     [data-bs-theme="dark"] .search-clear-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
 
-    /* Tri-state pill toggle (comm modal's Direction field) -- a plain
-       btn-group's ends only round by ~.25rem and its middle button stays
-       square; clipping the whole strip with overflow:hidden inside a
-       fully-rounded container turns it into one continuous pill instead. */
-    .pill-toggle { border-radius: 999px; overflow: hidden; }
-    .pill-toggle .btn { border-radius: 0; }
+    /* Direction field's 3-position toggle switch (comm modal) -- a single
+       sliding knob (Inbound/unset/Outbound), wider than a normal 2-state
+       switch to fit a center position rather than scaled up in every
+       direction. The current state is spelled out in the text label next
+       to it, not on the switch itself. */
+    .direction-switch {
+      position: relative; flex: none;
+      width: 70px; height: 28px;
+      border-radius: 999px;
+      cursor: pointer;
+      background: #ced4da;
+      transition: background-color .25s ease;
+    }
+    .direction-switch:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+    .direction-switch-knob {
+      position: absolute; top: 3px; left: 3px;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,.35);
+      transition: transform .25s ease;
+    }
+    .direction-switch[data-state="Inbound"] { background: var(--bs-info); }
+    .direction-switch[data-state="Inbound"] .direction-switch-knob { transform: translateX(0); }
+    .direction-switch[data-state="Outbound"] { background: var(--bs-primary); }
+    .direction-switch[data-state="Outbound"] .direction-switch-knob { transform: translateX(42px); }
+    .direction-switch:not([data-state="Inbound"]):not([data-state="Outbound"]) .direction-switch-knob { transform: translateX(21px); }
+    [data-bs-theme="dark"] .direction-switch { background: #495057; }
   </style>
 </head>
 <body>
@@ -1445,15 +1467,15 @@
           </div>
           <div class="col-md-4">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.direction">Direction</label>
-            <div class="btn-group w-100 pill-toggle" role="group" aria-label="Direction">
-              <input type="radio" class="btn-check" name="commDirectionRadio" id="commDirNone" autocomplete="off" checked onchange="setCommDirectionPill('')">
-              <label class="btn btn-outline-secondary btn-sm" for="commDirNone" data-i18n-title="comms.direction_unset" title="Direction not set"><i class="bi bi-dash-lg"></i></label>
-
-              <input type="radio" class="btn-check" name="commDirectionRadio" id="commDirIn" autocomplete="off" onchange="setCommDirectionPill('Inbound')">
-              <label class="btn btn-outline-info btn-sm" for="commDirIn" data-i18n-title="comms.direction_inbound" title="Inbound"><i class="bi bi-arrow-down-circle me-1"></i><span data-i18n="comms.direction_inbound">Inbound</span></label>
-
-              <input type="radio" class="btn-check" name="commDirectionRadio" id="commDirOut" autocomplete="off" onchange="setCommDirectionPill('Outbound')">
-              <label class="btn btn-outline-primary btn-sm" for="commDirOut" data-i18n-title="comms.direction_outbound" title="Outbound"><i class="bi bi-arrow-up-circle me-1"></i><span data-i18n="comms.direction_outbound">Outbound</span></label>
+            <div class="d-flex align-items-center gap-2" style="height:calc(1.5em + .5rem + 2px)">
+              <div class="direction-switch" id="commDirectionSwitch" data-state="" data-heading="in"
+                   role="button" tabindex="0" aria-label="Direction"
+                   onclick="cycleCommDirectionPill()"
+                   onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();cycleCommDirectionPill();}"
+                   data-i18n-title="comms.direction_unset" title="Direction not set">
+                <div class="direction-switch-knob"></div>
+              </div>
+              <span class="small text-muted" id="commDirectionSwitchLabel" data-i18n="comms.direction_unset_short">Not set</span>
             </div>
             <input type="hidden" id="commDirection" value="">
           </div>

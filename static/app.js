@@ -333,6 +333,7 @@ const TRANSLATIONS = {
     'comms.direction_inbound': 'Inbound',
     'comms.direction_outbound': 'Outbound',
     'comms.direction_unset': 'Direction not set (click to cycle)',
+    'comms.direction_unset_short': 'Not set',
     'comms.case_open': 'Open',
     'comms.case_closed': 'Closed',
     'comms.open_cases': 'Open Cases',
@@ -909,6 +910,7 @@ const TRANSLATIONS = {
     'comms.direction_inbound': 'Εισερχόμενη',
     'comms.direction_outbound': 'Εξερχόμενη',
     'comms.direction_unset': 'Χωρίς κατεύθυνση (κλικ για εναλλαγή)',
+    'comms.direction_unset_short': 'Χωρίς κατεύθυνση',
     'comms.case_open': 'Ανοιχτή',
     'comms.case_closed': 'Κλειστή',
     'comms.open_cases': 'Ανοιχτές Υποθέσεις',
@@ -4718,15 +4720,44 @@ function directionIcon(c) {
   const meta = DIRECTION_META[c.direction];
   return `<i class="bi ${meta.icon} me-1 ${meta.cls}" title="${esc(t(meta.key))}"></i>`;
 }
-// Comm modal's Direction field -- a 3-way pill (radio buttons styled as a
-// segmented control) rather than a dropdown. saveComm()/openCommModal() only
-// ever touch the hidden #commDirection input, so this is the one place that
-// also keeps the visible pill's checked state in sync with it.
-const DIRECTION_RADIO_ID = { '': 'commDirNone', 'Inbound': 'commDirIn', 'Outbound': 'commDirOut' };
+// Comm modal's Direction field -- a single sliding 3-position switch rather
+// than a dropdown. saveComm() only ever reads the hidden #commDirection
+// input; everything here just keeps the switch's visual state (and the text
+// label next to it) in sync with that same value.
+const DIRECTION_LABEL_KEY = { '': 'comms.direction_unset_short', 'Inbound': 'comms.direction_inbound', 'Outbound': 'comms.direction_outbound' };
+function _applyDirectionSwitchVisual(el, dir) {
+  el.dataset.state = dir;
+  const key = DIRECTION_LABEL_KEY[dir];
+  const titleKey = dir ? key : 'comms.direction_unset';
+  el.setAttribute('data-i18n-title', titleKey);
+  el.title = t(titleKey);
+  const label = show('commDirectionSwitchLabel');
+  label.setAttribute('data-i18n', key);
+  label.textContent = t(key);
+}
 function setCommDirectionPill(dir) {
-  show('commDirection').value = dir || '';
-  const id = DIRECTION_RADIO_ID[dir || ''];
-  if (id) show(id).checked = true;
+  dir = dir || '';
+  show('commDirection').value = dir;
+  const el = show('commDirectionSwitch');
+  el.dataset.heading = 'in';  // reset: next click from unset always heads to Inbound first
+  _applyDirectionSwitchVisual(el, dir);
+}
+// A center-off rocker, not a plain 3-way cycle: leaving either end always
+// bounces back through the middle (Inbound -> unset -> Outbound -> unset ->
+// Inbound -> ...), so which extreme a click from the middle lands on
+// depends on which side it last came from -- data-heading is that one bit
+// of memory (meaningless at the extremes themselves, where the next hop is
+// always back to the middle regardless).
+function cycleCommDirectionPill() {
+  const el = show('commDirectionSwitch');
+  const cur = el.dataset.state || '';
+  let next, heading = el.dataset.heading || 'in';
+  if (cur === 'Inbound')       { next = ''; heading = 'out'; }
+  else if (cur === 'Outbound') { next = ''; heading = 'in'; }
+  else                         { next = heading === 'out' ? 'Outbound' : 'Inbound'; }
+  show('commDirection').value = next;
+  el.dataset.heading = heading;
+  _applyDirectionSwitchVisual(el, next);
 }
 function autoEmailBadge(c) {
   // Distinguishes a Communication that was auto-captured (or approved) from an
