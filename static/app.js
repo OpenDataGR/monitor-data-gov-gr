@@ -4712,13 +4712,13 @@ function mediumLabel(medium) {
 // modal for actually changing it) -- blank for unset rather than a dash
 // icon, so it doesn't read as a button when there's nothing to show.
 const DIRECTION_META = {
-  'Inbound':  { icon: 'bi-arrow-down-circle-fill',  cls: 'text-info',    key: 'comms.direction_inbound' },
-  'Outbound': { icon: 'bi-arrow-up-circle-fill',     cls: 'text-primary', key: 'comms.direction_outbound' },
+  'Inbound':  { icon: 'bi-arrow-down', cls: 'text-danger',  key: 'comms.direction_inbound' },
+  'Outbound': { icon: 'bi-arrow-up',   cls: 'text-success', key: 'comms.direction_outbound' },
 };
 function directionIcon(c) {
   if (!c.direction) return '';
   const meta = DIRECTION_META[c.direction];
-  return `<i class="bi ${meta.icon} me-1 ${meta.cls}" title="${esc(t(meta.key))}"></i>`;
+  return `<i class="bi ${meta.icon} me-1 ${meta.cls}" style="font-size:1.2em" title="${esc(t(meta.key))}"></i>`;
 }
 // Comm modal's Direction field -- a single sliding 3-position switch rather
 // than a dropdown. saveComm() only ever reads the hidden #commDirection
