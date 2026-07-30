@@ -332,6 +332,7 @@ const TRANSLATIONS = {
     'comms.medium_other': 'Other',
     'comms.direction_inbound': 'Inbound',
     'comms.direction_outbound': 'Outbound',
+    'comms.direction_unset': 'Direction not set (click to cycle)',
     'comms.case_open': 'Open',
     'comms.case_closed': 'Closed',
     'comms.open_cases': 'Open Cases',
@@ -908,6 +909,7 @@ const TRANSLATIONS = {
     'comms.medium_other': 'Άλλο',
     'comms.direction_inbound': 'Εισερχόμενη',
     'comms.direction_outbound': 'Εξερχόμενη',
+    'comms.direction_unset': 'Χωρίς κατεύθυνση (κλικ για εναλλαγή)',
     'comms.case_open': 'Ανοιχτή',
     'comms.case_closed': 'Κλειστή',
     'comms.open_cases': 'Ανοιχτές Υποθέσεις',
@@ -4705,13 +4707,59 @@ function mediumLabel(medium) {
   const KEY = { "Telephone": "comms.medium_telephone", "Email": "comms.medium_email", "In Person": "comms.medium_in_person", "Other": "comms.medium_other" };
   return KEY[medium] ? t(KEY[medium]) : '';
 }
+// Independent of status/medium -- who this specific entry was actually
+// from. A 3-state switch (unset -> Inbound -> Outbound -> unset) rather
+// than a static icon -- click cycles it in place without opening the full
+// edit modal. Always renders something (even unset), so the control stays
+// discoverable instead of only appearing once a value has been picked.
+const DIRECTION_CYCLE = ['', 'Inbound', 'Outbound'];
+const DIRECTION_META = {
+  '':         { icon: 'bi-dash-circle',            cls: 'text-muted',  key: 'comms.direction_unset' },
+  'Inbound':  { icon: 'bi-arrow-down-circle-fill',  cls: 'text-info',   key: 'comms.direction_inbound' },
+  'Outbound': { icon: 'bi-arrow-up-circle-fill',    cls: 'text-primary', key: 'comms.direction_outbound' },
+};
 function directionIcon(c) {
-  // Independent of status/medium -- who this specific entry was actually
-  // from. Blank for pre-existing rows that predate this field (left unset
-  // rather than guessed), so no icon at all rather than a wrong one.
-  if (!c.direction) return '';
-  const isInbound = c.direction === 'Inbound';
-  return `<i class="bi ${isInbound ? 'bi-arrow-down-circle-fill' : 'bi-arrow-up-circle-fill'} me-1 ${isInbound ? 'text-info' : 'text-primary'}" title="${esc(t(isInbound ? 'comms.direction_inbound' : 'comms.direction_outbound'))}"></i>`;
+  const dir = c.direction || '';
+  const meta = DIRECTION_META[dir];
+  return `<i class="bi ${meta.icon} me-1 ${meta.cls}" id="dirsw-${c.id}" style="cursor:pointer" onclick="event.stopPropagation();cycleCommDirection(${c.id},'${dir}')" title="${esc(t(meta.key))}"></i>`;
+}
+function _updateDirectionSwitchDom(id, dir) {
+  const el = document.getElementById('dirsw-' + id);
+  if (!el) return;
+  const meta = DIRECTION_META[dir || ''];
+  el.className = `bi ${meta.icon} me-1 ${meta.cls}`;
+  el.title = t(meta.key);
+}
+// Same Communication can be cached by more than one already-visited view
+// (flat/cases/organization/timeline) at once -- update every cached copy,
+// not just whichever view is currently on screen, so switching views later
+// doesn't show a stale direction.
+function _updateCommDirectionInCaches(id, dir) {
+  const pools = [_commsFlatRows, ..._commsCaseExpandRows.values(), ..._commsOrgExpandRows.values(), ..._commsDayExpandRows.values()];
+  for (const pool of pools) {
+    const found = pool.find(c => c.id === id);
+    if (found) found.direction = dir || '';
+  }
+}
+async function cycleCommDirection(id, cur) {
+  const next = DIRECTION_CYCLE[(DIRECTION_CYCLE.indexOf(cur) + 1) % DIRECTION_CYCLE.length];
+  _updateDirectionSwitchDom(id, next);
+  _updateCommDirectionInCaches(id, next);
+  const el = document.getElementById('dirsw-' + id);
+  if (el) el.setAttribute('onclick', `event.stopPropagation();cycleCommDirection(${id},'${next}')`);
+  try {
+    const resp = await fetch(API_BASE + 'api/communications/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direction: next }),
+    });
+    await _fetchJsonOrThrow(resp);
+  } catch (e) {
+    _updateDirectionSwitchDom(id, cur);
+    _updateCommDirectionInCaches(id, cur);
+    if (el) el.setAttribute('onclick', `event.stopPropagation();cycleCommDirection(${id},'${cur}')`);
+    alert(e.message);
+  }
 }
 function autoEmailBadge(c) {
   // Distinguishes a Communication that was auto-captured (or approved) from an
@@ -5097,14 +5145,14 @@ function collapseAllComms() {
 function _commsFlatRowHtml(c) {
   const statusLabel = _commsStatusLabels();
   return `
-    <tr>
+    <tr onclick="openCommModal(${c.id})" style="cursor:pointer">
       <td class="text-muted small mono text-nowrap">${esc(c.contact_date)}</td>
       <td class="fw-semibold small">${esc(c.org_title)}</td>
       <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
       <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
       <td class="small text-muted">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
       <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
-      <td class="text-end text-nowrap">
+      <td class="text-end text-nowrap" onclick="event.stopPropagation()">
         <div class="d-flex gap-1 justify-content-end">
           ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
           <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
@@ -5254,13 +5302,13 @@ function _renderCommsFlat(rows, append) {
 function _commsHistRowHtml(c, showCaseBadge, reveal = false) {
   const statusLabel = _commsStatusLabels();
   return `
-    <tr class="comm-hist-row${reveal ? ' just-revealed' : ''}">
+    <tr class="comm-hist-row${reveal ? ' just-revealed' : ''}" onclick="openCommModal(${c.id})" style="cursor:pointer">
       <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
       <td class="small">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${contactPersonHtml(c)}</td>
       <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
       <td class="small text-muted">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
       <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
-      <td class="text-end text-nowrap">
+      <td class="text-end text-nowrap" onclick="event.stopPropagation()">
         <div class="d-flex gap-1 justify-content-end">
           ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
           <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
@@ -5676,7 +5724,7 @@ function _commsDayLabel(iso) {
 function _commsTimelineItemHtml(c, reveal = false) {
   const statusLabel = _commsStatusLabels();
   return `
-    <div class="comm-timeline-item${reveal ? ' just-revealed' : ''}">
+    <div class="comm-timeline-item${reveal ? ' just-revealed' : ''}" onclick="openCommModal(${c.id})" style="cursor:pointer">
       <span class="comm-dot" style="background:${COMM_STATUS_DOT[c.status] || '#6c757d'}"></span>
       <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
         <div>
@@ -5686,7 +5734,7 @@ function _commsTimelineItemHtml(c, reveal = false) {
           </span>
           ${caseBadgeHtml(c, 'ms-1')}
         </div>
-        <div class="text-end text-nowrap">
+        <div class="text-end text-nowrap" onclick="event.stopPropagation()">
           <div class="d-flex gap-1 justify-content-end">
             ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
             <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
@@ -5696,7 +5744,7 @@ function _commsTimelineItemHtml(c, reveal = false) {
       </div>
       <div class="small mt-1">${esc(c.subject)}</div>
       ${c.contact_person ? `<div class="text-muted" style="font-size:.72rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>` : ''}
-      ${(c.medium || c.direction) ? `<div class="text-muted" style="font-size:.72rem">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</div>` : ''}
+      <div class="text-muted" style="font-size:.72rem" onclick="event.stopPropagation()">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</div>
       ${c.notes ? `<div class="text-muted small mt-1">${esc(c.notes)}</div>` : ''}
     </div>`;
 }
