@@ -330,6 +330,8 @@ const TRANSLATIONS = {
     'comms.medium_email': 'Email',
     'comms.medium_in_person': 'In Person',
     'comms.medium_other': 'Other',
+    'comms.direction_inbound': 'Inbound',
+    'comms.direction_outbound': 'Outbound',
     'comms.case_open': 'Open',
     'comms.case_closed': 'Closed',
     'comms.open_cases': 'Open Cases',
@@ -380,6 +382,8 @@ const TRANSLATIONS = {
     'comm_modal.status': 'Status',
     'comm_modal.medium': 'Medium',
     'comm_modal.medium_ph': '— select medium —',
+    'comm_modal.direction': 'Direction',
+    'comm_modal.direction_ph': '— select direction —',
     'comm_modal.status_closes_case': 'This will close the case.',
     'comm_modal.notes': 'Notes',
     'comm_modal.notes_ph': 'Any additional context…',
@@ -902,6 +906,8 @@ const TRANSLATIONS = {
     'comms.medium_email': 'Email',
     'comms.medium_in_person': 'Δια Ζώσης',
     'comms.medium_other': 'Άλλο',
+    'comms.direction_inbound': 'Εισερχόμενη',
+    'comms.direction_outbound': 'Εξερχόμενη',
     'comms.case_open': 'Ανοιχτή',
     'comms.case_closed': 'Κλειστή',
     'comms.open_cases': 'Ανοιχτές Υποθέσεις',
@@ -952,6 +958,8 @@ const TRANSLATIONS = {
     'comm_modal.status': 'Κατάσταση',
     'comm_modal.medium': 'Μέσο',
     'comm_modal.medium_ph': '— επιλογή μέσου —',
+    'comm_modal.direction': 'Κατεύθυνση',
+    'comm_modal.direction_ph': '— επιλογή κατεύθυνσης —',
     'comm_modal.status_closes_case': 'Αυτό θα κλείσει την υπόθεση.',
     'comm_modal.notes': 'Σημειώσεις',
     'comm_modal.notes_ph': 'Επιπλέον πλαίσιο…',
@@ -4697,6 +4705,14 @@ function mediumLabel(medium) {
   const KEY = { "Telephone": "comms.medium_telephone", "Email": "comms.medium_email", "In Person": "comms.medium_in_person", "Other": "comms.medium_other" };
   return KEY[medium] ? t(KEY[medium]) : '';
 }
+function directionIcon(c) {
+  // Independent of status/medium -- who this specific entry was actually
+  // from. Blank for pre-existing rows that predate this field (left unset
+  // rather than guessed), so no icon at all rather than a wrong one.
+  if (!c.direction) return '';
+  const isInbound = c.direction === 'Inbound';
+  return `<i class="bi ${isInbound ? 'bi-arrow-down-circle-fill' : 'bi-arrow-up-circle-fill'} me-1 ${isInbound ? 'text-info' : 'text-primary'}" title="${esc(t(isInbound ? 'comms.direction_inbound' : 'comms.direction_outbound'))}"></i>`;
+}
 function autoEmailBadge(c) {
   // Distinguishes a Communication that was auto-captured (or approved) from an
   // inbound email from one logged by hand, even when both have medium=Email.
@@ -5082,7 +5098,7 @@ function _commsFlatRowHtml(c) {
       <td class="fw-semibold small">${esc(c.org_title)}</td>
       <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
       <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-      <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
+      <td class="small text-muted">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
       <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
       <td class="text-end text-nowrap">
         <div class="d-flex gap-1 justify-content-end">
@@ -5238,7 +5254,7 @@ function _commsHistRowHtml(c, showCaseBadge, reveal = false) {
       <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
       <td class="small">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${contactPersonHtml(c)}</td>
       <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-      <td class="small text-muted">${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
+      <td class="small text-muted">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
       <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
       <td class="text-end text-nowrap">
         <div class="d-flex gap-1 justify-content-end">
@@ -5676,7 +5692,7 @@ function _commsTimelineItemHtml(c, reveal = false) {
       </div>
       <div class="small mt-1">${esc(c.subject)}</div>
       ${c.contact_person ? `<div class="text-muted" style="font-size:.72rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>` : ''}
-      ${c.medium ? `<div class="text-muted" style="font-size:.72rem"><i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}${autoEmailBadge(c)}</div>` : ''}
+      ${(c.medium || c.direction) ? `<div class="text-muted" style="font-size:.72rem">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</div>` : ''}
       ${c.notes ? `<div class="text-muted small mt-1">${esc(c.notes)}</div>` : ''}
     </div>`;
 }
@@ -5779,6 +5795,7 @@ async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefi
     show('commStatus').disabled = c.status === 'Initial Contact';  // the entry that opened the case must stay Initial Contact
     show('commStatusInitialOption').hidden = false;
     show('commMedium').value  = c.medium || '';
+    show('commDirection').value = c.direction || '';
     show('commNotes').value   = c.notes;
     _commOrgSet(c.org_name, c.org_title);
     _setOrgLocked(false);
@@ -5796,6 +5813,7 @@ async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefi
     show('commStatusInitialOption').hidden = !!prefillCaseId;  // reserved for the entry that opens a case
     show('commStatus').value  = prefillCaseId ? 'Intermediate Contact' : 'Initial Contact';
     show('commMedium').value  = prefillMedium || '';
+    show('commDirection').value = '';
     show('commNotes').value   = '';
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(prefillContactPerson || ''); }
     _setOrgLocked(!!prefillCaseId);  // a follow-up stays tied to its case's organization
@@ -6015,6 +6033,7 @@ async function saveComm() {
     subject:      show('commSubject').value.trim(),
     status:       show('commStatus').value,
     medium:       show('commMedium').value,
+    direction:    show('commDirection').value,
     notes:        show('commNotes').value.trim(),
     case_id:      show('commCaseId').value || null,
     contact_person: (() => { const s = show('commContact'); return s.value ? s.options[s.selectedIndex].textContent : ''; })(),

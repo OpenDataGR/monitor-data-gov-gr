@@ -309,6 +309,9 @@ if _is_main_process():
         if 'source' not in _comm_cols:
             db.session.execute(text('ALTER TABLE communications ADD COLUMN source VARCHAR(20)'))
             db.session.commit()
+        if 'direction' not in _comm_cols:
+            db.session.execute(text('ALTER TABLE communications ADD COLUMN direction VARCHAR(10)'))
+            db.session.commit()
         if 'case_id' not in _comm_cols:
             db.session.execute(text('ALTER TABLE communications ADD COLUMN case_id INTEGER'))
             db.session.commit()
@@ -3949,8 +3952,9 @@ def organization_detail(org_name):
     return jsonify(result)
 
 
-VALID_STATUSES = {"Initial Contact", "Intermediate Contact", "Positive Response", "Negative Response", "No Response"}
-VALID_MEDIUMS  = {"Telephone", "Email", "In Person", "Other"}
+VALID_STATUSES   = {"Initial Contact", "Intermediate Contact", "Positive Response", "Negative Response", "No Response"}
+VALID_MEDIUMS    = {"Telephone", "Email", "In Person", "Other"}
+VALID_DIRECTIONS = {"Inbound", "Outbound"}
 
 
 def _default_deadline(contact_date_str, days=14):
@@ -4166,6 +4170,9 @@ def communications_create():
     medium = (body.get("medium") or "").strip()
     if medium and medium not in VALID_MEDIUMS:
         return jsonify({"error": f"medium must be one of {sorted(VALID_MEDIUMS)}"}), 400
+    direction = (body.get("direction") or "").strip()
+    if direction and direction not in VALID_DIRECTIONS:
+        return jsonify({"error": f"direction must be one of {sorted(VALID_DIRECTIONS)}"}), 400
     org_title = (body.get("org_title") or "").strip() or None
     deadline  = (body.get("deadline") or "").strip() or None
 
@@ -4201,6 +4208,7 @@ def communications_create():
         notes=(body.get("notes") or "").strip() or None,
         contact_person=(body.get("contact_person") or "").strip() or None,
         medium=medium or None,
+        direction=direction or None,
     )
     db.session.add(comm)
     db.session.commit()
@@ -4243,6 +4251,11 @@ def communications_update(comm_id):
         if medium and medium not in VALID_MEDIUMS:
             return jsonify({"error": f"medium must be one of {sorted(VALID_MEDIUMS)}"}), 400
         comm.medium = medium or None
+    if "direction" in body:
+        direction = (body["direction"] or "").strip()
+        if direction and direction not in VALID_DIRECTIONS:
+            return jsonify({"error": f"direction must be one of {sorted(VALID_DIRECTIONS)}"}), 400
+        comm.direction = direction or None
     if "deadline" in body and comm.case:
         comm.case.deadline = (body["deadline"] or "").strip() or None
     db.session.commit()
@@ -4622,6 +4635,7 @@ def _create_email_communication(inbound: "InboundEmail", case: "Case", contact, 
         contact_person=contact_name or inbound.from_name or None,
         notes=_auto_captured_notes(inbound.body_text or ""),
         source="email",
+        direction="Inbound",  # unambiguous -- this whole path only exists because an email arrived
     )
     db.session.add(comm)
     db.session.flush()

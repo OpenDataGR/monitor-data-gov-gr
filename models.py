@@ -453,6 +453,7 @@ class Communication(db.Model):
     contact_person = db.Column(db.String(200))
     medium         = db.Column(db.String(50))
     source         = db.Column(db.String(20))  # None = logged manually; "email" = auto-captured from an inbound email
+    direction      = db.Column(db.String(10))  # "Inbound" | "Outbound" -- who this specific entry was from, independent of status. Nullable: pre-existing rows are left unset rather than guessed.
 
     def to_dict(self):
         return {
@@ -470,6 +471,7 @@ class Communication(db.Model):
             "contact_person":  self.contact_person or "",
             "medium":          self.medium or "",
             "source":          self.source or "",
+            "direction":       self.direction or "",
         }
 
 class OrgContact(db.Model):
