@@ -5017,9 +5017,13 @@ function _commsSyncView() {
     else _loadCommsDayGroups();
   } else if (!_commsFlatLoaded || stale) {
     loadCommsFlat(false);
-  } else if (!document.querySelector('#commsTable tbody')) {
-    // #commsTable was emptied by the hidden.bs.tab listener while we were on
-    // another tab -- rebuild from the already-fetched cache, no network call.
+  } else {
+    // Either #commsTable was emptied by the hidden.bs.tab listener while we
+    // were on another tab, or it's still showing a DIFFERENT view's markup
+    // (switched to Cases/Grouped/Timeline and back) -- #commsTable is a
+    // shared container for all 4 views, so a `tbody` existing there doesn't
+    // mean it's flat's own. Always rebuild from the already-fetched cache
+    // instead (no network call either way).
     _renderCommsFlat(_commsFlatRows, false);
   }
 }
@@ -5217,7 +5221,7 @@ function _renderCommsFlat(rows, append) {
     const thS = (col, label, cls = '') =>
       `<th class="${cls}" style="cursor:pointer;user-select:none;white-space:nowrap" onclick="sortComms('${col}')">${label}${commsArrow(col)}</th>`;
     show('commsTable').innerHTML = `
-      <table class="table table-hover table-sm align-middle mb-0">
+      <table class="table table-hover table-sm align-middle mb-0" style="table-layout:fixed">
         <colgroup><col style="width:110px"><col><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
         <thead><tr>
           ${thS('contact_date', t('comms.col_date'), 'text-nowrap')}
@@ -5267,7 +5271,7 @@ function _commsHistRowHtml(c, showCaseBadge, reveal = false) {
 }
 function _commsGroupTableShell(rows) {
   return `
-    <table class="table table-hover table-sm align-middle mb-0">
+    <table class="table table-hover table-sm align-middle mb-0" style="table-layout:fixed">
       <colgroup><col style="width:110px"><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
       <thead><tr>
         <th>${t('comms.col_date')}</th>
