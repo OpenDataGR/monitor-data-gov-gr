@@ -4753,7 +4753,8 @@ def _create_email_communication(inbound: "InboundEmail", case: "Case", contact, 
         direction=direction,  # see _detect_email_direction -- None (left unset) when there's no named sender to check
     )
     db.session.add(comm)
-    db.session.flush()
+    db.session.flush()  # need comm.id before linking the contact below
+    _sync_communication_contacts(comm, [contact.id] if contact else [])
     return comm
 
 
