@@ -541,7 +541,7 @@ class InboundEmail(db.Model):
     detected_name  = db.Column(db.String(200))  # display-only hint: best-guess correspondent name/email found in a
     detected_email = db.Column(db.String(320))  # quoted thread when nothing resolved to a registered contact
     status         = db.Column(db.String(20), nullable=False, default="pending_review")  # attached | pending_review | dismissed
-    reason         = db.Column(db.String(50))  # why pending: no_contact_match | multiple_contacts_match | no_open_case | multiple_open_cases | communication_deleted | processing_error
+    reason         = db.Column(db.String(50))  # why pending/dismissed: no_contact_match | multiple_contacts_match | no_open_case | multiple_open_cases | communication_deleted | processing_error | not_listening_address
     communication_id = db.Column(db.Integer, db.ForeignKey("communications.id"))
 
     matched_contact = db.relationship("OrgContact")
@@ -584,6 +584,29 @@ class ExcludedEmailAddress(db.Model):
     is a real case correspondent. A bare domain (no "@") excludes every
     address on it; a full address excludes just that one."""
     __tablename__ = "excluded_email_addresses"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    value      = db.Column(db.String(320), nullable=False, unique=True)  # "user@domain.tld" or "domain.tld"
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def to_dict(self):
+        return {
+            "id":         self.id,
+            "value":      self.value,
+            "is_domain":  "@" not in self.value,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class InboundListenAddress(db.Model):
+    """Restricts which recipient address(es) the inbound webhook actually
+    processes -- e.g. SendGrid's Inbound Parse is configured per (sub)domain,
+    so it accepts mail sent to *any* address on that domain by default, not
+    just the one intentionally in use. Empty table (the default) means
+    listen to everything, same as before this existed -- entries here are an
+    opt-in narrowing, not a requirement. Same "bare domain vs full address"
+    shape as ExcludedEmailAddress."""
+    __tablename__ = "inbound_listen_addresses"
 
     id         = db.Column(db.Integer, primary_key=True)
     value      = db.Column(db.String(320), nullable=False, unique=True)  # "user@domain.tld" or "domain.tld"

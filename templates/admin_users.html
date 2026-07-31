@@ -325,6 +325,27 @@
             </div>
 
             <div class="card p-4 mb-4">
+              <h6 class="fw-semibold mb-1"><i class="bi bi-funnel me-2"></i><span data-i18n="admin.listen_title">Listening Addresses</span></h6>
+              <p class="text-muted small mb-3" data-i18n="admin.listen_desc">If set, only emails addressed (To/Cc) to one of these is processed -- anything else is recorded as dismissed instead of being matched. Leave empty to process everything sent to the webhook, regardless of recipient (the default). A bare domain (no @) allows every address on it.</p>
+              <form class="row g-2 align-items-end mb-3" onsubmit="return addListenAddress(event)">
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1" data-i18n="admin.listen_value_label">Address or domain</label>
+                  <input type="text" id="listenAddressValue" class="form-control form-control-sm" placeholder="user@domain.gr or domain.gr" required>
+                </div>
+                <div class="col-sm-3">
+                  <button type="submit" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-plus-lg me-1"></i><span data-i18n="admin.add">Add</span>
+                  </button>
+                </div>
+              </form>
+              <div id="listenAddressError" class="alert alert-danger small mb-3 d-none"></div>
+              <table class="table table-sm mb-0">
+                <thead><tr><th data-i18n="admin.value">Value</th><th data-i18n="admin.type">Type</th><th></th></tr></thead>
+                <tbody id="listenAddressesBody"><tr><td colspan="3" class="text-muted small" data-i18n="admin.loading">Loading…</td></tr></tbody>
+              </table>
+            </div>
+
+            <div class="card p-4 mb-4">
               <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-x me-2"></i><span data-i18n="admin.excluded_title">Inbound Email Matching — Excluded Senders</span></h6>
               <p class="text-muted small mb-3" data-i18n="admin.excluded_desc">Addresses or domains listed here are never treated as the "contact" for an auto-captured or forwarded email — useful for staff mailboxes and internal domains that would otherwise get mistaken for the external correspondent. A bare domain (no @) excludes every address on it.</p>
               <form class="row g-2 align-items-end mb-3" onsubmit="return addExcludedEmail(event)">
@@ -613,6 +634,10 @@
         'admin.email_delivery_desc': 'Send a test email to confirm the SendGrid configuration works end-to-end.',
         'admin.recipient': 'Recipient', 'admin.send_test_email': 'Send Test Email',
         'admin.test_email_sent': 'Test email sent to {email}.',
+        'admin.listen_title': 'Listening Addresses',
+        'admin.listen_desc': "If set, only emails addressed (To/Cc) to one of these is processed -- anything else is recorded as dismissed instead of being matched. Leave empty to process everything sent to the webhook, regardless of recipient (the default). A bare domain (no @) allows every address on it.",
+        'admin.listen_value_label': 'Address or domain',
+        'admin.confirm_remove_listen_address': 'Remove this listening address?',
         'admin.excluded_title': 'Inbound Email Matching — Excluded Senders',
         'admin.excluded_desc': 'Addresses or domains listed here are never treated as the "contact" for an auto-captured or forwarded email — useful for staff mailboxes and internal domains that would otherwise get mistaken for the external correspondent. A bare domain (no @) excludes every address on it.',
         'admin.excluded_value_label': 'Address or domain', 'admin.add': 'Add',
@@ -722,6 +747,10 @@
         'admin.email_delivery_desc': 'Στείλτε ένα δοκιμαστικό email για να επιβεβαιώσετε ότι η ρύθμιση SendGrid λειτουργεί σωστά από άκρη σε άκρη.',
         'admin.recipient': 'Παραλήπτης', 'admin.send_test_email': 'Αποστολή Δοκιμαστικού Email',
         'admin.test_email_sent': 'Το δοκιμαστικό email στάλθηκε στο {email}.',
+        'admin.listen_title': 'Διευθύνσεις Παρακολούθησης',
+        'admin.listen_desc': 'Αν οριστούν, επεξεργάζονται μόνο τα email που απευθύνονται (Προς/Κοιν.) σε μία από αυτές -- οτιδήποτε άλλο καταγράφεται ως απορριφθέν αντί να αντιστοιχιστεί. Αφήστε το κενό για επεξεργασία όλων όσων στέλνονται στο webhook, ανεξαρτήτως παραλήπτη (προεπιλογή). Ένα domain χωρίς @ επιτρέπει κάθε διεύθυνση σε αυτό.',
+        'admin.listen_value_label': 'Διεύθυνση ή domain',
+        'admin.confirm_remove_listen_address': 'Αφαίρεση αυτής της διεύθυνσης παρακολούθησης;',
         'admin.excluded_title': 'Αντιστοίχιση Εισερχόμενων Email — Εξαιρούμενοι Αποστολείς',
         'admin.excluded_desc': 'Οι διευθύνσεις ή τα domain που αναφέρονται εδώ δεν θεωρούνται ποτέ η "επαφή" για ένα αυτόματα καταγεγραμμένο ή προωθημένο email — χρήσιμο για mailbox προσωπικού και εσωτερικά domain που διαφορετικά θα μπερδεύονταν με τον εξωτερικό ανταποκριτή. Ένα domain χωρίς @ εξαιρεί κάθε διεύθυνση σε αυτό.',
         'admin.excluded_value_label': 'Διεύθυνση ή domain', 'admin.add': 'Προσθήκη',
@@ -823,6 +852,7 @@
       if (_usersCache.length) loadUsers();
       if (_massEmailHistoryCache.length) loadMassEmailHistory();
       loadExcludedEmails();
+      loadListenAddresses();
       loadParsedEmails();
     }
 
@@ -1336,6 +1366,55 @@
       else { const d = await resp.json(); alert(d.error || t('admin.failed')); }
     }
 
+    async function loadListenAddresses() {
+      const tbody = document.getElementById('listenAddressesBody');
+      if (!tbody) return;
+      try {
+        const resp = await fetch('../api/admin/listen-addresses');
+        const rows = await resp.json();
+        if (!Array.isArray(rows) || !rows.length) {
+          tbody.innerHTML = `<tr><td colspan="3" class="text-muted small">${t('admin.none_configured')}</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = rows.map(r => `
+          <tr>
+            <td class="small">${esc(r.value)}</td>
+            <td class="small">${r.is_domain ? `<span class="badge bg-secondary">${t('admin.domain_badge')}</span>` : `<span class="badge bg-light text-dark border">${t('admin.address_badge')}</span>`}</td>
+            <td class="text-end"><button class="btn btn-outline-danger btn-sm py-0 px-2" onclick="deleteListenAddress(${r.id})"><i class="bi bi-trash"></i></button></td>
+          </tr>`).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="3" class="text-danger small">${t('admin.failed_to_load').replace('{err}', esc(e.message))}</td></tr>`;
+      }
+    }
+
+    async function addListenAddress(ev) {
+      ev.preventDefault();
+      const input = document.getElementById('listenAddressValue');
+      const errEl = document.getElementById('listenAddressError');
+      errEl.classList.add('d-none');
+      try {
+        const resp = await fetch('../api/admin/listen-addresses', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({value: input.value.trim()}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_add'));
+        input.value = '';
+        loadListenAddresses();
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.classList.remove('d-none');
+      }
+      return false;
+    }
+
+    async function deleteListenAddress(id) {
+      if (!confirm(t('admin.confirm_remove_listen_address'))) return;
+      const resp = await fetch(`../api/admin/listen-addresses/${id}/delete`, {method: 'POST'});
+      if (resp.ok) loadListenAddresses();
+      else { const d = await resp.json(); alert(d.error || t('admin.failed')); }
+    }
+
     function _copyInboundWebhookUrl() {
       const field = document.getElementById('inboundWebhookUrlField');
       if (!field) return;
@@ -1492,6 +1571,7 @@
     loadUsers();
     loadMassEmailHistory();
     loadExcludedEmails();
+    loadListenAddresses();
     loadParsedEmails();
   </script>
 </body>

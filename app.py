@@ -33,7 +33,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, ExcludedEmailAddress, ApiToken
+from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, ExcludedEmailAddress, InboundListenAddress, ApiToken
 import rdflib
 import pyshacl
 import config
@@ -4486,12 +4486,35 @@ def _load_excluded_matchers():
 
 
 def _is_excluded_address(addr, excluded_addrs, excluded_domains):
+    """Generic "does addr match one of these addresses/domains" check --
+    despite the name, also reused as-is by _recipient_is_listened below for
+    InboundListenAddress, since the shape (a set of exact addresses plus a
+    set of bare domains) is identical either way."""
     domain = addr.rsplit("@", 1)[-1] if "@" in addr else ""
     return addr in excluded_addrs or domain in excluded_domains
 
 
 def _filter_excluded(candidate_addrs, excluded_addrs, excluded_domains):
     return {a for a in candidate_addrs if not _is_excluded_address(a, excluded_addrs, excluded_domains)}
+
+
+def _load_listen_matchers():
+    """Admin-managed recipient addresses/domains the inbound webhook actually
+    processes. Returns (addrs, domains); both empty means listen to
+    everything (the default -- see _recipient_is_listened)."""
+    addrs, domains = set(), set()
+    for row in InboundListenAddress.query.all():
+        (domains if "@" not in row.value else addrs).add(row.value)
+    return addrs, domains
+
+
+def _recipient_is_listened(to_field, cc_field, listen_addrs, listen_domains):
+    """True if nothing's configured (listen to everything) or at least one
+    To/Cc address on this email matches a configured listen address/domain."""
+    if not listen_addrs and not listen_domains:
+        return True
+    recipients = {addr.lower() for _, addr in getaddresses([to_field or "", cc_field or ""]) if addr}
+    return any(_is_excluded_address(a, listen_addrs, listen_domains) for a in recipients)
 
 
 def _org_identifiers_for_contacts(contacts):
@@ -4724,6 +4747,23 @@ def email_inbound_webhook(secret):
     from_name  = (from_name or "")[:200]
     from_addr  = (from_addr or "")[:320]
     to_field   = to_field[:320]
+
+    # Opt-in narrowing (see InboundListenAddress) -- SendGrid's Inbound
+    # Parse is configured per (sub)domain, so it hands us mail sent to *any*
+    # address on that domain by default, not just the one actually in use.
+    # Still recorded (dismissed, not silently dropped) so it shows up on the
+    # Mail Parser dashboard rather than just vanishing -- skips the body
+    # extraction and contact/case matching below since none of that matters
+    # for something that's getting dismissed regardless.
+    listen_addrs, listen_domains = _load_listen_matchers()
+    if not _recipient_is_listened(to_field, cc_field, listen_addrs, listen_domains):
+        db.session.add(InboundEmail(
+            from_email=from_addr or None, from_name=from_name or None, to_email=to_field or None,
+            subject=subject or None, status="dismissed", reason="not_listening_address",
+        ))
+        db.session.commit()
+        return jsonify({"ok": True}), 200
+
     body_text  = _extract_email_body(freq.form.get("email", ""))
 
     try:
@@ -7403,6 +7443,35 @@ def admin_excluded_email_delete(excl_id):
     if err:
         return err
     row = ExcludedEmailAddress.query.get_or_404(excl_id)
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/listen-addresses", methods=["GET", "POST"])
+def admin_listen_addresses():
+    err = _require_superadmin()
+    if err:
+        return err
+    if freq.method == "POST":
+        body = _decode_payload()
+        value = (body.get("value") or "").strip().lower()
+        if not value or "." not in value.rsplit("@", 1)[-1]:
+            return jsonify({"error": "Enter a full address (user@domain.tld) or a bare domain (domain.tld)"}), 400
+        if not InboundListenAddress.query.filter_by(value=value).first():
+            db.session.add(InboundListenAddress(value=value))
+            db.session.commit()
+        return jsonify({"ok": True}), 201
+    rows = InboundListenAddress.query.order_by(InboundListenAddress.value).all()
+    return jsonify([r.to_dict() for r in rows])
+
+
+@app.route("/api/admin/listen-addresses/<int:listen_id>/delete", methods=["POST"])
+def admin_listen_address_delete(listen_id):
+    err = _require_superadmin()
+    if err:
+        return err
+    row = InboundListenAddress.query.get_or_404(listen_id)
     db.session.delete(row)
     db.session.commit()
     return jsonify({"ok": True})

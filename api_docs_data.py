@@ -92,6 +92,10 @@ ROUTES = {
          "desc": "Lists (GET) or adds (POST) email addresses/domains excluded from mass-mail/matching. Now surfaced on the admin panel's Mail Parser tab (superadmin-only), not System."},
         {"methods": ["POST"], "path": "/api/admin/excluded-emails/<int:excl_id>/delete", "admin": "superadmin",
          "desc": "Removes one excluded-email entry."},
+        {"methods": ["GET", "POST"], "path": "/api/admin/listen-addresses", "admin": "superadmin",
+         "desc": "Lists (GET) or adds (POST) recipient addresses/domains the inbound webhook actually processes. Empty (the default) means listen to everything; anything sent to a To/Cc not on this list gets recorded dismissed (reason=not_listening_address) instead of matched."},
+        {"methods": ["POST"], "path": "/api/admin/listen-addresses/<int:listen_id>/delete", "admin": "superadmin",
+         "desc": "Removes one listening-address entry."},
     ],
     "dashboard": [
         {"methods": ["GET"], "path": "/",
@@ -184,7 +188,7 @@ ROUTES = {
     ],
     "inbound": [
         {"methods": ["POST"], "path": "/api/email-sync/inbound-webhook/<secret>",
-         "desc": "Receives an inbound email, auto-matches and attaches it to a contact/case, or queues it for review. Secret-token gated, CSRF-exempt."},
+         "desc": "Receives an inbound email, auto-matches and attaches it to a contact/case, or queues it for review. Secret-token gated, CSRF-exempt. If any InboundListenAddress rows exist, a To/Cc not on that list gets recorded dismissed instead of processed."},
         {"methods": ["GET"], "path": "/api/inbound-emails", "params": "?status=",
          "desc": "Lists inbound emails."},
         {"methods": ["POST"], "path": "/api/inbound-emails/<int:inbound_id>/pick-contact",
