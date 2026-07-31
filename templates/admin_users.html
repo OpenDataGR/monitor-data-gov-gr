@@ -311,6 +311,7 @@
           {% if current_user_is_superadmin %}
           <!-- Mail Parser section -->
           <div class="tab-pane fade" id="panel-mail-parser">
+            <div style="max-width:700px">
             <div class="card p-4 mb-4">
               <h6 class="fw-semibold mb-1"><i class="bi bi-hdd-network me-2"></i><span data-i18n="admin.mail_parser_config_title">Inbound Webhook</span></h6>
               <p class="text-muted small mb-3" data-i18n="admin.mail_parser_config_desc">The exact URL SendGrid's Inbound Parse setting must POST to for auto-captured/forwarded emails to reach this app at all.</p>
@@ -365,6 +366,7 @@
                 <tbody id="excludedEmailsBody"><tr><td colspan="3" class="text-muted small" data-i18n="admin.loading">Loading…</td></tr></tbody>
               </table>
             </div>
+            </div>
 
             <div class="card p-4">
               <div class="d-flex justify-content-between align-items-center mb-1">
@@ -377,6 +379,29 @@
           </div>
           {% endif %}
 
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="text-center text-muted py-3 mt-4" style="font-size:.8rem; border-top:1px solid #dee2e6;">
+    <div>&copy; {{ current_year }} Τμήμα Προτύπων και Τεχνολογικών Εφαρμογών Δεδομένων, Ειδική Γραμματεία Τεχνητής Νοημοσύνης και Διακυβέρνησης Δεδομένων</div>
+    <div>
+      Build: {{ build_date }}{% if git_sha %} &nbsp;·&nbsp; <span class="font-monospace">{{ git_sha }}</span>{% endif %}
+      &nbsp;·&nbsp;
+      <a href="#" onclick="openChangelog();return false;" class="text-decoration-none" data-i18n="footer.changelog">Changelog</a>
+    </div>
+  </footer>
+
+  <div class="modal fade" id="changelogModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title fw-semibold"><i class="bi bi-clock-history me-2 text-primary"></i><span data-i18n="footer.changelog_title">Changelog</span></h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="changelogBody">
+          <div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div><span data-i18n="admin.loading">Loading…</span></div>
         </div>
       </div>
     </div>
@@ -606,6 +631,8 @@
     const TRANSLATIONS = {
       en: {
         'admin.back_to_dashboard': 'Back to dashboard', 'admin.title': 'Admin Panel', 'admin.collapse': 'Collapse',
+        'footer.changelog': 'Changelog', 'footer.changelog_title': 'Changelog',
+        'footer.changelog_none': 'No changelog entries available.', 'footer.error': 'Error:',
         'admin.nav_users': 'Users', 'admin.nav_mass_email': 'Mass Email', 'admin.nav_system': 'System',
         'admin.nav_mail_parser': 'Mail Parser',
         'admin.invite_title': 'Invite a new user', 'admin.email': 'Email', 'admin.name': 'Name',
@@ -719,6 +746,8 @@
       el: {
         'admin.back_to_dashboard': 'Επιστροφή στον πίνακα ελέγχου', 'admin.title': 'Πίνακας Διαχείρισης',
         'admin.collapse': 'Σύμπτυξη',
+        'footer.changelog': 'Ιστορικό αλλαγών', 'footer.changelog_title': 'Ιστορικό αλλαγών',
+        'footer.changelog_none': 'Δεν υπάρχουν διαθέσιμες καταχωρήσεις ιστορικού.', 'footer.error': 'Σφάλμα:',
         'admin.nav_users': 'Χρήστες', 'admin.nav_mass_email': 'Μαζική Αποστολή', 'admin.nav_system': 'Σύστημα',
         'admin.nav_mail_parser': 'Ανάλυση Email',
         'admin.invite_title': 'Πρόσκληση νέου χρήστη', 'admin.email': 'Email', 'admin.name': 'Όνομα',
@@ -891,6 +920,49 @@
       document.getElementById('adminSidebarBackdrop').classList.remove('show');
     }
     initAdminSidebar();
+
+    // ── Footer changelog (same modal/endpoint as the main dashboard) ─────
+    let _changelogModal = null, _changelogLoaded = false;
+    async function openChangelog() {
+      if (!_changelogModal) _changelogModal = new bootstrap.Modal(document.getElementById('changelogModal'));
+      _changelogModal.show();
+      if (_changelogLoaded) return;
+      try {
+        const entries = await fetch('../api/changelog').then(r => r.json());
+        _changelogLoaded = true;
+        const body = document.getElementById('changelogBody');
+        body.innerHTML = entries.length
+          ? `<ul class="list-unstyled mb-0">${entries.map(e => `
+              <li class="d-flex gap-2 py-2 border-bottom">
+                <span class="text-muted small text-nowrap font-monospace">${esc(e.date)}</span>
+                <span class="flex-grow-1">${esc(e.message)}</span>
+              </li>`).join('')}</ul>`
+          : `<p class="text-muted text-center mb-0">${t('footer.changelog_none')}</p>`;
+      } catch (e) {
+        document.getElementById('changelogBody').innerHTML =
+          `<div class="alert alert-danger mb-0">${t('footer.error')} ${esc(e.message)}</div>`;
+      }
+    }
+
+    // ── Deep-linkable tabs (same pattern as the main dashboard's #mainTabs)
+    // -- a bookmarked/shared/refreshed URL lands back on the same section
+    // instead of always resetting to Users.
+    function _adminTabKeyFromHash(hash) {
+      return (hash || '').replace(/^#/, '');
+    }
+    function _activateAdminTab(key) {
+      if (!key) return false;
+      const btn = document.querySelector(`#adminNavTabs .nav-link[data-bs-target="#panel-${key}"]`);
+      if (!btn) return false;
+      btn.click();
+      return true;
+    }
+    document.getElementById('adminNavTabs').addEventListener('shown.bs.tab', (e) => {
+      const key = e.target.dataset.bsTarget?.replace('#panel-', '');
+      // replaceState (not location.hash=) so switching tabs doesn't clutter browser history.
+      if (key) history.replaceState(null, '', '#' + key);
+    });
+    window.addEventListener('hashchange', () => _activateAdminTab(_adminTabKeyFromHash(location.hash)));
 
     window.addEventListener('scroll', () => {
       document.getElementById('backToTopBtn').classList.toggle('show', window.scrollY > 300);
@@ -1573,6 +1645,10 @@
     loadExcludedEmails();
     loadListenAddresses();
     loadParsedEmails();
+    // Honor a hash already in the URL (deep link / refresh) -- deferred so it
+    // runs after every listener above is registered, same reasoning as the
+    // main dashboard's equivalent setTimeout.
+    setTimeout(() => _activateAdminTab(_adminTabKeyFromHash(location.hash)), 0);
   </script>
 </body>
 </html>

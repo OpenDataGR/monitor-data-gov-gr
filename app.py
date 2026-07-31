@@ -973,7 +973,8 @@ def admin_users_page():
     return render_template("admin_users.html", current_user_id=session.get("user_id"),
                            current_user_is_superadmin=session.get("is_superadmin", False),
                            user_name=session.get("user_name"),
-                           inbound_webhook_url=inbound_webhook_url)
+                           inbound_webhook_url=inbound_webhook_url,
+                           build_date=_build_date(), git_sha=_BUILD_SHA)
 
 
 # ── API docs & testing console ───────────────────────────────────────────────
