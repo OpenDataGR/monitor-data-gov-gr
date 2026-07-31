@@ -6042,12 +6042,18 @@ function _commPreselectFromComm(c) {
 // known (a comm already linked via CommunicationContact, or a contact just
 // picked from a real search result), null for a legacy comm that only ever
 // had a free-text contact_person and needs matching by name instead.
-function _fillCommContacts(contacts, preselect) {
-  _commOrgContacts = contacts.map(c => ({
+function _buildCommContactEntry(c) {
+  const name = [c.first_name, c.last_name].filter(Boolean).join(' ');
+  return {
     id: c.id != null ? c.id : null,
-    label: [c.first_name, c.last_name].filter(Boolean).join(' ') + (c.position ? ' (' + c.position + ')' : ''),
+    name, position: c.position || '',
+    label: name + (c.position ? ' (' + c.position + ')' : ''),
     email: c.email || '', tel: c.tel || '',
-  }));
+  };
+}
+
+function _fillCommContacts(contacts, preselect) {
+  _commOrgContacts = contacts.map(_buildCommContactEntry);
   _commSelectedContacts = [];
   (preselect || []).forEach(want => {
     if (!want || (want.id == null && !want.label)) return;
@@ -6064,19 +6070,32 @@ function _fillCommContacts(contacts, preselect) {
   _renderCommContactChips();
 }
 
+// Position/department text on real org records can run very long -- shown
+// in full via a title tooltip everywhere, but the visible text itself is
+// kept short so it can't stretch the dropdown or a chip out wide.
+function _truncateContactLabel(name, position, max = 50) {
+  if (!position) return name;
+  const full = `${name} (${position})`;
+  if (full.length <= max) return full;
+  const room = Math.max(0, max - name.length - 4);  // " (" + "…)"
+  return `${name} (${position.slice(0, room)}…)`;
+}
+
 function _renderCommContactPicker() {
   const sel = show('commContact');
   const selectedLabels = new Set(_commSelectedContacts.map(c => c.label));
   sel.innerHTML = `<option value="">${t('comm_modal.contact_add_ph')}</option>` +
     _commOrgContacts.map((c, i) => ({ c, i })).filter(({ c }) => !selectedLabels.has(c.label))
-      .map(({ c, i }) => `<option value="${i}">${esc(c.label)}</option>`).join('');
+      .map(({ c, i }) => `<option value="${i}" title="${esc(c.label)}">${esc(_truncateContactLabel(c.name, c.position))}</option>`).join('') +
+    `<option value="__new__">+ ${esc(t('comms.add_contact_for_org'))}</option>`;
 }
 
 function _renderCommContactChips() {
   show('commContactChips').innerHTML = _commSelectedContacts.map((c, i) => `
-    <span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em;white-space:normal;text-align:left"
-          ${(c.email || c.tel) ? `title="${esc([c.email, c.tel].filter(Boolean).join(' · '))}"` : ''}>
-      <i class="bi bi-person-fill"></i>${esc(c.label)}
+    <span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em;max-width:240px"
+          title="${esc([c.label, c.email, c.tel].filter(Boolean).join(' · '))}">
+      <i class="bi bi-person-fill flex-shrink-0"></i>
+      <span class="text-truncate" style="min-width:0">${esc(_truncateContactLabel(c.name, c.position))}</span>
       <button type="button" class="btn-close btn-close-white flex-shrink-0" style="font-size:.55em;margin-left:.25em"
               onclick="_removeCommContact(${i})" title="${t('common.remove')}"></button>
     </span>`).join('');
@@ -6085,6 +6104,11 @@ function _renderCommContactChips() {
 function _addCommContact() {
   const sel = show('commContact');
   if (!sel.value) return;
+  if (sel.value === '__new__') {
+    sel.value = '';  // reset so "+ Add contact for this organization" doesn't sit there as if selected
+    _openAddContactForComm();
+    return;
+  }
   const c = _commOrgContacts[parseInt(sel.value, 10)];
   if (!c) return;
   _commSelectedContacts.push(c);
@@ -9920,19 +9944,14 @@ function _addNewlyCreatedCommContact(data) {
   if (!orgCode) return;
   const apply = (contacts) => {
     const keep = _commSelectedContacts;
-    _commOrgContacts = contacts.map(c => ({
-      id: c.id != null ? c.id : null,
-      label: [c.first_name, c.last_name].filter(Boolean).join(' ') + (c.position ? ' (' + c.position + ')' : ''),
-      email: c.email || '', tel: c.tel || '',
-    }));
+    _commOrgContacts = contacts.map(_buildCommContactEntry);
     // Re-resolve the preserved selection by id against the refreshed list
     // (falling back to the stale entry if it somehow vanished) instead of
     // just keeping the old array as-is, so it reflects anything the
     // refresh changed about them.
     _commSelectedContacts = keep.map(k => (k.id != null && _commOrgContacts.find(c => c.id === k.id)) || k);
-    const newLabel = [data.first_name, data.last_name].filter(Boolean).join(' ');
-    if (newLabel && !_commSelectedContacts.some(c => c.id != null && c.id === data.id)) {
-      _commSelectedContacts.push(_commOrgContacts.find(c => c.id === data.id) || { id: data.id, label: newLabel, email: data.email || '', tel: data.tel || '' });
+    if ((data.first_name || data.last_name) && !_commSelectedContacts.some(c => c.id != null && c.id === data.id)) {
+      _commSelectedContacts.push(_commOrgContacts.find(c => c.id === data.id) || _buildCommContactEntry(data));
     }
     show('commContactSection').classList.remove('d-none');
     _renderCommContactPicker();
