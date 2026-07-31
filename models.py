@@ -456,6 +456,7 @@ class Communication(db.Model):
     direction      = db.Column(db.String(10))  # "Inbound" | "Outbound" -- who this specific entry was from, independent of status. Nullable: pre-existing rows are left unset rather than guessed.
 
     def to_dict(self):
+        linked_contacts = [link.org_contact.to_dict() for link in self.contact_links if link.org_contact]
         return {
             "id":           self.id,
             "case_id":      self.case_id,
@@ -469,10 +470,37 @@ class Communication(db.Model):
             "status":       self.status,
             "notes":           self.notes or "",
             "contact_person":  self.contact_person or "",
+            "contacts":        linked_contacts,  # real linked OrgContact(s) -- see CommunicationContact. Empty for rows that predate this/never got one.
             "medium":          self.medium or "",
             "source":          self.source or "",
             "direction":       self.direction or "",
         }
+
+
+class CommunicationContact(db.Model):
+    """Links a Communication to the real OrgContact(s) it credits. A
+    Communication is scoped to one org/case (via case_id) but can genuinely
+    involve more than one person from that org -- several people CC'd on
+    the same email, for instance -- and the same contact can show up on
+    more than one Communication over time, hence many-to-many rather than a
+    single extra FK column on Communication.
+
+    Communication.contact_person predates this table and stays as a frozen-
+    at-creation-time display name for rows that never got a real link (nor
+    ever will, retroactively) -- to_dict()'s "contacts" list is empty for
+    those, and callers fall back to the plain contact_person string."""
+    __tablename__ = "communication_contacts"
+
+    id               = db.Column(db.Integer, primary_key=True)
+    communication_id = db.Column(db.Integer, db.ForeignKey("communications.id"), nullable=False, index=True)
+    org_contact_id   = db.Column(db.Integer, db.ForeignKey("org_contacts.id"), nullable=False, index=True)
+    created_at       = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    communication = db.relationship("Communication", backref="contact_links")
+    org_contact   = db.relationship("OrgContact")
+
+    __table_args__ = (db.UniqueConstraint("communication_id", "org_contact_id", name="uq_communication_contact"),)
+
 
 class OrgContact(db.Model):
     __tablename__ = "org_contacts"

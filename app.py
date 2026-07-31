@@ -33,7 +33,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, ExcludedEmailAddress, InboundListenAddress, ApiToken
+from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, ExcludedEmailAddress, InboundListenAddress, ApiToken
 import rdflib
 import pyshacl
 import config
@@ -4026,9 +4026,13 @@ def communications_list():
     # Communication.to_dict()/`.case.is_stale` access below resolves from
     # SQLAlchemy's identity map (same session) instead of a fresh query per
     # case -- avoids an N+1 across however many distinct cases this page's
-    # rows happen to touch.
+    # rows happen to touch. Same reasoning for contact_links/org_contact --
+    # to_dict()'s new "contacts" list would otherwise fire two more queries
+    # per row (the link rows, then each one's OrgContact).
     cases = Case.query.options(db.selectinload(Case.communications)).all()
-    all_comms = Communication.query.all()
+    all_comms = Communication.query.options(
+        db.selectinload(Communication.contact_links).joinedload(CommunicationContact.org_contact)
+    ).all()
 
     def matches_q(c):
         if not q:
