@@ -966,9 +966,14 @@ def logout():
 def admin_users_page():
     if not session.get("is_admin"):
         return redirect(url_for("index"))
+    inbound_webhook_url = (
+        freq.url_root.rstrip("/") + url_for("email_inbound_webhook", secret=config.EMAIL_INBOUND_SECRET)
+        if config.EMAIL_INBOUND_SECRET else None
+    )
     return render_template("admin_users.html", current_user_id=session.get("user_id"),
                            current_user_is_superadmin=session.get("is_superadmin", False),
-                           user_name=session.get("user_name"))
+                           user_name=session.get("user_name"),
+                           inbound_webhook_url=inbound_webhook_url)
 
 
 # ── API docs & testing console ───────────────────────────────────────────────
@@ -7376,7 +7381,7 @@ def admin_mass_email_history():
 
 @app.route("/api/admin/excluded-emails", methods=["GET", "POST"])
 def admin_excluded_emails():
-    err = _require_admin()
+    err = _require_superadmin()
     if err:
         return err
     if freq.method == "POST":
@@ -7394,7 +7399,7 @@ def admin_excluded_emails():
 
 @app.route("/api/admin/excluded-emails/<int:excl_id>/delete", methods=["POST"])
 def admin_excluded_email_delete(excl_id):
-    err = _require_admin()
+    err = _require_superadmin()
     if err:
         return err
     row = ExcludedEmailAddress.query.get_or_404(excl_id)

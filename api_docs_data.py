@@ -88,9 +88,9 @@ ROUTES = {
          "desc": "Sends an HTML announcement to selected user IDs one at a time and logs the send."},
         {"methods": ["GET"], "path": "/api/admin/mass-email/history", "admin": True,
          "desc": "Lists past mass-email sends with recipient/success counts."},
-        {"methods": ["GET", "POST"], "path": "/api/admin/excluded-emails", "admin": True,
-         "desc": "Lists (GET) or adds (POST) email addresses/domains excluded from mass-mail/matching."},
-        {"methods": ["POST"], "path": "/api/admin/excluded-emails/<int:excl_id>/delete", "admin": True,
+        {"methods": ["GET", "POST"], "path": "/api/admin/excluded-emails", "admin": "superadmin",
+         "desc": "Lists (GET) or adds (POST) email addresses/domains excluded from mass-mail/matching. Now surfaced on the admin panel's Mail Parser tab (superadmin-only), not System."},
+        {"methods": ["POST"], "path": "/api/admin/excluded-emails/<int:excl_id>/delete", "admin": "superadmin",
          "desc": "Removes one excluded-email entry."},
     ],
     "dashboard": [

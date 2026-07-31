@@ -573,6 +573,7 @@ class InboundEmail(db.Model):
             "status":         self.status,
             "reason":         self.reason or "",
             "communication_id": self.communication_id,
+            "direction":      self.communication.direction if self.communication else None,
         }
 
 

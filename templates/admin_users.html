@@ -161,6 +161,11 @@
           <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-system" type="button">
             <i class="bi bi-gear-fill me-2"></i><span class="sidebar-label" data-i18n="admin.nav_system">System</span>
           </button>
+          {% if current_user_is_superadmin %}
+          <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-mail-parser" type="button">
+            <i class="bi bi-envelope-paper-fill me-2"></i><span class="sidebar-label" data-i18n="admin.nav_mail_parser">Mail Parser</span>
+          </button>
+          {% endif %}
         </div>
       </nav>
 
@@ -268,27 +273,6 @@
             </div>
 
             <div class="card p-4 mb-4">
-              <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-x me-2"></i><span data-i18n="admin.excluded_title">Inbound Email Matching — Excluded Senders</span></h6>
-              <p class="text-muted small mb-3" data-i18n="admin.excluded_desc">Addresses or domains listed here are never treated as the "contact" for an auto-captured or forwarded email — useful for staff mailboxes and internal domains that would otherwise get mistaken for the external correspondent. A bare domain (no @) excludes every address on it.</p>
-              <form class="row g-2 align-items-end mb-3" onsubmit="return addExcludedEmail(event)">
-                <div class="col-sm-6">
-                  <label class="form-label small mb-1" data-i18n="admin.excluded_value_label">Address or domain</label>
-                  <input type="text" id="excludedEmailValue" class="form-control form-control-sm" placeholder="user@domain.gr or domain.gr" required>
-                </div>
-                <div class="col-sm-3">
-                  <button type="submit" class="btn btn-outline-primary btn-sm w-100">
-                    <i class="bi bi-plus-lg me-1"></i><span data-i18n="admin.add">Add</span>
-                  </button>
-                </div>
-              </form>
-              <div id="excludedEmailError" class="alert alert-danger small mb-3 d-none"></div>
-              <table class="table table-sm mb-0">
-                <thead><tr><th data-i18n="admin.value">Value</th><th data-i18n="admin.type">Type</th><th></th></tr></thead>
-                <tbody id="excludedEmailsBody"><tr><td colspan="3" class="text-muted small" data-i18n="admin.loading">Loading…</td></tr></tbody>
-              </table>
-            </div>
-
-            <div class="card p-4 mb-4">
               <h6 class="fw-semibold mb-1"><i class="bi bi-patch-check me-2"></i><span data-i18n="admin.hvd_cache_title">HVD Compliance Check Cache</span></h6>
               <p class="text-muted small mb-3" data-i18n="admin.hvd_cache_desc">Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.</p>
               <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#hvdClearModal">
@@ -323,6 +307,54 @@
               </button>
             </div>
           </div>
+
+          {% if current_user_is_superadmin %}
+          <!-- Mail Parser section -->
+          <div class="tab-pane fade" id="panel-mail-parser">
+            <div class="card p-4 mb-4">
+              <h6 class="fw-semibold mb-1"><i class="bi bi-hdd-network me-2"></i><span data-i18n="admin.mail_parser_config_title">Inbound Webhook</span></h6>
+              <p class="text-muted small mb-3" data-i18n="admin.mail_parser_config_desc">The exact URL SendGrid's Inbound Parse setting must POST to for auto-captured/forwarded emails to reach this app at all.</p>
+              {% if inbound_webhook_url %}
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control font-monospace" value="{{ inbound_webhook_url }}" readonly id="inboundWebhookUrlField">
+                <button class="btn btn-outline-secondary" type="button" onclick="_copyInboundWebhookUrl()"><i class="bi bi-clipboard"></i></button>
+              </div>
+              {% else %}
+              <div class="alert alert-warning small mb-0" data-i18n="admin.mail_parser_secret_unset">EMAIL_INBOUND_SECRET isn't set -- the webhook endpoint is unreachable (fails closed) until it is.</div>
+              {% endif %}
+            </div>
+
+            <div class="card p-4 mb-4">
+              <h6 class="fw-semibold mb-1"><i class="bi bi-envelope-x me-2"></i><span data-i18n="admin.excluded_title">Inbound Email Matching — Excluded Senders</span></h6>
+              <p class="text-muted small mb-3" data-i18n="admin.excluded_desc">Addresses or domains listed here are never treated as the "contact" for an auto-captured or forwarded email — useful for staff mailboxes and internal domains that would otherwise get mistaken for the external correspondent. A bare domain (no @) excludes every address on it.</p>
+              <form class="row g-2 align-items-end mb-3" onsubmit="return addExcludedEmail(event)">
+                <div class="col-sm-6">
+                  <label class="form-label small mb-1" data-i18n="admin.excluded_value_label">Address or domain</label>
+                  <input type="text" id="excludedEmailValue" class="form-control form-control-sm" placeholder="user@domain.gr or domain.gr" required>
+                </div>
+                <div class="col-sm-3">
+                  <button type="submit" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-plus-lg me-1"></i><span data-i18n="admin.add">Add</span>
+                  </button>
+                </div>
+              </form>
+              <div id="excludedEmailError" class="alert alert-danger small mb-3 d-none"></div>
+              <table class="table table-sm mb-0">
+                <thead><tr><th data-i18n="admin.value">Value</th><th data-i18n="admin.type">Type</th><th></th></tr></thead>
+                <tbody id="excludedEmailsBody"><tr><td colspan="3" class="text-muted small" data-i18n="admin.loading">Loading…</td></tr></tbody>
+              </table>
+            </div>
+
+            <div class="card p-4">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <h6 class="fw-semibold mb-0"><i class="bi bi-inbox me-2"></i><span data-i18n="admin.parsed_emails_title">Parsed Emails</span></h6>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadParsedEmails()"><i class="bi bi-arrow-clockwise"></i></button>
+              </div>
+              <p class="text-muted small mb-3" data-i18n="admin.parsed_emails_desc">Every email the webhook has processed, whether it auto-attached, is waiting for review, or was dismissed -- most recent first.</p>
+              <div id="parsedEmailsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
+            </div>
+          </div>
+          {% endif %}
 
         </div>
       </div>
@@ -538,6 +570,7 @@
       en: {
         'admin.back_to_dashboard': 'Back to dashboard', 'admin.title': 'Admin Panel', 'admin.collapse': 'Collapse',
         'admin.nav_users': 'Users', 'admin.nav_mass_email': 'Mass Email', 'admin.nav_system': 'System',
+        'admin.nav_mail_parser': 'Mail Parser',
         'admin.invite_title': 'Invite a new user', 'admin.email': 'Email', 'admin.name': 'Name',
         'admin.admin_checkbox': 'Admin', 'admin.invite': 'Invite',
         'admin.compose': 'Compose', 'admin.compose_desc': 'Send an announcement to some or all dashboard users.',
@@ -570,6 +603,14 @@
         'admin.value': 'Value', 'admin.type': 'Type', 'admin.loading': 'Loading…',
         'admin.none_configured': 'None configured.', 'admin.failed_to_load': 'Failed to load: {err}',
         'admin.domain_badge': 'Domain', 'admin.address_badge': 'Address',
+        'admin.mail_parser_config_title': 'Inbound Webhook',
+        'admin.mail_parser_config_desc': "The exact URL SendGrid's Inbound Parse setting must POST to for auto-captured/forwarded emails to reach this app at all.",
+        'admin.mail_parser_secret_unset': "EMAIL_INBOUND_SECRET isn't set -- the webhook endpoint is unreachable (fails closed) until it is.",
+        'admin.parsed_emails_title': 'Parsed Emails',
+        'admin.parsed_emails_desc': 'Every email the webhook has processed, whether it auto-attached, is waiting for review, or was dismissed -- most recent first.',
+        'admin.parsed_col_received': 'Received', 'admin.parsed_col_from': 'From', 'admin.parsed_col_subject': 'Subject',
+        'admin.parsed_col_status': 'Status', 'admin.parsed_col_direction': 'Direction', 'admin.parsed_col_org': 'Matched org',
+        'admin.parsed_col_reason': 'Reason', 'admin.parsed_none': 'No emails parsed yet.',
         'admin.hvd_cache_title': 'HVD Compliance Check Cache',
         'admin.hvd_cache_desc': 'Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.',
         'admin.clear_hvd_cache': 'Clear HVD Check Cache',
@@ -631,6 +672,7 @@
         'admin.back_to_dashboard': 'Επιστροφή στον πίνακα ελέγχου', 'admin.title': 'Πίνακας Διαχείρισης',
         'admin.collapse': 'Σύμπτυξη',
         'admin.nav_users': 'Χρήστες', 'admin.nav_mass_email': 'Μαζική Αποστολή', 'admin.nav_system': 'Σύστημα',
+        'admin.nav_mail_parser': 'Ανάλυση Email',
         'admin.invite_title': 'Πρόσκληση νέου χρήστη', 'admin.email': 'Email', 'admin.name': 'Όνομα',
         'admin.admin_checkbox': 'Διαχειριστής', 'admin.invite': 'Πρόσκληση',
         'admin.compose': 'Σύνταξη', 'admin.compose_desc': 'Στείλτε μια ανακοίνωση σε μερικούς ή όλους τους χρήστες του dashboard.',
@@ -664,6 +706,14 @@
         'admin.none_configured': 'Δεν έχει οριστεί καμία εξαίρεση.',
         'admin.failed_to_load': 'Αποτυχία φόρτωσης: {err}',
         'admin.domain_badge': 'Domain', 'admin.address_badge': 'Διεύθυνση',
+        'admin.mail_parser_config_title': 'Webhook Εισερχομένων',
+        'admin.mail_parser_config_desc': 'Το ακριβές URL στο οποίο πρέπει να στέλνει (POST) η ρύθμιση Inbound Parse του SendGrid, ώστε τα αυτόματα καταγεγραμμένα/προωθημένα email να φτάνουν καν στην εφαρμογή.',
+        'admin.mail_parser_secret_unset': 'Το EMAIL_INBOUND_SECRET δεν έχει οριστεί -- το endpoint του webhook είναι απρόσιτο μέχρι να οριστεί.',
+        'admin.parsed_emails_title': 'Αναλυμένα Email',
+        'admin.parsed_emails_desc': 'Κάθε email που έχει επεξεργαστεί το webhook, είτε επισυνάφθηκε αυτόματα, είτε περιμένει έλεγχο, είτε απορρίφθηκε -- πιο πρόσφατα πρώτα.',
+        'admin.parsed_col_received': 'Λήψη', 'admin.parsed_col_from': 'Από', 'admin.parsed_col_subject': 'Θέμα',
+        'admin.parsed_col_status': 'Κατάσταση', 'admin.parsed_col_direction': 'Κατεύθυνση', 'admin.parsed_col_org': 'Αντιστοιχισμένος φορέας',
+        'admin.parsed_col_reason': 'Αιτία', 'admin.parsed_none': 'Δεν έχει αναλυθεί κανένα email ακόμα.',
         'admin.hvd_cache_title': 'Cache Ελέγχου Συμμόρφωσης HVD',
         'admin.hvd_cache_desc': 'Καθαρίζει τα αποθηκευμένα αποτελέσματα ελέγχου SHACL για HVD και το cache ανά σύνολο δεδομένων. Η επόμενη εκτέλεση από την καρτέλα Ποιότητα θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε σύνολο δεδομένων με ετικέτα HVD.',
         'admin.clear_hvd_cache': 'Καθαρισμός Cache Ελέγχου HVD',
@@ -743,6 +793,7 @@
       if (_usersCache.length) loadUsers();
       if (_massEmailHistoryCache.length) loadMassEmailHistory();
       loadExcludedEmails();
+      loadParsedEmails();
     }
 
     // ── Dark theme ───────────────────────────────────────────────────────
@@ -1255,6 +1306,57 @@
       else { const d = await resp.json(); alert(d.error || t('admin.failed')); }
     }
 
+    function _copyInboundWebhookUrl() {
+      const field = document.getElementById('inboundWebhookUrlField');
+      if (!field) return;
+      field.select();
+      if (navigator.clipboard) navigator.clipboard.writeText(field.value).catch(() => {});
+    }
+
+    const PARSED_STATUS_BADGE    = {attached: 'bg-success', pending_review: 'bg-warning text-dark', dismissed: 'bg-secondary'};
+    const PARSED_DIRECTION_BADGE = {Inbound: 'bg-info', Outbound: 'bg-primary'};
+
+    async function loadParsedEmails() {
+      const el = document.getElementById('parsedEmailsTable');
+      if (!el) return;
+      el.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div>`;
+      try {
+        const resp = await fetch('../api/inbound-emails');
+        const rows = await resp.json();
+        if (!resp.ok) throw new Error((rows && rows.error) || t('admin.failed'));
+        if (!Array.isArray(rows) || !rows.length) {
+          el.innerHTML = `<p class="text-muted small mb-0">${t('admin.parsed_none')}</p>`;
+          return;
+        }
+        el.innerHTML = `
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead><tr>
+                <th>${t('admin.parsed_col_received')}</th>
+                <th>${t('admin.parsed_col_from')}</th>
+                <th>${t('admin.parsed_col_subject')}</th>
+                <th>${t('admin.parsed_col_status')}</th>
+                <th>${t('admin.parsed_col_direction')}</th>
+                <th>${t('admin.parsed_col_org')}</th>
+                <th>${t('admin.parsed_col_reason')}</th>
+              </tr></thead>
+              <tbody>${rows.map(r => `
+                <tr>
+                  <td class="small text-nowrap">${esc((r.received_at || '').replace('T', ' ').slice(0, 16))}</td>
+                  <td class="small">${esc(r.from_name || r.from_email || '')}${r.from_name && r.from_email ? `<div class="text-muted" style="font-size:.75em">${esc(r.from_email)}</div>` : ''}</td>
+                  <td class="small">${esc(r.subject || '')}</td>
+                  <td><span class="badge ${PARSED_STATUS_BADGE[r.status] || 'bg-secondary'}">${esc(r.status)}</span></td>
+                  <td>${r.direction ? `<span class="badge ${PARSED_DIRECTION_BADGE[r.direction] || 'bg-secondary'}">${esc(r.direction)}</span>` : ''}</td>
+                  <td class="small">${esc(r.matched_org_label || '')}</td>
+                  <td class="small text-muted">${esc((r.reason || '').replace(/_/g, ' '))}</td>
+                </tr>`).join('')}</tbody>
+            </table>
+          </div>`;
+      } catch (e) {
+        el.innerHTML = `<p class="text-danger small mb-0">${t('admin.failed_to_load').replace('{err}', esc(e.message))}</p>`;
+      }
+    }
+
     async function sendTestEmail(ev) {
       ev.preventDefault();
       const to = document.getElementById('testEmailTo').value.trim();
@@ -1326,6 +1428,7 @@
     loadUsers();
     loadMassEmailHistory();
     loadExcludedEmails();
+    loadParsedEmails();
   </script>
 </body>
 </html>
