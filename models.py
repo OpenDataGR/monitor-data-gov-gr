@@ -496,7 +496,7 @@ class CommunicationContact(db.Model):
     org_contact_id   = db.Column(db.Integer, db.ForeignKey("org_contacts.id"), nullable=False, index=True)
     created_at       = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
-    communication = db.relationship("Communication", backref="contact_links")
+    communication = db.relationship("Communication", backref=db.backref("contact_links", cascade="all, delete-orphan"))
     org_contact   = db.relationship("OrgContact")
 
     __table_args__ = (db.UniqueConstraint("communication_id", "org_contact_id", name="uq_communication_contact"),)

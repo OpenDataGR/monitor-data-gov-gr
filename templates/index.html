@@ -1429,10 +1429,10 @@
           </div>
           <div class="col-12 d-none" id="commContactSection">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.contact">Contact Person</label>
-            <select id="commContact" class="form-select form-select-sm" onchange="onCommContactChange()">
-              <option value="" data-i18n="comm_modal.contact_ph">— select contact —</option>
+            <div id="commContactChips" class="d-flex flex-wrap gap-2 mb-2"></div>
+            <select id="commContact" class="form-select form-select-sm" onchange="_addCommContact()">
+              <option value="" data-i18n="comm_modal.contact_add_ph">+ Add a contact…</option>
             </select>
-            <div id="commContactInfo" class="mt-1 small d-none"></div>
             <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-decoration-none"
                     onclick="_openAddContactForComm()">
               <i class="bi bi-person-plus me-1"></i><span data-i18n="comms.add_contact_for_org">Add contact for this organization</span>

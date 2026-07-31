@@ -4166,6 +4166,29 @@ def communications_subjects():
     return jsonify(subjects)
 
 
+def _sync_communication_contacts(comm, contact_ids):
+    """Replaces comm's linked contacts (see CommunicationContact) with
+    exactly the given OrgContact ids. None/absent leaves it untouched (used
+    by the update endpoint, where the field is optional); an explicit empty
+    list clears every link. Silently drops anything that isn't a real
+    OrgContact id rather than erroring -- this is always populated from the
+    same picker that only ever offers real contacts for the comm's own org
+    in the first place, never free-typed."""
+    if contact_ids is None:
+        return
+    CommunicationContact.query.filter_by(communication_id=comm.id).delete()
+    seen = set()
+    for cid in contact_ids:
+        try:
+            cid = int(cid)
+        except (TypeError, ValueError):
+            continue
+        if cid in seen or not OrgContact.query.get(cid):
+            continue
+        seen.add(cid)
+        db.session.add(CommunicationContact(communication_id=comm.id, org_contact_id=cid))
+
+
 @app.route("/api/communications", methods=["POST"])
 def communications_create():
     body = _decode_payload()
@@ -4221,6 +4244,8 @@ def communications_create():
         direction=direction or None,
     )
     db.session.add(comm)
+    db.session.flush()  # need comm.id before linking contacts below
+    _sync_communication_contacts(comm, body.get("contact_ids"))
     db.session.commit()
     return jsonify(comm.to_dict()), 201
 
@@ -4256,6 +4281,8 @@ def communications_update(comm_id):
         comm.notes = (body["notes"] or "").strip() or None
     if "contact_person" in body:
         comm.contact_person = (body["contact_person"] or "").strip() or None
+    if "contact_ids" in body:
+        _sync_communication_contacts(comm, body["contact_ids"] or [])
     if "medium" in body:
         medium = (body["medium"] or "").strip()
         if medium and medium not in VALID_MEDIUMS:

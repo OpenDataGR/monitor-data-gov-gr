@@ -378,7 +378,7 @@ const TRANSLATIONS = {
     'comm_modal.org_ph': 'Search by organization or contact name…',
     'comm_modal.org_locked': '(fixed to this case\'s organization)',
     'comm_modal.contact': 'Contact Person',
-    'comm_modal.contact_ph': '— select contact —',
+    'comm_modal.contact_add_ph': '+ Add a contact…',
     'comm_modal.subject': 'Subject',
     'comm_modal.subject_ph': 'Dataset requested or topic',
     'comm_modal.status': 'Status',
@@ -955,7 +955,7 @@ const TRANSLATIONS = {
     'comm_modal.org_ph': 'Αναζήτηση με οργανισμό ή όνομα επαφής…',
     'comm_modal.org_locked': '(σταθερός οργανισμός για αυτή την υπόθεση)',
     'comm_modal.contact': 'Άτομο Επαφής',
-    'comm_modal.contact_ph': '— επιλογή επαφής —',
+    'comm_modal.contact_add_ph': '+ Προσθήκη επαφής…',
     'comm_modal.subject': 'Θέμα',
     'comm_modal.subject_ph': 'Ζητούμενο σύνολο δεδομένων ή θέμα',
     'comm_modal.status': 'Κατάσταση',
@@ -5854,7 +5854,7 @@ async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefi
     show('commNotes').value   = c.notes;
     _commOrgSet(c.org_name, c.org_title);
     _setOrgLocked(false);
-    onCommOrgInput(c.contact_person || '');
+    onCommOrgInput(_commPreselectFromComm(c));
     _renderCommCaseInfo(cs, true);
   } else {
     show('commModalTitle').textContent = prefillOrg ? `${t('comm_modal.add_title')} — ${prefillOrg}` : t('comm_modal.add_title');
@@ -5870,7 +5870,7 @@ async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefi
     show('commMedium').value  = prefillMedium || '';
     setCommDirectionPill('');
     show('commNotes').value   = '';
-    if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(prefillContactPerson || ''); }
+    if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(prefillContactPerson ? [{ id: null, label: prefillContactPerson }] : []); }
     _setOrgLocked(!!prefillCaseId);  // a follow-up stays tied to its case's organization
     _renderCommCaseInfo(cs, false);
   }
@@ -5965,11 +5965,22 @@ function _onCommDateChange() {
   show('commDeadline').value = _plus14(show('commDate').value);
 }
 
+// The comm modal's Contact Person field -- a multi-select built from a
+// plain <select> (picking an option ADDS that contact) plus a row of
+// removable chips for whichever are already added, rather than a native
+// <select multiple> (poor discoverability, awkward on touch, no per-item
+// remove). _commOrgContacts holds every contact for the currently-selected
+// org (id/label/email/tel); _commSelectedContacts holds the ones actually
+// added, in add-order.
+let _commOrgContacts = [];
+let _commSelectedContacts = [];
+
 function _resetCommContact() {
   show('commContactSection').classList.add('d-none');
-  show('commContact').innerHTML = `<option value="">${t('comm_modal.contact_ph')}</option>`;
-  show('commContactInfo').classList.add('d-none');
-  show('commContactInfo').innerHTML = '';
+  _commOrgContacts = [];
+  _commSelectedContacts = [];
+  show('commContact').innerHTML = `<option value="">${t('comm_modal.contact_add_ph')}</option>`;
+  show('commContactChips').innerHTML = '';
 }
 
 function _orgCodeMatches(stored, query) {
@@ -5989,7 +6000,7 @@ function _getContactsForOrg(orgCode) {
     const extraMatch   = (m.contact_org_codes || []).some(o => _orgCodeMatches(o.code || '', orgCode));
     if (primaryMatch || extraMatch) {
       seen.add(m.contact_id);
-      contacts.push({ first_name: m.contact_first_name, last_name: m.contact_last_name,
+      contacts.push({ id: m.contact_id, first_name: m.contact_first_name, last_name: m.contact_last_name,
                       position: m.contact_position, email: m.contact_email, tel: m.contact_tel });
     }
   }
@@ -5999,7 +6010,7 @@ function _getContactsForOrg(orgCode) {
     const extraMatch   = (c.org_codes || []).some(o => _orgCodeMatches(o.code || '', orgCode));
     if (primaryMatch || extraMatch) {
       seen.add(c.id);
-      contacts.push({ first_name: c.first_name, last_name: c.last_name,
+      contacts.push({ id: c.id, first_name: c.first_name, last_name: c.last_name,
                       position: c.position, email: c.email, tel: c.tel });
     }
   }
@@ -6013,28 +6024,78 @@ function _commContactBaseName(label) {
   return (label || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
 
-function _fillCommContacts(contacts, preselectName) {
-  const sel = show('commContact');
-  const preselectBase = _commContactBaseName(preselectName);
-  let exactMatch = null, baseMatch = null;
-  contacts.forEach(c => {
-    const label = [c.first_name, c.last_name].filter(Boolean).join(' ') +
-                  (c.position ? ' (' + c.position + ')' : '');
-    const o = document.createElement('option');
-    o.value = label;
-    o.textContent = label;
-    o.dataset.email = c.email || '';
-    o.dataset.tel   = c.tel   || '';
-    sel.appendChild(o);
-    if (preselectName) {
-      if (label === preselectName) exactMatch = o;
-      else if (!baseMatch && preselectBase && _commContactBaseName(label) === preselectBase) baseMatch = o;
+// Builds onCommOrgInput's preselect array from an already-fetched comm --
+// prefers the real linked contacts (c.contacts, from CommunicationContact)
+// when there are any, falling back to the old free-text contact_person for
+// a comm that predates that table (or otherwise never got a real link).
+function _commPreselectFromComm(c) {
+  if (c.contacts && c.contacts.length) {
+    return c.contacts.map(x => ({
+      id: x.id,
+      label: [x.first_name, x.last_name].filter(Boolean).join(' ') + (x.position ? ' (' + x.position + ')' : ''),
+    }));
+  }
+  return c.contact_person ? [{ id: null, label: c.contact_person }] : [];
+}
+
+// preselect: array of {id, label} -- id is the real OrgContact id when
+// known (a comm already linked via CommunicationContact, or a contact just
+// picked from a real search result), null for a legacy comm that only ever
+// had a free-text contact_person and needs matching by name instead.
+function _fillCommContacts(contacts, preselect) {
+  _commOrgContacts = contacts.map(c => ({
+    id: c.id != null ? c.id : null,
+    label: [c.first_name, c.last_name].filter(Boolean).join(' ') + (c.position ? ' (' + c.position + ')' : ''),
+    email: c.email || '', tel: c.tel || '',
+  }));
+  _commSelectedContacts = [];
+  (preselect || []).forEach(want => {
+    if (!want || (want.id == null && !want.label)) return;
+    let match = want.id != null ? _commOrgContacts.find(c => c.id === want.id) : null;
+    if (!match && want.label) {
+      const base = _commContactBaseName(want.label);
+      match = _commOrgContacts.find(c => c.label === want.label)
+           || _commOrgContacts.find(c => _commContactBaseName(c.label) === base);
     }
+    if (match && !_commSelectedContacts.includes(match)) _commSelectedContacts.push(match);
   });
-  const chosen = exactMatch || baseMatch;
-  if (chosen) chosen.selected = true;
   show('commContactSection').classList.remove('d-none');
-  if (preselectName) onCommContactChange();
+  _renderCommContactPicker();
+  _renderCommContactChips();
+}
+
+function _renderCommContactPicker() {
+  const sel = show('commContact');
+  const selectedLabels = new Set(_commSelectedContacts.map(c => c.label));
+  sel.innerHTML = `<option value="">${t('comm_modal.contact_add_ph')}</option>` +
+    _commOrgContacts.map((c, i) => ({ c, i })).filter(({ c }) => !selectedLabels.has(c.label))
+      .map(({ c, i }) => `<option value="${i}">${esc(c.label)}</option>`).join('');
+}
+
+function _renderCommContactChips() {
+  show('commContactChips').innerHTML = _commSelectedContacts.map((c, i) => `
+    <span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em;white-space:normal;text-align:left"
+          ${(c.email || c.tel) ? `title="${esc([c.email, c.tel].filter(Boolean).join(' · '))}"` : ''}>
+      <i class="bi bi-person-fill"></i>${esc(c.label)}
+      <button type="button" class="btn-close btn-close-white flex-shrink-0" style="font-size:.55em;margin-left:.25em"
+              onclick="_removeCommContact(${i})" title="${t('common.remove')}"></button>
+    </span>`).join('');
+}
+
+function _addCommContact() {
+  const sel = show('commContact');
+  if (!sel.value) return;
+  const c = _commOrgContacts[parseInt(sel.value, 10)];
+  if (!c) return;
+  _commSelectedContacts.push(c);
+  _renderCommContactPicker();
+  _renderCommContactChips();
+}
+
+function _removeCommContact(i) {
+  _commSelectedContacts.splice(i, 1);
+  _renderCommContactPicker();
+  _renderCommContactChips();
 }
 
 function _openAddContactForComm() {
@@ -6044,31 +6105,19 @@ function _openAddContactForComm() {
   openNewContactPanel(orgCode, orgLabel);
 }
 
-function onCommOrgInput(preselectName) {
+function onCommOrgInput(preselect) {
   _resetCommContact();
   const orgCode = show('commOrgCode').value;
   if (!orgCode) return;
   show('commContactSection').classList.remove('d-none');
   if (_portalMembersCache !== null) {
-    _fillCommContacts(_getContactsForOrg(orgCode), preselectName);
+    _fillCommContacts(_getContactsForOrg(orgCode), preselect);
   } else {
     fetch(API_BASE + 'api/contacts/' + encodeURIComponent(orgCode))
       .then(r => r.json())
-      .then(contacts => _fillCommContacts(contacts, preselectName))
+      .then(contacts => _fillCommContacts(contacts, preselect))
       .catch(() => {});
   }
-}
-
-function onCommContactChange() {
-  const sel  = show('commContact');
-  const info = show('commContactInfo');
-  if (!sel.value) { info.classList.add('d-none'); info.innerHTML = ''; return; }
-  const o = sel.options[sel.selectedIndex];
-  const parts = [];
-  if (o.dataset.email) parts.push('<i class="bi bi-envelope me-1"></i><a href="mailto:' + esc(o.dataset.email) + '">' + esc(o.dataset.email) + '</a>');
-  if (o.dataset.tel)   parts.push('<i class="bi bi-telephone me-1"></i><a href="tel:'   + esc(o.dataset.tel)   + '">' + esc(o.dataset.tel)   + '</a>');
-  if (parts.length) { info.innerHTML = parts.join(' &nbsp;'); info.classList.remove('d-none'); }
-  else { info.classList.add('d-none'); }
 }
 
 async function saveComm() {
@@ -6091,7 +6140,8 @@ async function saveComm() {
     direction:    show('commDirection').value,
     notes:        show('commNotes').value.trim(),
     case_id:      show('commCaseId').value || null,
-    contact_person: (() => { const s = show('commContact'); return s.value ? s.options[s.selectedIndex].textContent : ''; })(),
+    contact_person: _commSelectedContacts.map(c => c.label).join(', '),
+    contact_ids:    _commSelectedContacts.map(c => c.id).filter(id => id != null),
   };
 
   if (!body.contact_date || !body.org_name || !body.subject) {
@@ -9640,7 +9690,7 @@ function _commAllContacts() {
     if (!m.contact_id || seen.has(m.contact_id)) continue;
     seen.add(m.contact_id);
     contacts.push({
-      first_name: m.contact_first_name, last_name: m.contact_last_name,
+      id: m.contact_id, first_name: m.contact_first_name, last_name: m.contact_last_name,
       position: m.contact_position, email: m.contact_email, tel: m.contact_tel,
       org_code: m.org_name || '', org_label: m.org_title || m.org_name || '',
     });
@@ -9649,7 +9699,7 @@ function _commAllContacts() {
     if (seen.has(c.id)) continue;
     seen.add(c.id);
     contacts.push({
-      first_name: c.first_name, last_name: c.last_name,
+      id: c.id, first_name: c.first_name, last_name: c.last_name,
       position: c.position, email: c.email, tel: c.tel,
       org_code: c.org_code || '', org_label: c.org_label || c.org_code || '',
     });
@@ -9717,7 +9767,7 @@ function _commContactPick(i) {
   // there. Resolve through the same alias map _orgCodeMatches uses, when available.
   const ckanCode = (_ckanByHrms && _ckanByHrms.get(c.org_code)) || c.org_code;
   _commOrgSet(ckanCode, c.org_label);
-  onCommOrgInput(_commContactLabel(c));
+  onCommOrgInput([{ id: c.id != null ? c.id : null, label: _commContactLabel(c) }]);
 }
 function _commOrgSet(code, label) {
   show('commOrgCode').value  = code;
@@ -9856,10 +9906,42 @@ function _applyContactSaveResult(data, username, contactId) {
   _pmSaveCache(_portalMembersCache, _pmUnmatched);
   if (document.getElementById('orgContactsPanel')?.classList.contains('show')) _renderOrgContactsPanel();
   loadContactSummary();
-  // If opened from the comm modal, refresh its contact list and auto-select the new person
+  // If opened from the comm modal, refresh its contact list and add the new
+  // person to whatever's already selected -- onCommOrgInput() would work
+  // too, but it fully resets the picker, discarding any other contacts
+  // already added as chips before this one was created.
   if (document.getElementById('commModal')?.classList.contains('show')) {
-    const newName = [data.first_name, data.last_name].filter(Boolean).join(' ');
-    onCommOrgInput(newName || undefined);
+    _addNewlyCreatedCommContact(data);
+  }
+}
+
+function _addNewlyCreatedCommContact(data) {
+  const orgCode = show('commOrgCode').value;
+  if (!orgCode) return;
+  const apply = (contacts) => {
+    const keep = _commSelectedContacts;
+    _commOrgContacts = contacts.map(c => ({
+      id: c.id != null ? c.id : null,
+      label: [c.first_name, c.last_name].filter(Boolean).join(' ') + (c.position ? ' (' + c.position + ')' : ''),
+      email: c.email || '', tel: c.tel || '',
+    }));
+    // Re-resolve the preserved selection by id against the refreshed list
+    // (falling back to the stale entry if it somehow vanished) instead of
+    // just keeping the old array as-is, so it reflects anything the
+    // refresh changed about them.
+    _commSelectedContacts = keep.map(k => (k.id != null && _commOrgContacts.find(c => c.id === k.id)) || k);
+    const newLabel = [data.first_name, data.last_name].filter(Boolean).join(' ');
+    if (newLabel && !_commSelectedContacts.some(c => c.id != null && c.id === data.id)) {
+      _commSelectedContacts.push(_commOrgContacts.find(c => c.id === data.id) || { id: data.id, label: newLabel, email: data.email || '', tel: data.tel || '' });
+    }
+    show('commContactSection').classList.remove('d-none');
+    _renderCommContactPicker();
+    _renderCommContactChips();
+  };
+  if (_portalMembersCache !== null) {
+    apply(_getContactsForOrg(orgCode));
+  } else {
+    fetch(API_BASE + 'api/contacts/' + encodeURIComponent(orgCode)).then(r => r.json()).then(apply).catch(() => {});
   }
 }
 
