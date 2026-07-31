@@ -4480,14 +4480,13 @@ def _load_excluded_matchers():
     return addrs, domains
 
 
+def _is_excluded_address(addr, excluded_addrs, excluded_domains):
+    domain = addr.rsplit("@", 1)[-1] if "@" in addr else ""
+    return addr in excluded_addrs or domain in excluded_domains
+
+
 def _filter_excluded(candidate_addrs, excluded_addrs, excluded_domains):
-    kept = set()
-    for a in candidate_addrs:
-        domain = a.rsplit("@", 1)[-1] if "@" in a else ""
-        if a in excluded_addrs or domain in excluded_domains:
-            continue
-        kept.add(a)
-    return kept
+    return {a for a in candidate_addrs if not _is_excluded_address(a, excluded_addrs, excluded_domains)}
 
 
 def _org_identifiers_for_contacts(contacts):
@@ -4539,6 +4538,59 @@ def _resolve_case_for_contact(contact, subject: str = ""):
     return {"case": None, "reason": "no_open_case"}
 
 
+def _detect_email_direction(outer_from_addr, quoted, used_quoted_fallback, excluded_addrs, excluded_domains):
+    """Outbound if the message's actual sender is one of ours (an admin-
+    managed excluded staff address/domain), Inbound otherwise -- checked
+    against whichever sender is actually relevant to what got matched:
+
+    - A live reply resolved from the outer envelope (staff CC'd/BCC'd the
+      parser on an outgoing reply, or a contact's reply-all still carries
+      it): the outer From is the real sender, so check that directly.
+    - A backlog thread forwarded straight to the parser for processing
+      (resolved via the quoted-thread fallback instead): the outer From
+      only ever names whoever did the forwarding, never the actual
+      correspondence -- check the *newest* quoted message's own From
+      instead, the same message _resolved_contact_date already prefers for
+      this entry's date.
+
+    Returns None (left unset, not guessed) when there's no named sender to
+    check at all -- e.g. the quoted fallback matched via an address swept
+    in from a To:/Cc: line rather than an actual quoted "From:" line.
+    """
+    if used_quoted_fallback:
+        named_from = quoted.get("named_from") if quoted else []
+        sender = named_from[0][1] if named_from else None
+    else:
+        sender = outer_from_addr
+    if not sender:
+        return None
+    return "Outbound" if _is_excluded_address(sender, excluded_addrs, excluded_domains) else "Inbound"
+
+
+def _direction_for_resolved_inbound(inbound: "InboundEmail", contact):
+    """Same signal as _detect_email_direction, re-derived for an InboundEmail
+    being resolved by a human after the fact (pick-contact / manual attach)
+    rather than at webhook-receipt time -- cc was never persisted on the
+    row, so this can't just re-run _match_inbound_email verbatim.
+
+    used_quoted_fallback's stand-in here is "was this a live exchange, not a
+    pure forward-for-parsing": the resolved contact's own address showing up
+    in the stored From/To settles it directly when there is a contact; with
+    none at all (e.g. this was a no_contact_match the human is attaching by
+    hand), fall back to whether the outer recipient itself looks like a
+    genuine external party rather than just our own receiving address."""
+    excluded_addrs, excluded_domains = _load_excluded_matchers()
+    outer_from_addr = (inbound.from_email or "").lower()
+    outer_to_addr = (inbound.to_email or "").lower()
+    contact_email = (contact.email or "").lower() if contact else ""
+    live_exchange = (
+        (contact_email and contact_email in {outer_from_addr, outer_to_addr})
+        or (not contact_email and outer_to_addr and not _is_excluded_address(outer_to_addr, excluded_addrs, excluded_domains))
+    )
+    quoted = None if live_exchange else _extract_quoted_thread_info(inbound.body_text or "")
+    return _detect_email_direction(outer_from_addr, quoted, not live_exchange, excluded_addrs, excluded_domains)
+
+
 def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject: str = "", body_text: str = ""):
     """Resolve the org contact(s) named in an inbound email's From/To/Cc headers
     and, only if that's unambiguous, the single Open case it belongs to.
@@ -4559,6 +4611,7 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
     case or the wrong org entirely.
     """
     excluded_addrs, excluded_domains = _load_excluded_matchers()
+    outer_from_addr = (parseaddr(from_field)[1] or "").lower()
 
     # The outer envelope almost always has *some* non-excluded address in it
     # even when it's useless for matching -- the parser's own receiving
@@ -4570,12 +4623,14 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
     contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(addrs)).all() if addrs else []
 
     quoted = None
+    used_quoted_fallback = False
     if not contacts:
         quoted = _extract_quoted_thread_info(body_text)
         if quoted:
             quoted_addrs = _filter_excluded(quoted["addrs"], excluded_addrs, excluded_domains)
             if quoted_addrs:
                 contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(quoted_addrs)).all()
+                used_quoted_fallback = True
 
     if not contacts:
         # Nothing resolved to a registered contact -- surface whoever the
@@ -4583,10 +4638,9 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
         # forwarder repeated) as a display-only hint for the human who'll
         # have to search for the org by hand.
         detected_name = detected_email = None
-        outer_from_addr = (parseaddr(from_field)[1] or "").lower()
         if quoted:
             for name, email in quoted.get("named_from", []):
-                if email in excluded_addrs or email.rsplit("@", 1)[-1] in excluded_domains:
+                if _is_excluded_address(email, excluded_addrs, excluded_domains):
                     continue
                 if email == outer_from_addr:
                     continue
@@ -4602,7 +4656,8 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
 
     contact = contacts[0]
     result = _resolve_case_for_contact(contact, subject)
-    return {"contact": contact, "case": result["case"], "reason": result["reason"]}
+    direction = _detect_email_direction(outer_from_addr, quoted, used_quoted_fallback, excluded_addrs, excluded_domains)
+    return {"contact": contact, "case": result["case"], "reason": result["reason"], "direction": direction}
 
 
 def _auto_captured_notes(body_text: str) -> str:
@@ -4622,7 +4677,7 @@ def _resolved_contact_date(inbound: "InboundEmail") -> str:
     )
 
 
-def _create_email_communication(inbound: "InboundEmail", case: "Case", contact, comm_status: str, contact_date: str = None) -> "Communication":
+def _create_email_communication(inbound: "InboundEmail", case: "Case", contact, comm_status: str, contact_date: str = None, direction: str = None) -> "Communication":
     contact_name = " ".join(p for p in [contact.first_name, contact.last_name] if p) if contact else ""
     comm = Communication(
         case_id=case.id,
@@ -4635,7 +4690,7 @@ def _create_email_communication(inbound: "InboundEmail", case: "Case", contact, 
         contact_person=contact_name or inbound.from_name or None,
         notes=_auto_captured_notes(inbound.body_text or ""),
         source="email",
-        direction="Inbound",  # unambiguous -- this whole path only exists because an email arrived
+        direction=direction,  # see _detect_email_direction -- None (left unset) when there's no named sender to check
     )
     db.session.add(comm)
     db.session.flush()
@@ -4682,7 +4737,7 @@ def email_inbound_webhook(secret):
         )
 
         if match["case"]:
-            comm = _create_email_communication(inbound, match["case"], contact, "Intermediate Contact")
+            comm = _create_email_communication(inbound, match["case"], contact, "Intermediate Contact", direction=match.get("direction"))
             inbound.status = "attached"
             inbound.communication_id = comm.id
         else:
@@ -4991,7 +5046,8 @@ def inbound_email_pick_contact(inbound_id):
 
     result = _resolve_case_for_contact(contact, inbound.subject or "")
     if result["case"]:
-        comm = _create_email_communication(inbound, result["case"], contact, "Intermediate Contact")
+        comm = _create_email_communication(inbound, result["case"], contact, "Intermediate Contact",
+                                            direction=_direction_for_resolved_inbound(inbound, contact))
         inbound.status = "attached"
         inbound.communication_id = comm.id
         inbound.reason = None
@@ -5037,7 +5093,8 @@ def inbound_email_attach(inbound_id):
         db.session.flush()
         comm_status = "Initial Contact"
 
-    comm = _create_email_communication(inbound, case, contact, comm_status, contact_date)
+    comm = _create_email_communication(inbound, case, contact, comm_status, contact_date,
+                                        direction=_direction_for_resolved_inbound(inbound, contact))
     inbound.status = "attached"
     inbound.communication_id = comm.id
     db.session.commit()
