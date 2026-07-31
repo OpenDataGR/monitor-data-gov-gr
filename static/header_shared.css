@@ -6,22 +6,32 @@
    tricks needed, since backgrounds always paint behind an element's own
    content regardless of layer count.
 
-   Also carries the same vertical padding as the main dashboard's navbar
-   (py-3, i.e. 1rem top/bottom) so the admin panel/API docs/API console bars
-   match its height instead of each page picking its own. The Manual page's
-   header is a taller, differently-shaped block (back-link + brand + h1 +
-   description, not a single row) and keeps its own padding -- forcing it
-   to the same height would either clip that content or leave the others
-   awkwardly padded to match it.
+   Also carries a shared min-height so the main dashboard/admin panel/API
+   docs/API console bars come out the same height regardless of how much
+   each one's content actually stacks up to -- the admin/API pages have an
+   extra "Back to dashboard" line above their title that the plain navbar
+   doesn't, so matching padding alone (an earlier version of this rule)
+   still left them visibly taller. min-height (rather than a fixed height)
+   plus each page's own existing flex/align-items-center means shorter
+   content just centers within the shared height instead of being clipped.
+   The Manual page's header is a taller, differently-shaped block (back-
+   link + brand + h1 + description, not a single row) and keeps its own
+   sizing -- forcing it down to this height would clip that content.
 
    One rule, applied on top of whichever header class a given page already
-   uses (.navbar / .top-header / .site-header) -- previously each of those
-   five templates defined this exact gradient itself, each with its own
-   slightly different padding. */
+   uses (.navbar / .top-header / .site-header / .login-header) -- previously
+   each of those templates defined this exact gradient itself. */
 .gov-header-bg {
   background: url("img/header-pattern.svg") no-repeat left center / cover,
               linear-gradient(135deg, #003366 0%, #0057b8 100%);
 }
+.navbar.gov-header-bg, .top-header.gov-header-bg {
+  min-height: 84px;
+}
 .top-header.gov-header-bg {
+  /* The navbar's own horizontal spacing comes from its inner
+     .container-fluid.px-4, not the <nav> itself (it only sets py-3) --
+     .top-header has no such inner wrapper, so it needs its own padding
+     for both axes rather than sharing this rule with .navbar. */
   padding: 1rem 2rem;
 }
