@@ -18,8 +18,9 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='api_shared.css') }}?v={{ build_date }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='header_shared.css') }}?v={{ build_date }}">
   <style>
-    .top-header { background: linear-gradient(135deg, #003366 0%, #0057b8 100%); color: #fff; padding: 1rem 1.5rem; }
+    .top-header { color: #fff; }
     .api-hero { padding: 24px 32px 8px; }
     .api-hero p { max-width: 900px; }
     .api-hero h2 { font-family: var(--api-mono); font-size: 1.5rem; margin: 0 0 8px; }
@@ -58,7 +59,7 @@
   </style>
 </head>
 <body>
-  <div class="top-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+  <div class="top-header gov-header-bg d-flex align-items-center justify-content-between flex-wrap gap-2">
     <div class="d-flex align-items-center gap-3">
       <div>
         <a href="{{ url_for('index') }}" class="text-white-50 text-decoration-none small d-block mb-1">

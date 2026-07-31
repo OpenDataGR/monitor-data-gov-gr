@@ -1,0 +1,27 @@
+/* Shared header background -- navy-to-blue brand gradient plus a low-poly
+   triangulation pattern behind the title, fading out to the right so it
+   blends into the solid gradient instead of covering the whole bar. The
+   fade itself is baked into header-pattern.svg's own mask (not layered via
+   CSS), so this is just two flat background layers -- no z-index/stacking
+   tricks needed, since backgrounds always paint behind an element's own
+   content regardless of layer count.
+
+   Also carries the same vertical padding as the main dashboard's navbar
+   (py-3, i.e. 1rem top/bottom) so the admin panel/API docs/API console bars
+   match its height instead of each page picking its own. The Manual page's
+   header is a taller, differently-shaped block (back-link + brand + h1 +
+   description, not a single row) and keeps its own padding -- forcing it
+   to the same height would either clip that content or leave the others
+   awkwardly padded to match it.
+
+   One rule, applied on top of whichever header class a given page already
+   uses (.navbar / .top-header / .site-header) -- previously each of those
+   five templates defined this exact gradient itself, each with its own
+   slightly different padding. */
+.gov-header-bg {
+  background: url("img/header-pattern.svg") no-repeat left center / cover,
+              linear-gradient(135deg, #003366 0%, #0057b8 100%);
+}
+.top-header.gov-header-bg {
+  padding: 1rem 2rem;
+}
