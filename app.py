@@ -33,7 +33,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, ExcludedEmailAddress, InboundListenAddress, ApiToken
+from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, InboundEmailCommunication, UnmatchedEmailContact, ExcludedEmailAddress, InboundListenAddress, ApiToken
 import rdflib
 import pyshacl
 import config
@@ -4568,11 +4568,12 @@ def _org_identifiers_for_contacts(contacts):
     return org_codes, org_labels
 
 
-def _resolve_case_for_contact(contact, subject: str = ""):
-    """Given a single confidently-matched contact, find the one Open case
-    their org belongs to -- narrowing by subject (stripped of Re:/Fwd:
-    markers) when there are several -- or a reason it couldn't be resolved."""
-    org_codes, org_labels = _org_identifiers_for_contacts([contact])
+def _resolve_case_for_contacts(contacts, subject: str = ""):
+    """Given one or more confidently-matched contacts from the same org,
+    find the one Open case their org belongs to -- narrowing by subject
+    (stripped of Re:/Fwd: markers) when there are several -- or a reason it
+    couldn't be resolved."""
+    org_codes, org_labels = _org_identifiers_for_contacts(contacts)
 
     open_cases = Case.query.filter(Case.status == "Open", Case.org_name.in_(org_codes)).all()
     if not open_cases and org_labels:
@@ -4651,73 +4652,110 @@ def _direction_for_resolved_inbound(inbound: "InboundEmail", contact):
     return _detect_email_direction(outer_from_addr, quoted, not live_exchange, excluded_addrs, excluded_domains)
 
 
+def _quoted_participant_pairs(quoted):
+    """(name, email) for every address a quoted thread mentions -- quoted
+    only ever tracks names for actual "From:" lines (named_from), so
+    anything only ever seen in a swept-in To:/Cc: span has no name to
+    offer; email-only in that case, same as a To:/Cc: address on the outer
+    envelope with no display name set."""
+    name_by_email = {email: name for name, email in quoted.get("named_from", [])}
+    return [(name_by_email.get(addr), addr) for addr in quoted.get("addrs", [])]
+
+
+def _split_matched_contacts(pairs, excluded_addrs, excluded_domains):
+    """pairs: (name_or_none, email) for every participant found on one
+    email/thread. Drops excluded (staff) addresses and de-dupes by email,
+    then splits into (registered OrgContacts, unmatched (name, email)
+    pairs) -- the latter is everyone left over who isn't one."""
+    filtered, seen = [], set()
+    for name, email in pairs:
+        email = (email or "").lower()
+        if not email or email in seen or _is_excluded_address(email, excluded_addrs, excluded_domains):
+            continue
+        seen.add(email)
+        filtered.append((name, email))
+    addr_set = {email for _, email in filtered}
+    contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(addr_set)).all() if addr_set else []
+    matched_emails = {c.email.lower() for c in contacts if c.email}
+    unmatched = [(name, email) for name, email in filtered if email not in matched_emails]
+    return contacts, unmatched
+
+
 def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject: str = "", body_text: str = ""):
-    """Resolve the org contact(s) named in an inbound email's From/To/Cc headers
-    and, only if that's unambiguous, the single Open case it belongs to.
+    """Resolve every org contact named in an inbound email's From/To/Cc
+    headers, grouped by org (one Communication ends up representing one
+    org, same as a manually-logged one -- several people from the same org
+    on one email all land on the one entry for it; people from different
+    orgs each get their own), plus whoever else was on the email/thread but
+    isn't a registered contact at all.
 
-    Excluded addresses/domains (admin-managed -- see ExcludedEmailAddress) are
-    dropped first, since staff forwarding a backlog thread appear as the
-    forwarder and often as a participant quoted in the body too, and neither
-    is a real case correspondent. Only when none of what's left in the outer
-    From/To/Cc resolves to a known contact does this fall back to a quoted
-    thread inside the body (see _extract_quoted_thread_info) -- a genuine
-    reply's own headers are already enough, so there's no need to go digging
-    through quoted history.
+    Excluded addresses/domains (admin-managed -- see ExcludedEmailAddress)
+    are dropped first, since staff forwarding a backlog thread appear as
+    the forwarder and often as a participant quoted in the body too, and
+    neither is a real case correspondent. Only when none of what's left in
+    the outer From/To/Cc resolves to a known contact does this fall back to
+    a quoted thread inside the body (see _extract_quoted_thread_info) -- a
+    genuine reply's own headers are already enough, so there's no need to
+    go digging through quoted history.
 
-    Deliberately conservative: an unknown sender, several equally-plausible
-    contacts, an org with zero Open cases, or an org with several all fall
-    through to "reason" rather than guessing -- the caller parks those for
-    manual review instead of risking a reply getting filed against the wrong
-    case or the wrong org entirely.
+    Each org group is resolved independently -- one with zero or several
+    Open cases is simply left out rather than blocking groups that did
+    resolve cleanly. Returns "reason" (for the caller's pending_review
+    bookkeeping) only when literally nothing could be attached to anything.
     """
     excluded_addrs, excluded_domains = _load_excluded_matchers()
     outer_from_addr = (parseaddr(from_field)[1] or "").lower()
 
-    # The outer envelope almost always has *some* non-excluded address in it
-    # even when it's useless for matching -- the parser's own receiving
-    # address in To:, for instance -- so "is there anything left after
-    # exclusion" is the wrong trigger for falling back to the body. What
-    # actually matters is whether any of it resolves to a known contact.
-    outer_addrs = {addr.lower() for _, addr in getaddresses([from_field or "", to_field or "", cc_field or ""]) if addr}
-    addrs = _filter_excluded(outer_addrs, excluded_addrs, excluded_domains)
-    contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(addrs)).all() if addrs else []
+    outer_pairs = list(getaddresses([from_field or "", to_field or "", cc_field or ""]))
+    contacts, unmatched = _split_matched_contacts(outer_pairs, excluded_addrs, excluded_domains)
 
     quoted = None
     used_quoted_fallback = False
     if not contacts:
         quoted = _extract_quoted_thread_info(body_text)
         if quoted:
-            quoted_addrs = _filter_excluded(quoted["addrs"], excluded_addrs, excluded_domains)
-            if quoted_addrs:
-                contacts = OrgContact.query.filter(db.func.lower(OrgContact.email).in_(quoted_addrs)).all()
+            q_contacts, q_unmatched = _split_matched_contacts(_quoted_participant_pairs(quoted), excluded_addrs, excluded_domains)
+            if q_contacts:
+                contacts, unmatched = q_contacts, q_unmatched
                 used_quoted_fallback = True
+            else:
+                # Neither pool resolved a registered contact -- merge both
+                # pools' leftovers (deduped) so a forward like this still
+                # surfaces everyone found, not just whichever pool happened
+                # to be checked.
+                seen = {email for _, email in unmatched}
+                unmatched = unmatched + [(n, e) for n, e in q_unmatched if e not in seen]
 
-    if not contacts:
-        # Nothing resolved to a registered contact -- surface whoever the
-        # quoted thread was actually with (if anyone, and not just the
-        # forwarder repeated) as a display-only hint for the human who'll
-        # have to search for the org by hand.
-        detected_name = detected_email = None
-        if quoted:
-            for name, email in quoted.get("named_from", []):
-                if _is_excluded_address(email, excluded_addrs, excluded_domains):
-                    continue
-                if email == outer_from_addr:
-                    continue
-                detected_name, detected_email = name, email
-                break
-        return {
-            "contact": None, "case": None, "reason": "no_contact_match",
-            "detected_name": detected_name, "detected_email": detected_email,
-        }
-
-    if len(contacts) > 1:
-        return {"contact": None, "case": None, "reason": "multiple_contacts_match", "candidates": contacts}
-
-    contact = contacts[0]
-    result = _resolve_case_for_contact(contact, subject)
     direction = _detect_email_direction(outer_from_addr, quoted, used_quoted_fallback, excluded_addrs, excluded_domains)
-    return {"contact": contact, "case": result["case"], "reason": result["reason"], "direction": direction}
+
+    groups_by_org = {}
+    for c in contacts:
+        groups_by_org.setdefault(c.org_code, []).append(c)
+
+    match_groups = []
+    for org_contacts in groups_by_org.values():
+        result = _resolve_case_for_contacts(org_contacts, subject)
+        match_groups.append({"contacts": org_contacts, "case": result["case"], "reason": result["reason"]})
+
+    resolved_groups = [g for g in match_groups if g["case"]]
+    # A best-effort org guess for whoever's unmatched -- only when every
+    # contact that *did* resolve on this email converged on the same org,
+    # otherwise there's no single answer to guess.
+    guess_org_code = guess_org_label = None
+    if len(match_groups) == 1:
+        guess_org_code = match_groups[0]["contacts"][0].org_code
+        guess_org_label = match_groups[0]["contacts"][0].org_label
+
+    overall_reason = None
+    if not resolved_groups:
+        overall_reason = "no_contact_match" if not contacts else next((g["reason"] for g in match_groups if g["reason"]), "no_open_case")
+
+    return {
+        "match_groups": resolved_groups,
+        "unmatched": [{"name": name, "email": email, "org_code": guess_org_code, "org_label": guess_org_label} for name, email in unmatched],
+        "direction": direction,
+        "reason": overall_reason,
+    }
 
 
 def _auto_captured_notes(body_text: str) -> str:
@@ -4737,8 +4775,13 @@ def _resolved_contact_date(inbound: "InboundEmail") -> str:
     )
 
 
-def _create_email_communication(inbound: "InboundEmail", case: "Case", contact, comm_status: str, contact_date: str = None, direction: str = None) -> "Communication":
-    contact_name = " ".join(p for p in [contact.first_name, contact.last_name] if p) if contact else ""
+def _create_email_communication(inbound: "InboundEmail", case: "Case", contacts, comm_status: str, contact_date: str = None, direction: str = None) -> "Communication":
+    """contacts: every registered OrgContact this entry should credit (all
+    from the same org as `case`, per _match_inbound_email's own grouping) --
+    possibly more than one when several people from that org were on the
+    same email, possibly empty for a manual pending-review attach where no
+    contact ever resolved at all."""
+    contact_names = ", ".join(" ".join(p for p in [c.first_name, c.last_name] if p) for c in contacts if c.first_name or c.last_name)
     comm = Communication(
         case_id=case.id,
         contact_date=contact_date or _resolved_contact_date(inbound),
@@ -4747,14 +4790,14 @@ def _create_email_communication(inbound: "InboundEmail", case: "Case", contact, 
         subject=inbound.subject or case.subject,
         status=comm_status,
         medium="Email",
-        contact_person=contact_name or inbound.from_name or None,
+        contact_person=contact_names or inbound.from_name or None,
         notes=_auto_captured_notes(inbound.body_text or ""),
         source="email",
         direction=direction,  # see _detect_email_direction -- None (left unset) when there's no named sender to check
     )
     db.session.add(comm)
-    db.session.flush()  # need comm.id before linking the contact below
-    _sync_communication_contacts(comm, [contact.id] if contact else [])
+    db.session.flush()  # need comm.id before linking contacts below
+    _sync_communication_contacts(comm, [c.id for c in contacts])
     return comm
 
 
@@ -4800,8 +4843,9 @@ def email_inbound_webhook(secret):
     body_text  = _extract_email_body(freq.form.get("email", ""))
 
     try:
-        match  = _match_inbound_email(from_field, to_field, cc_field, subject, body_text)
-        contact = match["contact"]
+        match = _match_inbound_email(from_field, to_field, cc_field, subject, body_text)
+        match_groups = match["match_groups"]
+        first_contact = match_groups[0]["contacts"][0] if match_groups else None
 
         inbound = InboundEmail(
             from_email=from_addr or None,
@@ -4809,25 +4853,42 @@ def email_inbound_webhook(secret):
             to_email=to_field or None,
             subject=subject or None,
             body_text=body_text or None,
-            matched_contact_id=contact.id if contact else None,
-            matched_org_code=contact.org_code if contact else None,
-            matched_org_label=contact.org_label if contact else None,
+            matched_contact_id=first_contact.id if first_contact else None,
+            matched_org_code=first_contact.org_code if first_contact else None,
+            matched_org_label=first_contact.org_label if first_contact else None,
         )
+        db.session.add(inbound)
+        db.session.flush()  # need inbound.id for the link/unmatched rows below
 
-        if match["case"]:
-            comm = _create_email_communication(inbound, match["case"], contact, "Intermediate Contact", direction=match.get("direction"))
+        # One Communication per resolved org group -- see _match_inbound_email
+        # (catch-all-contacts). communication_id keeps pointing at the first
+        # one for whatever still only reads that single column; the full set
+        # is InboundEmailCommunication, one row per Communication produced.
+        created_comms = []
+        for group in match_groups:
+            comm = _create_email_communication(inbound, group["case"], group["contacts"], "Intermediate Contact", direction=match.get("direction"))
+            created_comms.append(comm)
+            db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
+
+        if created_comms:
             inbound.status = "attached"
-            inbound.communication_id = comm.id
+            inbound.communication_id = created_comms[0].id
         else:
             inbound.status = "pending_review"
             inbound.reason = match["reason"]
-            if match["reason"] == "multiple_contacts_match":
-                inbound.candidate_contact_ids = json.dumps([c.id for c in match["candidates"]])
-            elif match["reason"] == "no_contact_match":
-                inbound.detected_name  = (match.get("detected_name") or "")[:200] or None
-                inbound.detected_email = (match.get("detected_email") or "")[:320] or None
 
-        db.session.add(inbound)
+        # Whoever showed up on this email/thread but isn't a registered
+        # contact -- independent of whether the loop above succeeded for
+        # everyone else, see UnmatchedEmailContact.
+        for u in match["unmatched"]:
+            db.session.add(UnmatchedEmailContact(
+                inbound_email_id=inbound.id,
+                name=(u.get("name") or "")[:200] or None,
+                email=(u.get("email") or "")[:320] or None,
+                org_code=(u.get("org_code") or "")[:200] or None,
+                org_label=(u.get("org_label") or "")[:300] or None,
+            ))
+
         db.session.commit()
     except Exception as exc:
         # Matching/insert blowing up must never mean the email just vanishes --
@@ -5122,10 +5183,11 @@ def inbound_email_pick_contact(inbound_id):
     inbound.matched_org_label  = contact.org_label
     inbound.candidate_contact_ids = None
 
-    result = _resolve_case_for_contact(contact, inbound.subject or "")
+    result = _resolve_case_for_contacts([contact], inbound.subject or "")
     if result["case"]:
-        comm = _create_email_communication(inbound, result["case"], contact, "Intermediate Contact",
+        comm = _create_email_communication(inbound, result["case"], [contact], "Intermediate Contact",
                                             direction=_direction_for_resolved_inbound(inbound, contact))
+        db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
         inbound.status = "attached"
         inbound.communication_id = comm.id
         inbound.reason = None
@@ -5171,8 +5233,9 @@ def inbound_email_attach(inbound_id):
         db.session.flush()
         comm_status = "Initial Contact"
 
-    comm = _create_email_communication(inbound, case, contact, comm_status, contact_date,
+    comm = _create_email_communication(inbound, case, [contact] if contact else [], comm_status, contact_date,
                                         direction=_direction_for_resolved_inbound(inbound, contact))
+    db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
     inbound.status = "attached"
     inbound.communication_id = comm.id
     db.session.commit()

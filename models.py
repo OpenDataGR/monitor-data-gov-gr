@@ -584,6 +584,11 @@ class InboundEmail(db.Model):
                 candidate_contacts = [rows[i].to_dict() for i in ids if i in rows]
             except Exception:
                 pass
+        # Every Communication this email actually produced -- catch-all-
+        # contacts can create more than one (one per distinct org among its
+        # matched contacts), not just the single primary one communication_id
+        # points at for backward compatibility.
+        all_comms = [link.communication.to_dict() for link in self.email_communications if link.communication]
         return {
             "id":             self.id,
             "received_at":    self.received_at.isoformat() if self.received_at else None,
@@ -598,10 +603,73 @@ class InboundEmail(db.Model):
             "candidate_contacts": candidate_contacts,
             "detected_name":  self.detected_name or "",
             "detected_email": self.detected_email or "",
+            "unmatched_contacts": [u.to_dict() for u in self.unmatched_contacts],
             "status":         self.status,
             "reason":         self.reason or "",
             "communication_id": self.communication_id,
+            "communications":    all_comms,
             "direction":      self.communication.direction if self.communication else None,
+        }
+
+
+class InboundEmailCommunication(db.Model):
+    """Every Communication one inbound email actually produced -- catch-all-
+    contacts groups an email's matched contacts by org and can create one
+    Communication per distinct org, not just the single one
+    InboundEmail.communication_id has room for. That column stays as the
+    first/primary one (existing readers of it keep working unchanged); this
+    table is the complete set."""
+    __tablename__ = "inbound_email_communications"
+
+    id                = db.Column(db.Integer, primary_key=True)
+    inbound_email_id  = db.Column(db.Integer, db.ForeignKey("inbound_emails.id"), nullable=False, index=True)
+    communication_id  = db.Column(db.Integer, db.ForeignKey("communications.id"), nullable=False, index=True)
+
+    inbound_email = db.relationship("InboundEmail", backref=db.backref("email_communications", cascade="all, delete-orphan"))
+    communication = db.relationship("Communication")
+
+    __table_args__ = (db.UniqueConstraint("inbound_email_id", "communication_id", name="uq_inbound_email_communication"),)
+
+
+class UnmatchedEmailContact(db.Model):
+    """A participant on a processed inbound email (its own From/To/Cc, or a
+    quoted thread when it fell back to that) who doesn't match any
+    registered OrgContact -- flagged for a human to either register as a
+    real contact or explicitly drop, rather than silently vanishing.
+    Independent of whether the same email otherwise succeeded: an email can
+    be fully attached for its other, already-registered participants while
+    still carrying one of these waiting on a decision.
+
+    org_code/org_label are only a best guess (the org every other matched
+    contact on the same email converged on, when there was exactly one) --
+    genuinely unknown, not authoritative, since this person isn't a
+    registered contact of any org yet."""
+    __tablename__ = "unmatched_email_contacts"
+
+    id                = db.Column(db.Integer, primary_key=True)
+    inbound_email_id  = db.Column(db.Integer, db.ForeignKey("inbound_emails.id"), nullable=False, index=True)
+    name              = db.Column(db.String(200))
+    email             = db.Column(db.String(320))
+    org_code          = db.Column(db.String(200))
+    org_label         = db.Column(db.String(300))
+    status            = db.Column(db.String(20), nullable=False, default="pending")  # pending | dropped | created
+    resolved_contact_id = db.Column(db.Integer, db.ForeignKey("org_contacts.id"))
+    created_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    inbound_email     = db.relationship("InboundEmail", backref=db.backref("unmatched_contacts", cascade="all, delete-orphan"))
+    resolved_contact  = db.relationship("OrgContact")
+
+    def to_dict(self):
+        return {
+            "id":              self.id,
+            "inbound_email_id": self.inbound_email_id,
+            "name":            self.name or "",
+            "email":           self.email or "",
+            "org_code":        self.org_code or "",
+            "org_label":       self.org_label or "",
+            "status":          self.status,
+            "resolved_contact": self.resolved_contact.to_dict() if self.resolved_contact else None,
+            "created_at":      self.created_at.isoformat() if self.created_at else None,
         }
 
 

@@ -188,11 +188,11 @@ ROUTES = {
     ],
     "inbound": [
         {"methods": ["POST"], "path": "/api/email-sync/inbound-webhook/<secret>",
-         "desc": "Receives an inbound email, auto-matches and attaches it to a contact/case, or queues it for review. Secret-token gated, CSRF-exempt. If any InboundListenAddress rows exist, a To/Cc not on that list gets recorded dismissed instead of processed."},
+         "desc": "Receives an inbound email, matches every participant against registered contacts grouped by org, and creates one Communication per org that resolves to exactly one Open case (an org with none/several is simply skipped, not blocking the others). Any participant that isn't a registered contact at all is recorded as an UnmatchedEmailContact for review, regardless of whether other participants succeeded. Secret-token gated, CSRF-exempt. If any InboundListenAddress rows exist, a To/Cc not on that list gets recorded dismissed instead of processed."},
         {"methods": ["GET"], "path": "/api/inbound-emails", "params": "?status=",
          "desc": "Lists inbound emails."},
         {"methods": ["POST"], "path": "/api/inbound-emails/<int:inbound_id>/pick-contact",
-         "desc": "Resolves a multi-candidate match to a chosen contact; auto-attaches if their case is unambiguous."},
+         "desc": "Resolves a multi-candidate match (reason=multiple_contacts_match) to a chosen contact; auto-attaches if their case is unambiguous. Largely superseded by the webhook's own per-org grouping, which no longer treats several matched contacts as ambiguous -- kept for any pre-existing rows still carrying that reason."},
         {"methods": ["POST"], "path": "/api/inbound-emails/<int:inbound_id>/attach",
          "desc": "Attaches an email to an existing case or opens a new one, creating a communication."},
         {"methods": ["POST"], "path": "/api/inbound-emails/<int:inbound_id>/dismiss",
