@@ -482,6 +482,22 @@
     </div>
   </div>
 
+  <!-- Parsed email detail modal -->
+  <div class="modal fade" id="parsedEmailDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold"><i class="bi bi-envelope-open me-2"></i><span data-i18n="admin.parsed_detail_title">Parsed Email</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-3" id="parsedEmailDetailBody" style="max-height:75vh;overflow-y:auto"></div>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.close">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Mass email confirmation modal -->
   <div class="modal fade" id="massEmailModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -611,6 +627,13 @@
         'admin.parsed_col_received': 'Received', 'admin.parsed_col_from': 'From', 'admin.parsed_col_subject': 'Subject',
         'admin.parsed_col_status': 'Status', 'admin.parsed_col_direction': 'Direction', 'admin.parsed_col_org': 'Matched org',
         'admin.parsed_col_reason': 'Reason', 'admin.parsed_none': 'No emails parsed yet.',
+        'admin.parsed_detail_title': 'Parsed Email', 'admin.parsed_detail_received': 'Received',
+        'admin.parsed_detail_from': 'From', 'admin.parsed_detail_to': 'To', 'admin.parsed_detail_subject': 'Subject',
+        'admin.parsed_detail_status': 'Status', 'admin.parsed_detail_direction': 'Direction',
+        'admin.parsed_detail_reason': 'Reason', 'admin.parsed_detail_matched_contact': 'Matched contact',
+        'admin.parsed_detail_candidates': 'Candidate contacts', 'admin.parsed_detail_detected': 'Detected (unregistered)',
+        'admin.parsed_detail_matched_org': 'Matched organization', 'admin.parsed_detail_communication': 'Linked communication',
+        'admin.parsed_detail_body': 'Body', 'admin.parsed_detail_none': '—',
         'admin.hvd_cache_title': 'HVD Compliance Check Cache',
         'admin.hvd_cache_desc': 'Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.',
         'admin.clear_hvd_cache': 'Clear HVD Check Cache',
@@ -714,6 +737,13 @@
         'admin.parsed_col_received': 'Λήψη', 'admin.parsed_col_from': 'Από', 'admin.parsed_col_subject': 'Θέμα',
         'admin.parsed_col_status': 'Κατάσταση', 'admin.parsed_col_direction': 'Κατεύθυνση', 'admin.parsed_col_org': 'Αντιστοιχισμένος φορέας',
         'admin.parsed_col_reason': 'Αιτία', 'admin.parsed_none': 'Δεν έχει αναλυθεί κανένα email ακόμα.',
+        'admin.parsed_detail_title': 'Αναλυμένο Email', 'admin.parsed_detail_received': 'Λήψη',
+        'admin.parsed_detail_from': 'Από', 'admin.parsed_detail_to': 'Προς', 'admin.parsed_detail_subject': 'Θέμα',
+        'admin.parsed_detail_status': 'Κατάσταση', 'admin.parsed_detail_direction': 'Κατεύθυνση',
+        'admin.parsed_detail_reason': 'Αιτία', 'admin.parsed_detail_matched_contact': 'Αντιστοιχισμένη επαφή',
+        'admin.parsed_detail_candidates': 'Υποψήφιες επαφές', 'admin.parsed_detail_detected': 'Εντοπίστηκε (μη καταχωρημένο)',
+        'admin.parsed_detail_matched_org': 'Αντιστοιχισμένος φορέας', 'admin.parsed_detail_communication': 'Συνδεδεμένη επικοινωνία',
+        'admin.parsed_detail_body': 'Περιεχόμενο', 'admin.parsed_detail_none': '—',
         'admin.hvd_cache_title': 'Cache Ελέγχου Συμμόρφωσης HVD',
         'admin.hvd_cache_desc': 'Καθαρίζει τα αποθηκευμένα αποτελέσματα ελέγχου SHACL για HVD και το cache ανά σύνολο δεδομένων. Η επόμενη εκτέλεση από την καρτέλα Ποιότητα θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε σύνολο δεδομένων με ετικέτα HVD.',
         'admin.clear_hvd_cache': 'Καθαρισμός Cache Ελέγχου HVD',
@@ -1315,6 +1345,7 @@
 
     const PARSED_STATUS_BADGE    = {attached: 'bg-success', pending_review: 'bg-warning text-dark', dismissed: 'bg-secondary'};
     const PARSED_DIRECTION_BADGE = {Inbound: 'bg-info', Outbound: 'bg-primary'};
+    let _parsedEmailsCache = [];  // full rows, including body_text -- the list endpoint already returns everything, so the detail modal below reads from here instead of a second fetch
 
     async function loadParsedEmails() {
       const el = document.getElementById('parsedEmailsTable');
@@ -1324,13 +1355,14 @@
         const resp = await fetch('../api/inbound-emails');
         const rows = await resp.json();
         if (!resp.ok) throw new Error((rows && rows.error) || t('admin.failed'));
-        if (!Array.isArray(rows) || !rows.length) {
+        _parsedEmailsCache = Array.isArray(rows) ? rows : [];
+        if (!_parsedEmailsCache.length) {
           el.innerHTML = `<p class="text-muted small mb-0">${t('admin.parsed_none')}</p>`;
           return;
         }
         el.innerHTML = `
           <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
+            <table class="table table-sm table-hover align-middle mb-0">
               <thead><tr>
                 <th>${t('admin.parsed_col_received')}</th>
                 <th>${t('admin.parsed_col_from')}</th>
@@ -1340,8 +1372,8 @@
                 <th>${t('admin.parsed_col_org')}</th>
                 <th>${t('admin.parsed_col_reason')}</th>
               </tr></thead>
-              <tbody>${rows.map(r => `
-                <tr>
+              <tbody>${_parsedEmailsCache.map(r => `
+                <tr style="cursor:pointer" onclick="showParsedEmailDetail(${r.id})">
                   <td class="small text-nowrap">${esc((r.received_at || '').replace('T', ' ').slice(0, 16))}</td>
                   <td class="small">${esc(r.from_name || r.from_email || '')}${r.from_name && r.from_email ? `<div class="text-muted" style="font-size:.75em">${esc(r.from_email)}</div>` : ''}</td>
                   <td class="small">${esc(r.subject || '')}</td>
@@ -1355,6 +1387,38 @@
       } catch (e) {
         el.innerHTML = `<p class="text-danger small mb-0">${t('admin.failed_to_load').replace('{err}', esc(e.message))}</p>`;
       }
+    }
+
+    let _parsedEmailDetailModal = null;
+    function showParsedEmailDetail(id) {
+      const r = _parsedEmailsCache.find(x => x.id === id);
+      if (!r) return;
+      const none = t('admin.parsed_detail_none');
+      const row = (label, value) => value ? `
+        <div class="row mb-2">
+          <div class="col-4 col-sm-3 text-muted small">${label}</div>
+          <div class="col-8 col-sm-9 small">${value}</div>
+        </div>` : '';
+      const contactLine = c => c ? `${esc(c.first_name || '')} ${esc(c.last_name || '')} — ${esc(c.email || '')}${c.org_label ? ` (${esc(c.org_label)})` : ''}` : '';
+      const body = `
+        ${row(t('admin.parsed_detail_received'), esc((r.received_at || '').replace('T', ' ').slice(0, 19)) || none)}
+        ${row(t('admin.parsed_detail_from'), `${esc(r.from_name || '')} ${r.from_name ? '&lt;' + esc(r.from_email || '') + '&gt;' : esc(r.from_email || none)}`)}
+        ${row(t('admin.parsed_detail_to'), esc(r.to_email) || none)}
+        ${row(t('admin.parsed_detail_subject'), esc(r.subject) || none)}
+        ${row(t('admin.parsed_detail_status'), `<span class="badge ${PARSED_STATUS_BADGE[r.status] || 'bg-secondary'}">${esc(r.status)}</span>`)}
+        ${r.direction ? row(t('admin.parsed_detail_direction'), `<span class="badge ${PARSED_DIRECTION_BADGE[r.direction] || 'bg-secondary'}">${esc(r.direction)}</span>`) : ''}
+        ${r.reason ? row(t('admin.parsed_detail_reason'), esc(r.reason.replace(/_/g, ' '))) : ''}
+        ${r.matched_org_label ? row(t('admin.parsed_detail_matched_org'), esc(r.matched_org_label)) : ''}
+        ${r.matched_contact ? row(t('admin.parsed_detail_matched_contact'), contactLine(r.matched_contact)) : ''}
+        ${r.candidate_contacts && r.candidate_contacts.length ? row(t('admin.parsed_detail_candidates'), r.candidate_contacts.map(contactLine).join('<br>')) : ''}
+        ${(r.detected_name || r.detected_email) ? row(t('admin.parsed_detail_detected'), `${esc(r.detected_name || '')} ${r.detected_email ? '&lt;' + esc(r.detected_email) + '&gt;' : ''}`) : ''}
+        ${r.communication_id ? row(t('admin.parsed_detail_communication'), `#${r.communication_id}`) : ''}
+        <hr>
+        <div class="text-muted small mb-1">${t('admin.parsed_detail_body')}</div>
+        <pre class="small bg-body-secondary p-2 rounded" style="white-space:pre-wrap;word-break:break-word;max-height:40vh;overflow-y:auto">${esc(r.body_text) || none}</pre>`;
+      document.getElementById('parsedEmailDetailBody').innerHTML = body;
+      if (!_parsedEmailDetailModal) _parsedEmailDetailModal = new bootstrap.Modal(document.getElementById('parsedEmailDetailModal'));
+      _parsedEmailDetailModal.show();
     }
 
     async function sendTestEmail(ev) {
