@@ -197,6 +197,10 @@ ROUTES = {
          "desc": "Attaches an email to an existing case or opens a new one, creating a communication."},
         {"methods": ["POST"], "path": "/api/inbound-emails/<int:inbound_id>/dismiss",
          "desc": "Marks an inbound email dismissed -- no action taken."},
+        {"methods": ["POST"], "path": "/api/unmatched-contacts/<int:unmatched_id>/drop", "admin": "superadmin",
+         "desc": "Dismisses an UnmatchedEmailContact flag (a participant found on a processed email who isn't a registered contact) without registering them."},
+        {"methods": ["POST"], "path": "/api/unmatched-contacts/<int:unmatched_id>/create", "admin": "superadmin",
+         "desc": "Registers a flagged unmatched participant as a real OrgContact (same fields as POST /api/contacts/<org_code>). Also retroactively credits them on any Communication the same email already produced for the same org."},
     ],
     "contacts": [
         {"methods": ["GET"], "path": "/api/contacts",

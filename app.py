@@ -5252,6 +5252,65 @@ def inbound_email_dismiss(inbound_id):
     return jsonify(inbound.to_dict())
 
 
+@app.route("/api/unmatched-contacts/<int:unmatched_id>/drop", methods=["POST"])
+def unmatched_contact_drop(unmatched_id):
+    err = _require_superadmin()
+    if err:
+        return err
+    row = UnmatchedEmailContact.query.get_or_404(unmatched_id)
+    if row.status != "pending":
+        return jsonify({"error": "already resolved"}), 400
+    row.status = "dropped"
+    db.session.commit()
+    return jsonify(row.to_dict())
+
+
+@app.route("/api/unmatched-contacts/<int:unmatched_id>/create", methods=["POST"])
+def unmatched_contact_create(unmatched_id):
+    """Registers a flagged unmatched participant as a real OrgContact --
+    same fields as the regular contacts_create(), just seeded from what was
+    detected on the email and routed through UnmatchedEmailContact's own
+    pending/dropped/created bookkeeping instead. Also retroactively credits
+    the new contact on any Communication this same email already produced
+    for the same org, so it doesn't take a second email from them before
+    they're actually reflected on the case."""
+    err = _require_superadmin()
+    if err:
+        return err
+    row = UnmatchedEmailContact.query.get_or_404(unmatched_id)
+    if row.status != "pending":
+        return jsonify({"error": "already resolved"}), 400
+    body = _decode_payload()
+    org_code = (body.get("org_code") or row.org_code or "").strip()
+    if not org_code:
+        return jsonify({"error": "org_code is required"}), 400
+
+    contact = OrgContact(
+        org_code=org_code,
+        org_label=(body.get("org_label") or row.org_label or "").strip() or None,
+        first_name=(body.get("first_name") or "").strip() or None,
+        last_name=(body.get("last_name") or "").strip() or None,
+        position=(body.get("position") or "").strip() or None,
+        contact_type=(body.get("contact_type") or "").strip() or None,
+        email=(body.get("email") or row.email or "").strip() or None,
+        tel=(body.get("tel") or "").strip() or None,
+        mobile=(body.get("mobile") or "").strip() or None,
+    )
+    db.session.add(contact)
+    db.session.flush()
+    row.status = "created"
+    row.resolved_contact_id = contact.id
+
+    for link in row.inbound_email.email_communications:
+        comm = link.communication
+        if comm and comm.org_name == org_code:
+            existing_ids = [cc.org_contact_id for cc in comm.contact_links]
+            _sync_communication_contacts(comm, existing_ids + [contact.id])
+
+    db.session.commit()
+    return jsonify(row.to_dict()), 201
+
+
 @app.route("/api/communications/export", methods=["GET"])
 def communications_export():
     from openpyxl import Workbook
