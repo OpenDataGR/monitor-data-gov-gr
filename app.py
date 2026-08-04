@@ -4561,9 +4561,16 @@ def _extract_thread_messages(body: str):
 def _load_excluded_matchers():
     """Admin-managed addresses/domains that should never count as "the
     contact" -- staff forwarding a backlog thread appear as the forwarder and
-    often as a participant quoted in the body too. Returns (addrs, domains)."""
+    often as a participant quoted in the body too. Returns (addrs, domains).
+
+    Also folds in InboundListenAddress: whatever's configured there is by
+    definition our own receiving address, which shows up on every single
+    email (it's always in To/Cc) and is never a real correspondent -- same
+    "never counts as the contact" rule, no separate admin entry needed."""
     addrs, domains = set(), set()
     for row in ExcludedEmailAddress.query.all():
+        (domains if "@" not in row.value else addrs).add(row.value)
+    for row in InboundListenAddress.query.all():
         (domains if "@" not in row.value else addrs).add(row.value)
     return addrs, domains
 
