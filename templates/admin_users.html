@@ -118,6 +118,9 @@
     [data-bs-theme="dark"] .ql-toolbar.ql-snow .ql-picker-label { color: #dee2e6; }
     [data-bs-theme="dark"] .ql-container.ql-snow { border-color: #495057 !important; }
     [data-bs-theme="dark"] .ql-snow .ql-picker-options { background: #2b3035; }
+    /* Quill's placeholder (::before on the blank editor) hardcodes a dark
+       color of its own, which the container's inherited color doesn't reach. */
+    [data-bs-theme="dark"] .ql-editor.ql-blank::before { color: rgba(222,226,230,.6); }
   </style>
 </head>
 <body>
