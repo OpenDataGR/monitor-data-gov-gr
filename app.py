@@ -4507,6 +4507,57 @@ def _extract_quoted_thread_info(body: str):
     return {"addrs": addrs, "subject": subject_at_top, "sent_date": sent_date_at_top, "named_from": named_from}
 
 
+def _extract_thread_messages(body: str):
+    """Like _extract_quoted_thread_info, but splits a forwarded/replied-to
+    body into its individual quoted messages instead of collapsing them
+    into one flat set -- newest first, each with its own sender/date/
+    subject and, unlike that function, its own body text slice (the span
+    between its own header block and the next one's, or end of body for
+    the oldest message).
+
+    Only Outlook-style "From:/Sent:/To:/Subject:" header blocks get split
+    out -- the Gmail/Apple Mail-style single-line "On <date>, <name> wrote:"
+    marker (_QUOTE_ONWROTE_RE) has no block boundary to slice a body out
+    of, so it isn't handled here; _extract_quoted_thread_info's flat
+    addrs/named_from stay the only way that style contributes to matching.
+
+    Each message's own Subject:/Sent: search is bounded to its own span
+    (up to the *next* message's From: line, not just "somewhere later in
+    the body") -- _extract_quoted_thread_info's equivalent search has no
+    such bound since it only ever looks at the first block, so this is a
+    correctness improvement only possible once every block's position is
+    known up front.
+
+    Returns [] if nothing looks like a quoted message at all.
+    """
+    from_matches = list(_QUOTE_FROM_RE.finditer(body))
+    if not from_matches:
+        return []
+
+    messages = []
+    for i, m in enumerate(from_matches):
+        block_end = from_matches[i + 1].start() if i + 1 < len(from_matches) else len(body)
+        subj_match = _QUOTE_SUBJECT_RE.search(body, m.start(), block_end)
+        sent_match = _QUOTE_SENT_RE.search(body, m.start(), block_end)
+        # To:/Cc: recipient lists can run long and wrap across lines, so
+        # rather than parsing them line-by-line, just sweep every address
+        # up through this block's own Subject: line (or a fixed window when
+        # there isn't one nearby).
+        header_end = subj_match.end() if subj_match else min(block_end, m.start() + 600)
+        addrs = {a.lower() for a in _EMAIL_RE.findall(body[m.start():header_end])}
+
+        name, email = parseaddr(m.group(1))
+        messages.append({
+            "from_name": name.strip() or None,
+            "from_email": (email or "").lower() or None,
+            "addrs": addrs,
+            "subject": subj_match.group(1).strip() if subj_match else None,
+            "sent_date": _parse_quoted_sent_date(sent_match.group(1)) if sent_match else None,
+            "body": body[header_end:block_end].strip(),
+        })
+    return messages
+
+
 def _load_excluded_matchers():
     """Admin-managed addresses/domains that should never count as "the
     contact" -- staff forwarding a backlog thread appear as the forwarder and
