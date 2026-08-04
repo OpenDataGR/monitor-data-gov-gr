@@ -5834,10 +5834,16 @@ async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefi
   }
 
   if (id) {
-    // id always comes from a currently-rendered row's own edit button, so
-    // it's guaranteed to already be sitting in one of the loaded caches --
-    // see _commsFindById.
-    const c = _commsFindById(id);
+    // id normally comes from a currently-rendered row's own edit button, so
+    // it's already sitting in one of the loaded caches -- see _commsFindById.
+    // The one exception is the Mail Parser admin panel's deep link (?action=
+    // edit-comm&comm=<id>), which can name a comm nothing on this page has
+    // rendered/expanded yet -- fetch it directly in that case instead of
+    // just giving up.
+    let c = _commsFindById(id);
+    if (!c) {
+      try { c = await fetch(`${API_BASE}api/communications/${id}`).then(r => r.ok ? r.json() : null); } catch (_) { c = null; }
+    }
     if (!c) return;
     show('commModalTitle').textContent = t('comm_modal.edit_title');
     show('commId').value      = c.id;
@@ -10274,12 +10280,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // The admin panel is a separate standalone page with no account-modal
   // markup or webauthn.js of its own -- its user-menu items deep-link back
   // here with ?action=... instead of duplicating that logic there.
-  const _deepLinkAction = new URLSearchParams(location.search).get('action');
+  const _deepLinkParams = new URLSearchParams(location.search);
+  const _deepLinkAction = _deepLinkParams.get('action');
   if (_deepLinkAction) {
+    const _deepLinkCommId = Number(_deepLinkParams.get('comm'));
     history.replaceState(null, '', location.pathname);
     if (_deepLinkAction === 'edit-name') openEditNameModal();
     else if (_deepLinkAction === 'change-password') openChangePasswordModal();
     else if (_deepLinkAction === 'manage-passkeys') openManagePasskeysModal();
+    else if (_deepLinkAction === 'edit-comm' && _deepLinkCommId) {
+      if (typeof _activateTabByKey === 'function') _activateTabByKey('comms');
+      openCommModal(_deepLinkCommId);
+    }
   }
   loadOverview();
   // Same "only while that tab is actually visible" gate as the Comms poll

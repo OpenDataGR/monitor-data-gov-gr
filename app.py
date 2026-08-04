@@ -17,7 +17,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email import policy as email_policy
 from email.parser import Parser as EmailParser
-from email.utils import parseaddr, getaddresses
+from email.utils import parseaddr, getaddresses, formataddr
 from html import unescape as html_unescape
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -4303,12 +4303,17 @@ def communications_update(comm_id):
 def communications_delete(comm_id):
     comm = Communication.query.get_or_404(comm_id)
     case_id = comm.case_id
-    # An auto-captured/attached Communication can be referenced by the
-    # InboundEmail that produced it -- clear that link first (and park it
-    # back in the review queue) instead of leaving a dangling foreign key,
-    # which the database otherwise rejects the whole delete over.
-    inbound = InboundEmail.query.filter_by(communication_id=comm.id).first()
-    if inbound:
+    # An auto-captured/attached Communication can be referenced by one or more
+    # InboundEmail rows (catch-all-contacts can produce several Communications
+    # for the same email, and InboundEmailCommunication is the complete set --
+    # communication_id is just the first/legacy one) -- clear every link first
+    # and park each affected email back in the review queue, instead of
+    # leaving a dangling foreign key, which the database otherwise rejects the
+    # whole delete over.
+    linked_inbound_ids = {row.inbound_email_id for row in InboundEmailCommunication.query.filter_by(communication_id=comm.id).all()}
+    linked_inbound_ids.update(row.id for row in InboundEmail.query.filter_by(communication_id=comm.id).all())
+    InboundEmailCommunication.query.filter_by(communication_id=comm.id).delete()
+    for inbound in InboundEmail.query.filter(InboundEmail.id.in_(linked_inbound_ids)).all():
         inbound.communication_id = None
         inbound.status = "pending_review"
         inbound.reason = "communication_deleted"
@@ -4859,6 +4864,64 @@ def _create_email_communication(inbound: "InboundEmail", case: "Case", contacts,
     return comm
 
 
+def _thread_messages_json(body_text: str):
+    """JSON-safe form of _extract_thread_messages -- addrs is a set there,
+    which the JSON encoder can't serialize as-is."""
+    messages = _extract_thread_messages(body_text or "")
+    for m in messages:
+        m["addrs"] = sorted(m["addrs"])
+    return messages
+
+
+def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unmatched: bool = False):
+    """Shared by the webhook (a brand-new row) and the admin "re-run
+    matching" action (an existing pending_review row being reprocessed, e.g.
+    after fixing a config gap or registering a contact that was previously
+    unmatched): create one Communication per resolved org group, flag
+    whoever's left over, and set the row's own status/reason accordingly.
+
+    replace_pending_unmatched=True (rematch only) clears this row's existing
+    *pending* UnmatchedEmailContact rows before recomputing -- a fresh row
+    never has any, so this is a no-op there -- so a repeat rematch doesn't
+    pile up duplicate pending entries for the same participant; already
+    dropped/created ones are left alone since those are resolved decisions.
+    """
+    match_groups = match["match_groups"]
+    created_comms = []
+    for group in match_groups:
+        comm = _create_email_communication(inbound, group["case"], group["contacts"], "Intermediate Contact", direction=match.get("direction"))
+        created_comms.append(comm)
+        db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
+
+    if created_comms:
+        inbound.status = "attached"
+        inbound.communication_id = inbound.communication_id or created_comms[0].id
+        inbound.reason = None
+    else:
+        inbound.status = "pending_review"
+        inbound.reason = match["reason"]
+
+    if replace_pending_unmatched:
+        UnmatchedEmailContact.query.filter_by(inbound_email_id=inbound.id, status="pending").delete()
+    already = {u.email.lower() for u in UnmatchedEmailContact.query.filter_by(inbound_email_id=inbound.id).all() if u.email}
+
+    # Whoever showed up on this email/thread but isn't a registered contact --
+    # independent of whether the loop above succeeded for everyone else, see
+    # UnmatchedEmailContact.
+    for u in match["unmatched"]:
+        email = (u.get("email") or "")[:320] or None
+        if email and email.lower() in already:
+            continue
+        db.session.add(UnmatchedEmailContact(
+            inbound_email_id=inbound.id,
+            name=(u.get("name") or "")[:200] or None,
+            email=email,
+            org_code=(u.get("org_code") or "")[:200] or None,
+            org_label=(u.get("org_label") or "")[:300] or None,
+        ))
+    return created_comms
+
+
 # SendGrid can't sign or authenticate Inbound Parse POSTs, so the secret path
 # segment (EMAIL_INBOUND_SECRET) is the only thing gating this endpoint --
 # update SendGrid's configured destination URL to match if this ever rotates.
@@ -4922,30 +4985,7 @@ def email_inbound_webhook(secret):
         # (catch-all-contacts). communication_id keeps pointing at the first
         # one for whatever still only reads that single column; the full set
         # is InboundEmailCommunication, one row per Communication produced.
-        created_comms = []
-        for group in match_groups:
-            comm = _create_email_communication(inbound, group["case"], group["contacts"], "Intermediate Contact", direction=match.get("direction"))
-            created_comms.append(comm)
-            db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
-
-        if created_comms:
-            inbound.status = "attached"
-            inbound.communication_id = created_comms[0].id
-        else:
-            inbound.status = "pending_review"
-            inbound.reason = match["reason"]
-
-        # Whoever showed up on this email/thread but isn't a registered
-        # contact -- independent of whether the loop above succeeded for
-        # everyone else, see UnmatchedEmailContact.
-        for u in match["unmatched"]:
-            db.session.add(UnmatchedEmailContact(
-                inbound_email_id=inbound.id,
-                name=(u.get("name") or "")[:200] or None,
-                email=(u.get("email") or "")[:320] or None,
-                org_code=(u.get("org_code") or "")[:200] or None,
-                org_label=(u.get("org_label") or "")[:300] or None,
-            ))
+        _apply_inbound_match(inbound, match)
 
         db.session.commit()
     except Exception as exc:
@@ -4981,7 +5021,157 @@ def inbound_emails_list():
     q = InboundEmail.query.order_by(InboundEmail.received_at.desc())
     if status_filter:
         q = q.filter(InboundEmail.status == status_filter)
-    return jsonify([e.to_dict() for e in q.limit(200).all()])
+    rows = []
+    for e in q.limit(200).all():
+        d = e.to_dict()
+        d["thread_messages"] = _thread_messages_json(e.body_text)
+        rows.append(d)
+    return jsonify(rows)
+
+
+@app.route("/api/inbound-emails/<int:inbound_id>/rematch", methods=["POST"])
+def inbound_email_rematch(inbound_id):
+    """Reprocess a pending_review email against the current contact registry
+    and excluded/listen config -- useful after fixing a config gap (like a
+    listening address wrongly showing up as a participant) or registering a
+    contact that was previously flagged unmatched, without waiting for a new
+    email to arrive. Only pending_review rows qualify: an already-attached
+    row has real Communications a blind rematch could duplicate, and a
+    dismissed row never had its body extracted in the first place."""
+    err = _require_superadmin()
+    if err:
+        return err
+    inbound = InboundEmail.query.get_or_404(inbound_id)
+    if inbound.status != "pending_review":
+        return jsonify({"error": "only pending_review emails can be re-matched"}), 400
+
+    from_field = formataddr((inbound.from_name or "", inbound.from_email or "")) if inbound.from_email else ""
+    match = _match_inbound_email(from_field, inbound.to_email or "", "", inbound.subject or "", inbound.body_text or "")
+    _apply_inbound_match(inbound, match, replace_pending_unmatched=True)
+    db.session.commit()
+    d = inbound.to_dict()
+    d["thread_messages"] = _thread_messages_json(inbound.body_text)
+    return jsonify(d)
+
+
+@app.route("/api/inbound-emails/<int:inbound_id>", methods=["DELETE"])
+def inbound_email_delete(inbound_id):
+    """Permanently removes a Parsed Emails row -- cascades to its
+    InboundEmailCommunication/UnmatchedEmailContact rows only, never to any
+    Communication it produced (those have their own lifecycle, see
+    communications_delete)."""
+    err = _require_superadmin()
+    if err:
+        return err
+    inbound = InboundEmail.query.get_or_404(inbound_id)
+    db.session.delete(inbound)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/inbound-emails/<int:inbound_id>/communications/<int:comm_id>", methods=["DELETE"])
+def inbound_email_detach_communication(inbound_id, comm_id):
+    """Un-links a Communication from this email without deleting the
+    Communication itself -- for when auto/manual matching credited the wrong
+    email with producing an entry that's otherwise legitimate. Reverts the
+    email back to pending_review if that was its only remaining link."""
+    err = _require_superadmin()
+    if err:
+        return err
+    link = InboundEmailCommunication.query.filter_by(inbound_email_id=inbound_id, communication_id=comm_id).first_or_404()
+    db.session.delete(link)
+    inbound = InboundEmail.query.get_or_404(inbound_id)
+    if inbound.communication_id == comm_id:
+        remaining = InboundEmailCommunication.query.filter(
+            InboundEmailCommunication.inbound_email_id == inbound_id,
+            InboundEmailCommunication.communication_id != comm_id,
+        ).first()
+        inbound.communication_id = remaining.communication_id if remaining else None
+    remaining_count = InboundEmailCommunication.query.filter(
+        InboundEmailCommunication.inbound_email_id == inbound_id,
+        InboundEmailCommunication.communication_id != comm_id,
+    ).count()
+    if remaining_count == 0 and inbound.status == "attached":
+        inbound.status = "pending_review"
+        inbound.reason = "communication_detached"
+    db.session.commit()
+    d = inbound.to_dict()
+    d["thread_messages"] = _thread_messages_json(inbound.body_text)
+    return jsonify(d)
+
+
+@app.route("/api/inbound-emails/<int:inbound_id>/thread-messages/<int:msg_index>/attach", methods=["POST"])
+def inbound_email_thread_message_attach(inbound_id, msg_index):
+    """Manually logs one specific message from a split forwarded thread as
+    its own Communication -- for whenever the automatic per-org matching
+    (which only ever looks at the flattened set of every address across the
+    whole thread) either missed this message's own sender entirely or
+    grouped it under the wrong org. Unlike the whole-email attach/pick-
+    contact routes, this always requires an existing Open case (no
+    new-case-from-scratch branch) to keep this action small -- open the case
+    first from the Cases tab if one doesn't exist yet."""
+    err = _require_superadmin()
+    if err:
+        return err
+    inbound = InboundEmail.query.get_or_404(inbound_id)
+    messages = _extract_thread_messages(inbound.body_text or "")
+    if not (0 <= msg_index < len(messages)):
+        return jsonify({"error": "message index out of range"}), 404
+    msg = messages[msg_index]
+
+    body = _decode_payload()
+    case_id = body.get("case_id")
+    org_code = (body.get("org_code") or "").strip()
+    if case_id:
+        case = Case.query.get_or_404(int(case_id))
+    elif org_code:
+        open_cases = Case.query.filter(Case.status == "Open", Case.org_name == org_code).all()
+        if not open_cases:
+            return jsonify({"error": "no_open_case"}), 400
+        if len(open_cases) > 1:
+            return jsonify({"error": "multiple_open_cases", "case_ids": [c.id for c in open_cases]}), 400
+        case = open_cases[0]
+    else:
+        return jsonify({"error": "org_code or case_id is required"}), 400
+
+    contact = None
+    contact_id = body.get("contact_id")
+    contact_email = (body.get("contact_email") or "").strip()
+    if contact_id:
+        contact = OrgContact.query.get_or_404(int(contact_id))
+    elif contact_email:
+        contact = OrgContact.query.filter(db.func.lower(OrgContact.email) == contact_email.lower()).first()
+        if not contact:
+            return jsonify({"error": "no registered contact has that email"}), 400
+    contacts = [contact] if contact else []
+
+    excluded_addrs, excluded_domains = _load_excluded_matchers()
+    direction = _detect_email_direction(msg.get("from_email") or "", None, False, excluded_addrs, excluded_domains)
+    contact_names = ", ".join(" ".join(p for p in [c.first_name, c.last_name] if p) for c in contacts if c.first_name or c.last_name)
+
+    comm = Communication(
+        case_id=case.id,
+        contact_date=msg.get("sent_date") or _resolved_contact_date(inbound),
+        org_name=case.org_name,
+        org_title=case.org_title,
+        subject=msg.get("subject") or inbound.subject or case.subject,
+        status="Intermediate Contact",
+        medium="Email",
+        contact_person=contact_names or msg.get("from_name") or msg.get("from_email") or None,
+        notes=_auto_captured_notes(msg.get("body") or ""),
+        source="email",
+        direction=direction,
+    )
+    db.session.add(comm)
+    db.session.flush()
+    _sync_communication_contacts(comm, [c.id for c in contacts])
+    db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
+    inbound.status = "attached"
+    inbound.communication_id = inbound.communication_id or comm.id
+    db.session.commit()
+    d = inbound.to_dict()
+    d["thread_messages"] = _thread_messages_json(inbound.body_text)
+    return jsonify(d)
 
 
 _stream_subscribers = set()       # one queue.Queue per open SSE connection on this process

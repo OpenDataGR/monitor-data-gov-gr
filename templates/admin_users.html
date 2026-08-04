@@ -545,8 +545,52 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body pt-3" id="parsedEmailDetailBody" style="max-height:75vh;overflow-y:auto"></div>
-        <div class="modal-footer border-top">
+        <div class="modal-footer border-top flex-wrap gap-1">
+          <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="parsedDetailRematchBtn" onclick="rematchParsedEmail(_parsedEmailDetailId)">
+            <i class="bi bi-arrow-repeat me-1"></i><span data-i18n="admin.parsed_rematch">Re-run matching</span>
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="parsedDetailDismissBtn" onclick="dismissParsedEmail(_parsedEmailDetailId)">
+            <i class="bi bi-x-circle me-1"></i><span data-i18n="admin.parsed_dismiss">Dismiss</span>
+          </button>
+          <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteParsedEmail(_parsedEmailDetailId)">
+            <i class="bi bi-trash me-1"></i><span data-i18n="admin.parsed_delete">Delete</span>
+          </button>
           <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.close">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manually log one thread message as its own Communication -->
+  <div class="modal fade" id="threadMessageAttachModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold"><i class="bi bi-link-45deg me-2"></i><span data-i18n="admin.thread_attach_title">Log This Message</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-3">
+          <input type="hidden" id="threadAttachInboundId">
+          <input type="hidden" id="threadAttachMsgIndex">
+          <div class="mb-2">
+            <label class="form-label small mb-1" data-i18n="admin.thread_attach_org_code">Org code (resolves the Open case)</label>
+            <input type="text" id="threadAttachOrgCode" class="form-control form-control-sm">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1" data-i18n="admin.thread_attach_case_id">...or a specific case id</label>
+            <input type="number" id="threadAttachCaseId" class="form-control form-control-sm">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1" data-i18n="admin.thread_attach_contact_email">Contact email (optional)</label>
+            <input type="email" id="threadAttachContactEmail" class="form-control form-control-sm">
+          </div>
+          <div id="threadAttachError" class="alert alert-danger small mt-2 mb-0 d-none"></div>
+        </div>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveThreadMessageAttach()">
+            <i class="bi bi-check me-1"></i><span data-i18n="admin.thread_attach_save">Log Communication</span>
+          </button>
         </div>
       </div>
     </div>
@@ -678,6 +722,7 @@
 
     const CURRENT_USER_ID = {{ current_user_id|tojson }};
     const CURRENT_USER_IS_SUPERADMIN = {{ current_user_is_superadmin|tojson }};
+    const INDEX_URL = {{ url_for('index')|tojson }};
 
     // ── i18n ───────────────────────────────────────────────────────────
     // This page is standalone (loads neither app.js nor its TRANSLATIONS
@@ -742,6 +787,16 @@
         'admin.parsed_detail_candidates': 'Candidate contacts', 'admin.parsed_detail_detected': 'Detected (unregistered)',
         'admin.parsed_detail_matched_org': 'Matched organization', 'admin.parsed_detail_communication': 'Linked communication',
         'admin.parsed_detail_communications': 'Linked communications', 'admin.parsed_detail_unmatched': 'Unregistered participants',
+        'admin.parsed_detail_thread': 'Thread', 'admin.thread_attach_btn': 'Log as Communication',
+        'admin.parsed_rematch': 'Re-run matching', 'admin.parsed_dismiss': 'Dismiss', 'admin.parsed_delete': 'Delete',
+        'admin.parsed_confirm_dismiss': 'Dismiss this email? No Communication will be created from it.',
+        'admin.parsed_confirm_delete': 'Permanently delete this Parsed Emails row? Any Communication it already produced stays untouched -- only this record and its review flags go away.',
+        'admin.parsed_confirm_detach': 'Un-link this Communication from this email? The Communication itself is kept; the email just stops being credited with producing it.',
+        'admin.parsed_confirm_comm_delete': 'Permanently delete this Communication? This cannot be undone.',
+        'admin.parsed_comm_edit': 'Edit', 'admin.parsed_comm_detach': 'Detach', 'admin.parsed_comm_delete': 'Delete',
+        'admin.thread_attach_title': 'Log This Message', 'admin.thread_attach_org_code': 'Org code (resolves the Open case)',
+        'admin.thread_attach_case_id': '...or a specific case id', 'admin.thread_attach_contact_email': 'Contact email (optional)',
+        'admin.thread_attach_save': 'Log Communication', 'admin.thread_attach_need_org_or_case': 'Enter an org code or a case id.',
         'admin.unmatched_drop': 'Drop', 'admin.unmatched_create': 'Create contact',
         'admin.unmatched_confirm_drop': 'Drop this unregistered participant? This just dismisses the flag -- it does not affect anything already logged.',
         'admin.unmatched_create_title': 'Register Contact', 'admin.unmatched_create_save': 'Register',
@@ -866,6 +921,16 @@
         'admin.parsed_detail_candidates': 'Υποψήφιες επαφές', 'admin.parsed_detail_detected': 'Εντοπίστηκε (μη καταχωρημένο)',
         'admin.parsed_detail_matched_org': 'Αντιστοιχισμένος φορέας', 'admin.parsed_detail_communication': 'Συνδεδεμένη επικοινωνία',
         'admin.parsed_detail_communications': 'Συνδεδεμένες επικοινωνίες', 'admin.parsed_detail_unmatched': 'Μη καταχωρημένοι συμμετέχοντες',
+        'admin.parsed_detail_thread': 'Νήμα', 'admin.thread_attach_btn': 'Καταγραφή ως Επικοινωνία',
+        'admin.parsed_rematch': 'Επανάληψη αντιστοίχισης', 'admin.parsed_dismiss': 'Απόρριψη', 'admin.parsed_delete': 'Διαγραφή',
+        'admin.parsed_confirm_dismiss': 'Απόρριψη αυτού του email; Δεν θα δημιουργηθεί Επικοινωνία από αυτό.',
+        'admin.parsed_confirm_delete': 'Οριστική διαγραφή αυτής της εγγραφής Parsed Emails; Οποιαδήποτε Επικοινωνία έχει ήδη παραχθεί παραμένει ανεπηρέαστη -- διαγράφεται μόνο αυτή η εγγραφή και οι επισημάνσεις ελέγχου της.',
+        'admin.parsed_confirm_detach': 'Αποσύνδεση αυτής της Επικοινωνίας από αυτό το email; Η Επικοινωνία παραμένει -- το email απλώς δεν θα εμφανίζεται πλέον ως αυτό που την παρήγαγε.',
+        'admin.parsed_confirm_comm_delete': 'Οριστική διαγραφή αυτής της Επικοινωνίας; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.',
+        'admin.parsed_comm_edit': 'Επεξεργασία', 'admin.parsed_comm_detach': 'Αποσύνδεση', 'admin.parsed_comm_delete': 'Διαγραφή',
+        'admin.thread_attach_title': 'Καταγραφή Αυτού του Μηνύματος', 'admin.thread_attach_org_code': 'Κωδικός φορέα (αντιστοιχίζει την Ανοιχτή υπόθεση)',
+        'admin.thread_attach_case_id': '...ή συγκεκριμένο αναγνωριστικό υπόθεσης', 'admin.thread_attach_contact_email': 'Email επαφής (προαιρετικό)',
+        'admin.thread_attach_save': 'Καταγραφή Επικοινωνίας', 'admin.thread_attach_need_org_or_case': 'Εισάγετε κωδικό φορέα ή αναγνωριστικό υπόθεσης.',
         'admin.unmatched_drop': 'Απόρριψη', 'admin.unmatched_create': 'Καταχώρηση επαφής',
         'admin.unmatched_confirm_drop': 'Απόρριψη αυτού του μη καταχωρημένου συμμετέχοντα; Αυτό απλώς απορρίπτει την επισήμανση -- δεν επηρεάζει τίποτα που έχει ήδη καταγραφεί.',
         'admin.unmatched_create_title': 'Καταχώρηση Επαφής', 'admin.unmatched_create_save': 'Καταχώρηση',
@@ -1635,9 +1700,35 @@
         ${r.matched_contact ? row(t('admin.parsed_detail_matched_contact'), contactLine(r.matched_contact)) : ''}
         ${r.candidate_contacts && r.candidate_contacts.length ? row(t('admin.parsed_detail_candidates'), r.candidate_contacts.map(contactLine).join('<br>')) : ''}
         ${(r.detected_name || r.detected_email) ? row(t('admin.parsed_detail_detected'), `${esc(r.detected_name || '')} ${r.detected_email ? '&lt;' + esc(r.detected_email) + '&gt;' : ''}`) : ''}
-        ${r.communications && r.communications.length
-          ? row(t('admin.parsed_detail_communications'), r.communications.map(c => `#${c.id} — ${esc(c.org_title || c.org_name)}`).join('<br>'))
-          : (r.communication_id ? row(t('admin.parsed_detail_communication'), `#${r.communication_id}`) : '')}
+        ${r.communications && r.communications.length ? `
+        <div class="row mb-2">
+          <div class="col-4 col-sm-3 text-muted small">${t('admin.parsed_detail_communications')}</div>
+          <div class="col-8 col-sm-9 small">${r.communications.map(c => `
+            <div class="d-flex align-items-center justify-content-between gap-2 py-1">
+              <span>#${c.id} — ${esc(c.org_title || c.org_name)}</span>
+              <span class="d-flex gap-1 flex-shrink-0">
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" title="${esc(t('admin.parsed_comm_edit'))}" onclick="editLinkedCommunication(${c.id})"><i class="bi bi-pencil"></i></button>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" title="${esc(t('admin.parsed_comm_detach'))}" onclick="detachLinkedCommunication(${r.id},${c.id})"><i class="bi bi-link-45deg"></i></button>
+                <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" title="${esc(t('admin.parsed_comm_delete'))}" onclick="deleteLinkedCommunication(${r.id},${c.id})"><i class="bi bi-trash"></i></button>
+              </span>
+            </div>`).join('')}</div>
+        </div>` : (r.communication_id ? row(t('admin.parsed_detail_communication'), `#${r.communication_id}`) : '')}
+        ${r.thread_messages && r.thread_messages.length ? `
+        <div class="mb-2">
+          <div class="text-muted small mb-1">${t('admin.parsed_detail_thread')}</div>
+          ${r.thread_messages.map((m, i) => `
+            <div class="border rounded p-2 mb-2">
+              <div class="d-flex align-items-start justify-content-between gap-2">
+                <div class="small">
+                  <strong>${esc(m.from_name || m.from_email || none)}</strong>${m.from_name && m.from_email ? ` &lt;${esc(m.from_email)}&gt;` : ''}
+                  ${m.sent_date ? `<span class="text-muted ms-1">${esc(m.sent_date)}</span>` : ''}
+                  ${m.subject ? `<div class="text-muted">${esc(m.subject)}</div>` : ''}
+                </div>
+                <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 flex-shrink-0" onclick="openThreadMessageAttach(${r.id},${i})">${t('admin.thread_attach_btn')}</button>
+              </div>
+              ${m.body ? `<pre class="small bg-body-secondary p-2 rounded mt-2 mb-0" style="white-space:pre-wrap;word-break:break-word;max-height:12vh;overflow-y:auto">${esc(m.body.slice(0, 2000))}</pre>` : ''}
+            </div>`).join('')}
+        </div>` : ''}
         ${r.unmatched_contacts && r.unmatched_contacts.length ? `
         <div class="row mb-2">
           <div class="col-4 col-sm-3 text-muted small">${t('admin.parsed_detail_unmatched')}</div>
@@ -1657,11 +1748,108 @@
         <pre class="small bg-body-secondary p-2 rounded" style="white-space:pre-wrap;word-break:break-word;max-height:40vh;overflow-y:auto">${esc(r.body_text) || none}</pre>`;
       document.getElementById('parsedEmailDetailBody').innerHTML = body;
       _parsedEmailDetailId = id;
+      document.getElementById('parsedDetailRematchBtn').classList.toggle('d-none', r.status !== 'pending_review');
+      document.getElementById('parsedDetailDismissBtn').classList.toggle('d-none', r.status === 'attached');
       if (!_parsedEmailDetailModal) _parsedEmailDetailModal = new bootstrap.Modal(document.getElementById('parsedEmailDetailModal'));
       _parsedEmailDetailModal.show();
     }
 
     let _parsedEmailDetailId = null;
+
+    async function rematchParsedEmail(id) {
+      const resp = await fetch(`../api/inbound-emails/${id}/rematch`, {method: 'POST'});
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.error || t('admin.failed')); return; }
+      await loadParsedEmails();
+      showParsedEmailDetail(id);
+    }
+
+    async function dismissParsedEmail(id) {
+      if (!confirm(t('admin.parsed_confirm_dismiss'))) return;
+      const resp = await fetch(`../api/inbound-emails/${id}/dismiss`, {method: 'POST'});
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.error || t('admin.failed')); return; }
+      await loadParsedEmails();
+      showParsedEmailDetail(id);
+    }
+
+    async function deleteParsedEmail(id) {
+      if (!confirm(t('admin.parsed_confirm_delete'))) return;
+      const resp = await fetch(`../api/inbound-emails/${id}`, {method: 'DELETE'});
+      if (!resp.ok) { const d = await resp.json(); alert(d.error || t('admin.failed')); return; }
+      bootstrap.Modal.getInstance(document.getElementById('parsedEmailDetailModal'))?.hide();
+      _parsedEmailDetailId = null;
+      await loadParsedEmails();
+    }
+
+    async function detachLinkedCommunication(inboundId, commId) {
+      if (!confirm(t('admin.parsed_confirm_detach'))) return;
+      const resp = await fetch(`../api/inbound-emails/${inboundId}/communications/${commId}`, {method: 'DELETE'});
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.error || t('admin.failed')); return; }
+      await loadParsedEmails();
+      showParsedEmailDetail(inboundId);
+    }
+
+    async function deleteLinkedCommunication(inboundId, commId) {
+      if (!confirm(t('admin.parsed_confirm_comm_delete'))) return;
+      const resp = await fetch(`../api/communications/${commId}/delete`, {method: 'DELETE'});
+      if (!resp.ok) { const d = await resp.json(); alert(d.error || t('admin.failed')); return; }
+      await loadParsedEmails();
+      showParsedEmailDetail(inboundId);
+    }
+
+    function editLinkedCommunication(commId) {
+      // The Comms edit modal lives on the main dashboard, not this standalone
+      // page -- deep-link over there the same way this page's own user-menu
+      // items deep-link back for edit-name/change-password (see that page's
+      // DOMContentLoaded), rather than duplicating the whole edit modal here.
+      window.location.href = `${INDEX_URL}?action=edit-comm&comm=${commId}`;
+    }
+
+    let _threadMessageAttachModal = null;
+
+    function openThreadMessageAttach(inboundId, msgIndex) {
+      show('threadAttachInboundId').value = inboundId;
+      show('threadAttachMsgIndex').value = msgIndex;
+      show('threadAttachOrgCode').value = '';
+      show('threadAttachCaseId').value = '';
+      show('threadAttachContactEmail').value = '';
+      show('threadAttachError').classList.add('d-none');
+      if (!_threadMessageAttachModal) _threadMessageAttachModal = new bootstrap.Modal(document.getElementById('threadMessageAttachModal'));
+      _threadMessageAttachModal.show();
+    }
+
+    async function saveThreadMessageAttach() {
+      const inboundId = show('threadAttachInboundId').value;
+      const msgIndex  = show('threadAttachMsgIndex').value;
+      const errEl = show('threadAttachError');
+      errEl.classList.add('d-none');
+      const orgCode  = show('threadAttachOrgCode').value.trim();
+      const caseId   = show('threadAttachCaseId').value.trim();
+      if (!orgCode && !caseId) {
+        errEl.textContent = t('admin.thread_attach_need_org_or_case');
+        errEl.classList.remove('d-none');
+        return;
+      }
+      try {
+        const resp = await fetch(`../api/inbound-emails/${inboundId}/thread-messages/${msgIndex}/attach`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            org_code: orgCode, case_id: caseId || undefined,
+            contact_email: show('threadAttachContactEmail').value.trim(),
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || t('admin.failed'));
+        _threadMessageAttachModal.hide();
+        await loadParsedEmails();
+        showParsedEmailDetail(Number(inboundId));
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.classList.remove('d-none');
+      }
+    }
 
     function _findUnmatchedContact(unmatchedId) {
       for (const r of _parsedEmailsCache) {
