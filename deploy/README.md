@@ -447,6 +447,14 @@ which is the tell that it isn't an nginx-level rejection at all.
 **Fix:** `app.config["MAX_FORM_MEMORY_SIZE"] = 20 * 1024 * 1024` in
 `app.py`, matching nginx's own headroom.
 
+**Azure WAF changes reverted (2026-08-06):** once the Werkzeug fix landed,
+`WAFPolicyOTS`'s "Maximum request body size (KB)" was set back to its
+original 128, and the `AllowMailParserWebhook` custom rule (added to test
+whether an Allow rule could bypass the size cap -- it couldn't) was
+deleted. A fresh forward with both reverted still landed correctly,
+confirming the WAF was never actually the binding constraint and the fix
+is entirely app-side; nothing on the shared policy needed to change.
+
 **Lesson for next time:** a request can be rejected by *more than one*
 layer independently, and the layers aren't only infrastructure --
 `client_max_body_size` (nginx), `maxRequestBodySizeInKb` (Gateway WAF),
