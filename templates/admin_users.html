@@ -1802,16 +1802,22 @@
         <div class="mb-2">
           <div class="text-muted small mb-1">${t('admin.parsed_detail_thread')}</div>
           ${r.thread_messages.map((m, i) => `
-            <div class="border rounded p-2 mb-2">
-              <div class="d-flex align-items-start justify-content-between gap-2">
-                <div class="small">
-                  <strong>${esc(m.from_name || m.from_email || none)}</strong>${m.from_name && m.from_email ? ` &lt;${esc(m.from_email)}&gt;` : ''}
+            <div class="border rounded mb-1">
+              <div class="d-flex align-items-center justify-content-between gap-2 p-2" style="cursor:pointer" onclick="_toggleThreadMsg(this)">
+                <div class="small text-truncate">
+                  <strong>${esc(m.from_name || m.from_email || none)}</strong>
                   ${m.sent_date ? `<span class="text-muted ms-1">${esc(m.sent_date)}</span>` : ''}
-                  ${m.subject ? `<div class="text-muted">${esc(m.subject)}</div>` : ''}
+                  ${m.subject ? `<span class="text-muted ms-1">— ${esc(m.subject)}</span>` : ''}
                 </div>
-                <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 flex-shrink-0" onclick="openThreadMessageAttach(${r.id},${i})">${t('admin.thread_attach_btn')}</button>
+                <i class="bi bi-chevron-down flex-shrink-0"></i>
               </div>
-              ${m.body ? `<pre class="small bg-body-secondary p-2 rounded mt-2 mb-0" style="white-space:pre-wrap;word-break:break-word;max-height:12vh;overflow-y:auto">${esc(m.body.slice(0, 2000))}</pre>` : ''}
+              <div class="d-none border-top p-2">
+                ${m.from_name && m.from_email ? row(t('admin.parsed_detail_from'), `${esc(m.from_name)} &lt;${esc(m.from_email)}&gt;`) : ''}
+                ${m.body ? `<pre class="small bg-body-secondary p-2 rounded mb-2" style="white-space:pre-wrap;word-break:break-word;max-height:12vh;overflow-y:auto">${esc(m.body.slice(0, 2000))}</pre>` : `<p class="text-muted small mb-2">${none}</p>`}
+                <div class="text-end">
+                  <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openThreadMessageAttach(${r.id},${i})">${t('admin.thread_attach_btn')}</button>
+                </div>
+              </div>
             </div>`).join('')}
         </div>` : ''}
         ${r.unmatched_contacts && r.unmatched_contacts.length ? `
@@ -1890,6 +1896,17 @@
       // items deep-link back for edit-name/change-password (see that page's
       // DOMContentLoaded), rather than duplicating the whole edit modal here.
       window.location.href = `${INDEX_URL}?action=edit-comm&comm=${commId}`;
+    }
+
+    // header is the clicked row (siblings: itself + the .d-none details div
+    // right after it) -- toggles both the details visibility and the chevron.
+    function _toggleThreadMsg(header) {
+      const details = header.nextElementSibling;
+      const icon = header.querySelector('.bi');
+      const opening = details.classList.contains('d-none');
+      details.classList.toggle('d-none');
+      icon.classList.toggle('bi-chevron-down', !opening);
+      icon.classList.toggle('bi-chevron-up', opening);
     }
 
     let _threadMessageAttachModal = null;
