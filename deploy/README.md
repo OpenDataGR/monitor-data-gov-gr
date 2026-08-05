@@ -126,6 +126,60 @@ immediately before every restart attempt, so a lockout from an earlier
 failed deploy can never silently persist into later ones -- every deploy
 now gets a genuine fresh attempt regardless of what happened before it.
 
+## nginx config changes are NOT part of the automated deploy
+
+`deploy.yml`'s `git pull` updates everything Python/template/static, but
+`nginx-monitor.conf` in this repo is just a *tracked copy* -- nothing
+automatically copies it to `/etc/nginx/sites-enabled/monitor` or reloads
+nginx. After editing the tracked file, the change has to be applied by
+hand on the VM:
+
+```bash
+sudo nano /etc/nginx/sites-enabled/monitor   # make the same edit here
+sudo nginx -t && sudo systemctl reload nginx  # test first, reload only if it passes
+```
+
+### Forwarded emails silently vanishing -- nginx 1MB body-size default (found 2026-08-05)
+
+**Symptom:** re-forwarding an email thread to the Mail Parser webhook
+produced *nothing* -- no new Parsed Emails row, no update to an existing
+one, not even a `dismissed` row. `journalctl -u monitor-data-gov-gr` had
+zero `[email-sync]` log lines anywhere near the forward's timestamp --
+i.e. the request never reached the app at all, not an app-level bug.
+
+**Root cause:** `nginx-monitor.conf` never set `client_max_body_size`, so
+nginx fell back to its compile-time default of **1MB**. SendGrid's Inbound
+Parse POSTs the *entire raw MIME email* as form data -- full headers, a
+multipart HTML+plain body, and in this case an embedded signature image
+(`[cid:image001.jpg@...]`) -- which crosses 1MB easily once a thread's
+been forwarded/quoted a few times. nginx rejected the oversized POST with
+a bare `413` before it ever reached gunicorn, which is exactly why nothing
+showed up anywhere the app could log it.
+
+Confirmed via nginx's own access log, not guesswork -- the fix that
+actually located this only came after checking here, not from reasoning
+about the app's dedup logic (which is what looked suspicious at first,
+and did have a real, separate false-positive bug worth its own fix, but
+wasn't the cause of *this* symptom):
+
+```bash
+sudo grep 'inbound-webhook' /var/log/nginx/access.log | tail -20
+# ... 413 171 "-" "Sendlib/1.0"   <- SendGrid's own user-agent, request rejected before the app ever saw it
+```
+
+**Fix:** added `client_max_body_size 25m;` to the `server` block in
+`nginx-monitor.conf` (comfortably under SendGrid's own ~30MB Inbound Parse
+limit) -- applied by hand on the VM per the note at the top of this
+section, since this file isn't part of the git-pull deploy pipeline.
+
+**Lesson for next time:** when something upstream of the app (SendGrid,
+in this case) reports success but nothing shows up in the app at all,
+check nginx's *access* log (not the app's journalctl) before suspecting
+application logic -- a request nginx itself rejects (413, and the same
+logic applies to a WAF-level block, see the Application Gateway section
+below) never generates a single line of app-level log, so "the app never
+logged it" and "the app has a bug" are not the same thing.
+
 ## Redis (rate-limit storage + shared caches + sessions + comms-stream fanout)
 
 Redis backs four independent things in production, all optional and all
@@ -338,3 +392,69 @@ session once, since the old `session` cookie stops being recognized the
 moment it ships -- expected, not a regression. The WAF exclusion should be
 added *after* that deploy is live, once real traffic is actually carrying
 the `monitor_session` cookie name.
+
+### Mail Parser webhook 413s -- Gateway's own body-size cap, not nginx (found 2026-08-05)
+
+**Symptom:** forwarding an email to the Mail Parser webhook produced
+nothing at all -- no new Parsed Emails row, no app-level log line. First
+fix attempt (see "nginx config changes" section above) raised nginx's
+`client_max_body_size` from its 1MB default to 25m, since nginx's own
+access log showed `413` responses to `/api/email-sync/inbound-webhook/...`
+at exactly the forward's timestamps. That fix was real (nginx genuinely
+was rejecting large bodies) but **did not fix the symptom** -- a
+different, smaller email still came back 413 afterward.
+
+**Root cause:** two separate size caps stacked in front of the app, and
+only one of them got raised. Confirmed via the App Gateway's own Access
+log (not nginx's, and not the app's) -- `ApplicationGatewayAccessLog`
+showed `httpStatus_d: 413` for the *Gateway's own* response, with
+`receivedBytes_d: 543474` (~530KB) and `error_info_s: ERRORINFO_NO_ERROR`
+(no backend/connection error, just a deliberate reject) on a request that
+never should have troubled nginx's now-25MB limit at all. Azure
+Application Gateway's WAF (`WAFPolicyOTS`, same shared policy as the
+403-cookie incident above) enforces its own `maxRequestBodySizeInKb` --
+**hard-capped at 128 KB by Azure itself**, can't be raised past that via
+the normal policy setting -- for any multipart field the WAF doesn't
+recognize as a genuine file upload (those get the much larger
+`fileUploadLimitInMb`, default 100MB, instead). SendGrid's Inbound Parse
+POSTs the entire raw MIME email as a plain multipart form field named
+`email`, with no `filename=` making it look like a file part to the WAF --
+so it lands under the strict 128KB cap regardless of nginx's own setting.
+This was very likely the *actual* binding constraint the whole time, for
+any forwarded email with so much as a small embedded signature image;
+nginx's 1MB default was never the real bottleneck on its own.
+
+Confirmed via the Gateway's own Access log (not the Firewall log --
+firewall log showed this same request as `Allowed` by an unrelated custom
+rule, which is a red herring for this specific kind of rejection):
+
+```kql
+AzureDiagnostics
+| where ResourceProvider == "MICROSOFT.NETWORK" and Category == "ApplicationGatewayAccessLog"
+| where userAgent_s has "Sendlib"
+| order by TimeGenerated desc
+```
+
+Look at `httpStatus_d` (413 here), `receivedBytes_d` (the actual body
+size Gateway saw), and `error_info_s` on the expanded row -- `Sendlib/1.0`
+is SendGrid's own outbound User-Agent, a much more reliable filter than
+guessing at `requestUri_s`/`hostname_s` field contents.
+
+**Fix:** not yet applied -- needs a change to `WAFPolicyOTS` itself (or a
+per-listener WAF policy override scoped to just this app's listener, see
+the note earlier in this section) to exempt this one endpoint from body-
+size inspection, or accept a smaller real-world email-size ceiling than
+the 25m nginx now allows. Same shared-policy caution as the cookie
+incident applies -- prefer a change scoped to this app's own listener/path
+over anything touching `WAFPolicyOTS` globally.
+
+**Lesson for next time:** a request rejected in front of the app can be
+rejected by *more than one* layer independently (nginx's own
+`client_max_body_size`, and the Application Gateway's WAF body-size cap,
+are two unrelated settings that both have to be big enough) -- fixing the
+first one you find and confirming it's real doesn't mean it's the *only*
+one. When a fix doesn't resolve the symptom, check the *next* layer's own
+access log (Gateway's `ApplicationGatewayAccessLog`, not just nginx's)
+before assuming the app itself has a bug -- `httpStatus_d` + `receivedBytes_d`
+on that log answers "how big was too big, and who actually said no"
+directly, without needing to guess from response byte-counts alone.
