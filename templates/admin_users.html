@@ -128,6 +128,8 @@
     <i class="bi bi-arrow-up"></i>
   </button>
 
+  <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1080" id="toastContainer"></div>
+
   <div class="top-header gov-header-bg d-flex align-items-center justify-content-between flex-wrap gap-2">
     <div class="d-flex align-items-center gap-3">
       <button class="btn btn-outline-light btn-sm d-md-none" id="adminSidebarMobileToggle" onclick="toggleAdminMobileSidebar()" data-i18n-title="nav.menu" title="Menu">
@@ -804,6 +806,7 @@
         'admin.parsed_col_received': 'Received', 'admin.parsed_col_from': 'From', 'admin.parsed_col_subject': 'Subject',
         'admin.parsed_col_status': 'Status', 'admin.parsed_col_direction': 'Direction', 'admin.parsed_col_org': 'Matched org',
         'admin.parsed_col_reason': 'Reason', 'admin.parsed_none': 'No emails parsed yet.',
+        'inbound.toast_title': 'New email needs review', 'inbound.toast_multi': '{n} new emails need review',
         'admin.parsed_detail_title': 'Parsed Email', 'admin.parsed_detail_received': 'Received',
         'admin.parsed_revision_badge': 'Updated ×{n}', 'admin.parsed_revision_tooltip': 'This thread was re-forwarded and merged into this same row instead of creating a duplicate.',
         'admin.parsed_detail_from': 'From', 'admin.parsed_detail_to': 'To', 'admin.parsed_detail_subject': 'Subject',
@@ -829,7 +832,7 @@
         'admin.unmatched_org_code': 'Org code', 'admin.unmatched_org_label': 'Org label',
         'admin.unmatched_email': 'Email', 'admin.unmatched_tel': 'Phone',
         'admin.unmatched_org_code_required': 'Org code is required.',
-        'admin.parsed_detail_body': 'Body', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'View',
+        'admin.parsed_detail_body': 'Body', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'View Body',
         'admin.hvd_cache_title': 'HVD Compliance Check Cache',
         'admin.hvd_cache_desc': 'Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.',
         'admin.clear_hvd_cache': 'Clear HVD Check Cache',
@@ -939,6 +942,7 @@
         'admin.parsed_col_received': 'Λήψη', 'admin.parsed_col_from': 'Από', 'admin.parsed_col_subject': 'Θέμα',
         'admin.parsed_col_status': 'Κατάσταση', 'admin.parsed_col_direction': 'Κατεύθυνση', 'admin.parsed_col_org': 'Αντιστοιχισμένος φορέας',
         'admin.parsed_col_reason': 'Αιτία', 'admin.parsed_none': 'Δεν έχει αναλυθεί κανένα email ακόμα.',
+        'inbound.toast_title': 'Νέο email προς έλεγχο', 'inbound.toast_multi': '{n} νέα email προς έλεγχο',
         'admin.parsed_detail_title': 'Αναλυμένο Email', 'admin.parsed_detail_received': 'Λήψη',
         'admin.parsed_revision_badge': 'Ενημερώθηκε ×{n}', 'admin.parsed_revision_tooltip': 'Αυτό το νήμα προωθήθηκε ξανά και συγχωνεύτηκε σε αυτήν την ίδια εγγραφή αντί να δημιουργήσει διπλότυπο.',
         'admin.parsed_detail_from': 'Από', 'admin.parsed_detail_to': 'Προς', 'admin.parsed_detail_subject': 'Θέμα',
@@ -964,7 +968,7 @@
         'admin.unmatched_org_code': 'Κωδικός φορέα', 'admin.unmatched_org_label': 'Επωνυμία φορέα',
         'admin.unmatched_email': 'Email', 'admin.unmatched_tel': 'Τηλέφωνο',
         'admin.unmatched_org_code_required': 'Ο κωδικός φορέα είναι υποχρεωτικός.',
-        'admin.parsed_detail_body': 'Περιεχόμενο', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'Προβολή',
+        'admin.parsed_detail_body': 'Περιεχόμενο', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'Προβολή Περιεχομένου',
         'admin.hvd_cache_title': 'Cache Ελέγχου Συμμόρφωσης HVD',
         'admin.hvd_cache_desc': 'Καθαρίζει τα αποθηκευμένα αποτελέσματα ελέγχου SHACL για HVD και το cache ανά σύνολο δεδομένων. Η επόμενη εκτέλεση από την καρτέλα Ποιότητα θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε σύνολο δεδομένων με ετικέτα HVD.',
         'admin.clear_hvd_cache': 'Καθαρισμός Cache Ελέγχου HVD',
@@ -1835,6 +1839,9 @@
                     </div>`;
           }).join('')}</div>
         </div>` : ''}
+        <div class="mb-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="showRawBodyPane(${r.id})"><i class="bi bi-file-text me-1"></i>${t('admin.parsed_view_body')}</button>
+        </div>
         ${r.thread_messages && r.thread_messages.length ? `
         <div class="mb-2">
           <div class="text-muted small mb-1">${t('admin.parsed_detail_thread')}</div>
@@ -1852,12 +1859,7 @@
               <div id="threadMsgDetailPane" class="border rounded p-2 h-100">${_renderThreadMsgDetail(r.id, r.thread_messages[0])}</div>
             </div>
           </div>
-        </div>` : ''}
-        <hr>
-        <div class="d-flex align-items-center justify-content-between p-1">
-          <div class="text-muted small mb-0">${t('admin.parsed_detail_body')}</div>
-          <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="showRawBodyPane(${r.id})">${t('admin.parsed_view_body')}</button>
-        </div>`;
+        </div>` : ''}`;
       document.getElementById('parsedEmailDetailBody').innerHTML = body;
       _parsedEmailDetailId = id;
       document.getElementById('parsedDetailRematchBtn').classList.toggle('d-none', r.status !== 'pending_review');
@@ -2143,6 +2145,67 @@
       }
     }
 
+    // ── Toast notifications (own copy -- this page loads neither app.js nor
+    // its #toastContainer markup, see the CSRF-patch comment at the top for
+    // the same reasoning) ───────────────────────────────────────────────────
+    function showToast(title, body, { onClick } = {}) {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const el = document.createElement('div');
+      el.className = 'toast align-items-center border-0 shadow';
+      el.setAttribute('role', 'alert');
+      el.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body"${onClick ? ' style="cursor:pointer"' : ''}>
+            <div class="fw-semibold">${esc(title)}</div>
+            <div class="small">${esc(body)}</div>
+          </div>
+          <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>`;
+      if (onClick) el.querySelector('.toast-body').addEventListener('click', onClick);
+      container.appendChild(el);
+      const toast = new bootstrap.Toast(el, { delay: 8000 });
+      el.addEventListener('hidden.bs.toast', () => el.remove());
+      toast.show();
+    }
+
+    // ── Live Mail Parser notifications (same SSE stream/events as the main
+    // dashboard's Comms tab, see app.js's _startCommsLiveStream) -- both
+    // event types just mean "the Parsed Emails table is stale", so both
+    // trigger the same refresh here regardless of which nav tab is open. ──
+    let _adminLiveSource = null;
+    let _adminLiveErrorStreak = 0;
+
+    function _startAdminLiveStream() {
+      if (_adminLiveSource) return;
+      _adminLiveSource = new EventSource('../api/communications/stream');
+      _adminLiveSource.onopen = () => { _adminLiveErrorStreak = 0; };
+      _adminLiveSource.onerror = () => {
+        if (++_adminLiveErrorStreak > 5) {
+          _adminLiveSource.close();
+          _adminLiveSource = null;
+        }
+      };
+      _adminLiveSource.addEventListener('new_inbound_email', ev => {
+        let items;
+        try { items = JSON.parse(ev.data); } catch (_) { return; }
+        if (!Array.isArray(items) || !items.length) return;
+        const first = items[0];
+        const who = first.from_name || first.from_email || '';
+        const body = items.length === 1
+          ? [who, first.subject].filter(Boolean).join(' — ')
+          : t('inbound.toast_multi').replace('{n}', items.length);
+        showToast(t('inbound.toast_title'), body, { onClick: () => _activateAdminTab('mail-parser') });
+        loadParsedEmails();
+      });
+      _adminLiveSource.addEventListener('new_communication', ev => {
+        let items;
+        try { items = JSON.parse(ev.data); } catch (_) { return; }
+        if (!Array.isArray(items) || !items.length) return;
+        loadParsedEmails();
+      });
+    }
+
     applyI18n();
     applyThemeIcon();
     loadUsers();
@@ -2150,6 +2213,7 @@
     loadExcludedEmails();
     loadListenAddresses();
     loadParsedEmails();
+    _startAdminLiveStream();
     // Honor a hash already in the URL (deep link / refresh) -- deferred so it
     // runs after every listener above is registered, same reasoning as the
     // main dashboard's equivalent setTimeout.
