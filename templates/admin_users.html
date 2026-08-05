@@ -1175,18 +1175,22 @@
     // populates them here since this page has no richer org-loading flow of
     // its own the way the main dashboard's Orgs tab does.
     // Best-effort default when nothing else already narrowed down the org
-    // (see openUnmatchedContactCreate) -- an ALL-CAPS Greek token in the
-    // subject is very likely an official org's own parenthetical acronym
-    // (e.g. "... (ΡΑΑΕΥ)"), so those are tried before ordinary words. Still
-    // just a starting point -- the search box stays fully editable. Works on
-    // any text -- called with the email's subject first (see
-    // openUnmatchedContactCreate), then the sender's own message body/
-    // signature as a second attempt if the subject didn't turn up anything.
+    // (see openUnmatchedContactCreate) -- ONLY tries ALL-CAPS Greek tokens
+    // (a very likely official parenthetical acronym, e.g. "... (ΡΑΑΕΥ)"),
+    // deliberately not ordinary words: an early version also tried those,
+    // and a common word like "Δεδομένα" turned out to coincidentally match
+    // inside an unrelated org's official title (e.g. the Data Protection
+    // Authority's own name literally contains "data") far too easily --
+    // false positives here are actively misleading, so acronym-only trades
+    // some coverage for not guessing wrong. Still just a starting point --
+    // the search box stays fully editable regardless. Works on any text --
+    // called with the email's subject first (see openUnmatchedContactCreate),
+    // then the sender's own message body/signature as a second attempt.
     function _guessOrgFromText(text) {
       if (!text || !_publicOrgs.length) return null;
-      const tokens = text.match(/[Α-Ωα-ωA-Za-z]{3,}/g) || [];
-      const caps = tokens.filter(t => t === t.toUpperCase() && /[Α-Ω]/.test(t));
-      for (const tok of [...caps, ...tokens]) {
+      const caps = (text.match(/[Α-Ωα-ωA-Za-z]{3,}/g) || [])
+        .filter(t => t === t.toUpperCase() && /[Α-Ω]/.test(t));
+      for (const tok of caps) {
         const nTok = _ns(tok);
         const hit = _publicOrgs.find(o => _ns(o.label).includes(nTok));
         if (hit) return hit;
