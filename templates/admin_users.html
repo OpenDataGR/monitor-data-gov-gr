@@ -625,59 +625,6 @@
     </div>
   </div>
 
-  <!-- Register an unmatched participant as a real contact -->
-  <div class="modal fade" id="unmatchedContactCreateModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header border-bottom">
-          <h5 class="modal-title fw-bold"><i class="bi bi-person-plus me-2"></i><span data-i18n="admin.unmatched_create_title">Register Contact</span></h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body pt-3">
-          <input type="hidden" id="unmatchedContactId">
-          <div class="row g-2">
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_first_name">First name</label>
-              <input type="text" id="unmatchedFirstName" class="form-control form-control-sm">
-            </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_last_name">Last name</label>
-              <input type="text" id="unmatchedLastName" class="form-control form-control-sm">
-            </div>
-            <div class="col-12">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_org_search">Organization</label>
-              <input type="hidden" id="unmatchedOrgCode">
-              <input type="hidden" id="unmatchedOrgLabel">
-              <div class="position-relative">
-                <input type="text" class="form-control form-control-sm" id="unmatchedOrgSearch" autocomplete="off"
-                       data-i18n-ph="admin.org_search_ph" placeholder="Search organizations…"
-                       oninput="_orgSearch(this.value,'unmatchedOrgDropdown','_unmatchedOrgSelect')"
-                       onfocus="_orgSearch(this.value,'unmatchedOrgDropdown','_unmatchedOrgSelect')"
-                       onblur="setTimeout(()=>document.getElementById('unmatchedOrgDropdown').classList.add('d-none'),150)">
-                <ul class="list-group shadow-sm position-absolute w-100 d-none" id="unmatchedOrgDropdown" style="z-index:1060;max-height:220px;overflow-y:auto;top:100%"></ul>
-              </div>
-            </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_email">Email</label>
-              <input type="email" id="unmatchedEmail" class="form-control form-control-sm">
-            </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_tel">Phone</label>
-              <input type="text" id="unmatchedTel" class="form-control form-control-sm">
-            </div>
-          </div>
-          <div id="unmatchedContactError" class="alert alert-danger small mt-3 mb-0 d-none"></div>
-        </div>
-        <div class="modal-footer border-top">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
-          <button type="button" class="btn btn-primary btn-sm" onclick="saveUnmatchedContactCreate()">
-            <i class="bi bi-check me-1"></i><span data-i18n="admin.unmatched_create_save">Register</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Mass email confirmation modal -->
   <div class="modal fade" id="massEmailModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -841,11 +788,6 @@
         'admin.org_search_ph': 'Search organizations…',
         'admin.unmatched_drop': 'Drop', 'admin.unmatched_create': 'Create contact',
         'admin.unmatched_confirm_drop': 'Drop this unregistered participant? This just dismisses the flag -- it does not affect anything already logged.',
-        'admin.unmatched_create_title': 'Register Contact', 'admin.unmatched_create_save': 'Register',
-        'admin.unmatched_first_name': 'First name', 'admin.unmatched_last_name': 'Last name',
-        'admin.unmatched_org_search': 'Organization',
-        'admin.unmatched_email': 'Email', 'admin.unmatched_tel': 'Phone',
-        'admin.unmatched_org_code_required': 'Org code is required.',
         'admin.parsed_detail_body': 'Body', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'View Body',
         'admin.hvd_cache_title': 'HVD Compliance Check Cache',
         'admin.hvd_cache_desc': 'Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.',
@@ -972,16 +914,12 @@
         'admin.parsed_confirm_detach': 'Αποσύνδεση αυτής της Επικοινωνίας από αυτό το email; Η Επικοινωνία παραμένει -- το email απλώς δεν θα εμφανίζεται πλέον ως αυτό που την παρήγαγε.',
         'admin.parsed_confirm_comm_delete': 'Οριστική διαγραφή αυτής της Επικοινωνίας; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.',
         'admin.parsed_comm_edit': 'Επεξεργασία', 'admin.parsed_comm_detach': 'Αποσύνδεση', 'admin.parsed_comm_delete': 'Διαγραφή',
-        'admin.thread_attach_title': 'Καταγραφή Αυτού του Μηνύματος', 'admin.thread_attach_org_code': 'Κωδικός φορέα (αντιστοιχίζει την Ανοιχτή υπόθεση)',
+        'admin.thread_attach_title': 'Καταγραφή Αυτού του Μηνύματος', 'admin.thread_attach_org_code': 'Φορέας (αντιστοιχίζει την Ανοιχτή υπόθεση)',
         'admin.thread_attach_case_id': '...ή συγκεκριμένο αναγνωριστικό υπόθεσης', 'admin.thread_attach_contact_email': 'Email επαφής (προαιρετικό)',
         'admin.thread_attach_save': 'Καταγραφή Επικοινωνίας', 'admin.thread_attach_need_org_or_case': 'Εισάγετε κωδικό φορέα ή αναγνωριστικό υπόθεσης.',
+        'admin.org_search_ph': 'Αναζήτηση φορέων…',
         'admin.unmatched_drop': 'Απόρριψη', 'admin.unmatched_create': 'Καταχώρηση επαφής',
         'admin.unmatched_confirm_drop': 'Απόρριψη αυτού του μη καταχωρημένου συμμετέχοντα; Αυτό απλώς απορρίπτει την επισήμανση -- δεν επηρεάζει τίποτα που έχει ήδη καταγραφεί.',
-        'admin.unmatched_create_title': 'Καταχώρηση Επαφής', 'admin.unmatched_create_save': 'Καταχώρηση',
-        'admin.unmatched_first_name': 'Όνομα', 'admin.unmatched_last_name': 'Επώνυμο',
-        'admin.unmatched_org_code': 'Κωδικός φορέα', 'admin.unmatched_org_label': 'Επωνυμία φορέα',
-        'admin.unmatched_email': 'Email', 'admin.unmatched_tel': 'Τηλέφωνο',
-        'admin.unmatched_org_code_required': 'Ο κωδικός φορέα είναι υποχρεωτικός.',
         'admin.parsed_detail_body': 'Περιεχόμενο', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'Προβολή Περιεχομένου',
         'admin.hvd_cache_title': 'Cache Ελέγχου Συμμόρφωσης HVD',
         'admin.hvd_cache_desc': 'Καθαρίζει τα αποθηκευμένα αποτελέσματα ελέγχου SHACL για HVD και το cache ανά σύνολο δεδομένων. Η επόμενη εκτέλεση από την καρτέλα Ποιότητα θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε σύνολο δεδομένων με ετικέτα HVD.',
@@ -1236,12 +1174,6 @@
         if (/^(2\d{9}|69\d{8})$/.test(digits)) return digits;
       }
       return '';
-    }
-    function _unmatchedOrgSelect(code, label) {
-      show('unmatchedOrgCode').value = code;
-      show('unmatchedOrgLabel').value = label;
-      show('unmatchedOrgSearch').value = label;
-      document.getElementById('unmatchedOrgDropdown').classList.add('d-none');
     }
     function _threadAttachOrgSelect(code, label) {
       show('threadAttachOrgCode').value = code;
@@ -2133,14 +2065,20 @@
       if (_parsedEmailDetailId != null) showParsedEmailDetail(_parsedEmailDetailId);
     }
 
+    // Deep-links to the main dashboard's own Contacts editor instead of a
+    // second, simplified one living on this standalone page -- that one
+    // already has dual CKAN/HRMS org search, duplicate-email detection, and
+    // portal-membership awareness, none of which is worth rebuilding here.
+    // The unmatched id travels along so the main dashboard's
+    // saveUserPanelEdit can resolve this flag once the contact is actually
+    // saved (see /api/unmatched-contacts/<id>/resolve).
     function openUnmatchedContactCreate(unmatchedId) {
       const found = _findUnmatchedContact(unmatchedId);
       if (!found) return;
       const { unmatched: u, parsedEmail: r } = found;
-      show('unmatchedContactId').value = u.id;
       const parts = (u.name || '').trim().split(/\s+/);
-      show('unmatchedFirstName').value = parts.slice(0, -1).join(' ') || parts[0] || '';
-      show('unmatchedLastName').value  = parts.length > 1 ? parts[parts.length - 1] : '';
+      const firstName = parts.slice(0, -1).join(' ') || parts[0] || '';
+      const lastName  = parts.length > 1 ? parts[parts.length - 1] : '';
       // u.org_code/org_label only ever come from _match_inbound_email's
       // single-group best guess (every OTHER participant on the email
       // converging on the same org) -- when nothing else on the email
@@ -2153,49 +2091,13 @@
         const guess = _guessOrgFromText(r.subject) || (senderMsg && _guessOrgFromText(senderMsg.body));
         if (guess) { orgCode = guess.code; orgLabel = guess.label; }
       }
-      show('unmatchedOrgCode').value   = orgCode;
-      show('unmatchedOrgLabel').value  = orgLabel;
-      show('unmatchedOrgSearch').value = orgLabel;
-      show('unmatchedEmail').value    = u.email || '';
-      show('unmatchedTel').value      = (senderMsg && _extractPhone(senderMsg.body)) || '';
-      show('unmatchedContactError').classList.add('d-none');
-      if (!_unmatchedContactCreateModal) _unmatchedContactCreateModal = new bootstrap.Modal(document.getElementById('unmatchedContactCreateModal'));
-      _unmatchedContactCreateModal.show();
-    }
-
-    let _unmatchedContactCreateModal = null;
-
-    async function saveUnmatchedContactCreate() {
-      const id = show('unmatchedContactId').value;
-      const errEl = show('unmatchedContactError');
-      errEl.classList.add('d-none');
-      const orgCode = show('unmatchedOrgCode').value.trim();
-      if (!orgCode) {
-        errEl.textContent = t('admin.unmatched_org_code_required');
-        errEl.classList.remove('d-none');
-        return;
-      }
-      try {
-        const resp = await fetch(`../api/unmatched-contacts/${id}/create`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            org_code: orgCode,
-            org_label: show('unmatchedOrgLabel').value.trim(),
-            first_name: show('unmatchedFirstName').value.trim(),
-            last_name: show('unmatchedLastName').value.trim(),
-            email: show('unmatchedEmail').value.trim(),
-            tel: show('unmatchedTel').value.trim(),
-          }),
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || t('admin.failed'));
-        _unmatchedContactCreateModal.hide();
-        await loadParsedEmails();
-        if (_parsedEmailDetailId != null) showParsedEmailDetail(_parsedEmailDetailId);
-      } catch (e) {
-        errEl.textContent = e.message;
-        errEl.classList.remove('d-none');
-      }
+      const tel = (senderMsg && _extractPhone(senderMsg.body)) || '';
+      const params = new URLSearchParams({
+        action: 'new-contact', unmatched: unmatchedId,
+        first: firstName, last: lastName, email: u.email || '', tel,
+        org_code: orgCode, org_label: orgLabel,
+      });
+      window.location.href = `${INDEX_URL}?${params.toString()}`;
     }
 
     async function sendTestEmail(ev) {

@@ -5697,6 +5697,18 @@ def unmatched_contact_drop(unmatched_id):
     return jsonify(row.to_dict())
 
 
+def _retroactively_credit_unmatched(row: "UnmatchedEmailContact", contact: "OrgContact", org_code: str):
+    """Credits `contact` on every Communication this same email already
+    produced for `org_code` -- so registering someone late still reflects
+    them on whatever was already logged, instead of waiting for their next
+    email to show up."""
+    for link in row.inbound_email.email_communications:
+        comm = link.communication
+        if comm and comm.org_name == org_code:
+            existing_ids = [cc.org_contact_id for cc in comm.contact_links]
+            _sync_communication_contacts(comm, existing_ids + [contact.id])
+
+
 @app.route("/api/unmatched-contacts/<int:unmatched_id>/create", methods=["POST"])
 def unmatched_contact_create(unmatched_id):
     """Registers a flagged unmatched participant as a real OrgContact --
@@ -5732,15 +5744,36 @@ def unmatched_contact_create(unmatched_id):
     db.session.flush()
     row.status = "created"
     row.resolved_contact_id = contact.id
-
-    for link in row.inbound_email.email_communications:
-        comm = link.communication
-        if comm and comm.org_name == org_code:
-            existing_ids = [cc.org_contact_id for cc in comm.contact_links]
-            _sync_communication_contacts(comm, existing_ids + [contact.id])
-
+    _retroactively_credit_unmatched(row, contact, org_code)
     db.session.commit()
     return jsonify(row.to_dict()), 201
+
+
+@app.route("/api/unmatched-contacts/<int:unmatched_id>/resolve", methods=["POST"])
+def unmatched_contact_resolve(unmatched_id):
+    """Like /create, but for when the real OrgContact was already created
+    elsewhere -- the Mail Parser admin panel's "Create contact" action
+    deep-links to the main dashboard's own (much richer) contact editor
+    instead of duplicating it, then calls this once that save actually
+    happens. Points this flagged participant at that existing contact and
+    runs the same retroactive Communication-crediting, instead of building
+    a second, duplicate OrgContact record the way /create does."""
+    err = _require_superadmin()
+    if err:
+        return err
+    row = UnmatchedEmailContact.query.get_or_404(unmatched_id)
+    if row.status != "pending":
+        return jsonify({"error": "already resolved"}), 400
+    body = _decode_payload()
+    contact_id = body.get("contact_id")
+    if not contact_id:
+        return jsonify({"error": "contact_id is required"}), 400
+    contact = OrgContact.query.get_or_404(int(contact_id))
+    row.status = "created"
+    row.resolved_contact_id = contact.id
+    _retroactively_credit_unmatched(row, contact, contact.org_code)
+    db.session.commit()
+    return jsonify(row.to_dict())
 
 
 @app.route("/api/communications/export", methods=["GET"])
