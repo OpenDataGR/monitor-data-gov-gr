@@ -594,8 +594,16 @@
           <input type="hidden" id="threadAttachInboundId">
           <input type="hidden" id="threadAttachMsgIndex">
           <div class="mb-2">
-            <label class="form-label small mb-1" data-i18n="admin.thread_attach_org_code">Org code (resolves the Open case)</label>
-            <input type="text" id="threadAttachOrgCode" class="form-control form-control-sm">
+            <label class="form-label small mb-1" data-i18n="admin.thread_attach_org_code">Org (resolves the Open case)</label>
+            <input type="hidden" id="threadAttachOrgCode">
+            <div class="position-relative">
+              <input type="text" class="form-control form-control-sm" id="threadAttachOrgSearch" autocomplete="off"
+                     data-i18n-ph="admin.org_search_ph" placeholder="Search organizations…"
+                     oninput="_orgSearch(this.value,'threadAttachOrgDropdown','_threadAttachOrgSelect')"
+                     onfocus="_orgSearch(this.value,'threadAttachOrgDropdown','_threadAttachOrgSelect')"
+                     onblur="setTimeout(()=>document.getElementById('threadAttachOrgDropdown').classList.add('d-none'),150)">
+              <ul class="list-group shadow-sm position-absolute w-100 d-none" id="threadAttachOrgDropdown" style="z-index:1060;max-height:220px;overflow-y:auto;top:100%"></ul>
+            </div>
           </div>
           <div class="mb-2">
             <label class="form-label small mb-1" data-i18n="admin.thread_attach_case_id">...or a specific case id</label>
@@ -636,13 +644,18 @@
               <label class="form-label small mb-1" data-i18n="admin.unmatched_last_name">Last name</label>
               <input type="text" id="unmatchedLastName" class="form-control form-control-sm">
             </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_org_code">Org code</label>
-              <input type="text" id="unmatchedOrgCode" class="form-control form-control-sm" required>
-            </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_org_label">Org label</label>
-              <input type="text" id="unmatchedOrgLabel" class="form-control form-control-sm">
+            <div class="col-12">
+              <label class="form-label small mb-1" data-i18n="admin.unmatched_org_search">Organization</label>
+              <input type="hidden" id="unmatchedOrgCode">
+              <input type="hidden" id="unmatchedOrgLabel">
+              <div class="position-relative">
+                <input type="text" class="form-control form-control-sm" id="unmatchedOrgSearch" autocomplete="off"
+                       data-i18n-ph="admin.org_search_ph" placeholder="Search organizations…"
+                       oninput="_orgSearch(this.value,'unmatchedOrgDropdown','_unmatchedOrgSelect')"
+                       onfocus="_orgSearch(this.value,'unmatchedOrgDropdown','_unmatchedOrgSelect')"
+                       onblur="setTimeout(()=>document.getElementById('unmatchedOrgDropdown').classList.add('d-none'),150)">
+                <ul class="list-group shadow-sm position-absolute w-100 d-none" id="unmatchedOrgDropdown" style="z-index:1060;max-height:220px;overflow-y:auto;top:100%"></ul>
+              </div>
             </div>
             <div class="col-6">
               <label class="form-label small mb-1" data-i18n="admin.unmatched_email">Email</label>
@@ -822,14 +835,15 @@
         'admin.parsed_confirm_detach': 'Un-link this Communication from this email? The Communication itself is kept; the email just stops being credited with producing it.',
         'admin.parsed_confirm_comm_delete': 'Permanently delete this Communication? This cannot be undone.',
         'admin.parsed_comm_edit': 'Edit', 'admin.parsed_comm_detach': 'Detach', 'admin.parsed_comm_delete': 'Delete',
-        'admin.thread_attach_title': 'Log This Message', 'admin.thread_attach_org_code': 'Org code (resolves the Open case)',
+        'admin.thread_attach_title': 'Log This Message', 'admin.thread_attach_org_code': 'Org (resolves the Open case)',
         'admin.thread_attach_case_id': '...or a specific case id', 'admin.thread_attach_contact_email': 'Contact email (optional)',
         'admin.thread_attach_save': 'Log Communication', 'admin.thread_attach_need_org_or_case': 'Enter an org code or a case id.',
+        'admin.org_search_ph': 'Search organizations…',
         'admin.unmatched_drop': 'Drop', 'admin.unmatched_create': 'Create contact',
         'admin.unmatched_confirm_drop': 'Drop this unregistered participant? This just dismisses the flag -- it does not affect anything already logged.',
         'admin.unmatched_create_title': 'Register Contact', 'admin.unmatched_create_save': 'Register',
         'admin.unmatched_first_name': 'First name', 'admin.unmatched_last_name': 'Last name',
-        'admin.unmatched_org_code': 'Org code', 'admin.unmatched_org_label': 'Org label',
+        'admin.unmatched_org_search': 'Organization',
         'admin.unmatched_email': 'Email', 'admin.unmatched_tel': 'Phone',
         'admin.unmatched_org_code_required': 'Org code is required.',
         'admin.parsed_detail_body': 'Body', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'View Body',
@@ -1142,6 +1156,97 @@
       if (!iso) return t('admin.never');
       const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
       return d.toLocaleString(_lang === 'el' ? 'el-GR' : 'en-GB');
+    }
+
+    // ── Org search (Register Contact / thread-message manual attach) ────────
+    // Every org_code this app expects is an HRMS code (see _resolve_case_for_
+    // contacts in app.py), so /api/public-orgs -- the same HRMS registry --
+    // is the authoritative list to search/pick from, rather than expecting
+    // an admin to already know the exact code string to type.
+    let _publicOrgs = [];
+    async function _loadPublicOrgs() {
+      try {
+        const data = await fetch('../api/public-orgs').then(r => r.ok ? r.json() : []);
+        _publicOrgs = Array.isArray(data) ? data : [];
+      } catch (_) { _publicOrgs = []; }
+    }
+    function _ns(s) {
+      return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    }
+    // Shared by every org-code field on this page -- dropdownId/selectFn let
+    // one function serve multiple independent pickers (Register Contact,
+    // thread-message attach) without duplicating the search logic per modal.
+    function _orgSearch(q, dropdownId, selectFn) {
+      const dd = document.getElementById(dropdownId);
+      const nq = _ns((q || '').trim());
+      const matches = nq
+        ? _publicOrgs.filter(o => _ns(o.label).includes(nq)).slice(0, 10)
+        : _publicOrgs.slice(0, 20);
+      if (!matches.length) { dd.classList.add('d-none'); return; }
+      dd.innerHTML = matches.map(o =>
+        `<li class="list-group-item list-group-item-action py-2 px-2" style="cursor:pointer"
+             data-code="${esc(o.code)}" data-label="${esc(o.label)}"
+             onmousedown="${selectFn}(this.dataset.code,this.dataset.label)">
+           <i class="bi bi-building me-1 text-muted"></i>${esc(o.label)}</li>`
+      ).join('');
+      dd.classList.remove('d-none');
+    }
+    // Best-effort default when nothing else already narrowed down the org
+    // (see openUnmatchedContactCreate) -- an ALL-CAPS Greek token in the
+    // subject is very likely an official org's own parenthetical acronym
+    // (e.g. "... (ΡΑΑΕΥ)"), so those are tried before ordinary words. Still
+    // just a starting point -- the search box stays fully editable. Works on
+    // any text -- called with the email's subject first (see
+    // openUnmatchedContactCreate), then the sender's own message body/
+    // signature as a second attempt if the subject didn't turn up anything.
+    function _guessOrgFromText(text) {
+      if (!text || !_publicOrgs.length) return null;
+      const tokens = text.match(/[Α-Ωα-ωA-Za-z]{3,}/g) || [];
+      const caps = tokens.filter(t => t === t.toUpperCase() && /[Α-Ω]/.test(t));
+      for (const tok of [...caps, ...tokens]) {
+        const nTok = _ns(tok);
+        const hit = _publicOrgs.find(o => _ns(o.label).includes(nTok));
+        if (hit) return hit;
+      }
+      return null;
+    }
+    // This participant's own message within the thread (matched by sender
+    // address) -- its body is whatever's left after the empty/signature
+    // filter already applied to thread_messages, so a signature-only
+    // message from this same sender elsewhere in the thread won't get
+    // picked over one that actually has their signature attached to real
+    // content.
+    function _findSenderMessage(r, email) {
+      if (!r.thread_messages || !email) return null;
+      return r.thread_messages.find(m => (m.from_email || '').toLowerCase() === email.toLowerCase()) || null;
+    }
+    // Loose candidate scan (any digit-heavy run with plausible separators)
+    // then strict validation on the digits alone -- Greek landlines (2 + 9
+    // digits) and mobiles (69 + 8 digits) are both exactly 10 digits once a
+    // +30/0030/leading-0 prefix is stripped, so this rejects things that
+    // merely look like a phone number (case/reference numbers, dates) at
+    // the validation step instead of trying to make one giant regex do it.
+    function _extractPhone(text) {
+      if (!text) return '';
+      const candidates = text.match(/(?:\+?30[\s.-]?)?0?\(?\d[\d\s().-]{7,}\d/g) || [];
+      for (const c of candidates) {
+        let digits = c.replace(/\D/g, '');
+        if (digits.startsWith('30') && digits.length > 10) digits = digits.slice(2);
+        if (digits.startsWith('0') && digits.length > 10) digits = digits.slice(1);
+        if (/^(2\d{9}|69\d{8})$/.test(digits)) return digits;
+      }
+      return '';
+    }
+    function _unmatchedOrgSelect(code, label) {
+      show('unmatchedOrgCode').value = code;
+      show('unmatchedOrgLabel').value = label;
+      show('unmatchedOrgSearch').value = label;
+      document.getElementById('unmatchedOrgDropdown').classList.add('d-none');
+    }
+    function _threadAttachOrgSelect(code, label) {
+      show('threadAttachOrgCode').value = code;
+      show('threadAttachOrgSearch').value = label;
+      document.getElementById('threadAttachOrgDropdown').classList.add('d-none');
     }
 
     let _usersCache = [];
@@ -1973,6 +2078,7 @@
       show('threadAttachInboundId').value = inboundId;
       show('threadAttachMsgIndex').value = msgIndex;
       show('threadAttachOrgCode').value = '';
+      show('threadAttachOrgSearch').value = '';
       show('threadAttachCaseId').value = '';
       show('threadAttachContactEmail').value = '';
       show('threadAttachError').classList.add('d-none');
@@ -2030,15 +2136,28 @@
     function openUnmatchedContactCreate(unmatchedId) {
       const found = _findUnmatchedContact(unmatchedId);
       if (!found) return;
-      const { unmatched: u } = found;
+      const { unmatched: u, parsedEmail: r } = found;
       show('unmatchedContactId').value = u.id;
       const parts = (u.name || '').trim().split(/\s+/);
       show('unmatchedFirstName').value = parts.slice(0, -1).join(' ') || parts[0] || '';
       show('unmatchedLastName').value  = parts.length > 1 ? parts[parts.length - 1] : '';
-      show('unmatchedOrgCode').value  = u.org_code || '';
-      show('unmatchedOrgLabel').value = u.org_label || '';
+      // u.org_code/org_label only ever come from _match_inbound_email's
+      // single-group best guess (every OTHER participant on the email
+      // converging on the same org) -- when nothing else on the email
+      // resolved either, there's no such guess, so fall back to matching
+      // words in the email's own subject, then this participant's own
+      // message/signature, against the public-orgs list.
+      const senderMsg = _findSenderMessage(r, u.email);
+      let orgCode = u.org_code || '', orgLabel = u.org_label || '';
+      if (!orgCode) {
+        const guess = _guessOrgFromText(r.subject) || (senderMsg && _guessOrgFromText(senderMsg.body));
+        if (guess) { orgCode = guess.code; orgLabel = guess.label; }
+      }
+      show('unmatchedOrgCode').value   = orgCode;
+      show('unmatchedOrgLabel').value  = orgLabel;
+      show('unmatchedOrgSearch').value = orgLabel;
       show('unmatchedEmail').value    = u.email || '';
-      show('unmatchedTel').value      = '';
+      show('unmatchedTel').value      = (senderMsg && _extractPhone(senderMsg.body)) || '';
       show('unmatchedContactError').classList.add('d-none');
       if (!_unmatchedContactCreateModal) _unmatchedContactCreateModal = new bootstrap.Modal(document.getElementById('unmatchedContactCreateModal'));
       _unmatchedContactCreateModal.show();
@@ -2213,6 +2332,7 @@
     loadExcludedEmails();
     loadListenAddresses();
     loadParsedEmails();
+    _loadPublicOrgs();
     _startAdminLiveStream();
     // Honor a hash already in the URL (deep link / refresh) -- deferred so it
     // runs after every listener above is registered, same reasoning as the
