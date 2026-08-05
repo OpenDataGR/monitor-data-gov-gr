@@ -4920,10 +4920,16 @@ function renderCommsReviewSection() {
   el.classList.remove('d-none');
 
   const cards = _inboundEmailsData.map(e => {
-    const contact = e.matched_contact;
-    const contactName = contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : '';
-    const orgLine = (e.matched_org_label || e.matched_org_code)
-      ? `<div class="small text-muted">${esc(e.matched_org_label || e.matched_org_code)}${contactName ? ' &middot; ' + esc(contactName) : ''}</div>`
+    const matchedContacts = e.matched_contacts || [];
+    // An email can name registered contacts from more than one org (e.g.
+    // two orgs, neither with an Open case) -- list every one instead of
+    // just the first, one per line.
+    const orgLine = matchedContacts.length
+      ? `<div class="small text-muted">${matchedContacts.map(c => {
+          const name = `${c.first_name || ''} ${c.last_name || ''}`.trim();
+          const org = c.org_label || c.org_code || '';
+          return esc(org) + (name ? ' &middot; ' + esc(name) : '');
+        }).join('<br>')}</div>`
       : '';
     const candidatesLine = (e.reason === 'multiple_contacts_match' && (e.candidate_contacts || []).length)
       ? `<div class="small text-muted">${e.candidate_contacts.map(c => esc(`${c.first_name || ''} ${c.last_name || ''}`.trim() + (c.org_label ? ` (${c.org_label})` : ''))).join(' &middot; ')}</div>`
