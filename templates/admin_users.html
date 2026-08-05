@@ -1120,6 +1120,32 @@
     }
 
     let _usersCache = [];
+    let _usersSortCol = null;  // null = whatever order /api/users returned, until a header's clicked
+    let _usersSortDir = 'asc';
+
+    const USERS_SORT_KEY = {
+      name:   u => (u.name || '').toLowerCase(),
+      email:  u => (u.email || '').toLowerCase(),
+      role:   u => (u.is_superadmin ? 2 : u.is_admin ? 1 : 0),
+      status: u => (u.has_password ? 1 : 0),
+      last_login_at:  u => u.last_login_at || '',
+      last_active_at: u => u.last_active_at || '',
+    };
+
+    function sortUsers(col) {
+      if (_usersSortCol === col) {
+        _usersSortDir = _usersSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        _usersSortCol = col;
+        _usersSortDir = 'asc';
+      }
+      _renderUsersTable();
+    }
+
+    function _usersArrow(col) {
+      if (_usersSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
+      return _usersSortDir === 'asc' ? ' ↑' : ' ↓';
+    }
 
     async function loadUsers() {
       const el = document.getElementById('usersTable');
@@ -1129,12 +1155,28 @@
         const users = await resp.json();
         _usersCache = users;
         renderMassEmailRecipients();
-        if (!users.length) { el.innerHTML = `<p class="text-muted text-center py-3">${t('admin.no_users_yet')}</p>`; return; }
-        el.innerHTML = `
+        _renderUsersTable();
+      } catch (e) {
+        el.innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
+      }
+    }
+
+    function _renderUsersTable() {
+      const el = document.getElementById('usersTable');
+      if (!_usersCache.length) { el.innerHTML = `<p class="text-muted text-center py-3">${t('admin.no_users_yet')}</p>`; return; }
+      const users = _usersSortCol ? [..._usersCache].sort((a, b) => {
+        const keyFn = USERS_SORT_KEY[_usersSortCol];
+        const ka = keyFn(a), kb = keyFn(b);
+        const dir = _usersSortDir === 'asc' ? 1 : -1;
+        return ka < kb ? -dir : ka > kb ? dir : 0;
+      }) : _usersCache;
+      const th = (col, label, extraClass = '') =>
+        `<th class="${extraClass}" style="cursor:pointer;user-select:none" onclick="sortUsers('${col}')">${label}${_usersArrow(col)}</th>`;
+      el.innerHTML = `
           <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
             <thead><tr>
-              <th>${t('admin.col_name')}</th><th>${t('admin.col_email')}</th><th>${t('admin.col_role')}</th>${CURRENT_USER_IS_SUPERADMIN ? `<th>${t('admin.col_status')}</th><th class="text-nowrap">${t('admin.col_last_login')}</th><th class="text-nowrap">${t('admin.col_last_active')}</th>` : ''}<th></th>
+              ${th('name', t('admin.col_name'))}${th('email', t('admin.col_email'))}${th('role', t('admin.col_role'))}${CURRENT_USER_IS_SUPERADMIN ? `${th('status', t('admin.col_status'))}${th('last_login_at', t('admin.col_last_login'), 'text-nowrap')}${th('last_active_at', t('admin.col_last_active'), 'text-nowrap')}` : ''}<th></th>
             </tr></thead>
             <tbody>
               ${users.map(u => {
@@ -1180,9 +1222,6 @@
             </tbody>
           </table>
           </div>`;
-      } catch (e) {
-        el.innerHTML = `<div class="alert alert-danger mb-0">${esc(e.message)}</div>`;
-      }
     }
 
     const massEmailQuill = new Quill('#massEmailMessageEditor', {
