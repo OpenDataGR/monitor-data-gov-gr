@@ -594,7 +594,7 @@
           <input type="hidden" id="threadAttachInboundId">
           <input type="hidden" id="threadAttachMsgIndex">
           <div class="mb-2">
-            <label class="form-label small mb-1" data-i18n="admin.thread_attach_org_code">Org (resolves the Open case)</label>
+            <label class="form-label small mb-1" data-i18n="admin.thread_attach_org_code">Org (opens a new case if none is Open yet)</label>
             <input type="hidden" id="threadAttachOrgCode">
             <div class="position-relative">
               <input type="text" class="form-control form-control-sm" id="threadAttachOrgSearch" autocomplete="off"
@@ -608,6 +608,10 @@
           <div class="mb-2">
             <label class="form-label small mb-1" data-i18n="admin.thread_attach_case_id">...or a specific case id</label>
             <input type="number" id="threadAttachCaseId" class="form-control form-control-sm">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1" data-i18n="admin.thread_attach_subject">New case subject (only used if the org has no Open case yet)</label>
+            <input type="text" id="threadAttachSubject" class="form-control form-control-sm">
           </div>
           <div class="mb-2">
             <label class="form-label small mb-1" data-i18n="admin.thread_attach_contact_email">Contact email (optional)</label>
@@ -844,8 +848,9 @@
         'admin.parsed_confirm_detach': 'Un-link this Communication from this email? The Communication itself is kept; the email just stops being credited with producing it.',
         'admin.parsed_confirm_comm_delete': 'Permanently delete this Communication? This cannot be undone.',
         'admin.parsed_comm_edit': 'Edit', 'admin.parsed_comm_detach': 'Detach', 'admin.parsed_comm_delete': 'Delete',
-        'admin.thread_attach_title': 'Log This Message', 'admin.thread_attach_org_code': 'Org (resolves the Open case)',
+        'admin.thread_attach_title': 'Log This Message', 'admin.thread_attach_org_code': 'Org (opens a new case if none is Open yet)',
         'admin.thread_attach_case_id': '...or a specific case id', 'admin.thread_attach_contact_email': 'Contact email (optional)',
+        'admin.thread_attach_subject': 'New case subject (only used if the org has no Open case yet)',
         'admin.thread_attach_save': 'Log Communication', 'admin.thread_attach_need_org_or_case': 'Enter an org code or a case id.',
         'admin.org_search_ph': 'Search organizations…',
         'admin.unmatched_drop': 'Drop', 'admin.unmatched_create': 'Create contact',
@@ -982,8 +987,9 @@
         'admin.parsed_confirm_detach': 'Αποσύνδεση αυτής της Επικοινωνίας από αυτό το email; Η Επικοινωνία παραμένει -- το email απλώς δεν θα εμφανίζεται πλέον ως αυτό που την παρήγαγε.',
         'admin.parsed_confirm_comm_delete': 'Οριστική διαγραφή αυτής της Επικοινωνίας; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.',
         'admin.parsed_comm_edit': 'Επεξεργασία', 'admin.parsed_comm_detach': 'Αποσύνδεση', 'admin.parsed_comm_delete': 'Διαγραφή',
-        'admin.thread_attach_title': 'Καταγραφή Αυτού του Μηνύματος', 'admin.thread_attach_org_code': 'Κωδικός φορέα (αντιστοιχίζει την Ανοιχτή υπόθεση)',
+        'admin.thread_attach_title': 'Καταγραφή Αυτού του Μηνύματος', 'admin.thread_attach_org_code': 'Φορέας (ανοίγει νέα υπόθεση αν δεν υπάρχει ήδη ανοιχτή)',
         'admin.thread_attach_case_id': '...ή συγκεκριμένο αναγνωριστικό υπόθεσης', 'admin.thread_attach_contact_email': 'Email επαφής (προαιρετικό)',
+        'admin.thread_attach_subject': 'Θέμα νέας υπόθεσης (χρησιμοποιείται μόνο αν ο φορέας δεν έχει ανοικτή υπόθεση)',
         'admin.thread_attach_save': 'Καταγραφή Επικοινωνίας', 'admin.thread_attach_need_org_or_case': 'Εισάγετε κωδικό φορέα ή αναγνωριστικό υπόθεσης.',
         'admin.unmatched_drop': 'Απόρριψη', 'admin.unmatched_create': 'Καταχώρηση επαφής',
         'admin.unmatched_confirm_drop': 'Απόρριψη αυτού του μη καταχωρημένου συμμετέχοντα; Αυτό απλώς απορρίπτει την επισήμανση -- δεν επηρεάζει τίποτα που έχει ήδη καταγραφεί.',
@@ -2132,11 +2138,17 @@
     let _threadMessageAttachModal = null;
 
     function openThreadMessageAttach(inboundId, msgIndex) {
+      const r = _parsedEmailsCache.find(x => x.id === inboundId);
+      const msg = r && r.thread_messages ? r.thread_messages.find(m => m.index === msgIndex) : null;
       show('threadAttachInboundId').value = inboundId;
       show('threadAttachMsgIndex').value = msgIndex;
-      show('threadAttachOrgCode').value = '';
-      show('threadAttachOrgSearch').value = '';
+      // Already-known org/subject prefilled -- this is exactly the case a
+      // brand-new thread with a proper subject shouldn't need re-entering,
+      // just confirming or overriding.
+      show('threadAttachOrgCode').value = (r && r.matched_org_code) || '';
+      show('threadAttachOrgSearch').value = (r && r.matched_org_label) || '';
       show('threadAttachCaseId').value = '';
+      show('threadAttachSubject').value = (msg && msg.subject) || (r && r.subject) || '';
       show('threadAttachContactEmail').value = '';
       show('threadAttachError').classList.add('d-none');
       if (!_threadMessageAttachModal) _threadMessageAttachModal = new bootstrap.Modal(document.getElementById('threadMessageAttachModal'));
@@ -2160,6 +2172,10 @@
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             org_code: orgCode, case_id: caseId || undefined,
+            // Only actually used server-side when this org has no Open case
+            // yet and a new one needs opening -- harmless to send otherwise.
+            subject: show('threadAttachSubject').value.trim(),
+            org_title: show('threadAttachOrgSearch').value.trim(),
             contact_email: show('threadAttachContactEmail').value.trim(),
           }),
         });

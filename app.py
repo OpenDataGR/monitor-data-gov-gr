@@ -5355,10 +5355,11 @@ def inbound_email_thread_message_attach(inbound_id, msg_index):
     its own Communication -- for whenever the automatic per-org matching
     (which only ever looks at the flattened set of every address across the
     whole thread) either missed this message's own sender entirely or
-    grouped it under the wrong org. Unlike the whole-email attach/pick-
-    contact routes, this always requires an existing Open case (no
-    new-case-from-scratch branch) to keep this action small -- open the case
-    first from the Cases tab if one doesn't exist yet."""
+    grouped it under the wrong org. org_code with no existing Open case
+    opens a new one on the spot (mirrors the whole-email /attach route),
+    using the message's own subject -- a genuinely new thread with a known
+    org and a real subject line shouldn't need a detour to the Cases tab
+    just to create the case first."""
     err = _require_superadmin()
     if err:
         return err
@@ -5375,11 +5376,21 @@ def inbound_email_thread_message_attach(inbound_id, msg_index):
         case = Case.query.get_or_404(int(case_id))
     elif org_code:
         open_cases = Case.query.filter(Case.status == "Open", Case.org_name == org_code).all()
-        if not open_cases:
-            return jsonify({"error": "no_open_case"}), 400
         if len(open_cases) > 1:
             return jsonify({"error": "multiple_open_cases", "case_ids": [c.id for c in open_cases]}), 400
-        case = open_cases[0]
+        if open_cases:
+            case = open_cases[0]
+        else:
+            subject = (body.get("subject") or msg.get("subject") or inbound.subject or "").strip()
+            if not subject:
+                return jsonify({"error": "subject is required to open a new case"}), 400
+            org_title = (body.get("org_title") or "").strip() or (inbound.matched_org_label if org_code == inbound.matched_org_code else None)
+            case = Case(
+                org_name=org_code, org_title=org_title, subject=subject, status="Open",
+                deadline=_default_deadline(msg.get("sent_date") or _resolved_contact_date(inbound)),
+            )
+            db.session.add(case)
+            db.session.flush()
     else:
         return jsonify({"error": "org_code or case_id is required"}), 400
 
