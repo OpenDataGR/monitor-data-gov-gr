@@ -599,8 +599,8 @@
             <div class="position-relative">
               <input type="text" class="form-control form-control-sm" id="threadAttachOrgSearch" autocomplete="off"
                      data-i18n-ph="admin.org_search_ph" placeholder="Search organizations…"
-                     oninput="_orgSearch(this.value,'threadAttachOrgDropdown','_threadAttachOrgSelect')"
-                     onfocus="_orgSearch(this.value,'threadAttachOrgDropdown','_threadAttachOrgSelect')"
+                     oninput="_orgSearchDropdown(this.value,'threadAttachOrgDropdown','_threadAttachOrgSelect')"
+                     onfocus="_orgSearchDropdown(this.value,'threadAttachOrgDropdown','_threadAttachOrgSelect')"
                      onblur="setTimeout(()=>document.getElementById('threadAttachOrgDropdown').classList.add('d-none'),150)">
               <ul class="list-group shadow-sm position-absolute w-100 d-none" id="threadAttachOrgDropdown" style="z-index:1060;max-height:220px;overflow-y:auto;top:100%"></ul>
             </div>
@@ -646,24 +646,32 @@
             </div>
             <div class="col-12">
               <label class="form-label small mb-1" data-i18n="admin.unmatched_org_search">Organization</label>
-              <input type="hidden" id="unmatchedOrgCode">
-              <input type="hidden" id="unmatchedOrgLabel">
+              <div id="unmatchedOrgTags" class="mb-1 d-flex flex-wrap gap-1"></div>
               <div class="position-relative">
                 <input type="text" class="form-control form-control-sm" id="unmatchedOrgSearch" autocomplete="off"
                        data-i18n-ph="admin.org_search_ph" placeholder="Search organizations…"
-                       oninput="_orgSearch(this.value,'unmatchedOrgDropdown','_unmatchedOrgSelect')"
-                       onfocus="_orgSearch(this.value,'unmatchedOrgDropdown','_unmatchedOrgSelect')"
+                       oninput="_orgSearchDropdown(this.value,'unmatchedOrgDropdown','_unmatchedOrgSelect')"
+                       onfocus="_orgSearchDropdown(this.value,'unmatchedOrgDropdown','_unmatchedOrgSelect')"
                        onblur="setTimeout(()=>document.getElementById('unmatchedOrgDropdown').classList.add('d-none'),150)">
                 <ul class="list-group shadow-sm position-absolute w-100 d-none" id="unmatchedOrgDropdown" style="z-index:1060;max-height:220px;overflow-y:auto;top:100%"></ul>
               </div>
             </div>
             <div class="col-6">
               <label class="form-label small mb-1" data-i18n="admin.unmatched_email">Email</label>
-              <input type="email" id="unmatchedEmail" class="form-control form-control-sm">
+              <input type="email" id="unmatchedEmail" class="form-control form-control-sm" oninput="_unmatchedCheckEmail()">
+              <div id="unmatchedEmailHint" class="small text-warning mt-1 d-none"></div>
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1" data-i18n="admin.unmatched_position">Position</label>
+              <input type="text" id="unmatchedPosition" class="form-control form-control-sm">
             </div>
             <div class="col-6">
               <label class="form-label small mb-1" data-i18n="admin.unmatched_tel">Phone</label>
               <input type="text" id="unmatchedTel" class="form-control form-control-sm">
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1" data-i18n="admin.unmatched_mobile">Mobile</label>
+              <input type="text" id="unmatchedMobile" class="form-control form-control-sm">
             </div>
           </div>
           <div id="unmatchedContactError" class="alert alert-danger small mt-3 mb-0 d-none"></div>
@@ -722,6 +730,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
   <script src="{{ url_for('static', filename='i18n_shared.js') }}"></script>
+  <script src="{{ url_for('static', filename='org_search.js') }}?v={{ build_date }}"></script>
   <script>
     // CSRF: same guarded fetch patch as app.js/webauthn.js -- this page is
     // fully standalone (loads neither), so it needs its own copy.
@@ -843,9 +852,10 @@
         'admin.unmatched_confirm_drop': 'Drop this unregistered participant? This just dismisses the flag -- it does not affect anything already logged.',
         'admin.unmatched_create_title': 'Register Contact', 'admin.unmatched_create_save': 'Register',
         'admin.unmatched_first_name': 'First name', 'admin.unmatched_last_name': 'Last name',
-        'admin.unmatched_org_search': 'Organization',
-        'admin.unmatched_email': 'Email', 'admin.unmatched_tel': 'Phone',
-        'admin.unmatched_org_code_required': 'Org code is required.',
+        'admin.unmatched_org_search': 'Organization', 'admin.unmatched_org_required': 'At least one organization is required.',
+        'admin.unmatched_email': 'Email', 'admin.unmatched_position': 'Position', 'admin.unmatched_tel': 'Phone', 'admin.unmatched_mobile': 'Mobile',
+        'admin.unmatched_email_duplicate': 'A contact with this email already exists: {who}. Registering anyway will create a second, separate record.',
+        'admin.remove': 'Remove',
         'admin.parsed_detail_body': 'Body', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'View Body',
         'admin.hvd_cache_title': 'HVD Compliance Check Cache',
         'admin.hvd_cache_desc': 'Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.',
@@ -979,9 +989,10 @@
         'admin.unmatched_confirm_drop': 'Απόρριψη αυτού του μη καταχωρημένου συμμετέχοντα; Αυτό απλώς απορρίπτει την επισήμανση -- δεν επηρεάζει τίποτα που έχει ήδη καταγραφεί.',
         'admin.unmatched_create_title': 'Καταχώρηση Επαφής', 'admin.unmatched_create_save': 'Καταχώρηση',
         'admin.unmatched_first_name': 'Όνομα', 'admin.unmatched_last_name': 'Επώνυμο',
-        'admin.unmatched_org_code': 'Κωδικός φορέα', 'admin.unmatched_org_label': 'Επωνυμία φορέα',
-        'admin.unmatched_email': 'Email', 'admin.unmatched_tel': 'Τηλέφωνο',
-        'admin.unmatched_org_code_required': 'Ο κωδικός φορέα είναι υποχρεωτικός.',
+        'admin.unmatched_org_search': 'Φορέας', 'admin.unmatched_org_required': 'Απαιτείται τουλάχιστον ένας φορέας.',
+        'admin.unmatched_email': 'Email', 'admin.unmatched_position': 'Θέση', 'admin.unmatched_tel': 'Τηλέφωνο', 'admin.unmatched_mobile': 'Κινητό',
+        'admin.unmatched_email_duplicate': 'Υπάρχει ήδη επαφή με αυτό το email: {who}. Η καταχώρηση θα δημιουργήσει μια δεύτερη, ξεχωριστή εγγραφή.',
+        'admin.remove': 'Αφαίρεση',
         'admin.parsed_detail_body': 'Περιεχόμενο', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'Προβολή Περιεχομένου',
         'admin.hvd_cache_title': 'Cache Ελέγχου Συμμόρφωσης HVD',
         'admin.hvd_cache_desc': 'Καθαρίζει τα αποθηκευμένα αποτελέσματα ελέγχου SHACL για HVD και το cache ανά σύνολο δεδομένων. Η επόμενη εκτέλεση από την καρτέλα Ποιότητα θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε σύνολο δεδομένων με ετικέτα HVD.',
@@ -1159,38 +1170,10 @@
     }
 
     // ── Org search (Register Contact / thread-message manual attach) ────────
-    // Every org_code this app expects is an HRMS code (see _resolve_case_for_
-    // contacts in app.py), so /api/public-orgs -- the same HRMS registry --
-    // is the authoritative list to search/pick from, rather than expecting
-    // an admin to already know the exact code string to type.
-    let _publicOrgs = [];
-    async function _loadPublicOrgs() {
-      try {
-        const data = await fetch('../api/public-orgs').then(r => r.ok ? r.json() : []);
-        _publicOrgs = Array.isArray(data) ? data : [];
-      } catch (_) { _publicOrgs = []; }
-    }
-    function _ns(s) {
-      return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-    }
-    // Shared by every org-code field on this page -- dropdownId/selectFn let
-    // one function serve multiple independent pickers (Register Contact,
-    // thread-message attach) without duplicating the search logic per modal.
-    function _orgSearch(q, dropdownId, selectFn) {
-      const dd = document.getElementById(dropdownId);
-      const nq = _ns((q || '').trim());
-      const matches = nq
-        ? _publicOrgs.filter(o => _ns(o.label).includes(nq)).slice(0, 10)
-        : _publicOrgs.slice(0, 20);
-      if (!matches.length) { dd.classList.add('d-none'); return; }
-      dd.innerHTML = matches.map(o =>
-        `<li class="list-group-item list-group-item-action py-2 px-2" style="cursor:pointer"
-             data-code="${esc(o.code)}" data-label="${esc(o.label)}"
-             onmousedown="${selectFn}(this.dataset.code,this.dataset.label)">
-           <i class="bi bi-building me-1 text-muted"></i>${esc(o.label)}</li>`
-      ).join('');
-      dd.classList.remove('d-none');
-    }
+    // _publicOrgs/_orgsData/_ns/_orgSearchDropdown all live in org_search.js
+    // (shared with the main dashboard, see that file) -- _loadOrgSearchData()
+    // populates them here since this page has no richer org-loading flow of
+    // its own the way the main dashboard's Orgs tab does.
     // Best-effort default when nothing else already narrowed down the org
     // (see openUnmatchedContactCreate) -- an ALL-CAPS Greek token in the
     // subject is very likely an official org's own parenthetical acronym
@@ -1237,11 +1220,50 @@
       }
       return '';
     }
+    // Multi-org tag list for Register Contact -- mirrors the main
+    // dashboard's own _upEditOrgs/_upOrgRenderTags pattern (same badge
+    // markup) so a contact spanning more than one org can be registered in
+    // one go, same as there.
+    let _unmatchedOrgs = [];
     function _unmatchedOrgSelect(code, label) {
-      show('unmatchedOrgCode').value = code;
-      show('unmatchedOrgLabel').value = label;
-      show('unmatchedOrgSearch').value = label;
+      if (!code || _unmatchedOrgs.some(o => o.code === code)) return;
+      _unmatchedOrgs.push({code, label: label || code});
+      _unmatchedOrgRenderTags();
+      show('unmatchedOrgSearch').value = '';
       document.getElementById('unmatchedOrgDropdown').classList.add('d-none');
+    }
+    function _unmatchedOrgRemove(code) {
+      _unmatchedOrgs = _unmatchedOrgs.filter(o => o.code !== code);
+      _unmatchedOrgRenderTags();
+    }
+    function _unmatchedOrgRenderTags() {
+      document.getElementById('unmatchedOrgTags').innerHTML = _unmatchedOrgs.map(o =>
+        `<span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em;white-space:normal;text-align:left">${esc(o.label || o.code)}` +
+        `<button type="button" class="btn-close btn-close-white flex-shrink-0" style="font-size:.55em;margin-left:.25em"` +
+        ` onclick="_unmatchedOrgRemove('${esc(o.code)}')" title="${t('admin.remove')}"></button></span>`
+      ).join('');
+    }
+    // Duplicate-email check (see /api/contacts/check-email) -- this page has
+    // no preloaded portal-members/file-contacts cache the way the main
+    // dashboard's own duplicate check does, so it just asks the server
+    // directly instead of requiring one.
+    let _unmatchedCheckEmailTimer = null;
+    function _unmatchedCheckEmail() {
+      clearTimeout(_unmatchedCheckEmailTimer);
+      const hint = document.getElementById('unmatchedEmailHint');
+      const email = show('unmatchedEmail').value.trim();
+      if (!email) { hint.classList.add('d-none'); return; }
+      _unmatchedCheckEmailTimer = setTimeout(async () => {
+        try {
+          const data = await fetch(`../api/contacts/check-email?email=${encodeURIComponent(email)}`).then(r => r.json());
+          if (data.found) {
+            hint.textContent = t('admin.unmatched_email_duplicate').replace('{who}', [data.found.label, data.found.org].filter(Boolean).join(' — '));
+            hint.classList.remove('d-none');
+          } else {
+            hint.classList.add('d-none');
+          }
+        } catch (_) { hint.classList.add('d-none'); }
+      }, 400);
     }
     function _threadAttachOrgSelect(code, label) {
       show('threadAttachOrgCode').value = code;
@@ -2153,42 +2175,55 @@
         const guess = _guessOrgFromText(r.subject) || (senderMsg && _guessOrgFromText(senderMsg.body));
         if (guess) { orgCode = guess.code; orgLabel = guess.label; }
       }
-      show('unmatchedOrgCode').value   = orgCode;
-      show('unmatchedOrgLabel').value  = orgLabel;
-      show('unmatchedOrgSearch').value = orgLabel;
+      _unmatchedOrgs = orgCode ? [{code: orgCode, label: orgLabel || orgCode}] : [];
+      _unmatchedOrgRenderTags();
+      show('unmatchedOrgSearch').value = '';
       show('unmatchedEmail').value    = u.email || '';
+      show('unmatchedPosition').value = '';
       show('unmatchedTel').value      = (senderMsg && _extractPhone(senderMsg.body)) || '';
+      show('unmatchedMobile').value   = '';
+      document.getElementById('unmatchedEmailHint').classList.add('d-none');
       show('unmatchedContactError').classList.add('d-none');
+      if (u.email) _unmatchedCheckEmail();
       if (!_unmatchedContactCreateModal) _unmatchedContactCreateModal = new bootstrap.Modal(document.getElementById('unmatchedContactCreateModal'));
       _unmatchedContactCreateModal.show();
     }
 
     let _unmatchedContactCreateModal = null;
 
+    // Saves through the same /api/contacts/save the main dashboard's own
+    // contact editor uses (not a bespoke admin-only insert), then resolves
+    // the flag against whatever contact that produced -- see
+    // /api/unmatched-contacts/<id>/resolve.
     async function saveUnmatchedContactCreate() {
       const id = show('unmatchedContactId').value;
       const errEl = show('unmatchedContactError');
       errEl.classList.add('d-none');
-      const orgCode = show('unmatchedOrgCode').value.trim();
-      if (!orgCode) {
-        errEl.textContent = t('admin.unmatched_org_code_required');
+      if (!_unmatchedOrgs.length) {
+        errEl.textContent = t('admin.unmatched_org_required');
         errEl.classList.remove('d-none');
         return;
       }
       try {
-        const resp = await fetch(`../api/unmatched-contacts/${id}/create`, {
+        const saveResp = await fetch('../api/contacts/save', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            org_code: orgCode,
-            org_label: show('unmatchedOrgLabel').value.trim(),
+            org_codes: _unmatchedOrgs,
             first_name: show('unmatchedFirstName').value.trim(),
             last_name: show('unmatchedLastName').value.trim(),
             email: show('unmatchedEmail').value.trim(),
+            position: show('unmatchedPosition').value.trim(),
             tel: show('unmatchedTel').value.trim(),
+            mobile: show('unmatchedMobile').value.trim(),
           }),
         });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || t('admin.failed'));
+        const contact = await saveResp.json();
+        if (!saveResp.ok) throw new Error(contact.error || t('admin.failed'));
+        const resolveResp = await fetch(`../api/unmatched-contacts/${id}/resolve`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({contact_id: contact.id}),
+        });
+        if (!resolveResp.ok) { const d = await resolveResp.json(); throw new Error(d.error || t('admin.failed')); }
         _unmatchedContactCreateModal.hide();
         await loadParsedEmails();
         if (_parsedEmailDetailId != null) showParsedEmailDetail(_parsedEmailDetailId);
@@ -2332,7 +2367,7 @@
     loadExcludedEmails();
     loadListenAddresses();
     loadParsedEmails();
-    _loadPublicOrgs();
+    _loadOrgSearchData();
     _startAdminLiveStream();
     // Honor a hash already in the URL (deep link / refresh) -- deferred so it
     // runs after every listener above is registered, same reasoning as the

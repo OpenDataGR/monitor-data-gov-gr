@@ -4160,14 +4160,14 @@ function relativeDate(iso) {
   return Math.floor(days / 365) + t('date.y_ago');
 }
 
+// _orgsData/_publicOrgs/_ckanByHrms are declared in org_search.js (loaded
+// right before this file) -- shared with the Mail Parser admin panel.
 let _orgsLoaded  = false;
-let _orgsData    = [];
 let _orgsSortCol  = 'last_updated';
 let _orgsSortDir  = 'desc';
 let _orgsViewMode = 'portal';
 let _ckanLookup   = null;
 let _hrmsLookup   = null;   // ckan slug → hrms code
-let _ckanByHrms   = null;   // hrms code → ckan slug  (+ hrms label → ckan slug for old data)
 
 function sortOrgs(col) {
   if (_orgsSortCol === col) {
@@ -4192,7 +4192,7 @@ document.getElementById('orgsTabBtn').addEventListener('click', () => {
   loadOrgs();
 });
 
-const _ORGS_CACHE_KEY  = 'orgs_cache_v2';
+// _ORGS_CACHE_KEY lives in org_search.js (loaded before this file).
 const _ORGS_STALE_MS   = 30 * 60 * 1000;
 const _ORGS_EXPIRE_MS  = 2  * 60 * 60 * 1000;
 
@@ -4282,9 +4282,7 @@ async function _loadOrgsBackground() {
   } catch (_) {}
 }
 
-function _ns(s) {
-  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-}
+// _ns lives in org_search.js (loaded before this file).
 
 function filterOrgs() {
   const q = _ns(show('orgSearch').value);
@@ -4568,7 +4566,7 @@ async function _pollUntilEnriched(attempts = 0) {
 let _commsLoaded   = false;
 let _inboundEmailsData = [];  // pending_review InboundEmail rows -- not real Communications yet, shown above the log for approval
 let _inboundAttachModal = null;
-let _publicOrgs    = [];   // [{code, label}] from hrms.gov.gr
+// _publicOrgs (HRMS orgs) lives in org_search.js (loaded before this file).
 let _commModal     = null;
 let _commContactsPrefetchStarted = false;
 let _commsSortCol   = 'contact_date';
@@ -9680,39 +9678,8 @@ function _findLoadedFileContact(id) {
   return null;
 }
 
-// Org search picker helpers
-function _orgSearchDropdown(q, dropdownId, selectFn) {
-  const dd = document.getElementById(dropdownId);
-  const nq = _ns((q || '').trim());
-  const ckanPool = _orgsData.length ? _orgsData : (() => {
-    try { const c = JSON.parse(localStorage.getItem(_ORGS_CACHE_KEY) || 'null'); return (c && c.data) || []; } catch(_) { return []; }
-  })();
-  const ckanMatches = nq
-    ? ckanPool.filter(o => _ns(o.title).includes(nq) || _ns(o.name).includes(nq)).slice(0, 20)
-    : ckanPool.slice(0, 20);
-  const hrmsMatches = nq && _publicOrgs.length
-    ? _publicOrgs.filter(o =>
-        !(_ckanByHrms && _ckanByHrms.get(o.code)) &&
-        _ns(o.label).includes(nq)
-      ).slice(0, Math.max(0, 20 - ckanMatches.length))
-    : [];
-  if (!ckanMatches.length && !hrmsMatches.length) { dd.classList.add('d-none'); return; }
-  dd.innerHTML = [
-    ...ckanMatches.map(o =>
-      `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
-           data-code="${esc(o.name)}" data-label="${esc(o.title)}"
-           onmousedown="${selectFn}(this.dataset.code,this.dataset.label)"
-       ><span class="fw-semibold">${esc(o.title)}</span> <span class="text-muted ms-1">${esc(o.name)}</span></li>`
-    ),
-    ...hrmsMatches.map(o =>
-      `<li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer"
-           data-code="${esc(o.code)}" data-label="${esc(o.label)}"
-           onmousedown="${selectFn}(this.dataset.code,this.dataset.label)"
-       ><span class="fw-semibold">${esc(o.label)}</span> <span class="badge bg-secondary ms-1" style="font-size:.6rem">HRMS only</span></li>`
-    ),
-  ].join('');
-  dd.classList.remove('d-none');
-}
+// Org search picker helper (_orgSearchDropdown) and its _ORGS_CACHE_KEY
+// localStorage fallback live in org_search.js, loaded before this file.
 function _commAllContacts() {
   const contacts = [];
   const seen = new Set();

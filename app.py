@@ -5697,6 +5697,18 @@ def unmatched_contact_drop(unmatched_id):
     return jsonify(row.to_dict())
 
 
+def _retroactively_credit_unmatched(row: "UnmatchedEmailContact", contact: "OrgContact", org_code: str):
+    """Credits `contact` on every Communication this same email already
+    produced for `org_code` -- so registering someone late still reflects
+    them on whatever was already logged, instead of waiting for their next
+    email to show up."""
+    for link in row.inbound_email.email_communications:
+        comm = link.communication
+        if comm and comm.org_name == org_code:
+            existing_ids = [cc.org_contact_id for cc in comm.contact_links]
+            _sync_communication_contacts(comm, existing_ids + [contact.id])
+
+
 @app.route("/api/unmatched-contacts/<int:unmatched_id>/create", methods=["POST"])
 def unmatched_contact_create(unmatched_id):
     """Registers a flagged unmatched participant as a real OrgContact --
@@ -5713,13 +5725,18 @@ def unmatched_contact_create(unmatched_id):
     if row.status != "pending":
         return jsonify({"error": "already resolved"}), 400
     body = _decode_payload()
-    org_code = (body.get("org_code") or row.org_code or "").strip()
+    org_codes_raw = body.get("org_codes")
+    orgs = [o for o in org_codes_raw if isinstance(o, dict) and o.get("code")] \
+           if isinstance(org_codes_raw, list) else []
+    org_code = (orgs[0]["code"] if orgs else (body.get("org_code") or row.org_code or "")).strip()
     if not org_code:
         return jsonify({"error": "org_code is required"}), 400
+    org_label = ((orgs[0].get("label") if orgs else None) or body.get("org_label") or row.org_label or "").strip() or None
 
     contact = OrgContact(
         org_code=org_code,
-        org_label=(body.get("org_label") or row.org_label or "").strip() or None,
+        org_label=org_label,
+        org_codes=json.dumps(orgs) if orgs else None,
         first_name=(body.get("first_name") or "").strip() or None,
         last_name=(body.get("last_name") or "").strip() or None,
         position=(body.get("position") or "").strip() or None,
@@ -5732,15 +5749,54 @@ def unmatched_contact_create(unmatched_id):
     db.session.flush()
     row.status = "created"
     row.resolved_contact_id = contact.id
-
-    for link in row.inbound_email.email_communications:
-        comm = link.communication
-        if comm and comm.org_name == org_code:
-            existing_ids = [cc.org_contact_id for cc in comm.contact_links]
-            _sync_communication_contacts(comm, existing_ids + [contact.id])
-
+    for org in (orgs or [{"code": org_code}]):
+        _retroactively_credit_unmatched(row, contact, org["code"])
     db.session.commit()
     return jsonify(row.to_dict()), 201
+
+
+@app.route("/api/unmatched-contacts/<int:unmatched_id>/resolve", methods=["POST"])
+def unmatched_contact_resolve(unmatched_id):
+    """Like /create, but for when the real OrgContact was already created
+    elsewhere (e.g. saved via the regular /api/contacts/save) -- points this
+    flagged participant at that existing contact and runs the same
+    retroactive Communication-crediting, instead of building a second,
+    duplicate OrgContact record."""
+    err = _require_superadmin()
+    if err:
+        return err
+    row = UnmatchedEmailContact.query.get_or_404(unmatched_id)
+    if row.status != "pending":
+        return jsonify({"error": "already resolved"}), 400
+    body = _decode_payload()
+    contact_id = body.get("contact_id")
+    if not contact_id:
+        return jsonify({"error": "contact_id is required"}), 400
+    contact = OrgContact.query.get_or_404(int(contact_id))
+    row.status = "created"
+    row.resolved_contact_id = contact.id
+    _retroactively_credit_unmatched(row, contact, contact.org_code)
+    db.session.commit()
+    return jsonify(row.to_dict())
+
+
+@app.route("/api/contacts/check-email")
+def contacts_check_email():
+    """Lightweight duplicate check for a brand-new contact form -- looks up
+    a single OrgContact by email directly instead of requiring a big
+    preloaded client-side cache, so any page can call it (see the Mail
+    Parser admin panel's Register Contact modal)."""
+    email = (freq.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"found": None})
+    contact = OrgContact.query.filter(db.func.lower(OrgContact.email) == email).first()
+    if not contact:
+        return jsonify({"found": None})
+    return jsonify({"found": {
+        "id": contact.id,
+        "label": " ".join(p for p in [contact.first_name, contact.last_name] if p) or contact.email,
+        "org": contact.org_label or contact.org_code,
+    }})
 
 
 @app.route("/api/communications/export", methods=["GET"])
