@@ -4903,6 +4903,12 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
 
     return {
         "match_groups": resolved_groups,
+        # Every registered contact this email named, regardless of whether
+        # their org had an Open case to attach to -- _apply_inbound_match
+        # uses this so a pending_review row (no_open_case, etc.) still shows
+        # who was actually recognized instead of leaving matched_contact/
+        # matched_org blank just because nothing could be auto-attached yet.
+        "all_contacts": contacts,
         "unmatched": [{"name": name, "email": email, "org_code": guess_org_code, "org_label": guess_org_label} for name, email in unmatched],
         "direction": direction,
         "reason": overall_reason,
@@ -5088,6 +5094,20 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
     # status just because there was nothing further to add this time.
     had_existing_comms = InboundEmailCommunication.query.filter_by(inbound_email_id=inbound.id).first() is not None
 
+    # Record who was actually recognized even when nothing could be
+    # auto-attached (no Open case, etc.) -- see _match_inbound_email's
+    # "all_contacts" -- so the admin panel can show "contact found, just no
+    # open case" instead of leaving matched_contact/matched_org blank next
+    # to an opaque no_open_case reason. Only overwritten when this round
+    # actually found someone, so a rematch that turns up nothing new doesn't
+    # blank out an earlier match.
+    all_contacts = match.get("all_contacts") or []
+    display_contact = all_contacts[0] if all_contacts else None
+    if display_contact:
+        inbound.matched_contact_id = display_contact.id
+        inbound.matched_org_code = display_contact.org_code
+        inbound.matched_org_label = display_contact.org_label
+
     match_groups = match["match_groups"]
     created_comms = []
     any_duplicate = False
@@ -5179,8 +5199,6 @@ def email_inbound_webhook(secret):
 
     try:
         match = _match_inbound_email(from_field, to_field, cc_field, subject, body_text)
-        match_groups = match["match_groups"]
-        first_contact = match_groups[0]["contacts"][0] if match_groups else None
 
         # A re-forward of an already-seen thread (see _find_mergeable_inbound)
         # updates that same row instead of inserting a new one, so re-
@@ -5197,9 +5215,6 @@ def email_inbound_webhook(secret):
             inbound.body_text = body_text or inbound.body_text
             inbound.received_at = datetime.now(timezone.utc).replace(tzinfo=None)
             inbound.revision_count = (inbound.revision_count or 1) + 1
-            inbound.matched_contact_id = first_contact.id if first_contact else inbound.matched_contact_id
-            inbound.matched_org_code = first_contact.org_code if first_contact else inbound.matched_org_code
-            inbound.matched_org_label = first_contact.org_label if first_contact else inbound.matched_org_label
         else:
             inbound = InboundEmail(
                 from_email=from_addr or None,
@@ -5207,9 +5222,6 @@ def email_inbound_webhook(secret):
                 to_email=to_field or None,
                 subject=subject or None,
                 body_text=body_text or None,
-                matched_contact_id=first_contact.id if first_contact else None,
-                matched_org_code=first_contact.org_code if first_contact else None,
-                matched_org_label=first_contact.org_label if first_contact else None,
             )
             db.session.add(inbound)
             db.session.flush()  # need inbound.id for the link/unmatched rows below
