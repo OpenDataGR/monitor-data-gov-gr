@@ -538,7 +538,7 @@
 
   <!-- Parsed email detail modal -->
   <div class="modal fade" id="parsedEmailDetailModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
       <div class="modal-content">
         <div class="modal-header border-bottom">
           <h5 class="modal-title fw-bold"><i class="bi bi-envelope-open me-2"></i><span data-i18n="admin.parsed_detail_title">Parsed Email</span></h5>
@@ -1802,28 +1802,6 @@
               </span>
             </div>`).join('')}</div>
         </div>` : (r.communication_id ? row(t('admin.parsed_detail_communication'), `#${r.communication_id}`) : '')}
-        ${r.thread_messages && r.thread_messages.length ? `
-        <div class="mb-2">
-          <div class="text-muted small mb-1">${t('admin.parsed_detail_thread')}</div>
-          ${r.thread_messages.map(m => `
-            <div class="border rounded mb-1">
-              <div class="d-flex align-items-center justify-content-between gap-2 p-2" style="cursor:pointer" onclick="_toggleThreadMsg(this)">
-                <div class="small text-truncate">
-                  <strong>${esc(m.from_name || m.from_email || none)}</strong>
-                  ${m.sent_date ? `<span class="text-muted ms-1">${esc(m.sent_date)}</span>` : ''}
-                  ${m.subject ? `<span class="text-muted ms-1">— ${esc(m.subject)}</span>` : ''}
-                </div>
-                <i class="bi bi-chevron-down flex-shrink-0"></i>
-              </div>
-              <div class="d-none border-top p-2">
-                ${m.from_name && m.from_email ? row(t('admin.parsed_detail_from'), `${esc(m.from_name)} &lt;${esc(m.from_email)}&gt;`) : ''}
-                ${m.body ? `<pre class="small bg-body-secondary p-2 rounded mb-2" style="white-space:pre-wrap;word-break:break-word;max-height:12vh;overflow-y:auto">${esc(m.body.slice(0, 2000))}</pre>` : `<p class="text-muted small mb-2">${none}</p>`}
-                <div class="text-end">
-                  <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openThreadMessageAttach(${r.id},${m.index})">${t('admin.thread_attach_btn')}</button>
-                </div>
-              </div>
-            </div>`).join('')}
-        </div>` : ''}
         ${r.unmatched_contacts && r.unmatched_contacts.length ? `
         <div class="row mb-2">
           <div class="col-4 col-sm-3 text-muted small">${t('admin.parsed_detail_unmatched')}</div>
@@ -1838,15 +1816,62 @@
                     </div>`;
           }).join('')}</div>
         </div>` : ''}
+        ${r.thread_messages && r.thread_messages.length ? `
+        <div class="mb-2">
+          <div class="text-muted small mb-1">${t('admin.parsed_detail_thread')}</div>
+          <div class="row g-2">
+            <div class="col-12 col-md-4">
+              <div class="list-group" style="max-height:340px;overflow-y:auto">
+                ${r.thread_messages.map((m, i) => `
+                  <button type="button" class="list-group-item list-group-item-action py-2 ${i === 0 ? 'active' : ''}" onclick="_selectThreadMsg(this,${r.id},${i})">
+                    <div class="small text-truncate fw-bold">${esc(m.from_name || m.from_email || none)}</div>
+                    <div class="text-truncate" style="font-size:.75em;opacity:.8">${m.sent_date ? esc(m.sent_date) : ''}${m.subject ? ' — ' + esc(m.subject) : ''}</div>
+                  </button>`).join('')}
+              </div>
+            </div>
+            <div class="col-12 col-md-8">
+              <div id="threadMsgDetailPane" class="border rounded p-2 h-100">${_renderThreadMsgDetail(r.id, r.thread_messages[0])}</div>
+            </div>
+          </div>
+        </div>` : ''}
         <hr>
-        <div class="text-muted small mb-1">${t('admin.parsed_detail_body')}</div>
-        <pre class="small bg-body-secondary p-2 rounded" style="white-space:pre-wrap;word-break:break-word;max-height:40vh;overflow-y:auto">${esc(r.body_text) || none}</pre>`;
+        <div class="d-flex align-items-center justify-content-between p-1" style="cursor:pointer" onclick="_toggleCollapseSection(this)">
+          <div class="text-muted small mb-0">${t('admin.parsed_detail_body')}</div>
+          <i class="bi bi-chevron-down flex-shrink-0"></i>
+        </div>
+        <div class="d-none">
+          <pre class="small bg-body-secondary p-2 rounded" style="white-space:pre-wrap;word-break:break-word;max-height:40vh;overflow-y:auto">${esc(r.body_text) || none}</pre>
+        </div>`;
       document.getElementById('parsedEmailDetailBody').innerHTML = body;
       _parsedEmailDetailId = id;
       document.getElementById('parsedDetailRematchBtn').classList.toggle('d-none', r.status !== 'pending_review');
       document.getElementById('parsedDetailDismissBtn').classList.toggle('d-none', r.status !== 'pending_review');
       if (!_parsedEmailDetailModal) _parsedEmailDetailModal = new bootstrap.Modal(document.getElementById('parsedEmailDetailModal'));
       _parsedEmailDetailModal.show();
+    }
+
+    function _renderThreadMsgDetail(inboundId, msg) {
+      const none = t('admin.parsed_detail_none');
+      return `
+        <div class="small mb-2">
+          <strong>${esc(msg.from_name || msg.from_email || none)}</strong>${msg.from_name && msg.from_email ? ` &lt;${esc(msg.from_email)}&gt;` : ''}
+          ${msg.sent_date ? `<div class="text-muted">${esc(msg.sent_date)}</div>` : ''}
+          ${msg.subject ? `<div class="text-muted">${esc(msg.subject)}</div>` : ''}
+        </div>
+        ${msg.body ? `<pre class="small bg-body-secondary p-2 rounded mb-2" style="white-space:pre-wrap;word-break:break-word;max-height:28vh;overflow-y:auto">${esc(msg.body.slice(0, 2000))}</pre>` : `<p class="text-muted small mb-2">${none}</p>`}
+        <div class="text-end">
+          <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openThreadMessageAttach(${inboundId},${msg.index})">${t('admin.thread_attach_btn')}</button>
+        </div>`;
+    }
+
+    function _selectThreadMsg(btn, inboundId, listIndex) {
+      const r = _parsedEmailsCache.find(x => x.id === inboundId);
+      if (!r) return;
+      const msg = r.thread_messages[listIndex];
+      if (!msg) return;
+      btn.parentElement.querySelectorAll('.list-group-item').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('threadMsgDetailPane').innerHTML = _renderThreadMsgDetail(inboundId, msg);
     }
 
     let _parsedEmailDetailId = null;
@@ -1904,7 +1929,8 @@
 
     // header is the clicked row (siblings: itself + the .d-none details div
     // right after it) -- toggles both the details visibility and the chevron.
-    function _toggleThreadMsg(header) {
+    // Used by the raw-body section at the bottom of the Parsed Email modal.
+    function _toggleCollapseSection(header) {
       const details = header.nextElementSibling;
       const icon = header.querySelector('.bi');
       const opening = details.classList.contains('d-none');
