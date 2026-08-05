@@ -1174,29 +1174,42 @@
     // (shared with the main dashboard, see that file) -- _loadOrgSearchData()
     // populates them here since this page has no richer org-loading flow of
     // its own the way the main dashboard's Orgs tab does.
+    // Common short Greek function words (prepositions/articles/conjunctions)
+    // -- guaranteed to show up in almost any Greek email (a disclaimer
+    // heading alone supplies several: "... ΠΡΟΣ ΤΟΥΣ ΠΑΡΑΛΗΠΤΕΣ"), and one of
+    // these coincidentally being a literal word inside some unrelated org's
+    // long official title is exactly what produced a wrong guess before
+    // (ΠΡΟΣ matched a foundation's title that happens to contain "προς ...").
+    // Never valid acronym candidates, blocked outright rather than relying
+    // on length/case alone to filter them out.
+    const _GREEK_STOPWORDS = new Set(['ΚΑΙ','ΓΙΑ','ΑΠΟ','ΠΡΟΣ','ΜΕΤΑ','ΔΙΑ','ΕΠΙ','ΥΠΟ','ΚΑΤΑ',
+      'ΜΕΣΩ','ΧΩΡΙΣ','ΕΝΤΟΣ','ΕΚΤΟΣ','ΜΕΤΑΞΥ','ΠΕΡΙ','ΑΝΤΙ','ΠΑΡΑ','ΣΤΙΣ','ΣΤΟΝ','ΣΤΗΝ','ΣΤΟ',
+      'ΤΗΝ','ΤΟΝ','ΤΗΣ','ΤΟΥ','ΤΩΝ','ΤΟΥΣ','ΤΙΣ','ΕΙΝΑΙ','ΕΧΕΙ','ΘΕΛΕΤΕ','ΠΟΥ','ΟΤΙ','ΑΛΛΑ',
+      'ΑΥΤΟ','ΑΥΤΗ','ΑΥΤΟΣ','ΜΟΝΟ','ΕΔΩ','ΕΚΕΙ']);
     // Best-effort default when nothing else already narrowed down the org
     // (see openUnmatchedContactCreate) -- ALL-CAPS Greek tokens only (a
     // likely official parenthetical/suffixed acronym, e.g. "... - ΡΑΑΕΥ"),
-    // 4+ letters, tried longest-first, matched as a whole WORD in the org's
-    // label (not a raw substring). Two earlier, looser versions of this both
-    // produced a wrong org: plain substring matching let a short/generic
-    // token match mid-word inside an unrelated org's long compound title,
-    // and trying tokens in the order they appear in the text let an earlier,
-    // more collision-prone short token win before a later, more specific
-    // one (the real acronym) ever got a chance. Word-boundary matching plus
-    // longest-first fixes both failure modes at once -- verified against
-    // both false-positive cases before shipping. Still just a starting
-    // point -- the search box stays fully editable regardless.
+    // 4+ letters, excluding common function words, tried longest-first,
+    // matched as a whole WORD (not a raw substring) against BOTH the CKAN
+    // portal org list and the HRMS one -- a portal-friendly acronym suffix
+    // like "- ΡΑΑΕΥ" is much more likely to appear on a CKAN org's own title
+    // (added for exactly this kind of recognizability) than on the plain
+    // HRMS government registry label, so searching HRMS alone (an earlier
+    // version of this) can miss the correct org entirely and fall through
+    // to a coincidental word match on something unrelated. Still just a
+    // starting point -- the search box stays fully editable regardless.
     function _guessOrgFromText(text) {
-      if (!text || !_publicOrgs.length) return null;
-      const caps = (text.match(/[Α-Ωα-ωA-Za-z]{3,}/g) || [])
-        .filter(t => t === t.toUpperCase() && /[Α-Ω]/.test(t) && t.length >= 4)
+      if (!text) return null;
+      const caps = (text.match(/[Α-Ωα-ωA-Za-z]{4,}/g) || [])
+        .filter(t => t === t.toUpperCase() && /[Α-Ω]/.test(t) && !_GREEK_STOPWORDS.has(t))
         .sort((a, b) => b.length - a.length);
       for (const tok of caps) {
         const nTok = _ns(tok);
         const re = new RegExp(`(^|[^a-zα-ω])${nTok}([^a-zα-ω]|$)`);
-        const hit = _publicOrgs.find(o => re.test(_ns(o.label)));
-        if (hit) return hit;
+        const hrmsHit = _publicOrgs.find(o => re.test(_ns(o.label)));
+        if (hrmsHit) return hrmsHit;
+        const ckanHit = _orgsData.find(o => re.test(_ns(o.title)) || re.test(_ns(o.name)));
+        if (ckanHit) return {code: ckanHit.name, label: ckanHit.title};
       }
       return null;
     }
