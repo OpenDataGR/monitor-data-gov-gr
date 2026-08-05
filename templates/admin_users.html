@@ -723,6 +723,11 @@
     const CURRENT_USER_ID = {{ current_user_id|tojson }};
     const CURRENT_USER_IS_SUPERADMIN = {{ current_user_is_superadmin|tojson }};
     const INDEX_URL = {{ url_for('index')|tojson }};
+    // This page is standalone (loads neither app.js nor its globals) -- own
+    // copy of app.js's tiny getElementById shorthand, used by every form
+    // below (the unmatched-contact-create modal predates this comment and
+    // was quietly relying on it too).
+    const show = id => document.getElementById(id);
 
     // ── i18n ───────────────────────────────────────────────────────────
     // This page is standalone (loads neither app.js nor its TRANSLATIONS
