@@ -94,7 +94,6 @@ const TRANSLATIONS = {
     'stat.uptime': 'Portal Uptime (24h)',
     'tab.overview': 'Overview',
     'contacts.title': 'Contacts',
-    'contacts.unmatched_linked': 'Contact registered and credited on the flagged email.',
     'contacts.view_all': 'All',
     'contacts.view_by_org': 'By Organization',
     'contacts.scope_portal': 'Portal Members',
@@ -672,7 +671,6 @@ const TRANSLATIONS = {
     'stat.uptime': 'Διαθεσιμότητα Πύλης (24ω)',
     'tab.overview': 'Επισκόπηση',
     'contacts.title': 'Επαφές',
-    'contacts.unmatched_linked': 'Η επαφή καταχωρήθηκε και συνδέθηκε με το επισημασμένο email.',
     'contacts.view_all': 'Όλα',
     'contacts.view_by_org': 'Ανά Οργανισμό',
     'contacts.scope_portal': 'Μέλη Πύλης',
@@ -7287,28 +7285,10 @@ async function saveUserPanelEdit() {
   if (data.error) { show('upEditStatus').textContent = data.error; return; }
 
   _applyContactSaveResult(data, u.username, c ? c.id : null);
-  // Came from the Mail Parser admin panel's "Create contact" deep link (see
-  // the new-contact branch in this file's DOMContentLoaded) -- point that
-  // flagged participant at the contact just saved instead of leaving it
-  // pending forever, now that it actually exists.
-  if (_pendingUnmatchedResolve != null && !c) {
-    const unmatchedId = _pendingUnmatchedResolve;
-    _pendingUnmatchedResolve = null;
-    fetch(`${API_BASE}api/unmatched-contacts/${unmatchedId}/resolve`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({contact_id: data.id}),
-    }).then(r => { if (r.ok) showToast(t('contacts.title'), t('contacts.unmatched_linked')); }).catch(() => {});
-  }
   u.contact = data;
   _upEditing = false;
   renderUserPanel(u);
 }
-
-// Set by the new-contact deep link (Mail Parser admin panel's "Create
-// contact" action) -- the UnmatchedEmailContact id to resolve once
-// saveUserPanelEdit actually persists the new OrgContact it deep-linked in
-// to create.
-let _pendingUnmatchedResolve = null;
 
 function renderUserPanel(u) {
   _userPanelUser = u;
@@ -10311,23 +10291,6 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (_deepLinkAction === 'edit-comm' && _deepLinkCommId) {
       if (typeof _activateTabByKey === 'function') _activateTabByKey('comms');
       openCommModal(_deepLinkCommId);
-    }
-    // Mail Parser admin panel's "Create contact" action for a flagged
-    // unmatched participant -- deep-links here to reuse this page's own
-    // (much richer -- dual CKAN/HRMS org search, duplicate-email detection,
-    // portal-membership awareness) contact editor instead of a second,
-    // simplified one living on that standalone page. unmatchedId travels
-    // along so saveUserPanelEdit can resolve that flag once the new contact
-    // is actually saved (see _pendingUnmatchedResolve below).
-    else if (_deepLinkAction === 'new-contact') {
-      if (typeof _activateTabByKey === 'function') _activateTabByKey('contacts');
-      openNewContactPanel(_deepLinkParams.get('org_code') || '', _deepLinkParams.get('org_label') || '');
-      if (show('upEditFirstName')) show('upEditFirstName').value = _deepLinkParams.get('first') || '';
-      if (show('upEditLastName')) show('upEditLastName').value = _deepLinkParams.get('last') || '';
-      if (show('upEditEmail')) show('upEditEmail').value = _deepLinkParams.get('email') || '';
-      if (show('upEditTel')) show('upEditTel').value = _deepLinkParams.get('tel') || '';
-      const unmatchedId = Number(_deepLinkParams.get('unmatched'));
-      if (unmatchedId) _pendingUnmatchedResolve = unmatchedId;
     }
   }
   loadOverview();
