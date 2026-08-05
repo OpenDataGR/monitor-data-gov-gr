@@ -786,6 +786,7 @@
         'admin.parsed_col_status': 'Status', 'admin.parsed_col_direction': 'Direction', 'admin.parsed_col_org': 'Matched org',
         'admin.parsed_col_reason': 'Reason', 'admin.parsed_none': 'No emails parsed yet.',
         'admin.parsed_detail_title': 'Parsed Email', 'admin.parsed_detail_received': 'Received',
+        'admin.parsed_revision_badge': 'Updated ×{n}', 'admin.parsed_revision_tooltip': 'This thread was re-forwarded and merged into this same row instead of creating a duplicate.',
         'admin.parsed_detail_from': 'From', 'admin.parsed_detail_to': 'To', 'admin.parsed_detail_subject': 'Subject',
         'admin.parsed_detail_status': 'Status', 'admin.parsed_detail_direction': 'Direction',
         'admin.parsed_detail_reason': 'Reason', 'admin.parsed_detail_matched_contact': 'Matched contact',
@@ -920,6 +921,7 @@
         'admin.parsed_col_status': 'Κατάσταση', 'admin.parsed_col_direction': 'Κατεύθυνση', 'admin.parsed_col_org': 'Αντιστοιχισμένος φορέας',
         'admin.parsed_col_reason': 'Αιτία', 'admin.parsed_none': 'Δεν έχει αναλυθεί κανένα email ακόμα.',
         'admin.parsed_detail_title': 'Αναλυμένο Email', 'admin.parsed_detail_received': 'Λήψη',
+        'admin.parsed_revision_badge': 'Ενημερώθηκε ×{n}', 'admin.parsed_revision_tooltip': 'Αυτό το νήμα προωθήθηκε ξανά και συγχωνεύτηκε σε αυτήν την ίδια εγγραφή αντί να δημιουργήσει διπλότυπο.',
         'admin.parsed_detail_from': 'Από', 'admin.parsed_detail_to': 'Προς', 'admin.parsed_detail_subject': 'Θέμα',
         'admin.parsed_detail_status': 'Κατάσταση', 'admin.parsed_detail_direction': 'Κατεύθυνση',
         'admin.parsed_detail_reason': 'Αιτία', 'admin.parsed_detail_matched_contact': 'Αντιστοιχισμένη επαφή',
@@ -1750,7 +1752,9 @@
               </tr></thead>
               <tbody>${rows.map(r => `
                 <tr style="cursor:pointer" onclick="showParsedEmailDetail(${r.id})">
-                  <td class="small text-nowrap">${esc((r.received_at || '').replace('T', ' ').slice(0, 16))}</td>
+                  <td class="small text-nowrap">${esc((r.received_at || '').replace('T', ' ').slice(0, 16))}
+                    ${r.revision_count > 1 ? `<span class="badge bg-info text-dark ms-1" title="${esc(t('admin.parsed_revision_tooltip'))}">${t('admin.parsed_revision_badge').replace('{n}', r.revision_count)}</span>` : ''}
+                  </td>
                   <td class="small">${esc(r.from_name || r.from_email || '')}${r.from_name && r.from_email ? `<div class="text-muted" style="font-size:.75em">${esc(r.from_email)}</div>` : ''}</td>
                   <td class="small">${esc(r.subject || '')}</td>
                   <td><span class="badge ${PARSED_STATUS_BADGE[r.status] || 'bg-secondary'}">${esc(r.status)}</span></td>
@@ -1774,7 +1778,7 @@
         </div>` : '';
       const contactLine = c => c ? `${esc(c.first_name || '')} ${esc(c.last_name || '')} — ${esc(c.email || '')}${c.org_label ? ` (${esc(c.org_label)})` : ''}` : '';
       const body = `
-        ${row(t('admin.parsed_detail_received'), esc((r.received_at || '').replace('T', ' ').slice(0, 19)) || none)}
+        ${row(t('admin.parsed_detail_received'), (esc((r.received_at || '').replace('T', ' ').slice(0, 19)) || none) + (r.revision_count > 1 ? ` <span class="badge bg-info text-dark ms-1" title="${esc(t('admin.parsed_revision_tooltip'))}">${t('admin.parsed_revision_badge').replace('{n}', r.revision_count)}</span>` : ''))}
         ${row(t('admin.parsed_detail_from'), `${esc(r.from_name || '')} ${r.from_name ? '&lt;' + esc(r.from_email || '') + '&gt;' : esc(r.from_email || none)}`)}
         ${row(t('admin.parsed_detail_to'), esc(r.to_email) || none)}
         ${row(t('admin.parsed_detail_subject'), esc(r.subject) || none)}

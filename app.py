@@ -403,6 +403,9 @@ if _is_main_process():
         if 'detected_email' not in _inbound_cols:
             db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN detected_email VARCHAR(320)'))
             db.session.commit()
+        if 'revision_count' not in _inbound_cols:
+            db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN revision_count INTEGER NOT NULL DEFAULT 1'))
+            db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -4873,6 +4876,62 @@ def _thread_messages_json(body_text: str):
     return messages
 
 
+def _normalize_for_dedup(text: str) -> str:
+    """Collapses whitespace and strips leading '>' quote markers so two
+    copies of the same underlying content compare equal even after a mail
+    client's own light reformatting (extra quote markers, reflowed blank
+    lines) -- used only for the substring check below, never stored."""
+    text = re.sub(r"^>+\s?", "", text, flags=re.MULTILINE)
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _thread_already_logged(case: "Case", body_text: str) -> bool:
+    """True if this email's content is already fully contained in an
+    existing auto-captured Communication's notes on this case -- i.e. it's
+    the same underlying thread with one more re-forward wrapped on top, not
+    new correspondence. A forward only ever adds to a thread's body, never
+    rewrites what's already in it, so the previous entry's own captured text
+    reappearing verbatim (give or take quoting noise) inside the new,
+    larger body is a reliable "nothing new here" signal."""
+    if not body_text:
+        return False
+    norm_new = _normalize_for_dedup(body_text)
+    if len(norm_new) < 200:
+        return False
+    for c in Communication.query.filter_by(case_id=case.id, source="email").all():
+        if not c.notes:
+            continue
+        snippet = c.notes.split("\n\n", 1)[-1]  # strip the "Auto-captured from inbound email." prefix
+        norm_old = _normalize_for_dedup(snippet)
+        if len(norm_old) > 150 and norm_old in norm_new:
+            return True
+    return False
+
+
+def _find_mergeable_inbound(body_text: str):
+    """An already-recorded InboundEmail whose entire (normalized) body is
+    already contained in this new one -- i.e. the same thread with one more
+    forward wrapped on top, not a genuinely new message. Merging into that
+    row (see email_inbound_webhook) instead of inserting a fresh one is what
+    keeps Parsed Emails from growing one row per re-forward of the same
+    conversation. None means this is new content worth its own row.
+
+    Scoped to the most recently received rows only -- a growing thread's
+    latest forward always arrives well before hundreds of other unrelated
+    emails do, so anything further back is never actually a merge target,
+    just needless comparison work as the table grows."""
+    if not body_text:
+        return None
+    norm_new = _normalize_for_dedup(body_text)
+    if len(norm_new) < 200:
+        return None
+    for old in InboundEmail.query.filter(InboundEmail.body_text.isnot(None)).order_by(InboundEmail.received_at.desc()).limit(200).all():
+        norm_old = _normalize_for_dedup(old.body_text)
+        if len(norm_old) > 150 and norm_old in norm_new:
+            return old
+    return None
+
+
 def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unmatched: bool = False):
     """Shared by the webhook (a brand-new row) and the admin "re-run
     matching" action (an existing pending_review row being reprocessed, e.g.
@@ -4885,10 +4944,28 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
     never has any, so this is a no-op there -- so a repeat rematch doesn't
     pile up duplicate pending entries for the same participant; already
     dropped/created ones are left alone since those are resolved decisions.
+
+    Each resolved org group is skipped (no Communication created for it) if
+    _thread_already_logged says its case already has this same content --
+    the growing-thread-forwarded-repeatedly case this whole function exists
+    to stop re-logging. A group with a genuinely new reply on an otherwise
+    stale thread still gets logged normally.
     """
+    # Captured before the loop below can add fresh links of its own -- a row
+    # email_inbound_webhook merged new content into (see _find_mergeable_
+    # inbound) can already be "attached" from an earlier forward; if this
+    # round's content turns out to be fully covered too, that earlier
+    # success must not be overwritten with a misleading dismissed/pending
+    # status just because there was nothing further to add this time.
+    had_existing_comms = InboundEmailCommunication.query.filter_by(inbound_email_id=inbound.id).first() is not None
+
     match_groups = match["match_groups"]
     created_comms = []
+    any_duplicate = False
     for group in match_groups:
+        if _thread_already_logged(group["case"], inbound.body_text or ""):
+            any_duplicate = True
+            continue
         comm = _create_email_communication(inbound, group["case"], group["contacts"], "Intermediate Contact", direction=match.get("direction"))
         created_comms.append(comm)
         db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
@@ -4897,6 +4974,14 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
         inbound.status = "attached"
         inbound.communication_id = inbound.communication_id or created_comms[0].id
         inbound.reason = None
+    elif had_existing_comms:
+        pass  # already succeeded earlier and this round added nothing new -- leave status/reason as they were
+    elif any_duplicate:
+        # Every resolved group turned out to already be covered -- nothing
+        # went wrong, there's just nothing new to review, same spirit as the
+        # not_listening_address dismissal.
+        inbound.status = "dismissed"
+        inbound.reason = "duplicate_thread"
     else:
         inbound.status = "pending_review"
         inbound.reason = match["reason"]
@@ -4968,18 +5053,37 @@ def email_inbound_webhook(secret):
         match_groups = match["match_groups"]
         first_contact = match_groups[0]["contacts"][0] if match_groups else None
 
-        inbound = InboundEmail(
-            from_email=from_addr or None,
-            from_name=from_name or None,
-            to_email=to_field or None,
-            subject=subject or None,
-            body_text=body_text or None,
-            matched_contact_id=first_contact.id if first_contact else None,
-            matched_org_code=first_contact.org_code if first_contact else None,
-            matched_org_label=first_contact.org_label if first_contact else None,
-        )
-        db.session.add(inbound)
-        db.session.flush()  # need inbound.id for the link/unmatched rows below
+        # A re-forward of an already-seen thread (see _find_mergeable_inbound)
+        # updates that same row instead of inserting a new one, so re-
+        # forwarding a growing conversation doesn't pile up one Parsed
+        # Emails row per forward -- revision_count is what the admin panel
+        # uses to flag that this row was just refreshed, not brand new.
+        merge_target = _find_mergeable_inbound(body_text)
+        if merge_target:
+            inbound = merge_target
+            inbound.from_email = from_addr or inbound.from_email
+            inbound.from_name = from_name or inbound.from_name
+            inbound.to_email = to_field or inbound.to_email
+            inbound.subject = subject or inbound.subject
+            inbound.body_text = body_text or inbound.body_text
+            inbound.received_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            inbound.revision_count = (inbound.revision_count or 1) + 1
+            inbound.matched_contact_id = first_contact.id if first_contact else inbound.matched_contact_id
+            inbound.matched_org_code = first_contact.org_code if first_contact else inbound.matched_org_code
+            inbound.matched_org_label = first_contact.org_label if first_contact else inbound.matched_org_label
+        else:
+            inbound = InboundEmail(
+                from_email=from_addr or None,
+                from_name=from_name or None,
+                to_email=to_field or None,
+                subject=subject or None,
+                body_text=body_text or None,
+                matched_contact_id=first_contact.id if first_contact else None,
+                matched_org_code=first_contact.org_code if first_contact else None,
+                matched_org_label=first_contact.org_label if first_contact else None,
+            )
+            db.session.add(inbound)
+            db.session.flush()  # need inbound.id for the link/unmatched rows below
 
         # One Communication per resolved org group -- see _match_inbound_email
         # (catch-all-contacts). communication_id keeps pointing at the first

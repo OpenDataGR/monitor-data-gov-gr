@@ -569,8 +569,9 @@ class InboundEmail(db.Model):
     detected_name  = db.Column(db.String(200))  # display-only hint: best-guess correspondent name/email found in a
     detected_email = db.Column(db.String(320))  # quoted thread when nothing resolved to a registered contact
     status         = db.Column(db.String(20), nullable=False, default="pending_review")  # attached | pending_review | dismissed
-    reason         = db.Column(db.String(50))  # why pending/dismissed: no_contact_match | multiple_contacts_match | no_open_case | multiple_open_cases | communication_deleted | processing_error | not_listening_address
+    reason         = db.Column(db.String(50))  # why pending/dismissed: no_contact_match | multiple_contacts_match | no_open_case | multiple_open_cases | communication_deleted | processing_error | not_listening_address | duplicate_thread
     communication_id = db.Column(db.Integer, db.ForeignKey("communications.id"))
+    revision_count = db.Column(db.Integer, nullable=False, default=1)  # bumped each time a re-forward of this same thread merges into this row instead of creating a new one -- see _find_mergeable_inbound
 
     matched_contact = db.relationship("OrgContact")
     communication   = db.relationship("Communication")
@@ -609,6 +610,7 @@ class InboundEmail(db.Model):
             "communication_id": self.communication_id,
             "communications":    all_comms,
             "direction":      self.communication.direction if self.communication else None,
+            "revision_count": self.revision_count or 1,
         }
 
 
