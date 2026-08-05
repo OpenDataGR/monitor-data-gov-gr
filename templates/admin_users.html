@@ -1639,6 +1639,33 @@
     const PARSED_STATUS_BADGE    = {attached: 'bg-success', pending_review: 'bg-warning text-dark', dismissed: 'bg-secondary'};
     const PARSED_DIRECTION_BADGE = {Inbound: 'bg-info', Outbound: 'bg-primary'};
     let _parsedEmailsCache = [];  // full rows, including body_text -- the list endpoint already returns everything, so the detail modal below reads from here instead of a second fetch
+    let _parsedEmailsSortCol = 'received_at';
+    let _parsedEmailsSortDir = 'desc';
+
+    function sortParsedEmails(col) {
+      if (_parsedEmailsSortCol === col) {
+        _parsedEmailsSortDir = _parsedEmailsSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        _parsedEmailsSortCol = col;
+        _parsedEmailsSortDir = col === 'received_at' ? 'desc' : 'asc';
+      }
+      _renderParsedEmailsTable();
+    }
+
+    function _parsedEmailsArrow(col) {
+      if (_parsedEmailsSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
+      return _parsedEmailsSortDir === 'asc' ? ' ↑' : ' ↓';
+    }
+
+    const PARSED_SORT_KEY = {
+      received_at: r => r.received_at || '',
+      from:        r => (r.from_name || r.from_email || '').toLowerCase(),
+      subject:     r => (r.subject || '').toLowerCase(),
+      status:      r => r.status || '',
+      direction:   r => r.direction || '',
+      org:         r => (r.matched_org_label || '').toLowerCase(),
+      reason:      r => r.reason || '',
+    };
 
     async function loadParsedEmails() {
       const el = document.getElementById('parsedEmailsTable');
@@ -1649,23 +1676,40 @@
         const rows = await resp.json();
         if (!resp.ok) throw new Error((rows && rows.error) || t('admin.failed'));
         _parsedEmailsCache = Array.isArray(rows) ? rows : [];
-        if (!_parsedEmailsCache.length) {
-          el.innerHTML = `<p class="text-muted small mb-0">${t('admin.parsed_none')}</p>`;
-          return;
-        }
-        el.innerHTML = `
+        _renderParsedEmailsTable();
+      } catch (e) {
+        el.innerHTML = `<p class="text-danger small mb-0">${t('admin.failed_to_load').replace('{err}', esc(e.message))}</p>`;
+      }
+    }
+
+    function _renderParsedEmailsTable() {
+      const el = document.getElementById('parsedEmailsTable');
+      if (!el) return;
+      if (!_parsedEmailsCache.length) {
+        el.innerHTML = `<p class="text-muted small mb-0">${t('admin.parsed_none')}</p>`;
+        return;
+      }
+      const keyFn = PARSED_SORT_KEY[_parsedEmailsSortCol] || PARSED_SORT_KEY.received_at;
+      const dir = _parsedEmailsSortDir === 'asc' ? 1 : -1;
+      const rows = [..._parsedEmailsCache].sort((a, b) => {
+        const ka = keyFn(a), kb = keyFn(b);
+        return ka < kb ? -dir : ka > kb ? dir : 0;
+      });
+      const th = (col, label) =>
+        `<th style="cursor:pointer;user-select:none;white-space:nowrap" onclick="sortParsedEmails('${col}')">${label}${_parsedEmailsArrow(col)}</th>`;
+      el.innerHTML = `
           <div class="table-responsive">
             <table class="table table-sm table-hover align-middle mb-0">
               <thead><tr>
-                <th>${t('admin.parsed_col_received')}</th>
-                <th>${t('admin.parsed_col_from')}</th>
-                <th>${t('admin.parsed_col_subject')}</th>
-                <th>${t('admin.parsed_col_status')}</th>
-                <th>${t('admin.parsed_col_direction')}</th>
-                <th>${t('admin.parsed_col_org')}</th>
-                <th>${t('admin.parsed_col_reason')}</th>
+                ${th('received_at', t('admin.parsed_col_received'))}
+                ${th('from', t('admin.parsed_col_from'))}
+                ${th('subject', t('admin.parsed_col_subject'))}
+                ${th('status', t('admin.parsed_col_status'))}
+                ${th('direction', t('admin.parsed_col_direction'))}
+                ${th('org', t('admin.parsed_col_org'))}
+                ${th('reason', t('admin.parsed_col_reason'))}
               </tr></thead>
-              <tbody>${_parsedEmailsCache.map(r => `
+              <tbody>${rows.map(r => `
                 <tr style="cursor:pointer" onclick="showParsedEmailDetail(${r.id})">
                   <td class="small text-nowrap">${esc((r.received_at || '').replace('T', ' ').slice(0, 16))}</td>
                   <td class="small">${esc(r.from_name || r.from_email || '')}${r.from_name && r.from_email ? `<div class="text-muted" style="font-size:.75em">${esc(r.from_email)}</div>` : ''}</td>
@@ -1677,9 +1721,6 @@
                 </tr>`).join('')}</tbody>
             </table>
           </div>`;
-      } catch (e) {
-        el.innerHTML = `<p class="text-danger small mb-0">${t('admin.failed_to_load').replace('{err}', esc(e.message))}</p>`;
-      }
     }
 
     let _parsedEmailDetailModal = null;
