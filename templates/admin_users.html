@@ -1174,16 +1174,32 @@
     // (shared with the main dashboard, see that file) -- _loadOrgSearchData()
     // populates them here since this page has no richer org-loading flow of
     // its own the way the main dashboard's Orgs tab does.
-    // Tried and dropped: guessing an org from words in the subject/
-    // signature (even restricted to ALL-CAPS acronym tokens) turned out
-    // unsafe -- Greek public-sector org titles are long, compound, and share
-    // enough common syllables/roots that even a short acronym-shaped token
-    // can coincidentally substring-match a completely unrelated org's
-    // official name. A wrong guess here is actively misleading (easy to miss
-    // and register against the wrong org), so this app only relies on
-    // signals with no plausible false-positive path: u.org_code (real
-    // matched contacts converging on one org) and the email-domain match
-    // (see _unmatchedGuessOrgByDomain) -- no guessing from free text at all.
+    // Best-effort default when nothing else already narrowed down the org
+    // (see openUnmatchedContactCreate) -- ALL-CAPS Greek tokens only (a
+    // likely official parenthetical/suffixed acronym, e.g. "... - ΡΑΑΕΥ"),
+    // 4+ letters, tried longest-first, matched as a whole WORD in the org's
+    // label (not a raw substring). Two earlier, looser versions of this both
+    // produced a wrong org: plain substring matching let a short/generic
+    // token match mid-word inside an unrelated org's long compound title,
+    // and trying tokens in the order they appear in the text let an earlier,
+    // more collision-prone short token win before a later, more specific
+    // one (the real acronym) ever got a chance. Word-boundary matching plus
+    // longest-first fixes both failure modes at once -- verified against
+    // both false-positive cases before shipping. Still just a starting
+    // point -- the search box stays fully editable regardless.
+    function _guessOrgFromText(text) {
+      if (!text || !_publicOrgs.length) return null;
+      const caps = (text.match(/[Α-Ωα-ωA-Za-z]{3,}/g) || [])
+        .filter(t => t === t.toUpperCase() && /[Α-Ω]/.test(t) && t.length >= 4)
+        .sort((a, b) => b.length - a.length);
+      for (const tok of caps) {
+        const nTok = _ns(tok);
+        const re = new RegExp(`(^|[^a-zα-ω])${nTok}([^a-zα-ω]|$)`);
+        const hit = _publicOrgs.find(o => re.test(_ns(o.label)));
+        if (hit) return hit;
+      }
+      return null;
+    }
     // This participant's own message within the thread (matched by sender
     // address) -- its body is whatever's left after the empty/signature
     // filter already applied to thread_messages, so a signature-only
@@ -2171,14 +2187,18 @@
       show('unmatchedLastName').value  = parts.length > 1 ? parts[parts.length - 1] : '';
       // u.org_code/org_label only ever come from _match_inbound_email's
       // single-group best guess (every OTHER participant on the email
-      // converging on the same org) -- if that's missing, the only other
-      // signal tried is whether anyone else with the same email domain is
-      // already a registered contact (async, see _unmatchedGuessOrgByDomain
-      // below). No guessing from subject/signature words -- see the comment
-      // on the now-removed _guessOrgFromText for why that was dropped.
+      // converging on the same org) -- already as reliable as it gets, so
+      // only try weaker signals when it's missing: the email-domain match
+      // (async, see _unmatchedGuessOrgByDomain below) first, then an
+      // ALL-CAPS acronym word-matched against the org's own label as a last
+      // resort (see _guessOrgFromText).
       const senderMsg = _findSenderMessage(r, u.email);
       let orgCode = u.org_code || '', orgLabel = u.org_label || '';
       const hadReliableOrgGuess = !!orgCode;
+      if (!orgCode) {
+        const guess = _guessOrgFromText(r.subject) || (senderMsg && _guessOrgFromText(senderMsg.body));
+        if (guess) { orgCode = guess.code; orgLabel = guess.label; }
+      }
       _unmatchedOrgs = orgCode ? [{code: orgCode, label: orgLabel || orgCode}] : [];
       _unmatchedOrgRenderTags();
       show('unmatchedOrgSearch').value = '';
