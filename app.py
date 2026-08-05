@@ -4397,6 +4397,65 @@ def case_delete(case_id):
 
 
 # ── Email sync (auto-captured communications) ────────────────────────────────
+
+# Webmail clients tag a signature's own wrapper element distinctly from the
+# message body -- Gmail's "gmail_signature" class, Apple Mail's
+# "AppleMailSignature" id, Outlook web's "Signature"/"OutlookSignature" --
+# and forwarding/quoting normally preserves that markup verbatim, so this
+# catches a quoted older message's own signature too, not just the newest
+# one. A much more reliable signal than trying to guess from plain text
+# alone once this structure is gone (see _SIG_DELIM_RE below for that case).
+_SIGNATURE_CONTAINER_RE = re.compile(
+    r'<(div|span|table)\b[^>]*(?:class|id)\s*=\s*["\'][^"\']*'
+    r'(?:gmail_signature|applemailsignature|outlooksignature|ms-outlook-mobile-signature)'
+    r'[^"\']*["\'][^>]*>',
+    re.IGNORECASE,
+)
+
+
+def _strip_html_signature_blocks(html: str) -> str:
+    """Removes every known-signature container and its full content
+    (tracking nested same-name tags so a signature with its own internal
+    divs doesn't get truncated at the first closing tag) from raw HTML."""
+    out = []
+    pos = 0
+    for m in _SIGNATURE_CONTAINER_RE.finditer(html):
+        if m.start() < pos:
+            continue  # inside a block already removed by an earlier match
+        out.append(html[pos:m.start()])
+        tag = m.group(1)
+        open_re = re.compile(rf"<{tag}\b", re.IGNORECASE)
+        close_re = re.compile(rf"</{tag}\s*>", re.IGNORECASE)
+        depth, i = 1, m.end()
+        while depth > 0:
+            next_close = close_re.search(html, i)
+            if not next_close:
+                i = len(html)
+                break
+            next_open = open_re.search(html, i, next_close.start())
+            if next_open:
+                depth += 1
+                i = next_open.end()
+            else:
+                depth -= 1
+                i = next_close.end()
+        pos = i
+    out.append(html[pos:])
+    return "".join(out)
+
+
+# The classic plain-text signature delimiter (a line that's just "--"),
+# understood by most mail clients even if they don't all insert it
+# automatically -- the only signature signal left once a plain-text (or
+# already HTML-stripped) body has no markup of its own to go on.
+_SIG_DELIM_RE = re.compile(r"^--\s*$", re.MULTILINE)
+
+
+def _strip_signature_delimiter(text: str) -> str:
+    m = _SIG_DELIM_RE.search(text or "")
+    return text[:m.start()] if m else (text or "")
+
+
 def _extract_email_body(raw_mime: str) -> str:
     """Best-effort plain-text body from SendGrid's raw MIME 'email' field.
     Prefers text/plain; falls back to a crude tag-strip of text/html when
@@ -4410,6 +4469,7 @@ def _extract_email_body(raw_mime: str) -> str:
             return ""
         content = part.get_content()
         if part.get_content_type() == "text/html":
+            content = _strip_html_signature_blocks(content)
             content = html_unescape(re.sub(r"<[^>]+>", " ", content))
         return re.sub(r"[ \t]+", " ", content).strip()
     except Exception:
@@ -4873,18 +4933,25 @@ _MEANINGFUL_BODY_RE = re.compile(r"[^\W\d_]{3,}")  # 3+ consecutive letters -- r
 def _thread_messages_json(body_text: str):
     """JSON-safe, display-filtered form of _extract_thread_messages -- addrs
     is a set there, which the JSON encoder can't serialize as-is, and a
-    forwarded chain often includes messages with nothing but a divider line
-    or blank space for a body, which add nothing worth showing. Each
-    message keeps its own "index" (its position in the FULL, unfiltered
-    list _extract_thread_messages returns) so thread-messages/<index>/attach
-    -- which re-derives that same full list straight from body_text -- still
-    lines up correctly even though empty ones are missing here."""
+    forwarded chain often includes messages with nothing but a divider line,
+    blank space, or just a signature for a body, none of which is worth
+    showing as its own entry. The "is this worth showing" check looks past
+    a trailing "--" signature delimiter (_strip_signature_delimiter) when
+    deciding, but the returned body keeps the signature intact -- a message
+    that *does* have real content above its signature should still show
+    that signature when expanded, this only hides messages that are
+    nothing else. Each message keeps its own "index" (its position in the
+    FULL, unfiltered list _extract_thread_messages returns) so
+    thread-messages/<index>/attach -- which re-derives that same full list
+    straight from body_text -- still lines up correctly even though empty
+    ones are missing here."""
     messages = _extract_thread_messages(body_text or "")
     result = []
     for idx, m in enumerate(messages):
         m["addrs"] = sorted(m["addrs"])
         m["index"] = idx
-        if _MEANINGFUL_BODY_RE.search(m.get("body") or ""):
+        meaningful_body = _strip_signature_delimiter(m.get("body") or "")
+        if _MEANINGFUL_BODY_RE.search(meaningful_body):
             result.append(m)
     return result
 
