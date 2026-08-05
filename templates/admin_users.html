@@ -1805,7 +1805,7 @@
         ${r.thread_messages && r.thread_messages.length ? `
         <div class="mb-2">
           <div class="text-muted small mb-1">${t('admin.parsed_detail_thread')}</div>
-          ${r.thread_messages.map((m, i) => `
+          ${r.thread_messages.map(m => `
             <div class="border rounded mb-1">
               <div class="d-flex align-items-center justify-content-between gap-2 p-2" style="cursor:pointer" onclick="_toggleThreadMsg(this)">
                 <div class="small text-truncate">
@@ -1819,7 +1819,7 @@
                 ${m.from_name && m.from_email ? row(t('admin.parsed_detail_from'), `${esc(m.from_name)} &lt;${esc(m.from_email)}&gt;`) : ''}
                 ${m.body ? `<pre class="small bg-body-secondary p-2 rounded mb-2" style="white-space:pre-wrap;word-break:break-word;max-height:12vh;overflow-y:auto">${esc(m.body.slice(0, 2000))}</pre>` : `<p class="text-muted small mb-2">${none}</p>`}
                 <div class="text-end">
-                  <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openThreadMessageAttach(${r.id},${i})">${t('admin.thread_attach_btn')}</button>
+                  <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openThreadMessageAttach(${r.id},${m.index})">${t('admin.thread_attach_btn')}</button>
                 </div>
               </div>
             </div>`).join('')}

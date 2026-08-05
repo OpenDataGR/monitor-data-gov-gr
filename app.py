@@ -4867,13 +4867,26 @@ def _create_email_communication(inbound: "InboundEmail", case: "Case", contacts,
     return comm
 
 
+_MEANINGFUL_BODY_RE = re.compile(r"[^\W\d_]{3,}")  # 3+ consecutive letters -- rejects a body that's just whitespace/separator (e.g. an Outlook "____" divider) or a stripped-out attachment placeholder
+
+
 def _thread_messages_json(body_text: str):
-    """JSON-safe form of _extract_thread_messages -- addrs is a set there,
-    which the JSON encoder can't serialize as-is."""
+    """JSON-safe, display-filtered form of _extract_thread_messages -- addrs
+    is a set there, which the JSON encoder can't serialize as-is, and a
+    forwarded chain often includes messages with nothing but a divider line
+    or blank space for a body, which add nothing worth showing. Each
+    message keeps its own "index" (its position in the FULL, unfiltered
+    list _extract_thread_messages returns) so thread-messages/<index>/attach
+    -- which re-derives that same full list straight from body_text -- still
+    lines up correctly even though empty ones are missing here."""
     messages = _extract_thread_messages(body_text or "")
-    for m in messages:
+    result = []
+    for idx, m in enumerate(messages):
         m["addrs"] = sorted(m["addrs"])
-    return messages
+        m["index"] = idx
+        if _MEANINGFUL_BODY_RE.search(m.get("body") or ""):
+            result.append(m)
+    return result
 
 
 def _normalize_for_dedup(text: str) -> str:
