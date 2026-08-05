@@ -1749,7 +1749,7 @@
       document.getElementById('parsedEmailDetailBody').innerHTML = body;
       _parsedEmailDetailId = id;
       document.getElementById('parsedDetailRematchBtn').classList.toggle('d-none', r.status !== 'pending_review');
-      document.getElementById('parsedDetailDismissBtn').classList.toggle('d-none', r.status === 'attached');
+      document.getElementById('parsedDetailDismissBtn').classList.toggle('d-none', r.status !== 'pending_review');
       if (!_parsedEmailDetailModal) _parsedEmailDetailModal = new bootstrap.Modal(document.getElementById('parsedEmailDetailModal'));
       _parsedEmailDetailModal.show();
     }
