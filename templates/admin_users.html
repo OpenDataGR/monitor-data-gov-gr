@@ -538,7 +538,7 @@
 
   <!-- Parsed email detail modal -->
   <div class="modal fade" id="parsedEmailDetailModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
       <div class="modal-content">
         <div class="modal-header border-bottom">
           <h5 class="modal-title fw-bold"><i class="bi bi-envelope-open me-2"></i><span data-i18n="admin.parsed_detail_title">Parsed Email</span></h5>
@@ -1821,7 +1821,7 @@
           <div class="text-muted small mb-1">${t('admin.parsed_detail_thread')}</div>
           <div class="row g-2">
             <div class="col-12 col-md-4">
-              <div class="list-group" style="max-height:340px;overflow-y:auto">
+              <div class="list-group" style="max-height:220px;overflow-y:auto">
                 ${r.thread_messages.map((m, i) => `
                   <button type="button" class="list-group-item list-group-item-action py-2 ${i === 0 ? 'active' : ''}" onclick="_selectThreadMsg(this,${r.id},${i})">
                     <div class="small text-truncate fw-bold">${esc(m.from_name || m.from_email || none)}</div>
@@ -1858,7 +1858,7 @@
           ${msg.sent_date ? `<div class="text-muted">${esc(msg.sent_date)}</div>` : ''}
           ${msg.subject ? `<div class="text-muted">${esc(msg.subject)}</div>` : ''}
         </div>
-        ${msg.body ? `<pre class="small bg-body-secondary p-2 rounded mb-2" style="white-space:pre-wrap;word-break:break-word;max-height:28vh;overflow-y:auto">${esc(msg.body.slice(0, 2000))}</pre>` : `<p class="text-muted small mb-2">${none}</p>`}
+        ${msg.body ? `<pre class="small bg-body-secondary p-2 rounded mb-2" style="white-space:pre-wrap;word-break:break-word;max-height:18vh;overflow-y:auto">${esc(msg.body.slice(0, 2000))}</pre>` : `<p class="text-muted small mb-2">${none}</p>`}
         <div class="text-end">
           <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openThreadMessageAttach(${inboundId},${msg.index})">${t('admin.thread_attach_btn')}</button>
         </div>`;
