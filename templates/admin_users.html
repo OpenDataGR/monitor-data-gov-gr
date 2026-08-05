@@ -1970,8 +1970,8 @@
         ${row(t('admin.parsed_detail_status'), `<span class="badge ${PARSED_STATUS_BADGE[r.status] || 'bg-secondary'}">${esc(r.status)}</span>`)}
         ${r.direction ? row(t('admin.parsed_detail_direction'), `<span class="badge ${PARSED_DIRECTION_BADGE[r.direction] || 'bg-secondary'}">${esc(r.direction)}</span>`) : ''}
         ${r.reason ? row(t('admin.parsed_detail_reason'), esc(r.reason.replace(/_/g, ' '))) : ''}
-        ${r.matched_org_label ? row(t('admin.parsed_detail_matched_org'), esc(r.matched_org_label)) : ''}
-        ${r.matched_contact ? row(t('admin.parsed_detail_matched_contact'), contactLine(r.matched_contact)) : ''}
+        ${r.matched_contacts && r.matched_contacts.length ? row(t('admin.parsed_detail_matched_org'), [...new Set(r.matched_contacts.map(c => c.org_label).filter(Boolean))].map(esc).join('<br>')) : ''}
+        ${r.matched_contacts && r.matched_contacts.length ? row(t('admin.parsed_detail_matched_contact'), r.matched_contacts.map(contactLine).join('<br>')) : ''}
         ${r.candidate_contacts && r.candidate_contacts.length ? row(t('admin.parsed_detail_candidates'), r.candidate_contacts.map(contactLine).join('<br>')) : ''}
         ${(r.detected_name || r.detected_email) ? row(t('admin.parsed_detail_detected'), `${esc(r.detected_name || '')} ${r.detected_email ? '&lt;' + esc(r.detected_email) + '&gt;' : ''}`) : ''}
         ${r.communications && r.communications.length ? `

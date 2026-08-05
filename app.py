@@ -415,6 +415,9 @@ if _is_main_process():
         if 'revision_count' not in _inbound_cols:
             db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN revision_count INTEGER NOT NULL DEFAULT 1'))
             db.session.commit()
+        if 'matched_contact_ids' not in _inbound_cols:
+            db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN matched_contact_ids TEXT'))
+            db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -5107,6 +5110,7 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
         inbound.matched_contact_id = display_contact.id
         inbound.matched_org_code = display_contact.org_code
         inbound.matched_org_label = display_contact.org_label
+        inbound.matched_contact_ids = json.dumps([c.id for c in all_contacts])
 
     match_groups = match["match_groups"]
     created_comms = []
@@ -5693,6 +5697,7 @@ def inbound_email_pick_contact(inbound_id):
     inbound.matched_contact_id = contact.id
     inbound.matched_org_code   = contact.org_code
     inbound.matched_org_label  = contact.org_label
+    inbound.matched_contact_ids = json.dumps([contact.id])
     inbound.candidate_contact_ids = None
 
     result = _resolve_case_for_contacts([contact], inbound.subject or "")

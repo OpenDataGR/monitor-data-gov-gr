@@ -565,6 +565,13 @@ class InboundEmail(db.Model):
     matched_contact_id = db.Column(db.Integer, db.ForeignKey("org_contacts.id"))
     matched_org_code   = db.Column(db.String(200))
     matched_org_label  = db.Column(db.String(300))
+    # Every registered contact this email actually named, across every org
+    # involved -- matched_contact_id/_org_code/_org_label above only ever
+    # point at the first one, kept for the FK relationship and existing
+    # single-contact call sites. This is the full list, so an email naming
+    # contacts from more than one org (e.g. two orgs, neither with an Open
+    # case) can still show all of them instead of just the first.
+    matched_contact_ids = db.Column(db.Text)  # JSON list of OrgContact ids
     candidate_contact_ids = db.Column(db.Text)  # JSON list of OrgContact ids -- only set when reason == multiple_contacts_match
     detected_name  = db.Column(db.String(200))  # display-only hint: best-guess correspondent name/email found in a
     detected_email = db.Column(db.String(320))  # quoted thread when nothing resolved to a registered contact
@@ -585,6 +592,14 @@ class InboundEmail(db.Model):
                 candidate_contacts = [rows[i].to_dict() for i in ids if i in rows]
             except Exception:
                 pass
+        matched_contacts = []
+        if self.matched_contact_ids:
+            try:
+                ids = json.loads(self.matched_contact_ids)
+                rows = {c.id: c for c in OrgContact.query.filter(OrgContact.id.in_(ids)).all()}
+                matched_contacts = [rows[i].to_dict() for i in ids if i in rows]
+            except Exception:
+                pass
         # Every Communication this email actually produced -- catch-all-
         # contacts can create more than one (one per distinct org among its
         # matched contacts), not just the single primary one communication_id
@@ -601,6 +616,7 @@ class InboundEmail(db.Model):
             "matched_contact": self.matched_contact.to_dict() if self.matched_contact else None,
             "matched_org_code":  self.matched_org_code or "",
             "matched_org_label": self.matched_org_label or "",
+            "matched_contacts": matched_contacts,
             "candidate_contacts": candidate_contacts,
             "detected_name":  self.detected_name or "",
             "detected_email": self.detected_email or "",
