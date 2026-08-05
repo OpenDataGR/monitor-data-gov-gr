@@ -393,40 +393,22 @@ moment it ships -- expected, not a regression. The WAF exclusion should be
 added *after* that deploy is live, once real traffic is actually carrying
 the `monitor_session` cookie name.
 
-### Mail Parser webhook 413s -- Gateway's own body-size cap, not nginx (found 2026-08-05)
+### Mail Parser webhook 413s -- three independent size caps, only the last one was the app's own (found/fixed 2026-08-05/06)
 
 **Symptom:** forwarding an email to the Mail Parser webhook produced
-nothing at all -- no new Parsed Emails row, no app-level log line. First
-fix attempt (see "nginx config changes" section above) raised nginx's
-`client_max_body_size` from its 1MB default to 25m, since nginx's own
-access log showed `413` responses to `/api/email-sync/inbound-webhook/...`
-at exactly the forward's timestamps. That fix was real (nginx genuinely
-was rejecting large bodies) but **did not fix the symptom** -- a
-different, smaller email still came back 413 afterward.
+nothing at all -- no new Parsed Emails row, no app-level log line.
 
-**Root cause:** two separate size caps stacked in front of the app, and
-only one of them got raised. Confirmed via the App Gateway's own Access
-log (not nginx's, and not the app's) -- `ApplicationGatewayAccessLog`
-showed `httpStatus_d: 413` for the *Gateway's own* response, with
-`receivedBytes_d: 543474` (~530KB) and `error_info_s: ERRORINFO_NO_ERROR`
-(no backend/connection error, just a deliberate reject) on a request that
-never should have troubled nginx's now-25MB limit at all. Azure
-Application Gateway's WAF (`WAFPolicyOTS`, same shared policy as the
-403-cookie incident above) enforces its own `maxRequestBodySizeInKb` --
-**hard-capped at 128 KB by Azure itself**, can't be raised past that via
-the normal policy setting -- for any multipart field the WAF doesn't
-recognize as a genuine file upload (those get the much larger
-`fileUploadLimitInMb`, default 100MB, instead). SendGrid's Inbound Parse
-POSTs the entire raw MIME email as a plain multipart form field named
-`email`, with no `filename=` making it look like a file part to the WAF --
-so it lands under the strict 128KB cap regardless of nginx's own setting.
-This was very likely the *actual* binding constraint the whole time, for
-any forwarded email with so much as a small embedded signature image;
-nginx's 1MB default was never the real bottleneck on its own.
+**Layer 1 -- nginx.** nginx's own access log showed `413` responses to
+`/api/email-sync/inbound-webhook/...` at exactly the forward's
+timestamps, caused by `client_max_body_size` sitting at its 1MB
+compile-time default. Fixed by adding `client_max_body_size 25m;` to
+`nginx-monitor.conf` (see "nginx config changes" section above). Real
+fix, but **did not resolve the symptom** -- a different, smaller (~530KB)
+email still came back 413 afterward.
 
-Confirmed via the Gateway's own Access log (not the Firewall log --
-firewall log showed this same request as `Allowed` by an unrelated custom
-rule, which is a red herring for this specific kind of rejection):
+**Layer 2 -- Application Gateway WAF.** Confirmed via the Gateway's own
+Access log (not the Firewall log, which showed the same request
+`Allowed` by an unrelated custom rule -- a red herring):
 
 ```kql
 AzureDiagnostics
@@ -435,26 +417,43 @@ AzureDiagnostics
 | order by TimeGenerated desc
 ```
 
-Look at `httpStatus_d` (413 here), `receivedBytes_d` (the actual body
-size Gateway saw), and `error_info_s` on the expanded row -- `Sendlib/1.0`
-is SendGrid's own outbound User-Agent, a much more reliable filter than
-guessing at `requestUri_s`/`hostname_s` field contents.
+showed `httpStatus_d: 413`, `receivedBytes_d: 543474` (~530KB), and
+`error_info_s: ERRORINFO_NO_ERROR` (a deliberate reject, not a backend
+error) -- `WAFPolicyOTS`'s own `maxRequestBodySizeInKb` was rejecting
+SendGrid's raw-email multipart field (no `filename=`, so it doesn't
+qualify for the WAF's much larger file-upload limit). The Portal's actual
+range for that setting is 8-2000 KB (**not** a hard 128KB ceiling -- that
+number belongs to a separate "maximum request body *inspection* limit"
+field that governs SQLi/XSS pattern-depth, not outright rejection; this
+report previously conflated the two). Raised to 2000 (the Portal max) --
+also real hardening, but **still did not resolve the symptom**.
 
-**Fix:** not yet applied -- needs a change to `WAFPolicyOTS` itself (or a
-per-listener WAF policy override scoped to just this app's listener, see
-the note earlier in this section) to exempt this one endpoint from body-
-size inspection, or accept a smaller real-world email-size ceiling than
-the 25m nginx now allows. Same shared-policy caution as the cookie
-incident applies -- prefer a change scoped to this app's own listener/path
-over anything touching `WAFPolicyOTS` globally.
+**Layer 3 -- the actual root cause: Werkzeug's own form-field cap.**
+Werkzeug 2.3+ (this app pins `Werkzeug==3.1.8`) enforces
+`MAX_FORM_MEMORY_SIZE`, a 500,000-byte default cap on any individual
+*non-file* multipart form field, added as a CVE-2023-46136 mitigation.
+`email_inbound_webhook()` in `app.py` reads `freq.form.get("from"/"to"/
+"subject"/...)`, which parses the whole multipart body through Werkzeug's
+form parser. SendGrid's Inbound Parse posts the entire raw MIME email as
+a plain field named `email` with no `filename=`, so it doesn't count as a
+file part and lands under the 500KB cap -- the same ~530KB test email
+that cleared both nginx's 25MB and the WAF's 2000KB limits still tripped
+this one. **This 413 is generated by Flask/Werkzeug itself, after nginx
+and the Gateway already accepted and forwarded the full request** -- it
+shows up in nginx's *access* log (proxied through normally) but never in
+nginx's *error* log (no "client intended to send too large body" line),
+which is the tell that it isn't an nginx-level rejection at all.
 
-**Lesson for next time:** a request rejected in front of the app can be
-rejected by *more than one* layer independently (nginx's own
-`client_max_body_size`, and the Application Gateway's WAF body-size cap,
-are two unrelated settings that both have to be big enough) -- fixing the
-first one you find and confirming it's real doesn't mean it's the *only*
-one. When a fix doesn't resolve the symptom, check the *next* layer's own
-access log (Gateway's `ApplicationGatewayAccessLog`, not just nginx's)
-before assuming the app itself has a bug -- `httpStatus_d` + `receivedBytes_d`
-on that log answers "how big was too big, and who actually said no"
-directly, without needing to guess from response byte-counts alone.
+**Fix:** `app.config["MAX_FORM_MEMORY_SIZE"] = 20 * 1024 * 1024` in
+`app.py`, matching nginx's own headroom.
+
+**Lesson for next time:** a request can be rejected by *more than one*
+layer independently, and the layers aren't only infrastructure --
+`client_max_body_size` (nginx), `maxRequestBodySizeInKb` (Gateway WAF),
+and `MAX_FORM_MEMORY_SIZE`/`MAX_CONTENT_LENGTH` (Werkzeug, inside the app
+itself) are three unrelated settings that all have to be big enough.
+Fixing the first two and confirming each is real doesn't mean the job's
+done. The tell for "this 413 is coming from Flask, not nginx" is that it
+appears in nginx's *access* log but has no matching entry in nginx's
+*error* log -- nginx only writes to its error log when *it* is the one
+rejecting the request.

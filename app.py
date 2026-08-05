@@ -69,6 +69,15 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 # anything else on the same instance. Harmless for local SQLite dev too.
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_size": 4, "max_overflow": 6}
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=14)  # absolute cap; see also the idle timeout in require_login
+# Werkzeug 2.3+ caps any individual non-file multipart form field at 500KB
+# (MAX_FORM_MEMORY_SIZE, a CVE-2023-46136 mitigation) and raises a 413 past
+# that -- invisible to nginx's own access/error logs since Flask itself
+# generates the response. SendGrid's Inbound Parse posts the raw forwarded
+# email as a plain "email" form field (no filename=, so it doesn't count as
+# a file part) via email_inbound_webhook() below; a real forwarded thread
+# with an embedded signature image clears 500KB easily. 20MB matches nginx's
+# own client_max_body_size headroom in deploy/nginx-monitor.conf.
+app.config["MAX_FORM_MEMORY_SIZE"] = 20 * 1024 * 1024
 # Flask's default cookie name ("session") is shared by countless other Flask
 # apps -- on a WAF policy associated with 21+ sites (ours included), an
 # exclusion scoped to "a cookie named session" would silently weaken SQLi
