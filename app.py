@@ -4981,21 +4981,38 @@ def _normalize_for_dedup(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
-def _thread_already_logged(case: "Case", body_text: str) -> bool:
+def _same_conversation(subject_a: str, subject_b: str) -> bool:
+    """True only when both subjects are non-empty and match once Re:/Fwd:
+    prefixes and case/accents/punctuation are stripped -- required
+    alongside the body-substring check below, not instead of it. Without
+    this, two completely unrelated emails that merely share the
+    organization's own standard disclaimer footer (present verbatim in
+    nearly every outgoing email, easily 150+ characters on its own) could
+    satisfy the substring check purely on that shared boilerplate, with
+    nothing to do with either email's actual subject -- a real false match
+    this produced in production once an old, thin-content row's entire
+    body was effectively just that disclaimer, making it match anything."""
+    a, b = _norm_org_text(_strip_reply_prefixes(subject_a or "")), _norm_org_text(_strip_reply_prefixes(subject_b or ""))
+    return bool(a) and a == b
+
+
+def _thread_already_logged(case: "Case", subject: str, body_text: str) -> bool:
     """True if this email's content is already fully contained in an
     existing auto-captured Communication's notes on this case -- i.e. it's
     the same underlying thread with one more re-forward wrapped on top, not
     new correspondence. A forward only ever adds to a thread's body, never
     rewrites what's already in it, so the previous entry's own captured text
     reappearing verbatim (give or take quoting noise) inside the new,
-    larger body is a reliable "nothing new here" signal."""
+    larger body is a reliable "nothing new here" signal -- but only once
+    _same_conversation also agrees it's the same subject (see there for
+    why the substring check alone isn't enough)."""
     if not body_text:
         return False
     norm_new = _normalize_for_dedup(body_text)
     if len(norm_new) < 200:
         return False
     for c in Communication.query.filter_by(case_id=case.id, source="email").all():
-        if not c.notes:
+        if not c.notes or not _same_conversation(subject, c.subject):
             continue
         snippet = c.notes.split("\n\n", 1)[-1]  # strip the "Auto-captured from inbound email." prefix
         norm_old = _normalize_for_dedup(snippet)
@@ -5004,13 +5021,18 @@ def _thread_already_logged(case: "Case", body_text: str) -> bool:
     return False
 
 
-def _find_mergeable_inbound(body_text: str):
+def _find_mergeable_inbound(subject: str, body_text: str):
     """An already-recorded InboundEmail whose entire (normalized) body is
     already contained in this new one -- i.e. the same thread with one more
     forward wrapped on top, not a genuinely new message. Merging into that
     row (see email_inbound_webhook) instead of inserting a fresh one is what
     keeps Parsed Emails from growing one row per re-forward of the same
     conversation. None means this is new content worth its own row.
+
+    Requires _same_conversation to agree on the subject too, not just the
+    body-substring check -- see that function's docstring for the false
+    match (an unrelated new thread silently absorbed into an old row that
+    happened to share the org's own disclaimer footer) this is fixing.
 
     Scoped to the most recently received rows only -- a growing thread's
     latest forward always arrives well before hundreds of other unrelated
@@ -5022,6 +5044,8 @@ def _find_mergeable_inbound(body_text: str):
     if len(norm_new) < 200:
         return None
     for old in InboundEmail.query.filter(InboundEmail.body_text.isnot(None)).order_by(InboundEmail.received_at.desc()).limit(200).all():
+        if not _same_conversation(subject, old.subject):
+            continue
         norm_old = _normalize_for_dedup(old.body_text)
         if len(norm_old) > 150 and norm_old in norm_new:
             return old
@@ -5059,7 +5083,7 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
     created_comms = []
     any_duplicate = False
     for group in match_groups:
-        if _thread_already_logged(group["case"], inbound.body_text or ""):
+        if _thread_already_logged(group["case"], inbound.subject or "", inbound.body_text or ""):
             any_duplicate = True
             continue
         comm = _create_email_communication(inbound, group["case"], group["contacts"], "Intermediate Contact", direction=match.get("direction"))
@@ -5154,7 +5178,7 @@ def email_inbound_webhook(secret):
         # forwarding a growing conversation doesn't pile up one Parsed
         # Emails row per forward -- revision_count is what the admin panel
         # uses to flag that this row was just refreshed, not brand new.
-        merge_target = _find_mergeable_inbound(body_text)
+        merge_target = _find_mergeable_inbound(subject, body_text)
         if merge_target:
             inbound = merge_target
             inbound.from_email = from_addr or inbound.from_email
@@ -5434,11 +5458,21 @@ def _stream_poller_loop():
     underlying email -- accepted as harmless; the alternative would need
     tracking whether a resolved InboundEmail ever passed through
     pending_review, which its final state doesn't preserve.
+
+    A re-forward that merges into an existing row (see _find_mergeable_
+    inbound) never gets a new id, so the id > inbound_baseline check alone
+    would never announce it -- merge_baseline (a timestamp, not an id) is
+    the second, independent watermark that catches those: any row with
+    revision_count > 1 (i.e. merged into at least once) whose received_at
+    advanced past the last tick. Scoped to still-pending_review rows only,
+    same as the id-based path, so a merge that resolved to "nothing new"
+    on an already-attached row stays silent rather than re-announcing.
     """
     client = _redis_client()
     with app.app_context():
         inbound_baseline = db.session.query(db.func.max(InboundEmail.id)).scalar() or 0
         comm_baseline    = db.session.query(db.func.max(Communication.id)).scalar() or 0
+        merge_baseline   = datetime.now(timezone.utc).replace(tzinfo=None)
 
     last_logged_count = 0
     while True:
@@ -5462,13 +5496,22 @@ def _stream_poller_loop():
                 new_inbound = InboundEmail.query.filter(InboundEmail.id > inbound_baseline).order_by(InboundEmail.id).all()
                 if new_inbound:
                     inbound_baseline = max(r.id for r in new_inbound)
-                    pending_new = [r for r in new_inbound if r.status == "pending_review"]
-                    if pending_new:
-                        payload = json.dumps([
-                            {"id": r.id, "from_name": r.from_name or "", "from_email": r.from_email or "", "subject": r.subject or ""}
-                            for r in pending_new
-                        ])
-                        events.append(f"event: new_inbound_email\ndata: {payload}\n\n")
+
+                merged = InboundEmail.query.filter(
+                    InboundEmail.revision_count > 1,
+                    InboundEmail.received_at > merge_baseline,
+                ).order_by(InboundEmail.received_at).all()
+                if merged:
+                    merge_baseline = max(r.received_at for r in merged)
+
+                pending_announce = [r for r in new_inbound if r.status == "pending_review"] \
+                    + [r for r in merged if r.status == "pending_review"]
+                if pending_announce:
+                    payload = json.dumps([
+                        {"id": r.id, "from_name": r.from_name or "", "from_email": r.from_email or "", "subject": r.subject or ""}
+                        for r in pending_announce
+                    ])
+                    events.append(f"event: new_inbound_email\ndata: {payload}\n\n")
 
                 new_comms = Communication.query.filter(Communication.id > comm_baseline).order_by(Communication.id).all()
                 if new_comms:
