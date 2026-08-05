@@ -1220,6 +1220,21 @@
       }
       return '';
     }
+    // Job-title line in a signature -- inherently fuzzy (titles vary
+    // endlessly), so this only looks for a short line containing a known
+    // title-indicating word/phrase rather than trying to parse structure.
+    // Still just a starting point -- the Position field stays fully
+    // editable either way.
+    const _POSITION_KEYWORDS_RE = /προϊστ|διευθ|τμηματάρχ|υπεύθυν|στέλεχ|σύμβουλ|γραμματέ|πρόεδρ|manager|officer|director|specialist|engineer|analyst|coordinator|head of|chief/i;
+    function _extractPosition(text) {
+      if (!text) return '';
+      const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        if (line.length > 80) continue;  // titles are short lines, not paragraphs
+        if (_POSITION_KEYWORDS_RE.test(line)) return line;
+      }
+      return '';
+    }
     // Multi-org tag list for Register Contact -- mirrors the main
     // dashboard's own _upEditOrgs/_upOrgRenderTags pattern (same badge
     // markup) so a contact spanning more than one org can be registered in
@@ -2165,12 +2180,15 @@
       show('unmatchedLastName').value  = parts.length > 1 ? parts[parts.length - 1] : '';
       // u.org_code/org_label only ever come from _match_inbound_email's
       // single-group best guess (every OTHER participant on the email
-      // converging on the same org) -- when nothing else on the email
-      // resolved either, there's no such guess, so fall back to matching
-      // words in the email's own subject, then this participant's own
-      // message/signature, against the public-orgs list.
+      // converging on the same org) -- already as reliable as it gets, so
+      // only try weaker signals when it's missing: first whether anyone
+      // else with the same email domain is already a registered contact
+      // (async, see _unmatchedGuessOrgByDomain below -- doesn't depend on
+      // any text surviving at all), then matching words in the email's own
+      // subject/signature against the public-orgs list as a last resort.
       const senderMsg = _findSenderMessage(r, u.email);
       let orgCode = u.org_code || '', orgLabel = u.org_label || '';
+      const hadReliableOrgGuess = !!orgCode;
       if (!orgCode) {
         const guess = _guessOrgFromText(r.subject) || (senderMsg && _guessOrgFromText(senderMsg.body));
         if (guess) { orgCode = guess.code; orgLabel = guess.label; }
@@ -2179,17 +2197,34 @@
       _unmatchedOrgRenderTags();
       show('unmatchedOrgSearch').value = '';
       show('unmatchedEmail').value    = u.email || '';
-      show('unmatchedPosition').value = '';
+      show('unmatchedPosition').value = (senderMsg && _extractPosition(senderMsg.body)) || '';
       show('unmatchedTel').value      = (senderMsg && _extractPhone(senderMsg.body)) || '';
       show('unmatchedMobile').value   = '';
       document.getElementById('unmatchedEmailHint').classList.add('d-none');
       show('unmatchedContactError').classList.add('d-none');
       if (u.email) _unmatchedCheckEmail();
+      if (!hadReliableOrgGuess && u.email) _unmatchedGuessOrgByDomain(unmatchedId, u.email);
       if (!_unmatchedContactCreateModal) _unmatchedContactCreateModal = new bootstrap.Modal(document.getElementById('unmatchedContactCreateModal'));
       _unmatchedContactCreateModal.show();
     }
 
     let _unmatchedContactCreateModal = null;
+
+    // See /api/contacts/guess-org-by-domain -- fires after the modal's
+    // already open (no reason to make the admin wait on a round-trip before
+    // seeing it), and only applies its result if the modal's still sitting
+    // on this same participant when it resolves (guards against it landing
+    // late after the modal moved on to a different one, or closed).
+    async function _unmatchedGuessOrgByDomain(unmatchedId, email) {
+      try {
+        const data = await fetch(`../api/contacts/guess-org-by-domain?email=${encodeURIComponent(email)}`).then(r => r.json());
+        if (show('unmatchedContactId').value !== String(unmatchedId)) return;
+        if (data.found) {
+          _unmatchedOrgs = [{code: data.found.code, label: data.found.label}];
+          _unmatchedOrgRenderTags();
+        }
+      } catch (_) {}
+    }
 
     // Saves through the same /api/contacts/save the main dashboard's own
     // contact editor uses (not a bespoke admin-only insert), then resolves

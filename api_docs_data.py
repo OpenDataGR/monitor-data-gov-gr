@@ -235,6 +235,8 @@ ROUTES = {
          "desc": "Upserts a contact and keeps the portal-members cache in sync."},
         {"methods": ["GET"], "path": "/api/contacts/check-email", "params": "?email=",
          "desc": "Duplicate check for a new-contact form: looks up a single OrgContact by email directly, no preloaded cache needed. Returns {found: null} or {found: {id, label, org}}."},
+        {"methods": ["GET"], "path": "/api/contacts/guess-org-by-domain", "params": "?email=",
+         "desc": "Best-effort org guess for a new-contact form: if any existing OrgContact shares this email's domain, returns their org. Returns {found: null} or {found: {code, label}}."},
         {"methods": ["POST", "DELETE"], "path": "/api/contacts/remove",
          "desc": "Deletes a contact by id and syncs the portal-members cache."},
         {"methods": ["GET"], "path": "/api/contacts/summary",

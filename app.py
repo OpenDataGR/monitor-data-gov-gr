@@ -5799,6 +5799,23 @@ def contacts_check_email():
     }})
 
 
+@app.route("/api/contacts/guess-org-by-domain")
+def contacts_guess_org_by_domain():
+    """Best-effort org guess for a brand-new contact form: if anyone else
+    with the same email domain is already a registered contact, reuse their
+    org -- far more reliable than scanning free text for a matching word,
+    and doesn't depend on a signature surviving at all (see Mail Parser's
+    Register Contact modal)."""
+    email = (freq.args.get("email") or "").strip().lower()
+    domain = email.rsplit("@", 1)[-1] if "@" in email else ""
+    if not domain:
+        return jsonify({"found": None})
+    contact = OrgContact.query.filter(db.func.lower(OrgContact.email).like(f"%@{domain}")).first()
+    if not contact:
+        return jsonify({"found": None})
+    return jsonify({"found": {"code": contact.org_code, "label": contact.org_label or contact.org_code}})
+
+
 @app.route("/api/communications/export", methods=["GET"])
 def communications_export():
     from openpyxl import Workbook
