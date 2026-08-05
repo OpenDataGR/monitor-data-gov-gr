@@ -4414,15 +4414,28 @@ _SIGNATURE_CONTAINER_RE = re.compile(
 
 
 def _strip_html_signature_blocks(html: str) -> str:
-    """Removes every known-signature container and its full content
-    (tracking nested same-name tags so a signature with its own internal
-    divs doesn't get truncated at the first closing tag) from raw HTML."""
+    """Marks every known-signature container with a plain '--' delimiter
+    line right before it -- the same convention _strip_signature_delimiter
+    below already recognizes for a native plain-text signature -- instead
+    of deleting it outright. Keeping the signature's own text right where
+    it was (rather than moving or dropping it) matters for two reasons:
+    _extract_thread_messages later slices the whole body into one span per
+    quoted message by header position, so a signature has to stay inside
+    its own message's span to end up attributed to the right one; and the
+    phone/position/org guesses in the Mail Parser admin panel need the
+    actual text to mine, not just a signal that "there was a signature
+    here." The '--' marker is enough on its own for the *other* consumer,
+    the empty/signature-only thread-message display filter, to still treat
+    it as "signature, not real content" without needing the text gone.
+    Tracks nested same-name tags so a signature with its own internal divs
+    doesn't get truncated at the first closing tag."""
     out = []
     pos = 0
     for m in _SIGNATURE_CONTAINER_RE.finditer(html):
         if m.start() < pos:
-            continue  # inside a block already removed by an earlier match
+            continue  # inside a block already marked by an earlier match
         out.append(html[pos:m.start()])
+        out.append("\n--\n")
         tag = m.group(1)
         open_re = re.compile(rf"<{tag}\b", re.IGNORECASE)
         close_re = re.compile(rf"</{tag}\s*>", re.IGNORECASE)
@@ -4439,6 +4452,7 @@ def _strip_html_signature_blocks(html: str) -> str:
             else:
                 depth -= 1
                 i = next_close.end()
+        out.append(html[m.start():i])  # keep the signature's own content, right where it was
         pos = i
     out.append(html[pos:])
     return "".join(out)
@@ -4446,8 +4460,10 @@ def _strip_html_signature_blocks(html: str) -> str:
 
 # The classic plain-text signature delimiter (a line that's just "--"),
 # understood by most mail clients even if they don't all insert it
-# automatically -- the only signature signal left once a plain-text (or
-# already HTML-stripped) body has no markup of its own to go on.
+# automatically -- the only signature signal a genuinely plain-text body
+# ever has, and also what _strip_html_signature_blocks above inserts itself
+# once it finds a known HTML signature container, so both paths end up
+# recognized the same way downstream.
 _SIG_DELIM_RE = re.compile(r"^--\s*$", re.MULTILINE)
 
 
