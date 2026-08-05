@@ -561,6 +561,25 @@
     </div>
   </div>
 
+  <!-- Raw body, drilled into from the Parsed Email modal (which hides itself
+       while this is open, and reopens on close -- see showRawBodyPane) -->
+  <div class="modal fade" id="rawBodyModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold"><i class="bi bi-file-text me-2"></i><span data-i18n="admin.parsed_detail_body">Body</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-3">
+          <pre class="small bg-body-secondary p-2 rounded mb-0" id="rawBodyModalContent" style="white-space:pre-wrap;word-break:break-word;max-height:65vh;overflow-y:auto"></pre>
+        </div>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.close">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Manually log one thread message as its own Communication -->
   <div class="modal fade" id="threadMessageAttachModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -810,7 +829,7 @@
         'admin.unmatched_org_code': 'Org code', 'admin.unmatched_org_label': 'Org label',
         'admin.unmatched_email': 'Email', 'admin.unmatched_tel': 'Phone',
         'admin.unmatched_org_code_required': 'Org code is required.',
-        'admin.parsed_detail_body': 'Body', 'admin.parsed_detail_none': '—',
+        'admin.parsed_detail_body': 'Body', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'View',
         'admin.hvd_cache_title': 'HVD Compliance Check Cache',
         'admin.hvd_cache_desc': 'Clears the stored HVD SHACL check results and the per-dataset cache. The next run from the Quality tab will re-fetch and re-validate every HVD-tagged dataset from scratch instead of reusing anything.',
         'admin.clear_hvd_cache': 'Clear HVD Check Cache',
@@ -945,7 +964,7 @@
         'admin.unmatched_org_code': 'Κωδικός φορέα', 'admin.unmatched_org_label': 'Επωνυμία φορέα',
         'admin.unmatched_email': 'Email', 'admin.unmatched_tel': 'Τηλέφωνο',
         'admin.unmatched_org_code_required': 'Ο κωδικός φορέα είναι υποχρεωτικός.',
-        'admin.parsed_detail_body': 'Περιεχόμενο', 'admin.parsed_detail_none': '—',
+        'admin.parsed_detail_body': 'Περιεχόμενο', 'admin.parsed_detail_none': '—', 'admin.parsed_view_body': 'Προβολή',
         'admin.hvd_cache_title': 'Cache Ελέγχου Συμμόρφωσης HVD',
         'admin.hvd_cache_desc': 'Καθαρίζει τα αποθηκευμένα αποτελέσματα ελέγχου SHACL για HVD και το cache ανά σύνολο δεδομένων. Η επόμενη εκτέλεση από την καρτέλα Ποιότητα θα ανακτήσει και θα επικυρώσει ξανά από την αρχή κάθε σύνολο δεδομένων με ετικέτα HVD.',
         'admin.clear_hvd_cache': 'Καθαρισμός Cache Ελέγχου HVD',
@@ -1835,12 +1854,9 @@
           </div>
         </div>` : ''}
         <hr>
-        <div class="d-flex align-items-center justify-content-between p-1" style="cursor:pointer" onclick="_toggleCollapseSection(this)">
+        <div class="d-flex align-items-center justify-content-between p-1">
           <div class="text-muted small mb-0">${t('admin.parsed_detail_body')}</div>
-          <i class="bi bi-chevron-down flex-shrink-0"></i>
-        </div>
-        <div class="d-none">
-          <pre class="small bg-body-secondary p-2 rounded" style="white-space:pre-wrap;word-break:break-word;max-height:40vh;overflow-y:auto">${esc(r.body_text) || none}</pre>
+          <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="showRawBodyPane(${r.id})">${t('admin.parsed_view_body')}</button>
         </div>`;
       document.getElementById('parsedEmailDetailBody').innerHTML = body;
       _parsedEmailDetailId = id;
@@ -1927,16 +1943,26 @@
       window.location.href = `${INDEX_URL}?action=edit-comm&comm=${commId}`;
     }
 
-    // header is the clicked row (siblings: itself + the .d-none details div
-    // right after it) -- toggles both the details visibility and the chevron.
-    // Used by the raw-body section at the bottom of the Parsed Email modal.
-    function _toggleCollapseSection(header) {
-      const details = header.nextElementSibling;
-      const icon = header.querySelector('.bi');
-      const opening = details.classList.contains('d-none');
-      details.classList.toggle('d-none');
-      icon.classList.toggle('bi-chevron-down', !opening);
-      icon.classList.toggle('bi-chevron-up', opening);
+    let _rawBodyModal = null;
+    let _rawBodyReturnId = null;
+
+    // Drills from the Parsed Email modal into a dedicated raw-body view --
+    // hides the detail modal rather than stacking on top of it (Bootstrap
+    // doesn't handle nested modal backdrops well), and reopens it on close.
+    function showRawBodyPane(id) {
+      const r = _parsedEmailsCache.find(x => x.id === id);
+      if (!r) return;
+      document.getElementById('rawBodyModalContent').textContent = r.body_text || t('admin.parsed_detail_none');
+      _rawBodyReturnId = id;
+      _parsedEmailDetailModal.hide();
+      if (!_rawBodyModal) {
+        _rawBodyModal = new bootstrap.Modal(document.getElementById('rawBodyModal'));
+        document.getElementById('rawBodyModal').addEventListener('hidden.bs.modal', () => {
+          if (_rawBodyReturnId != null) showParsedEmailDetail(_rawBodyReturnId);
+          _rawBodyReturnId = null;
+        });
+      }
+      _rawBodyModal.show();
     }
 
     let _threadMessageAttachModal = null;
