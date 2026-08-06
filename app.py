@@ -4782,7 +4782,13 @@ def _resolve_case_for_contacts(contacts, subject: str = "", contact_date: str = 
 
     first = contacts[0]
     contact_name = f"{first.first_name or ''} {first.last_name or ''}".strip()
-    fallback_subject = (subject or "").strip() or contact_name or "(no subject)"
+    # Stripped of Re:/Fwd:/Απ: prefixes for a cleaner title -- whichever
+    # message happens to trigger a new case (per _match_inbound_email,
+    # thread messages are resolved newest-first, so a reply can easily be
+    # the one that does) shouldn't leave the case itself looking like a
+    # reply to something that, from the case's own perspective, doesn't
+    # exist yet.
+    fallback_subject = _strip_reply_prefixes((subject or "").strip()) or contact_name or "(no subject)"
     case = Case(
         org_name=first.org_code, org_title=first.org_label,
         subject=fallback_subject, status="Open", deadline=_default_deadline(contact_date),
@@ -4887,14 +4893,26 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
     the forwarder and often as a participant quoted in the body too, and
     neither is a real case correspondent. Only when none of what's left in
     the outer From/To/Cc resolves to a known contact does this fall back to
-    a quoted thread inside the body (see _extract_quoted_thread_info) -- a
-    genuine reply's own headers are already enough, so there's no need to
-    go digging through quoted history.
+    the body's quoted history.
 
-    Each org group is resolved independently -- one with zero or several
-    Open cases is simply left out rather than blocking groups that did
-    resolve cleanly. Returns "reason" (for the caller's pending_review
-    bookkeeping) only when literally nothing could be attached to anything.
+    That fallback has two forms. When the body has real Outlook-style
+    "From:/Sent:/To:/Subject:" quoted blocks (_extract_thread_messages), each
+    individual message is resolved and logged separately -- own subject, own
+    date, own body, own direction -- instead of collapsing an entire
+    back-and-forth into one blob Communication naming whoever happened to be
+    matched anywhere in it. A message with no meaningful content of its own
+    (signature-only, empty) is skipped, same bar the admin panel's thread
+    display already uses. Only when there's no such block structure at all
+    (e.g. Gmail/Apple Mail's single-line "On <date>, <name> wrote:" style,
+    which has no block boundary to slice a per-message body out of) does
+    this fall back further to the older flat, whole-body matching -- a
+    genuine live reply's own headers resolving directly never needs any of
+    this in the first place.
+
+    Each org (or org-per-message) group is resolved independently -- see
+    _resolve_case_for_contacts for what "resolved" means now. Returns
+    "reason" (for the caller's pending_review bookkeeping) only when
+    literally nothing could be attached to anything.
     """
     excluded_addrs, excluded_domains = _load_excluded_matchers()
     outer_from_addr = (parseaddr(from_field)[1] or "").lower()
@@ -4904,20 +4922,63 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
 
     quoted = None
     used_quoted_fallback = False
+    per_message_groups = None  # set below only when the Outlook-style multi-block path fires
+
     if not contacts:
-        quoted = _extract_quoted_thread_info(body_text)
-        if quoted:
-            q_contacts, q_unmatched = _split_matched_contacts(_quoted_participant_pairs(quoted), excluded_addrs, excluded_domains)
-            if q_contacts:
-                contacts, unmatched = q_contacts, q_unmatched
-                used_quoted_fallback = True
-            else:
-                # Neither pool resolved a registered contact -- merge both
-                # pools' leftovers (deduped) so a forward like this still
-                # surfaces everyone found, not just whichever pool happened
-                # to be checked.
-                seen = {email for _, email in unmatched}
-                unmatched = unmatched + [(n, e) for n, e in q_unmatched if e not in seen]
+        thread_msgs = _extract_thread_messages(body_text)
+        if thread_msgs:
+            per_message_groups = []
+            all_contacts, seen_contact_ids = [], set()
+            # Seeded from the outer envelope's own leftovers (set above by
+            # the initial _split_matched_contacts call) rather than starting
+            # fresh -- an outer To/Cc address that never reappears in any
+            # individual quoted message's own headers would otherwise
+            # silently vanish instead of still being flagged unmatched.
+            seen_unmatched = {email for _, email in unmatched}
+            for msg in thread_msgs:
+                msg_body = msg.get("body") or ""
+                if not _MEANINGFUL_BODY_RE.search(_strip_signature_delimiter(msg_body)):
+                    continue
+                msg_from = msg.get("from_email")
+                pairs = [(msg.get("from_name"), msg_from)] + [(None, a) for a in (msg.get("addrs") or set()) if a != msg_from]
+                m_contacts, m_unmatched = _split_matched_contacts(pairs, excluded_addrs, excluded_domains)
+                for c in m_contacts:
+                    if c.id not in seen_contact_ids:
+                        seen_contact_ids.add(c.id)
+                        all_contacts.append(c)
+                for name, email in m_unmatched:
+                    if email not in seen_unmatched:
+                        seen_unmatched.add(email)
+                        unmatched.append((name, email))
+                if not m_contacts:
+                    continue
+                msg_subject = msg.get("subject") or subject
+                msg_groups_by_org = {}
+                for c in m_contacts:
+                    msg_groups_by_org.setdefault(c.org_code, []).append(c)
+                for org_contacts in msg_groups_by_org.values():
+                    result = _resolve_case_for_contacts(org_contacts, msg_subject, contact_date=msg.get("sent_date"))
+                    per_message_groups.append({
+                        "contacts": org_contacts, "case": result["case"], "reason": result["reason"],
+                        "created": result["created"], "subject": msg_subject, "contact_date": msg.get("sent_date"),
+                        "body": msg_body, "is_thread_message": True,
+                        "direction": _detect_email_direction(msg_from or "", None, False, excluded_addrs, excluded_domains),
+                    })
+            contacts = all_contacts
+        else:
+            quoted = _extract_quoted_thread_info(body_text)
+            if quoted:
+                q_contacts, q_unmatched = _split_matched_contacts(_quoted_participant_pairs(quoted), excluded_addrs, excluded_domains)
+                if q_contacts:
+                    contacts, unmatched = q_contacts, q_unmatched
+                    used_quoted_fallback = True
+                else:
+                    # Neither pool resolved a registered contact -- merge both
+                    # pools' leftovers (deduped) so a forward like this still
+                    # surfaces everyone found, not just whichever pool happened
+                    # to be checked.
+                    seen = {email for _, email in unmatched}
+                    unmatched = unmatched + [(n, e) for n, e in q_unmatched if e not in seen]
 
     direction = _detect_email_direction(outer_from_addr, quoted, used_quoted_fallback, excluded_addrs, excluded_domains)
 
@@ -4925,36 +4986,44 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
     # so a case opened from it gets a deadline counted from when the
     # conversation actually happened -- not from today, which is just
     # whenever this got forwarded. quoted is already populated above when
-    # the quoted-thread fallback fired; only re-extract when it didn't
-    # (contacts resolved directly from the outer headers).
+    # the flat quoted-thread fallback fired; only re-extract when it didn't
+    # (contacts resolved directly from the outer headers, or the per-message
+    # path fired instead -- that path uses each message's own date anyway).
     quoted_for_date = quoted if quoted is not None else _extract_quoted_thread_info(body_text)
     contact_date_fallback = (quoted_for_date and quoted_for_date.get("sent_date")) or None
 
-    groups_by_org = {}
-    for c in contacts:
-        groups_by_org.setdefault(c.org_code, []).append(c)
+    if per_message_groups is not None:
+        match_groups = per_message_groups
+    else:
+        groups_by_org = {}
+        for c in contacts:
+            groups_by_org.setdefault(c.org_code, []).append(c)
 
-    match_groups = []
-    for org_contacts in groups_by_org.values():
-        result = _resolve_case_for_contacts(org_contacts, subject, contact_date=contact_date_fallback)
-        match_groups.append({"contacts": org_contacts, "case": result["case"], "reason": result["reason"], "created": result["created"]})
+        match_groups = []
+        for org_contacts in groups_by_org.values():
+            result = _resolve_case_for_contacts(org_contacts, subject, contact_date=contact_date_fallback)
+            match_groups.append({"contacts": org_contacts, "case": result["case"], "reason": result["reason"], "created": result["created"]})
 
     resolved_groups = [g for g in match_groups if g["case"]]
     # A best-effort org guess for whoever's unmatched -- only when every
-    # contact that *did* resolve on this email converged on the same org,
-    # otherwise there's no single answer to guess.
+    # contact that *did* resolve (across every group -- there can be more
+    # than one now even for a single org, one per message) converged on the
+    # same org, otherwise there's no single answer to guess.
+    distinct_orgs = {g["contacts"][0].org_code for g in match_groups if g["contacts"]}
     guess_org_code = guess_org_label = None
-    if len(match_groups) == 1:
-        guess_org_code = match_groups[0]["contacts"][0].org_code
-        guess_org_label = match_groups[0]["contacts"][0].org_label
+    if len(distinct_orgs) == 1:
+        only = next(g["contacts"][0] for g in match_groups if g["contacts"])
+        guess_org_code, guess_org_label = only.org_code, only.org_label
 
     # _resolve_case_for_contacts now opens a new case itself whenever none
     # of the org's Open cases look related, so a group only ever comes back
     # case-less when several candidates were EQUALLY plausible (a human has
     # to pick) -- "no_open_case" can no longer actually occur here.
     overall_reason = None
-    if not resolved_groups:
-        overall_reason = "no_contact_match" if not contacts else "multiple_open_cases"
+    if not match_groups:
+        overall_reason = "no_contact_match"
+    elif not resolved_groups:
+        overall_reason = "multiple_open_cases"
 
     return {
         "match_groups": resolved_groups,
@@ -4987,23 +5056,30 @@ def _resolved_contact_date(inbound: "InboundEmail") -> str:
     )
 
 
-def _create_email_communication(inbound: "InboundEmail", case: "Case", contacts, comm_status: str, contact_date: str = None, direction: str = None) -> "Communication":
+def _create_email_communication(inbound: "InboundEmail", case: "Case", contacts, comm_status: str, contact_date: str = None,
+                                 direction: str = None, subject: str = None, notes_body: str = None) -> "Communication":
     """contacts: every registered OrgContact this entry should credit (all
     from the same org as `case`, per _match_inbound_email's own grouping) --
     possibly more than one when several people from that org were on the
     same email, possibly empty for a manual pending-review attach where no
-    contact ever resolved at all."""
+    contact ever resolved at all.
+
+    subject/notes_body default to the whole email's own subject/body when
+    not given -- _match_inbound_email's per-thread-message groups pass
+    that specific message's own subject/body instead, so each message in a
+    split thread gets its own accurately-dated, accurately-worded entry
+    rather than every message in the thread sharing one blob."""
     contact_names = ", ".join(" ".join(p for p in [c.first_name, c.last_name] if p) for c in contacts if c.first_name or c.last_name)
     comm = Communication(
         case_id=case.id,
         contact_date=contact_date or _resolved_contact_date(inbound),
         org_name=case.org_name,
         org_title=case.org_title,
-        subject=inbound.subject or case.subject,
+        subject=subject or inbound.subject or case.subject,
         status=comm_status,
         medium="Email",
         contact_person=contact_names or inbound.from_name or None,
-        notes=_auto_captured_notes(inbound.body_text or ""),
+        notes=_auto_captured_notes(notes_body if notes_body is not None else (inbound.body_text or "")),
         source="email",
         direction=direction,  # see _detect_email_direction -- None (left unset) when there's no named sender to check
     )
@@ -5091,6 +5167,32 @@ def _thread_already_logged(case: "Case", subject: str, body_text: str) -> bool:
     return False
 
 
+def _thread_message_already_logged(case: "Case", subject: str, msg_body: str) -> bool:
+    """Same idea as _thread_already_logged, tuned for one individual thread
+    message's own body rather than a whole raw email. That function's
+    200/150-character floors exist to avoid false positives when comparing
+    a short *unrelated* snippet against a WHOLE email's much larger body --
+    but a genuine single message is very often shorter than 200 characters
+    on its own (a two-line reply, say), so reusing those floors here would
+    silently let a short message keep getting re-logged every time its
+    containing thread gets re-forwarded with more piled on top. Comparing
+    in both directions (old-in-new or new-in-old) covers the message being
+    quoted with either more or less surrounding noise stripped than last
+    time. Still requires _same_conversation, same false-match reason as
+    the function above."""
+    norm_new = _normalize_for_dedup(msg_body or "")
+    if not norm_new:
+        return False
+    for c in Communication.query.filter_by(case_id=case.id, source="email").all():
+        if not c.notes or not _same_conversation(subject, c.subject):
+            continue
+        snippet = c.notes.split("\n\n", 1)[-1]
+        norm_old = _normalize_for_dedup(snippet)
+        if norm_old and (norm_old in norm_new or norm_new in norm_old):
+            return True
+    return False
+
+
 def _find_mergeable_inbound(subject: str, body_text: str):
     """An already-recorded InboundEmail whose entire (normalized) body is
     already contained in this new one -- i.e. the same thread with one more
@@ -5126,8 +5228,11 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
     """Shared by the webhook (a brand-new row) and the admin "re-run
     matching" action (an existing pending_review row being reprocessed, e.g.
     after fixing a config gap or registering a contact that was previously
-    unmatched): create one Communication per resolved org group, flag
-    whoever's left over, and set the row's own status/reason accordingly.
+    unmatched): create one Communication per resolved group, flag whoever's
+    left over, and set the row's own status/reason accordingly. A group is
+    normally one per org, but _match_inbound_email's per-thread-message path
+    (see there) produces one per (org, message) instead -- either way, each
+    group here is handled identically.
 
     replace_pending_unmatched=True (rematch only) clears this row's existing
     *pending* UnmatchedEmailContact rows before recomputing -- a fresh row
@@ -5135,8 +5240,9 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
     pile up duplicate pending entries for the same participant; already
     dropped/created ones are left alone since those are resolved decisions.
 
-    Each resolved org group is skipped (no Communication created for it) if
-    _thread_already_logged says its case already has this same content --
+    Each resolved group is skipped (no Communication created for it) if
+    its case already has this same content -- _thread_message_already_logged
+    for a per-message group, _thread_already_logged (whole-email) otherwise --
     the growing-thread-forwarded-repeatedly case this whole function exists
     to stop re-logging. A group with a genuinely new reply on an otherwise
     stale thread still gets logged normally.
@@ -5168,11 +5274,23 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
     created_comms = []
     any_duplicate = False
     for group in match_groups:
-        if _thread_already_logged(group["case"], inbound.subject or "", inbound.body_text or ""):
+        # A per-thread-message group (see _match_inbound_email) carries its
+        # own subject/body/direction and needs the message-tuned dedup
+        # check; a whole-email group (today's flat path, or a manual attach)
+        # uses the email-level ones exactly as before.
+        if group.get("is_thread_message"):
+            is_dup = _thread_message_already_logged(group["case"], group["subject"], group["body"])
+        else:
+            is_dup = _thread_already_logged(group["case"], inbound.subject or "", inbound.body_text or "")
+        if is_dup:
             any_duplicate = True
             continue
         comm_status = "Initial Contact" if group.get("created") else "Intermediate Contact"
-        comm = _create_email_communication(inbound, group["case"], group["contacts"], comm_status, direction=match.get("direction"))
+        comm = _create_email_communication(
+            inbound, group["case"], group["contacts"], comm_status,
+            contact_date=group.get("contact_date"), direction=group.get("direction", match.get("direction")),
+            subject=group.get("subject"), notes_body=group.get("body"),
+        )
         created_comms.append(comm)
         db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
 
