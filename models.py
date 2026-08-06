@@ -546,12 +546,16 @@ class OrgContact(db.Model):
 class InboundEmail(db.Model):
     """A record of every email SendGrid's Inbound Parse handed to the webhook.
 
-    On a confident match (sender resolves to exactly one OrgContact whose org
-    has exactly one Open case) this also produces a Communication, linked via
-    communication_id. Anything else -- unknown sender, no open case, or a
-    sender tied to more than one org -- lands here with status
-    'pending_review' for a human to attach or dismiss by hand, instead of
-    guessing and silently mis-filing a reply against the wrong case.
+    On a confident contact match, this also produces a Communication, linked
+    via communication_id -- attached to an existing Open case when one of the
+    org's Open cases actually looks related (same subject, or the contact has
+    already corresponded on it), otherwise a brand-new case is opened on the
+    spot (see _resolve_case_for_contacts). Only genuine ambiguity still lands
+    here with status 'pending_review' for a human to resolve by hand: an
+    unknown sender (no_contact_match), a sender tied to more than one
+    registered contact (multiple_contacts_match), or more than one of the
+    org's Open cases looking equally related (multiple_open_cases) -- cases
+    where guessing risks silently mis-filing a reply against the wrong one.
     """
     __tablename__ = "inbound_emails"
 
@@ -576,7 +580,11 @@ class InboundEmail(db.Model):
     detected_name  = db.Column(db.String(200))  # display-only hint: best-guess correspondent name/email found in a
     detected_email = db.Column(db.String(320))  # quoted thread when nothing resolved to a registered contact
     status         = db.Column(db.String(20), nullable=False, default="pending_review")  # attached | pending_review | dismissed
-    reason         = db.Column(db.String(50))  # why pending/dismissed: no_contact_match | multiple_contacts_match | no_open_case | multiple_open_cases | communication_deleted | processing_error | not_listening_address | duplicate_thread
+    # why pending/dismissed: no_contact_match | multiple_contacts_match | multiple_open_cases | communication_deleted |
+    # processing_error | not_listening_address | duplicate_thread. no_open_case can still appear on old rows written
+    # before _resolve_case_for_contacts started opening a new case instead of leaving this reason for a human -- new
+    # processing never sets it anymore.
+    reason         = db.Column(db.String(50))
     communication_id = db.Column(db.Integer, db.ForeignKey("communications.id"))
     revision_count = db.Column(db.Integer, nullable=False, default=1)  # bumped each time a re-forward of this same thread merges into this row instead of creating a new one -- see _find_mergeable_inbound
 
