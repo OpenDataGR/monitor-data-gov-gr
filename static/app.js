@@ -5593,6 +5593,7 @@ function _renderCommsCaseGroups() {
             <span class="fw-semibold">${esc(cs.org_title)}</span>
             <span class="text-muted small">— ${esc(cs.subject)}</span>
             <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
+            ${cs.has_auto_entry ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('inbound.auto_badge_title'))}"><i class="bi bi-robot me-1"></i>${esc(t('inbound.auto_badge'))}</span>` : ''}
             <span class="text-muted small ms-auto">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}${isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')}</span>
             <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('comms.case_add_entry')}"
                     onclick="event.stopPropagation();openFollowupForCase(${cs.id})">

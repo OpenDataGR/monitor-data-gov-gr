@@ -432,6 +432,7 @@ class Case(db.Model):
             "entry_count": len(entries),
             "last_update": last_entry.contact_date if last_entry else None,
             "is_stale":    self.is_stale,
+            "has_auto_entry": any(c.source == "email" for c in entries),
         }
         if include_communications:
             d["communications"] = [c.to_dict() for c in entries]
