@@ -6426,11 +6426,29 @@ function openInboundAttachModal(id) {
   } else {
     hintEl.classList.add('d-none');
   }
+  // Also try a domain match against the detected sender -- same signal
+  // the admin panel's own "Register Contact" flow already uses, so this
+  // search isn't a completely blind pick-from-every-org either.
+  if (!hasOrg && e.detected_email) _inboundAttachGuessOrgByDomain(id, e.detected_email);
 
   _refreshInboundAttachCases();
 
   if (!_inboundAttachModal) _inboundAttachModal = new bootstrap.Modal(document.getElementById('inboundAttachModal'));
   _inboundAttachModal.show();
+}
+
+// See /api/contacts/guess-org-by-domain -- fires after the modal's already
+// open, and only applies its result if the modal's still sitting on this
+// same email when it resolves (guards against it landing late after the
+// modal moved on or closed). Fills the org search the same way picking a
+// dropdown result would, so the existing case-refresh/subject-toggle logic
+// downstream doesn't need its own separate path for this.
+async function _inboundAttachGuessOrgByDomain(id, email) {
+  try {
+    const data = await fetch(`${API_BASE}api/contacts/guess-org-by-domain?email=${encodeURIComponent(email)}`).then(r => r.json());
+    if (Number(show('inboundAttachId').value) !== id || show('inboundAttachOrgCode').value) return;
+    if (data.found) _inboundAttachOrgSelect(data.found.code, data.found.label);
+  } catch (_) {}
 }
 
 async function pickInboundContact() {

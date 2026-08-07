@@ -5355,6 +5355,20 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
         inbound.matched_org_code = display_contact.org_code
         inbound.matched_org_label = display_contact.org_label
         inbound.matched_contact_ids = json.dumps([c.id for c in all_contacts])
+    else:
+        # Nobody resolved to a registered contact at all (no_contact_match)
+        # -- these columns exist specifically so the attach UI isn't a
+        # totally blank "who is this" for a human, but nothing has actually
+        # been setting them, so that hint has been silently empty this
+        # whole time. The first unmatched participant is the best
+        # available answer to "who sent this" in this situation. Only
+        # overwritten when this round actually found someone to show, same
+        # "don't blank out an earlier answer" reasoning as matched_contact
+        # above.
+        first_unmatched = (match.get("unmatched") or [None])[0]
+        if first_unmatched:
+            inbound.detected_name = (first_unmatched.get("name") or "")[:200] or None
+            inbound.detected_email = (first_unmatched.get("email") or "")[:320] or None
 
     match_groups = match["match_groups"]
     created_comms = []
