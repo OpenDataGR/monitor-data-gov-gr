@@ -382,10 +382,10 @@ class Case(db.Model):
     __tablename__ = "cases"
 
     id         = db.Column(db.Integer, primary_key=True)
-    org_name   = db.Column(db.String(200), nullable=False)
+    org_name   = db.Column(db.String(200), nullable=False, index=True)
     org_title  = db.Column(db.String(200))
     subject    = db.Column(db.String(500), nullable=False)
-    status     = db.Column(db.String(20), nullable=False, default="Open")  # Open | Closed
+    status     = db.Column(db.String(20), nullable=False, default="Open", index=True)  # Open | Closed
     deadline   = db.Column(db.String(10))  # ISO date; past this with no follow-up -> treated as No Response
     opened_at  = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     closed_at  = db.Column(db.DateTime)
@@ -446,7 +446,7 @@ class Communication(db.Model):
     case_id      = db.Column(db.Integer, db.ForeignKey("cases.id"), index=True)
     created_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
     contact_date = db.Column(db.String(10), nullable=False)   # ISO date YYYY-MM-DD
-    org_name     = db.Column(db.String(200), nullable=False)  # slug or free text
+    org_name     = db.Column(db.String(200), nullable=False, index=True)  # slug or free text
     org_title    = db.Column(db.String(200))
     subject      = db.Column(db.String(500), nullable=False)
     status       = db.Column(db.String(50), nullable=False, default="Initial Contact")

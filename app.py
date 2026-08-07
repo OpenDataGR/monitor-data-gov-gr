@@ -418,6 +418,19 @@ if _is_main_process():
         if 'matched_contact_ids' not in _inbound_cols:
             db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN matched_contact_ids TEXT'))
             db.session.commit()
+        # index=True on a model column only creates the index for a table
+        # db.create_all() creates fresh -- an already-existing table needs
+        # it added by hand here. org_name is filtered on every inbound
+        # email now (_resolve_case_for_contacts's Case.org_name.in_(...)
+        # runs per email, not just per admin action) and cases.status is
+        # filtered alongside it on that same hot path; communications.
+        # org_name backs organization_detail's exact-match lookup. IF NOT
+        # EXISTS makes this a no-op on repeat startups, and on whichever of
+        # SQLite/Postgres this deploy is actually running.
+        db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_communications_org_name ON communications (org_name)'))
+        db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_cases_org_name ON cases (org_name)'))
+        db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_cases_status ON cases (status)'))
+        db.session.commit()
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -2297,29 +2310,46 @@ def datasets_search():
                     type_params["q"] = q
                 if type_scope:
                     type_params["fq"] = " AND ".join(type_scope)
-                r_types = requests.get(f"{config.API_BASE}/package_search", params=type_params,
-                                        headers=_api_headers(), timeout=config.REQUEST_TIMEOUT)
-                r_types.raise_for_status()
-                items = ((r_types.json()["result"].get("search_facets") or {}).get("type") or {}).get("items") or []
-                type_counts = sorted(
-                    [{"name": i["name"], "count": i["count"]} for i in items if i.get("name") and i.get("count")],
-                    key=lambda x: -x["count"],
-                )
 
-                hvd_scope = shared_fq_parts + ([type_fq] if type_fq else []) + ([harvested_fq] if harvested_fq else []) + ([geo_fq] if geo_fq else [])
-                hvd_scope_total = _package_count(q, hvd_scope)
-                hvd_count = _package_count(q, hvd_scope + ['-hvd_category:"[]"'])
-                non_hvd_count = hvd_scope_total - hvd_count
+                def _fetch_type_counts():
+                    r_types = requests.get(f"{config.API_BASE}/package_search", params=type_params,
+                                            headers=_api_headers(), timeout=config.REQUEST_TIMEOUT)
+                    r_types.raise_for_status()
+                    items = ((r_types.json()["result"].get("search_facets") or {}).get("type") or {}).get("items") or []
+                    return sorted(
+                        [{"name": i["name"], "count": i["count"]} for i in items if i.get("name") and i.get("count")],
+                        key=lambda x: -x["count"],
+                    )
 
+                hvd_scope     = shared_fq_parts + ([type_fq] if type_fq else []) + ([harvested_fq] if harvested_fq else []) + ([geo_fq] if geo_fq else [])
                 harvest_scope = shared_fq_parts + ([type_fq] if type_fq else []) + ([hvd_fq] if hvd_fq else []) + ([geo_fq] if geo_fq else [])
-                harvest_scope_total = _package_count(q, harvest_scope)
-                harvested_count = _package_count(q, harvest_scope + ["harvest_source_id:[* TO *]"])
-                manual_count = harvest_scope_total - harvested_count
+                geo_scope     = shared_fq_parts + ([type_fq] if type_fq else []) + ([hvd_fq] if hvd_fq else []) + ([harvested_fq] if harvested_fq else [])
 
-                geo_scope = shared_fq_parts + ([type_fq] if type_fq else []) + ([hvd_fq] if hvd_fq else []) + ([harvested_fq] if harvested_fq else [])
-                geo_scope_total = _package_count(q, geo_scope)
-                geo_count = _package_count(q, geo_scope + ["dcat_type:*GEOSPATIAL*"])
-                non_geo_count = geo_scope_total - geo_count
+                # These 7 CKAN round-trips are each independent of the
+                # others (no card's totals/split depend on another card's
+                # result), so running them concurrently takes as long as the
+                # slowest single one instead of the sum of all seven -- same
+                # pattern already used for the Matomo multi-metric fetches
+                # elsewhere in this file.
+                with ThreadPoolExecutor(max_workers=7) as pool:
+                    f_types         = pool.submit(_fetch_type_counts)
+                    f_hvd_total     = pool.submit(_package_count, q, hvd_scope)
+                    f_hvd           = pool.submit(_package_count, q, hvd_scope + ['-hvd_category:"[]"'])
+                    f_harvest_total = pool.submit(_package_count, q, harvest_scope)
+                    f_harvested     = pool.submit(_package_count, q, harvest_scope + ["harvest_source_id:[* TO *]"])
+                    f_geo_total     = pool.submit(_package_count, q, geo_scope)
+                    f_geo           = pool.submit(_package_count, q, geo_scope + ["dcat_type:*GEOSPATIAL*"])
+
+                    type_counts = f_types.result()
+                    hvd_scope_total = f_hvd_total.result()
+                    hvd_count = f_hvd.result()
+                    non_hvd_count = hvd_scope_total - hvd_count
+                    harvest_scope_total = f_harvest_total.result()
+                    harvested_count = f_harvested.result()
+                    manual_count = harvest_scope_total - harvested_count
+                    geo_scope_total = f_geo_total.result()
+                    geo_count = f_geo.result()
+                    non_geo_count = geo_scope_total - geo_count
             except Exception:
                 pass  # summary cards just won't show counts this time
 
@@ -4037,6 +4067,54 @@ def communications_list():
     rows     = min(max(int(freq.args.get("rows", 50) or 50), 1), 200)
     start    = max(int(freq.args.get("start", 0) or 0), 0)
 
+    def matches_q(c):
+        if not q:
+            return True
+        hay = _search_normalize(" ".join(filter(None, [c.org_title, c.org_name, c.subject, c.notes])))
+        return q in hay
+
+    sort_map = {
+        "org_title": lambda c: _search_normalize(c.org_title or c.org_name or ""),
+        "subject":   lambda c: _search_normalize(c.subject or ""),
+        "status":    lambda c: _COMM_STATUS_ORDER.get(c.status, 99),
+    }
+
+    def sort_and_page(comms):
+        if sort_key in sort_map:
+            comms.sort(key=sort_map[sort_key], reverse=(sort_dir == "desc"))
+        else:
+            comms.sort(key=lambda c: (c.contact_date, c.created_at), reverse=(sort_dir != "asc"))
+        return comms[start:start + rows]
+
+    # Fast path for a single case's own rows -- how the Cases view's expand
+    # (and its own quiet background refresh) actually work, see
+    # _fetchCommsCaseRows in app.js. That's the single most frequent call
+    # this route gets (once per already-expanded case on every 20s poll AND
+    # every SSE new_communication push), yet it only ever needs one case's
+    # handful of rows -- there's no reason it should load every Case and
+    # every Communication in the database first, the way the general path
+    # below does. Facets are skipped here too: a pinned response's facets
+    # were never read by any caller (confirmed against _fetchCommsCaseRows,
+    # which only reads data.rows) even before this fast path existed, so
+    # they were already wasted work, not just slow work.
+    if case_id_pin is not None and org_pin is None and day_pin is None and not group_by:
+        query = Communication.query.filter(Communication.case_id == case_id_pin).options(
+            db.selectinload(Communication.contact_links).joinedload(CommunicationContact.org_contact)
+        )
+        if status_f:
+            query = query.filter(Communication.status == status_f)
+        pinned = query.all()
+        if case_status_f or stale_f:
+            case = Case.query.get(case_id_pin)
+            case_ok = (not case_status_f or (case.status if case else None) == case_status_f) and \
+                      (not stale_f or ((case.is_stale if case else False) == (stale_f == "1")))
+            pinned = pinned if case_ok else []
+        if q:
+            pinned = [c for c in pinned if matches_q(c)]
+        page = sort_and_page(pinned)
+        no_facets = {"case_status_counts": None, "stale_counts": None, "status_counts": None}
+        return jsonify({"rows": [c.to_dict() for c in page], "total": len(pinned), **no_facets})
+
     # Eager-load every case's communications FIRST so every row's
     # Communication.to_dict()/`.case.is_stale` access below resolves from
     # SQLAlchemy's identity map (same session) instead of a fresh query per
@@ -4048,12 +4126,6 @@ def communications_list():
     all_comms = Communication.query.options(
         db.selectinload(Communication.contact_links).joinedload(CommunicationContact.org_contact)
     ).all()
-
-    def matches_q(c):
-        if not q:
-            return True
-        hay = _search_normalize(" ".join(filter(None, [c.org_title, c.org_name, c.subject, c.notes])))
-        return q in hay
 
     def matches_dims(c):
         cs = c.case
@@ -4143,17 +4215,7 @@ def communications_list():
         page = group_list[start:start + rows]
         return jsonify({"groups": [{"day": d, "count": n} for d, n in page], "total_groups": len(group_list), **facets})
 
-    sort_map = {
-        "org_title": lambda c: _search_normalize(c.org_title or c.org_name or ""),
-        "subject":   lambda c: _search_normalize(c.subject or ""),
-        "status":    lambda c: _COMM_STATUS_ORDER.get(c.status, 99),
-    }
-    if sort_key in sort_map:
-        filtered.sort(key=sort_map[sort_key], reverse=(sort_dir == "desc"))
-    else:
-        filtered.sort(key=lambda c: (c.contact_date, c.created_at), reverse=(sort_dir != "asc"))
-
-    page = filtered[start:start + rows]
+    page = sort_and_page(filtered)
     return jsonify({"rows": [c.to_dict() for c in page], "total": len(filtered), **facets})
 
 
@@ -4750,13 +4812,19 @@ def _resolve_case_for_contacts(contacts, subject: str = "", contact_date: str = 
     since every contact passed in is already grouped under the same org."""
     org_codes, org_labels = _org_identifiers_for_contacts(contacts)
 
-    open_cases = Case.query.filter(Case.status == "Open", Case.org_name.in_(org_codes)).all()
+    # _looks_related below walks every candidate case's communications and
+    # every communication's contact_links -- eager-loading both up front
+    # means that's answered from what's already in memory, not an N+1 of
+    # lazy queries (one per case, then one per communication) fired while
+    # checking each candidate one at a time.
+    _open_case_opts = (db.selectinload(Case.communications).selectinload(Communication.contact_links),)
+    open_cases = Case.query.options(*_open_case_opts).filter(Case.status == "Open", Case.org_name.in_(org_codes)).all()
     if not open_cases and org_labels:
         # A contact's org_code is often an HRMS code/label rather than the CKAN
         # slug Case.org_name stores (the same mismatch fixed earlier for the org
         # panel's comms summary) -- fall back to comparing normalized org titles.
         open_cases = [
-            case for case in Case.query.filter(Case.status == "Open").all()
+            case for case in Case.query.options(*_open_case_opts).filter(Case.status == "Open").all()
             if case.org_title and _norm_org_text(case.org_title) in org_labels
         ]
 
@@ -5142,22 +5210,25 @@ def _same_conversation(subject_a: str, subject_b: str) -> bool:
     return bool(a) and a == b
 
 
-def _thread_already_logged(case: "Case", subject: str, body_text: str) -> bool:
-    """True if this email's content is already fully contained in an
-    existing auto-captured Communication's notes on this case -- i.e. it's
-    the same underlying thread with one more re-forward wrapped on top, not
-    new correspondence. A forward only ever adds to a thread's body, never
-    rewrites what's already in it, so the previous entry's own captured text
-    reappearing verbatim (give or take quoting noise) inside the new,
-    larger body is a reliable "nothing new here" signal -- but only once
-    _same_conversation also agrees it's the same subject (see there for
-    why the substring check alone isn't enough)."""
+def _thread_already_logged(existing_comms, subject: str, body_text: str) -> bool:
+    """True if this email's content is already fully contained in one of
+    existing_comms's notes (the case's own already-logged, source="email"
+    Communications -- see _apply_inbound_match's per-case cache, which is
+    what lets several groups sharing one case query for these only once
+    instead of once per group) -- i.e. it's the same underlying thread with
+    one more re-forward wrapped on top, not new correspondence. A forward
+    only ever adds to a thread's body, never rewrites what's already in it,
+    so the previous entry's own captured text reappearing verbatim (give or
+    take quoting noise) inside the new, larger body is a reliable "nothing
+    new here" signal -- but only once _same_conversation also agrees it's
+    the same subject (see there for why the substring check alone isn't
+    enough)."""
     if not body_text:
         return False
     norm_new = _normalize_for_dedup(body_text)
     if len(norm_new) < 200:
         return False
-    for c in Communication.query.filter_by(case_id=case.id, source="email").all():
+    for c in existing_comms:
         if not c.notes or not _same_conversation(subject, c.subject):
             continue
         snippet = c.notes.split("\n\n", 1)[-1]  # strip the "Auto-captured from inbound email." prefix
@@ -5167,7 +5238,7 @@ def _thread_already_logged(case: "Case", subject: str, body_text: str) -> bool:
     return False
 
 
-def _thread_message_already_logged(case: "Case", subject: str, msg_body: str) -> bool:
+def _thread_message_already_logged(existing_comms, subject: str, msg_body: str) -> bool:
     """Same idea as _thread_already_logged, tuned for one individual thread
     message's own body rather than a whole raw email. That function's
     200/150-character floors exist to avoid false positives when comparing
@@ -5183,7 +5254,7 @@ def _thread_message_already_logged(case: "Case", subject: str, msg_body: str) ->
     norm_new = _normalize_for_dedup(msg_body or "")
     if not norm_new:
         return False
-    for c in Communication.query.filter_by(case_id=case.id, source="email").all():
+    for c in existing_comms:
         if not c.notes or not _same_conversation(subject, c.subject):
             continue
         snippet = c.notes.split("\n\n", 1)[-1]
@@ -5273,15 +5344,29 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
     match_groups = match["match_groups"]
     created_comms = []
     any_duplicate = False
+    # Per-case cache of already-logged source="email" Communications --
+    # the per-thread-message split can put several groups on the SAME case
+    # (a multi-message backlog thread all from one org), and each used to
+    # re-run this exact query from scratch per group. Appended to as new
+    # Communications are created below so a later group on the same case
+    # within this same call still sees them, same as a fresh query would.
+    _existing_comms_cache = {}
+
+    def _existing_comms_for(case_id):
+        if case_id not in _existing_comms_cache:
+            _existing_comms_cache[case_id] = Communication.query.filter_by(case_id=case_id, source="email").all()
+        return _existing_comms_cache[case_id]
+
     for group in match_groups:
+        existing = _existing_comms_for(group["case"].id)
         # A per-thread-message group (see _match_inbound_email) carries its
         # own subject/body/direction and needs the message-tuned dedup
         # check; a whole-email group (today's flat path, or a manual attach)
         # uses the email-level ones exactly as before.
         if group.get("is_thread_message"):
-            is_dup = _thread_message_already_logged(group["case"], group["subject"], group["body"])
+            is_dup = _thread_message_already_logged(existing, group["subject"], group["body"])
         else:
-            is_dup = _thread_already_logged(group["case"], inbound.subject or "", inbound.body_text or "")
+            is_dup = _thread_already_logged(existing, inbound.subject or "", inbound.body_text or "")
         if is_dup:
             any_duplicate = True
             continue
@@ -5291,6 +5376,7 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
             contact_date=group.get("contact_date"), direction=group.get("direction", match.get("direction")),
             subject=group.get("subject"), notes_body=group.get("body"),
         )
+        existing.append(comm)
         created_comms.append(comm)
         db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
 
