@@ -1264,20 +1264,23 @@
     // Only a fallback for when the header-derived name (u.name, from the
     // message's own "From:" display name) is missing -- an address swept
     // in from a To:/Cc: line rather than an actual "From:" has no name to
-    // offer that way. Signatures don't label the name line the way a
-    // position does, so there's no keyword to key off -- the two reliable
-    // structural cues are the line right after a bare "--" delimiter (a
-    // signature's own first line, same delimiter the backend's
-    // _strip_signature_delimiter looks for) or right after a closing
-    // phrase ("Με εκτίμηση,", "Best regards,", ...) when there's no such
-    // delimiter. Skips a "name" that's really a phone number or email
-    // address on its own line.
+    // offer that way.
     const _SIG_START_RE = /^--$/;
     const _CLOSING_PHRASE_RE = /^(με\s+εκτ[ίι]μηση|φιλικ[άα]\s+χαιρετ[ίι]σματα|ευχαριστ(?:[ώω]|ούμε)|best regards|kind regards|warm regards|regards|sincerely|thanks|thank you)[,.\s]*$/i;
+    // Rejects a "name" that's really a phone number, email address, a
+    // position title ("Προϊστάμενος" alone, if the backward walk in Tier B
+    // below ever bottoms out on the anchor paragraph itself), or a line
+    // that reads as a finished sentence (ends in . ! ?) -- ordinary prose
+    // ends that way, a signature's own lines (name/title/department/
+    // address) essentially never do.
+    const _isPlausibleName = s => !!s && s.length <= 60 && !_extractPhone(s) && !s.includes('@')
+      && !_POSITION_KEYWORDS_RE.test(s) && !/[.!?]$/.test(s);
     function _extractName(text) {
       if (!text) return '';
+      // Tier A: an explicit "--" delimiter (same one the backend's
+      // _strip_signature_delimiter looks for) or a closing phrase
+      // ("Με εκτίμηση,", "Best regards,", ...) right before the name.
       const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
-      const isPlausibleName = s => !!s && s.length <= 60 && !_extractPhone(s) && !s.includes('@');
       for (let i = 0; i < lines.length - 1; i++) {
         if (!_SIG_START_RE.test(lines[i]) && !_CLOSING_PHRASE_RE.test(lines[i])) continue;
         // A "--" delimiter is sometimes immediately followed by its own
@@ -1286,9 +1289,38 @@
         // taking the next one as the candidate.
         let j = i + 1;
         while (j < lines.length && _CLOSING_PHRASE_RE.test(lines[j])) j++;
-        if (j < lines.length && isPlausibleName(lines[j])) return lines[j];
+        if (j < lines.length && _isPlausibleName(lines[j])) return lines[j];
       }
-      return '';
+      // Tier B: no textual marker at all -- the more common real-world
+      // shape (most signatures, especially Outlook-style ones, are just
+      // their own blank-line-separated block with nothing announcing
+      // them). Anchor on the first paragraph containing a phone number or
+      // a known position keyword -- both strong "this is definitely the
+      // signature" signals -- then walk backward through short,
+      // signature-shaped paragraphs (not full sentences) to the earliest
+      // one; its first line is the name.
+      const paragraphs = text.split(/\n\s*\n+/).map(p => p.trim()).filter(Boolean);
+      let anchor = -1;
+      for (let i = 0; i < paragraphs.length; i++) {
+        if (_extractPhone(paragraphs[i]) || _POSITION_KEYWORDS_RE.test(paragraphs[i])) { anchor = i; break; }
+      }
+      if (anchor === -1) return '';
+      const looksLikeSigParagraph = p => {
+        const pLines = p.split('\n').map(l => l.trim()).filter(Boolean);
+        return pLines.length > 0 && pLines.length <= 5 && pLines.every(l => l.length <= 80)
+          && !/[.!?]$/.test(pLines[pLines.length - 1]);
+      };
+      let start = anchor;
+      // If the anchor paragraph's OWN first line is already a plausible
+      // name (name and position/phone sharing one paragraph), use it
+      // directly -- only walk backward into earlier paragraphs when the
+      // anchor itself doesn't start with the name (e.g. a lone
+      // "Προϊστάμενος" paragraph with nothing else in it).
+      if (!_isPlausibleName(paragraphs[anchor].split('\n')[0].trim())) {
+        while (start > 0 && looksLikeSigParagraph(paragraphs[start - 1])) start--;
+      }
+      const firstLine = paragraphs[start].split('\n')[0].trim();
+      return _isPlausibleName(firstLine) ? firstLine : '';
     }
     // Weakest of the three name signals -- only reached when neither the
     // signature nor the message's own "From:" display name gave anything.
