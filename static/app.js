@@ -4858,7 +4858,37 @@ async function _commsRefreshInPlace() {
   }
 }
 
+let _commsReloadInFlight = null;
+let _commsReloadQueued = false;
+
+// Coalesces overlapping calls instead of running them concurrently -- the
+// SSE new_communication handler fires once per Communication (a single
+// forwarded thread can now auto-log several at once, see the per-message
+// splitting), and the 20s poll can land in the same window, so without this
+// two reloads could interleave: one's _commsCaseExpandRows.delete(caseId)
+// (see _commsRefreshInPlace) landing between the other's delete and its
+// re-fetch resolving made an already-expanded case's rows vanish out from
+// under it, showing a stray loading spinner for content that was never
+// actually gone. A call that arrives mid-reload just marks one more run
+// queued rather than starting its own overlapping chain; at most one
+// trailing run happens after the current one finishes, so whatever changed
+// during the overlap still gets picked up.
 async function _reloadCasesAndComms() {
+  if (_commsReloadInFlight) {
+    _commsReloadQueued = true;
+    return _commsReloadInFlight;
+  }
+  _commsReloadInFlight = _reloadCasesAndCommsImpl().finally(() => {
+    _commsReloadInFlight = null;
+    if (_commsReloadQueued) {
+      _commsReloadQueued = false;
+      _reloadCasesAndComms();
+    }
+  });
+  return _commsReloadInFlight;
+}
+
+async function _reloadCasesAndCommsImpl() {
   if (!_isTabActive('tab-comms')) {
     // Not looking at the tab right now -- just mark every view stale so the
     // next visit fetches fresh instead of showing pre-change data.
