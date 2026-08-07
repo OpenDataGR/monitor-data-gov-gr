@@ -5311,9 +5311,9 @@ function _commsHistRowHtml(c, showCaseBadge, reveal = false) {
   return `
     <tr class="comm-hist-row${reveal ? ' just-revealed' : ''}" onclick="openCommModal(${c.id})" style="cursor:pointer">
       <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
-      <td class="small">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${contactPersonHtml(c)}</td>
-      <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-      <td class="small text-muted">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
+      <td class="small">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${autoEmailBadge(c) ? ' ' + autoEmailBadge(c) : ''}${contactPersonHtml(c)}</td>
+      <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}" style="white-space:normal">${statusLabel[c.status] || c.status}</span></td>
+      <td class="small text-muted">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
       <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
       <td class="text-end text-nowrap" onclick="event.stopPropagation()">
         <div class="d-flex gap-1 justify-content-end">
@@ -5327,7 +5327,7 @@ function _commsHistRowHtml(c, showCaseBadge, reveal = false) {
 function _commsGroupTableShell(rows) {
   return `
     <table class="table table-hover table-sm align-middle mb-0" style="table-layout:fixed">
-      <colgroup><col style="width:110px"><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
+      <colgroup><col style="width:110px"><col><col style="width:190px"><col style="width:110px"><col><col style="width:80px"></colgroup>
       <thead><tr>
         <th>${t('comms.col_date')}</th>
         <th>${t('comms.col_subject')}</th>
