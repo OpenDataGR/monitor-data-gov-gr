@@ -4791,25 +4791,29 @@ def _resolve_case_for_contacts(contacts, subject: str = "", contact_date: str = 
 
     Having exactly one Open case for the org used to be enough to attach to
     it outright -- but that's a coincidence, not evidence it's the same
-    matter. A case only counts as a candidate when either:
-      - its own subject, or any Communication already logged under it,
-        normalizes (Re:/Fwd:-stripped) to the same text as this email's
-        subject -- catches a reply even if a normal Re:/Fwd: prefix is all
-        that changed; or
-      - one of these same contacts already has a Communication logged on
-        it -- a harder signal than subject text, and the one that actually
-        tells "this is the same person continuing a conversation" apart
-        from "this merely mentions similar words". Covers a reply whose
-        subject drifted (no Re: prefix, reworded, appended text) too much
-        to match by text alone.
+    matter. Two signals decide it now, checked in order, NOT combined into
+    one pool of candidates:
 
-    Exactly one candidate -> attach to it (unchanged from before, just
-    with actual justification now). Several candidates -> still genuinely
-    ambiguous, a human has to pick (multiple_open_cases, existing
-    behavior). Zero candidates -- whether because the org has no Open case
-    at all, or none of what it has looks related -- opens a fresh case
-    instead of leaving this parked for a human to notice, using contacts[0]
-    since every contact passed in is already grouped under the same org."""
+      1. Subject match -- the case's own subject, or any Communication
+         already logged under it, normalizes (Re:/Fwd:-stripped) to the
+         same text as this email's subject. Exactly one match -> attach.
+         More than one -> genuinely ambiguous (multiple_open_cases): the
+         subjects themselves don't distinguish which case this belongs to,
+         and no other signal can resolve that for a human.
+      2. Only when subject matches NONE of the org's Open cases: whether
+         one of these same contacts already has a Communication logged on
+         a case -- a harder signal than subject text, covering a reply
+         whose subject drifted (no Re: prefix, reworded, appended text)
+         too far to match by text alone. Exactly one such case -> attach.
+
+    A contact routinely has open history on more than one case at once --
+    that alone is not ambiguity. Two-or-more history hits with nothing to
+    tell them apart by subject (or zero either way) isn't "ambiguous"
+    either, it's just a new matter: falls through to opening a fresh case,
+    same as when the org has no Open case at all. multiple_open_cases is
+    reserved for when subject text itself is what's actually unclear --
+    using contacts[0] for the new case since every contact passed in is
+    already grouped under the same org."""
     org_codes, org_labels = _org_identifiers_for_contacts(contacts)
 
     # _looks_related below walks every candidate case's communications and
@@ -4831,22 +4835,33 @@ def _resolve_case_for_contacts(contacts, subject: str = "", contact_date: str = 
     norm_subject = _norm_org_text(_strip_reply_prefixes(subject))
     contact_ids = {c.id for c in contacts}
 
-    def _looks_related(case):
-        if norm_subject:
-            case_subjects = {case.subject} | {c.subject for c in case.communications}
-            if any(s and _norm_org_text(_strip_reply_prefixes(s)) == norm_subject for s in case_subjects):
-                return True
+    def _subject_matches(case):
+        if not norm_subject:
+            return False
+        case_subjects = {case.subject} | {c.subject for c in case.communications}
+        return any(s and _norm_org_text(_strip_reply_prefixes(s)) == norm_subject for s in case_subjects)
+
+    def _has_contact_history(case):
         return any(
             cc.org_contact_id in contact_ids
             for comm in case.communications
             for cc in comm.contact_links
         )
 
-    candidates = [c for c in open_cases if _looks_related(c)]
-    if len(candidates) == 1:
-        return {"case": candidates[0], "reason": None, "created": False}
-    if len(candidates) > 1:
+    subject_candidates = [c for c in open_cases if _subject_matches(c)]
+    if len(subject_candidates) == 1:
+        return {"case": subject_candidates[0], "reason": None, "created": False}
+    if len(subject_candidates) > 1:
         return {"case": None, "reason": "multiple_open_cases", "created": False}
+
+    # No case's subject matches at all -- only now does sender history get
+    # a say, and only as a tie-breaker, not a second pool of candidates to
+    # combine with subject: a contact having open history on several
+    # unrelated cases is normal, not ambiguous, so 2+ hits here fall
+    # through to opening a new case exactly like 0 hits would.
+    history_candidates = [c for c in open_cases if _has_contact_history(c)]
+    if len(history_candidates) == 1:
+        return {"case": history_candidates[0], "reason": None, "created": False}
 
     first = contacts[0]
     contact_name = f"{first.first_name or ''} {first.last_name or ''}".strip()
