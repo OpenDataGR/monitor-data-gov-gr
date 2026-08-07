@@ -35,3 +35,26 @@
      for both axes rather than sharing this rule with .navbar. */
   padding: 1rem 2rem;
 }
+
+/* Every modal across both pages gets a viewport-height cap with its own
+   body scrolling internally, instead of relying on each modal's markup
+   remembering to opt into Bootstrap's own .modal-dialog-scrollable --
+   several content-heavy ones (Communication edit, inbound-email attach,
+   contact/dataset exports) didn't, so on a shorter viewport the whole page
+   had to scroll just to reach a modal's footer Save/Cancel buttons.
+   Mechanically identical to what -scrollable does, just applied
+   unconditionally: cap the dialog to just under the viewport, clip the
+   content to that, and let only .modal-body scroll. Composes fine with
+   .modal-dialog-centered (Bootstrap's own docs pair the two together) and
+   with -scrollable itself already present on a few dialogs -- setting the
+   same properties twice is harmless. */
+.modal-dialog {
+  height: calc(100% - var(--bs-modal-margin, .5rem) * 2);
+}
+.modal-dialog .modal-content {
+  max-height: 100%;
+  overflow: hidden;
+}
+.modal-dialog .modal-body {
+  overflow-y: auto;
+}
