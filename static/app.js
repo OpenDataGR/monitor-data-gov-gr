@@ -5869,6 +5869,7 @@ async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefi
     show('commMedium').value  = c.medium || '';
     setCommDirectionPill(c.direction || '');
     show('commNotes').value   = c.notes;
+    _refreshCommNotesPreview();
     _commOrgSet(c.org_name, c.org_title);
     _setOrgLocked(false);
     onCommOrgInput(_commPreselectFromComm(c));
@@ -5887,12 +5888,42 @@ async function openCommModal(id, prefillOrg = null, prefillOrgCode = null, prefi
     show('commMedium').value  = prefillMedium || '';
     setCommDirectionPill('');
     show('commNotes').value   = '';
+    _refreshCommNotesPreview();
     if (prefillOrg) { _commOrgSet(prefillOrgCode || prefillOrg, prefillOrg); onCommOrgInput(prefillContactPerson ? [{ id: null, label: prefillContactPerson }] : []); }
     _setOrgLocked(!!prefillCaseId);  // a follow-up stays tied to its case's organization
     _renderCommCaseInfo(cs, false);
   }
   _onCommStatusChange();
   _commModal.show();
+}
+
+function _refreshCommNotesPreview() {
+  const val = show('commNotes').value || '';
+  const preview = show('commNotesPreview');
+  preview.textContent = val.trim() ? val.replace(/\s+/g, ' ').trim() : t('comm_modal.notes_ph');
+  preview.classList.toggle('text-muted', !val.trim());
+}
+
+let _commNotesModal = null;
+
+// Bigger textarea for editing notes, drilled into from the Communication
+// modal -- hides it while open and reopens on close (same stacked-modal
+// avoidance as the admin panel's raw body pane), rather than just being a
+// cramped 3-row textarea crammed into the main form.
+function openCommNotesModal() {
+  show('commNotesModalTextarea').value = show('commNotes').value || '';
+  _commModal.hide();
+  if (!_commNotesModal) {
+    _commNotesModal = new bootstrap.Modal(document.getElementById('commNotesModal'));
+    document.getElementById('commNotesModal').addEventListener('hidden.bs.modal', () => _commModal.show());
+  }
+  _commNotesModal.show();
+}
+
+function saveCommNotesModal() {
+  show('commNotes').value = show('commNotesModalTextarea').value;
+  _refreshCommNotesPreview();
+  _commNotesModal.hide();
 }
 
 // Takes the already-fetched case-detail object (not just its id) -- every

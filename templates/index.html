@@ -1476,7 +1476,10 @@
           </div>
           <div class="col-12">
             <label class="form-label small fw-semibold" data-i18n="comm_modal.notes">Notes</label>
-            <textarea id="commNotes" class="form-control form-control-sm" rows="3" placeholder="Any additional context…" data-i18n-ph="comm_modal.notes_ph"></textarea>
+            <button type="button" class="btn btn-outline-secondary btn-sm w-100 text-start" id="commNotesBtn" onclick="openCommNotesModal()">
+              <i class="bi bi-file-text me-1"></i><span id="commNotesPreview" class="text-truncate d-inline-block align-middle" style="max-width:calc(100% - 1.5rem)"></span>
+            </button>
+            <textarea id="commNotes" class="d-none"></textarea>
           </div>
         </div>
         <div id="commError" class="alert alert-danger mt-3 mb-0 d-none"></div>
@@ -1484,6 +1487,27 @@
       <div class="modal-footer border-top">
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="comm_modal.cancel">Cancel</button>
         <button type="button" class="btn btn-primary btn-sm" id="commSaveBtn" onclick="saveComm()"><i class="bi bi-check me-1"></i><span data-i18n="comm_modal.save">Save</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bigger notes editor, drilled into from the Communication modal (which
+     hides itself while this is open, same pattern as the admin panel's raw
+     body pane -- Bootstrap doesn't handle stacked modal backdrops well) -->
+<div class="modal fade" id="commNotesModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header border-bottom">
+        <h5 class="modal-title fw-bold"><i class="bi bi-file-text me-2"></i><span data-i18n="comm_modal.notes">Notes</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-3">
+        <textarea id="commNotesModalTextarea" class="form-control" rows="16" placeholder="Any additional context…" data-i18n-ph="comm_modal.notes_ph"></textarea>
+      </div>
+      <div class="modal-footer border-top">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="comm_modal.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveCommNotesModal()"><i class="bi bi-check me-1"></i><span data-i18n="comm_modal.save">Save</span></button>
       </div>
     </div>
   </div>
