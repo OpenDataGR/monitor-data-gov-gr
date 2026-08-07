@@ -5583,25 +5583,31 @@ function _renderCommsCaseGroups() {
     return `
       <tr class="comm-group-row" style="cursor:pointer" onclick="toggleCaseExpand(${cs.id})">
         <td colspan="6">
-          <div class="d-flex align-items-center gap-2 flex-wrap">
-            <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
-            <span class="text-muted small mono">#${cs.id}</span>
-            <span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">
-              <i class="bi ${isClosed ? 'bi-folder-check' : 'bi-folder2-open'} me-1"></i>${caseStatusLabel(cs.status)}
-            </span>
-            ${cs.is_stale ? `<span class="badge bg-secondary" style="font-size:.7rem" title="${t('comms.case_stale_hint')}"><i class="bi bi-hourglass-split me-1"></i>${t('comms.case_stale')}</span>` : ''}
-            <span class="fw-semibold">${esc(cs.org_title)}</span>
-            <span class="text-muted small">— ${esc(cs.subject)}</span>
-            <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
-            ${cs.has_auto_entry ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('inbound.auto_badge_title'))}"><i class="bi bi-robot me-1"></i>${esc(t('inbound.auto_badge'))}</span>` : ''}
-            <span class="text-muted small ms-auto">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}${isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')}</span>
-            <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('comms.case_add_entry')}"
-                    onclick="event.stopPropagation();openFollowupForCase(${cs.id})">
-              <i class="bi bi-plus"></i>
-            </button>
-            ${isClosed
-              ? `<button class="btn btn-outline-success btn-sm py-0 px-2" title="${t('comms.case_reopen')}" onclick="event.stopPropagation();reopenCase(${cs.id})"><i class="bi bi-arrow-counterclockwise"></i></button>`
-              : `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="${t('comms.case_close')}" onclick="event.stopPropagation();closeCase(${cs.id})"><i class="bi bi-check2-circle"></i></button>`}
+          <div class="d-flex flex-column gap-1">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
+              <span class="text-muted small mono">#${cs.id}</span>
+              <span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">
+                <i class="bi ${isClosed ? 'bi-folder-check' : 'bi-folder2-open'} me-1"></i>${caseStatusLabel(cs.status)}
+              </span>
+              ${cs.is_stale ? `<span class="badge bg-secondary" style="font-size:.7rem" title="${t('comms.case_stale_hint')}"><i class="bi bi-hourglass-split me-1"></i>${t('comms.case_stale')}</span>` : ''}
+              <span class="fw-semibold">${esc(cs.org_title)}</span>
+              <span class="text-muted small">— ${esc(cs.subject)}</span>
+              <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
+              ${cs.has_auto_entry ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('inbound.auto_badge_title'))}"><i class="bi bi-robot me-1"></i>${esc(t('inbound.auto_badge'))}</span>` : ''}
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="text-muted small">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}${isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')}</span>
+              <div class="d-flex gap-1 ms-auto">
+                <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('comms.case_add_entry')}"
+                        onclick="event.stopPropagation();openFollowupForCase(${cs.id})">
+                  <i class="bi bi-plus"></i>
+                </button>
+                ${isClosed
+                  ? `<button class="btn btn-outline-success btn-sm py-0 px-2" title="${t('comms.case_reopen')}" onclick="event.stopPropagation();reopenCase(${cs.id})"><i class="bi bi-arrow-counterclockwise"></i></button>`
+                  : `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="${t('comms.case_close')}" onclick="event.stopPropagation();closeCase(${cs.id})"><i class="bi bi-check2-circle"></i></button>`}
+              </div>
+            </div>
           </div>
         </td>
       </tr>
