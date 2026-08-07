@@ -1261,6 +1261,35 @@
       }
       return '';
     }
+    // Only a fallback for when the header-derived name (u.name, from the
+    // message's own "From:" display name) is missing -- an address swept
+    // in from a To:/Cc: line rather than an actual "From:" has no name to
+    // offer that way. Signatures don't label the name line the way a
+    // position does, so there's no keyword to key off -- the two reliable
+    // structural cues are the line right after a bare "--" delimiter (a
+    // signature's own first line, same delimiter the backend's
+    // _strip_signature_delimiter looks for) or right after a closing
+    // phrase ("Με εκτίμηση,", "Best regards,", ...) when there's no such
+    // delimiter. Skips a "name" that's really a phone number or email
+    // address on its own line.
+    const _SIG_START_RE = /^--$/;
+    const _CLOSING_PHRASE_RE = /^(με\s+εκτ[ίι]μηση|φιλικ[άα]\s+χαιρετ[ίι]σματα|ευχαριστ(?:[ώω]|ούμε)|best regards|kind regards|warm regards|regards|sincerely|thanks|thank you)[,.\s]*$/i;
+    function _extractName(text) {
+      if (!text) return '';
+      const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+      const isPlausibleName = s => !!s && s.length <= 60 && !_extractPhone(s) && !s.includes('@');
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (!_SIG_START_RE.test(lines[i]) && !_CLOSING_PHRASE_RE.test(lines[i])) continue;
+        // A "--" delimiter is sometimes immediately followed by its own
+        // closing phrase ("--\nBest regards,\nName") rather than the name
+        // directly -- skip past any further closing-phrase lines before
+        // taking the next one as the candidate.
+        let j = i + 1;
+        while (j < lines.length && _CLOSING_PHRASE_RE.test(lines[j])) j++;
+        if (j < lines.length && isPlausibleName(lines[j])) return lines[j];
+      }
+      return '';
+    }
     // Multi-org tag list for Register Contact -- mirrors the main
     // dashboard's own _upEditOrgs/_upOrgRenderTags pattern (same badge
     // markup) so a contact spanning more than one org can be registered in
@@ -2211,7 +2240,14 @@
       if (!found) return;
       const { unmatched: u, parsedEmail: r } = found;
       show('unmatchedContactId').value = u.id;
-      const parts = (u.name || '').trim().split(/\s+/);
+      const senderMsg = _findSenderMessage(r, u.email);
+      // u.name comes from the message's own "From:" display name -- reliable
+      // when it exists, but an address only ever seen swept in from a To:/Cc:
+      // line has none. Only then does the signature's own name line (see
+      // _extractName) get a say, same "weaker fallback, only when the
+      // stronger signal is missing" pattern as the org guess below.
+      const nameSource = u.name || (senderMsg && _extractName(senderMsg.body)) || '';
+      const parts = nameSource.trim().split(/\s+/);
       show('unmatchedFirstName').value = parts.slice(0, -1).join(' ') || parts[0] || '';
       show('unmatchedLastName').value  = parts.length > 1 ? parts[parts.length - 1] : '';
       // u.org_code/org_label only ever come from _match_inbound_email's
@@ -2221,7 +2257,6 @@
       // (async, see _unmatchedGuessOrgByDomain below) first, then an
       // ALL-CAPS acronym word-matched against the org's own label as a last
       // resort (see _guessOrgFromText).
-      const senderMsg = _findSenderMessage(r, u.email);
       let orgCode = u.org_code || '', orgLabel = u.org_label || '';
       const hadReliableOrgGuess = !!orgCode;
       if (!orgCode) {
