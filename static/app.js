@@ -10200,6 +10200,25 @@ const LIVE_TOOLTIP_AUTOCLOSE_MS = 2500;
 let _liveSelectedMarker = null;
 let _liveTooltipTimer = null;
 
+// Leaflet's own opacity-transition CSS for tooltips (.leaflet-fade-anim
+// .leaflet-tooltip) doesn't end up applying to a tooltip force-opened via
+// openTooltip() here, so closeTooltip() just snaps it away instantly.
+// Fading it out by hand on the actual DOM node first -- cheap, it's one
+// small element and a single CSS transition -- then closing for real once
+// the transition's had time to finish.
+const LIVE_TOOLTIP_FADE_MS = 200;
+function _closeMarkerTooltipFaded(marker) {
+  if (!marker || !marker.isTooltipOpen || !marker.isTooltipOpen()) {
+    if (marker) marker.closeTooltip();
+    return;
+  }
+  const el = marker.getTooltip().getElement();
+  if (!el) { marker.closeTooltip(); return; }
+  el.style.transition = `opacity ${LIVE_TOOLTIP_FADE_MS}ms ease`;
+  el.style.opacity = '0';
+  setTimeout(() => marker.closeTooltip(), LIVE_TOOLTIP_FADE_MS);
+}
+
 // Clicking either a map marker or a list row selects both -- pans to,
 // recolors, and briefly labels the marker, and highlights the matching row
 // (or vice versa). A visit with no lat/lon never got a marker in the first
@@ -10211,7 +10230,7 @@ function _selectLiveVisit(key) {
     _liveTooltipTimer = null;
   }
   if (_liveSelectedMarker) {
-    _liveSelectedMarker.closeTooltip();
+    _closeMarkerTooltipFaded(_liveSelectedMarker);
     _liveSelectedMarker.setStyle({ color: LIVE_MARKER_COLOR, fillColor: LIVE_MARKER_COLOR });
     _liveSelectedMarker = null;
   }
@@ -10222,7 +10241,7 @@ function _selectLiveVisit(key) {
     marker.setStyle({ color: LIVE_MARKER_SELECTED_COLOR, fillColor: LIVE_MARKER_SELECTED_COLOR });
     marker.openTooltip();
     _liveTooltipTimer = setTimeout(() => {
-      marker.closeTooltip();
+      _closeMarkerTooltipFaded(marker);
       _liveTooltipTimer = null;
     }, LIVE_TOOLTIP_AUTOCLOSE_MS);
     _liveSelectedMarker = marker;
