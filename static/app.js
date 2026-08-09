@@ -445,6 +445,7 @@ const TRANSLATIONS = {
     'contacts.cancel': 'Cancel',
     'contacts.save': 'Save',
     'contacts.delete_confirm': 'Delete this contact?',
+    'contacts.delete_confirm_linked': 'This contact is linked to {n} Communication(s) -- deleting it will remove that credit (the Communications themselves are kept). Delete anyway?',
     'contacts.delete_failed': 'Delete failed:',
     'health.col_endpoint': 'Endpoint',
     'health.col_status': 'Status',
@@ -1024,6 +1025,7 @@ const TRANSLATIONS = {
     'contacts.cancel': 'Ακύρωση',
     'contacts.save': 'Αποθήκευση',
     'contacts.delete_confirm': 'Διαγραφή αυτής της επαφής;',
+    'contacts.delete_confirm_linked': 'Αυτή η επαφή είναι συνδεδεμένη με {n} Επικοινωνία(-ες) -- η διαγραφή θα αφαιρέσει αυτή την απόδοση (οι ίδιες οι Επικοινωνίες παραμένουν). Διαγραφή ούτως ή άλλως;',
     'contacts.delete_failed': 'Η διαγραφή απέτυχε:',
     'health.col_endpoint': 'Τελικό Σημείο',
     'health.col_status': 'Κατάσταση',
@@ -10019,8 +10021,20 @@ function _setOrgLocked(locked) {
   show('commOrgLockedHint').classList.toggle('d-none', !locked);
 }
 
-function deletePmContactRecord(contactId, username) {
-  confirmDangerAction(t('contacts.delete_confirm'), async () => {
+async function deletePmContactRecord(contactId, username) {
+  // Deleting a contact severs its credit on every Communication it's
+  // linked to (the Communications themselves are kept, see /api/contacts/
+  // remove) -- worth a specific warning instead of the generic confirm,
+  // since that attribution loss isn't otherwise obvious from this list.
+  let linkedCount = 0;
+  try {
+    const usage = await fetch(`${API_BASE}api/contacts/id/${contactId}/usage`).then(r => r.ok ? r.json() : {});
+    linkedCount = usage.communication_count || 0;
+  } catch (_) {}
+  const confirmMsg = linkedCount > 0
+    ? t('contacts.delete_confirm_linked').replace('{n}', linkedCount)
+    : t('contacts.delete_confirm');
+  confirmDangerAction(confirmMsg, async () => {
     try {
       await fetch(`${API_BASE}api/contacts/remove?d=${_b64enc({id: contactId})}`, { method: 'DELETE', cache: 'no-store' });
       if (username && _portalMembersCache) {

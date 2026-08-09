@@ -6922,6 +6922,16 @@ def contacts_export():
     )
 
 
+@app.route("/api/contacts/id/<int:contact_id>/usage", methods=["GET"])
+def contacts_usage(contact_id):
+    """Lightweight pre-delete check -- how many Communications this contact
+    is currently credited on, so the delete confirmation can warn about that
+    attribution going away instead of silently severing it (see the FK
+    cleanup in /api/contacts/remove and /api/contacts/id/<id>/delete)."""
+    count = CommunicationContact.query.filter_by(org_contact_id=contact_id).count()
+    return jsonify({"communication_count": count})
+
+
 @app.route("/api/contacts/summary", methods=["GET"])
 def contacts_summary():
     from sqlalchemy import func
@@ -6984,6 +6994,13 @@ def contacts_update(contact_id):
 @app.route("/api/contacts/id/<int:contact_id>/delete", methods=["DELETE", "POST"])
 def contacts_delete(contact_id):
     contact = OrgContact.query.get_or_404(contact_id)
+    # Same FK cleanup as /api/contacts/remove -- see that route for why.
+    CommunicationContact.query.filter_by(org_contact_id=contact.id).delete(synchronize_session=False)
+    InboundEmail.query.filter_by(matched_contact_id=contact.id).update(
+        {"matched_contact_id": None}, synchronize_session=False)
+    for u_row in UnmatchedEmailContact.query.filter_by(resolved_contact_id=contact.id).all():
+        u_row.resolved_contact_id = None
+        u_row.status = "pending"
     db.session.delete(contact)
     db.session.commit()
     return jsonify({"ok": True})
@@ -7114,17 +7131,21 @@ def contacts_remove():
         return jsonify({"error": "id required"}), 400
     contact = OrgContact.query.get_or_404(int(contact_id))
     contact_snapshot = contact.to_dict()
-    # Neither FK below cascades on the OrgContact side (only Communication ->
-    # its own contact_links does), so deleting a contact credited on a
-    # Communication or resolved from a Mail Parser participant used to just
-    # hit a raw FK-constraint error instead of actually deleting anything.
-    # Clear those references first -- same "unlink before delete rather than
-    # leaving a dangling foreign key" approach communications_delete already
-    # uses for InboundEmail links. The Communications themselves are
-    # untouched (contact_person's own frozen text survives), and any
-    # participant this contact had resolved goes back to pending instead of
-    # silently pointing at a contact that no longer exists.
+    # None of the three FKs below cascade on the OrgContact side (only
+    # Communication -> its own contact_links does), so deleting a contact
+    # credited on a Communication, auto-matched on an inbound email, or
+    # resolved from a Mail Parser participant used to just hit a raw
+    # FK-constraint error instead of actually deleting anything. Clear those
+    # references first -- same "unlink before delete rather than leaving a
+    # dangling foreign key" approach communications_delete already uses for
+    # InboundEmail links. The Communications themselves are untouched
+    # (contact_person's own frozen text survives), a matched email just goes
+    # back to showing no matched_contact, and any participant this contact
+    # had resolved goes back to pending instead of silently pointing at a
+    # contact that no longer exists.
     CommunicationContact.query.filter_by(org_contact_id=contact.id).delete(synchronize_session=False)
+    InboundEmail.query.filter_by(matched_contact_id=contact.id).update(
+        {"matched_contact_id": None}, synchronize_session=False)
     for u_row in UnmatchedEmailContact.query.filter_by(resolved_contact_id=contact.id).all():
         u_row.resolved_contact_id = None
         u_row.status = "pending"
