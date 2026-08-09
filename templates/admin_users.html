@@ -1189,37 +1189,8 @@
     // (ΠΡΟΣ matched a foundation's title that happens to contain "προς ...").
     // Never valid acronym candidates, blocked outright rather than relying
     // on length/case alone to filter them out.
-    const _GREEK_STOPWORDS = new Set(['ΚΑΙ','ΓΙΑ','ΑΠΟ','ΠΡΟΣ','ΜΕΤΑ','ΔΙΑ','ΕΠΙ','ΥΠΟ','ΚΑΤΑ',
-      'ΜΕΣΩ','ΧΩΡΙΣ','ΕΝΤΟΣ','ΕΚΤΟΣ','ΜΕΤΑΞΥ','ΠΕΡΙ','ΑΝΤΙ','ΠΑΡΑ','ΣΤΙΣ','ΣΤΟΝ','ΣΤΗΝ','ΣΤΟ',
-      'ΤΗΝ','ΤΟΝ','ΤΗΣ','ΤΟΥ','ΤΩΝ','ΤΟΥΣ','ΤΙΣ','ΕΙΝΑΙ','ΕΧΕΙ','ΘΕΛΕΤΕ','ΠΟΥ','ΟΤΙ','ΑΛΛΑ',
-      'ΑΥΤΟ','ΑΥΤΗ','ΑΥΤΟΣ','ΜΟΝΟ','ΕΔΩ','ΕΚΕΙ']);
-    // Best-effort default when nothing else already narrowed down the org
-    // (see openUnmatchedContactCreate) -- ALL-CAPS Greek tokens only (a
-    // likely official parenthetical/suffixed acronym, e.g. "... - ΡΑΑΕΥ"),
-    // 4+ letters, excluding common function words, tried longest-first,
-    // matched as a whole WORD (not a raw substring) against BOTH the CKAN
-    // portal org list and the HRMS one -- a portal-friendly acronym suffix
-    // like "- ΡΑΑΕΥ" is much more likely to appear on a CKAN org's own title
-    // (added for exactly this kind of recognizability) than on the plain
-    // HRMS government registry label, so searching HRMS alone (an earlier
-    // version of this) can miss the correct org entirely and fall through
-    // to a coincidental word match on something unrelated. Still just a
-    // starting point -- the search box stays fully editable regardless.
-    function _guessOrgFromText(text) {
-      if (!text) return null;
-      const caps = (text.match(/[Α-Ωα-ωA-Za-z]{4,}/g) || [])
-        .filter(t => t === t.toUpperCase() && /[Α-Ω]/.test(t) && !_GREEK_STOPWORDS.has(t))
-        .sort((a, b) => b.length - a.length);
-      for (const tok of caps) {
-        const nTok = _ns(tok);
-        const re = new RegExp(`(^|[^a-zα-ω])${nTok}([^a-zα-ω]|$)`);
-        const hrmsHit = _publicOrgs.find(o => re.test(_ns(o.label)));
-        if (hrmsHit) return hrmsHit;
-        const ckanHit = _orgsData.find(o => re.test(_ns(o.title)) || re.test(_ns(o.name)));
-        if (ckanHit) return {code: ckanHit.name, label: ckanHit.title};
-      }
-      return null;
-    }
+    // _guessOrgFromText/_GREEK_STOPWORDS now live in org_search.js, shared
+    // with the main dashboard's own "Attach Email to a Case" flow.
     // _findSenderMessage/_extractPhone/_extractPosition/_extractName/
     // _guessNameFromEmail all live in contact_extract.js, shared with the
     // main dashboard's own "Attach Email to a Case" flow.

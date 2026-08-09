@@ -6335,11 +6335,23 @@ function _inboundAttachOrgSearch(q) {
   dd.classList.remove('d-none');
 }
 
+// Tracks whether the current org value came from an automatic guess
+// (text-based or domain-based) rather than a deliberate user pick -- so a
+// later, stronger auto-guess (domain match resolving after the instant
+// text-based one already filled something in) knows it's still safe to
+// override, while a real user selection never gets clobbered by either.
+let _inboundAttachOrgAutoFilled = false;
+
 function _inboundAttachOrgSelect(code, label) {
+  _inboundAttachSetOrg(code, label, false);
+}
+
+function _inboundAttachSetOrg(code, label, isAuto) {
   show('inboundAttachOrgCode').value  = code;
   show('inboundAttachOrgLabel').value = label;
   show('inboundAttachOrgSearch').value = label;
   document.getElementById('inboundAttachOrgDropdown').classList.add('d-none');
+  _inboundAttachOrgAutoFilled = !!isAuto;
   _refreshInboundAttachCases();
 }
 
@@ -6428,9 +6440,22 @@ function openInboundAttachModal(id) {
   } else {
     hintEl.classList.add('d-none');
   }
-  // Also try a domain match against the detected sender -- same signal
-  // the admin panel's own "Register Contact" flow already uses, so this
-  // search isn't a completely blind pick-from-every-org either.
+
+  const stillUnmatched = (e.unmatched_contacts || []).find(u => u.status === 'pending');
+  const senderMsg = stillUnmatched ? _findSenderMessage(e, stillUnmatched.email) : null;
+
+  // Two auto-guess tiers, weakest first so something shows immediately: an
+  // ALL-CAPS acronym in the subject/signature (sync, e.g. "... ΡΑΑΕΥ")
+  // prefills right away; a domain match against an already-registered
+  // contact (async) then overrides it if one resolves, since a real
+  // existing contact at this domain is stronger evidence than a text
+  // guess -- but only while the field still holds an auto-guess, never
+  // once the user has actually picked/typed something themselves.
+  _inboundAttachOrgAutoFilled = false;
+  if (!hasOrg) {
+    const textGuess = _guessOrgFromText(e.subject) || (senderMsg && _guessOrgFromText(senderMsg.body));
+    if (textGuess) _inboundAttachSetOrg(textGuess.code, textGuess.label, true);
+  }
   if (!hasOrg && e.detected_email) _inboundAttachGuessOrgByDomain(id, e.detected_email);
 
   // Offer to register the detected sender as a contact in the same action
@@ -6439,11 +6464,9 @@ function openInboundAttachModal(id) {
   // doesn't have to make a separate trip through the (superadmin-only)
   // admin page just to get this person on record. Only when still pending
   // -- if it was already resolved/dropped there's nothing left to offer.
-  const stillUnmatched = (e.unmatched_contacts || []).find(u => u.status === 'pending');
   const contactWrap = document.getElementById('inboundAttachNewContactWrap');
   if (!hasOrg && stillUnmatched) {
     const u = stillUnmatched;
-    const senderMsg = _findSenderMessage(e, u.email);
     const nameSource = (senderMsg && _extractName(senderMsg.body)) || u.name || _guessNameFromEmail(u.email) || '';
     const parts = nameSource.trim().split(/\s+/);
     show('inboundAttachUnmatchedId').value = u.id;
@@ -6470,14 +6493,16 @@ function openInboundAttachModal(id) {
 // See /api/contacts/guess-org-by-domain -- fires after the modal's already
 // open, and only applies its result if the modal's still sitting on this
 // same email when it resolves (guards against it landing late after the
-// modal moved on or closed). Fills the org search the same way picking a
-// dropdown result would, so the existing case-refresh/subject-toggle logic
-// downstream doesn't need its own separate path for this.
+// modal moved on or closed) AND the org field still only holds an earlier
+// auto-guess (or nothing) -- never overrides a value the user actually
+// picked or typed themselves, but IS allowed to override the weaker
+// synchronous text-based guess that may have already filled it in.
 async function _inboundAttachGuessOrgByDomain(id, email) {
   try {
     const data = await fetch(`${API_BASE}api/contacts/guess-org-by-domain?email=${encodeURIComponent(email)}`).then(r => r.json());
-    if (Number(show('inboundAttachId').value) !== id || show('inboundAttachOrgCode').value) return;
-    if (data.found) _inboundAttachOrgSelect(data.found.code, data.found.label);
+    if (Number(show('inboundAttachId').value) !== id) return;
+    if (show('inboundAttachOrgCode').value && !_inboundAttachOrgAutoFilled) return;
+    if (data.found) _inboundAttachSetOrg(data.found.code, data.found.label, true);
   } catch (_) {}
 }
 
