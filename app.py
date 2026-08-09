@@ -4348,6 +4348,14 @@ def communications_update(comm_id):
                 sibling.org_title = comm.org_title
     if "subject" in body:
         comm.subject = (body["subject"] or "").strip()
+        if comm.status == "Initial Contact" and comm.case:
+            # the case's own subject is set once, from this same entry, at
+            # the moment it opens the case (see communications_create) -- if
+            # this is that entry, keep the case's header/subject-match text
+            # in sync the same way org already does above, instead of
+            # leaving it silently stuck on the original (possibly wrong)
+            # wording forever.
+            comm.case.subject = comm.subject
     if "status" in body:
         if body["status"] not in VALID_STATUSES:
             return jsonify({"error": f"status must be one of {sorted(VALID_STATUSES)}"}), 400
