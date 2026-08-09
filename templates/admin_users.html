@@ -548,6 +548,9 @@
         </div>
         <div class="modal-body pt-3" id="parsedEmailDetailBody" style="max-height:75vh;overflow-y:auto"></div>
         <div class="modal-footer border-top flex-wrap gap-1">
+          <button type="button" class="btn btn-primary btn-sm d-none" id="parsedDetailAttachBtn" onclick="attachParsedEmail(_parsedEmailDetailId)">
+            <i class="bi bi-link-45deg me-1"></i><span data-i18n="admin.parsed_attach">Attach to a Case</span>
+          </button>
           <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="parsedDetailRematchBtn" onclick="rematchParsedEmail(_parsedEmailDetailId)">
             <i class="bi bi-arrow-repeat me-1"></i><span data-i18n="admin.parsed_rematch">Re-run matching</span>
           </button>
@@ -580,54 +583,6 @@
         </div>
         <div class="modal-footer border-top">
           <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.close">Close</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Manually log one thread message as its own Communication -->
-  <div class="modal fade" id="threadMessageAttachModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header border-bottom">
-          <h5 class="modal-title fw-bold"><i class="bi bi-link-45deg me-2"></i><span data-i18n="admin.thread_attach_title">Log This Message</span></h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body pt-3">
-          <input type="hidden" id="threadAttachInboundId">
-          <input type="hidden" id="threadAttachMsgIndex">
-          <div class="mb-2">
-            <label class="form-label small mb-1" data-i18n="admin.thread_attach_org_code">Org (opens a new case if none is Open yet)</label>
-            <input type="hidden" id="threadAttachOrgCode">
-            <div class="position-relative">
-              <input type="text" class="form-control form-control-sm" id="threadAttachOrgSearch" autocomplete="off"
-                     data-i18n-ph="admin.org_search_ph" placeholder="Search organizations…"
-                     oninput="_orgSearchDropdown(this.value,'threadAttachOrgDropdown','_threadAttachOrgSelect')"
-                     onfocus="_orgSearchDropdown(this.value,'threadAttachOrgDropdown','_threadAttachOrgSelect')"
-                     onblur="setTimeout(()=>document.getElementById('threadAttachOrgDropdown').classList.add('d-none'),150)">
-              <ul class="list-group shadow-sm position-absolute w-100 d-none" id="threadAttachOrgDropdown" style="z-index:1060;max-height:220px;overflow-y:auto;top:100%"></ul>
-            </div>
-          </div>
-          <div class="mb-2 d-none" id="threadAttachCaseWrap">
-            <label class="form-label small mb-1" data-i18n="admin.thread_attach_case_id">Case</label>
-            <select id="threadAttachCaseSelect" class="form-select form-select-sm"></select>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-1" data-i18n="admin.thread_attach_subject">New case subject (only used if the org has no Open case yet)</label>
-            <input type="text" id="threadAttachSubject" class="form-control form-control-sm">
-          </div>
-          <div class="mb-2">
-            <label class="form-label small mb-1" data-i18n="admin.thread_attach_contact_email">Contact email (optional)</label>
-            <input type="email" id="threadAttachContactEmail" class="form-control form-control-sm">
-            <div class="form-text small" data-i18n="admin.thread_attach_contact_email_hint">Credits this message to an already-registered contact with this exact email. Leave blank to log the message without attributing it to anyone in particular -- it must match a registered contact exactly, or saving will fail.</div>
-          </div>
-          <div id="threadAttachError" class="alert alert-danger small mt-2 mb-0 d-none"></div>
-        </div>
-        <div class="modal-footer border-top">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
-          <button type="button" class="btn btn-primary btn-sm" onclick="saveThreadMessageAttach()">
-            <i class="bi bi-check me-1"></i><span data-i18n="admin.thread_attach_save">Log Communication</span>
-          </button>
         </div>
       </div>
     </div>
@@ -846,20 +801,13 @@
         'admin.parsed_detail_candidates': 'Candidate contacts', 'admin.parsed_detail_detected': 'Detected (unregistered)',
         'admin.parsed_detail_matched_org': 'Matched organization', 'admin.parsed_detail_communication': 'Linked communication',
         'admin.parsed_detail_communications': 'Linked communications', 'admin.parsed_detail_unmatched': 'Unregistered participants',
-        'admin.parsed_detail_thread': 'Thread', 'admin.thread_attach_btn': 'Log as Communication',
+        'admin.parsed_detail_thread': 'Thread', 'admin.parsed_attach': 'Attach to a Case',
         'admin.parsed_rematch': 'Re-run matching', 'admin.parsed_dismiss': 'Dismiss', 'admin.parsed_restore': 'Restore', 'admin.parsed_delete': 'Delete',
         'admin.parsed_confirm_dismiss': 'Dismiss this email? No Communication will be created from it.',
         'admin.parsed_confirm_delete': 'Permanently delete this Parsed Emails row? Any Communication it already produced stays untouched -- only this record and its review flags go away.',
         'admin.parsed_confirm_detach': 'Un-link this Communication from this email? The Communication itself is kept; the email just stops being credited with producing it.',
         'admin.parsed_confirm_comm_delete': 'Permanently delete this Communication? This cannot be undone.',
         'admin.parsed_comm_edit': 'Edit', 'admin.parsed_comm_detach': 'Detach', 'admin.parsed_comm_delete': 'Delete',
-        'admin.thread_attach_title': 'Log This Message', 'admin.thread_attach_org_code': 'Org (opens a new case if none is Open yet)',
-        'admin.thread_attach_case_id': 'Case', 'admin.thread_attach_contact_email': 'Contact email (optional)',
-        'admin.thread_attach_contact_email_hint': "Credits this message to an already-registered contact with this exact email. Leave blank to log the message without attributing it to anyone in particular -- it must match a registered contact exactly, or saving will fail.",
-        'admin.thread_attach_new_case': '— Open new case —',
-        'admin.thread_attach_subject': 'New case subject (only used if the org has no Open case yet)',
-        'admin.thread_attach_save': 'Log Communication', 'admin.thread_attach_need_org_or_case': 'Enter an org code or a case id.',
-        'admin.thread_attach_pick_case': 'More than one open case now matches -- pick one from the Case list above and save again.',
         'admin.org_search_ph': 'Search organizations…',
         'admin.unmatched_drop': 'Drop', 'admin.unmatched_create': 'Create contact',
         'admin.unmatched_confirm_drop': 'Drop this unregistered participant? This just dismisses the flag -- it does not affect anything already logged.',
@@ -988,20 +936,13 @@
         'admin.parsed_detail_candidates': 'Υποψήφιες επαφές', 'admin.parsed_detail_detected': 'Εντοπίστηκε (μη καταχωρημένο)',
         'admin.parsed_detail_matched_org': 'Αντιστοιχισμένος φορέας', 'admin.parsed_detail_communication': 'Συνδεδεμένη επικοινωνία',
         'admin.parsed_detail_communications': 'Συνδεδεμένες επικοινωνίες', 'admin.parsed_detail_unmatched': 'Μη καταχωρημένοι συμμετέχοντες',
-        'admin.parsed_detail_thread': 'Νήμα', 'admin.thread_attach_btn': 'Καταγραφή ως Επικοινωνία',
+        'admin.parsed_detail_thread': 'Νήμα', 'admin.parsed_attach': 'Επισύναψη σε Υπόθεση',
         'admin.parsed_rematch': 'Επανάληψη αντιστοίχισης', 'admin.parsed_dismiss': 'Απόρριψη', 'admin.parsed_restore': 'Επαναφορά', 'admin.parsed_delete': 'Διαγραφή',
         'admin.parsed_confirm_dismiss': 'Απόρριψη αυτού του email; Δεν θα δημιουργηθεί Επικοινωνία από αυτό.',
         'admin.parsed_confirm_delete': 'Οριστική διαγραφή αυτής της εγγραφής Parsed Emails; Οποιαδήποτε Επικοινωνία έχει ήδη παραχθεί παραμένει ανεπηρέαστη -- διαγράφεται μόνο αυτή η εγγραφή και οι επισημάνσεις ελέγχου της.',
         'admin.parsed_confirm_detach': 'Αποσύνδεση αυτής της Επικοινωνίας από αυτό το email; Η Επικοινωνία παραμένει -- το email απλώς δεν θα εμφανίζεται πλέον ως αυτό που την παρήγαγε.',
         'admin.parsed_confirm_comm_delete': 'Οριστική διαγραφή αυτής της Επικοινωνίας; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.',
         'admin.parsed_comm_edit': 'Επεξεργασία', 'admin.parsed_comm_detach': 'Αποσύνδεση', 'admin.parsed_comm_delete': 'Διαγραφή',
-        'admin.thread_attach_title': 'Καταγραφή Αυτού του Μηνύματος', 'admin.thread_attach_org_code': 'Φορέας (ανοίγει νέα υπόθεση αν δεν υπάρχει ήδη ανοιχτή)',
-        'admin.thread_attach_case_id': 'Υπόθεση', 'admin.thread_attach_contact_email': 'Email επαφής (προαιρετικό)',
-        'admin.thread_attach_contact_email_hint': 'Πιστώνει αυτό το μήνυμα σε ήδη καταχωρημένη επαφή με αυτό ακριβώς το email. Αφήστε το κενό για να καταγραφεί το μήνυμα χωρίς να αποδοθεί σε συγκεκριμένο άτομο -- πρέπει να ταιριάζει ακριβώς με καταχωρημένη επαφή, αλλιώς η αποθήκευση θα αποτύχει.',
-        'admin.thread_attach_new_case': '— Άνοιγμα νέας υπόθεσης —',
-        'admin.thread_attach_subject': 'Θέμα νέας υπόθεσης (χρησιμοποιείται μόνο αν ο φορέας δεν έχει ανοικτή υπόθεση)',
-        'admin.thread_attach_save': 'Καταγραφή Επικοινωνίας', 'admin.thread_attach_need_org_or_case': 'Εισάγετε κωδικό φορέα ή αναγνωριστικό υπόθεσης.',
-        'admin.thread_attach_pick_case': 'Πλέον ταιριάζουν περισσότερες από μία ανοιχτές υποθέσεις -- επιλέξτε μία από τη λίστα Υπόθεση παραπάνω και αποθηκεύστε ξανά.',
         'admin.unmatched_drop': 'Απόρριψη', 'admin.unmatched_create': 'Καταχώρηση επαφής',
         'admin.unmatched_confirm_drop': 'Απόρριψη αυτού του μη καταχωρημένου συμμετέχοντα; Αυτό απλώς απορρίπτει την επισήμανση -- δεν επηρεάζει τίποτα που έχει ήδη καταγραφεί.',
         'admin.unmatched_create_title': 'Καταχώρηση Επαφής', 'admin.unmatched_create_save': 'Καταχώρηση',
@@ -1249,40 +1190,6 @@
         } catch (_) { hint.classList.add('d-none'); }
       }, 400);
     }
-    function _threadAttachOrgSelect(code, label) {
-      show('threadAttachOrgCode').value = code;
-      show('threadAttachOrgSearch').value = label;
-      document.getElementById('threadAttachOrgDropdown').classList.add('d-none');
-      _threadAttachRefreshCases(code);
-    }
-
-    // Mirrors the main dashboard's own _refreshInboundAttachCases -- a raw
-    // case-id number field gave no way to tell which id belongs to which
-    // case, so picking one of two open cases for the same org meant guessing.
-    // Listing them by subject instead removes the guesswork entirely, and as
-    // a side effect the backend's own multiple_open_cases error (which this
-    // modal never surfaced usefully -- it just showed that literal string)
-    // can no longer happen from here, since the ambiguous cases are now
-    // presented as distinct, named choices instead.
-    async function _threadAttachRefreshCases(orgCode) {
-      const sel  = document.getElementById('threadAttachCaseSelect');
-      const wrap = document.getElementById('threadAttachCaseWrap');
-      if (!orgCode) { wrap.classList.add('d-none'); sel.innerHTML = ''; return; }
-      wrap.classList.remove('d-none');
-      let cases;
-      try {
-        cases = await fetch(`../api/cases?status=Open`).then(r => r.ok ? r.json() : []);
-      } catch (_) {
-        cases = [];
-      }
-      const openCases = (Array.isArray(cases) ? cases : []).filter(c => c.org_name === orgCode);
-      sel.innerHTML = [
-        `<option value="">${esc(t('admin.thread_attach_new_case'))}</option>`,
-        ...openCases.map(c => `<option value="${c.id}">${esc(c.subject)}</option>`),
-      ].join('');
-      sel.value = '';
-    }
-
     let _usersCache = [];
     let _usersSortCol = null;  // null = whatever order /api/users returned, until a header's clicked
     let _usersSortDir = 'asc';
@@ -1995,12 +1902,13 @@
               </div>
             </div>
             <div class="col-12 col-md-8">
-              <div id="threadMsgDetailPane" class="border rounded p-2 h-100">${_renderThreadMsgDetail(r.id, r.thread_messages[0])}</div>
+              <div id="threadMsgDetailPane" class="border rounded p-2 h-100">${_renderThreadMsgDetail(r.thread_messages[0])}</div>
             </div>
           </div>
         </div>` : ''}`;
       document.getElementById('parsedEmailDetailBody').innerHTML = body;
       _parsedEmailDetailId = id;
+      document.getElementById('parsedDetailAttachBtn').classList.toggle('d-none', r.status !== 'pending_review');
       document.getElementById('parsedDetailRematchBtn').classList.toggle('d-none', r.status !== 'pending_review');
       document.getElementById('parsedDetailDismissBtn').classList.toggle('d-none', r.status !== 'pending_review');
       document.getElementById('parsedDetailRestoreBtn').classList.toggle('d-none', r.status !== 'dismissed');
@@ -2008,7 +1916,7 @@
       _parsedEmailDetailModal.show();
     }
 
-    function _renderThreadMsgDetail(inboundId, msg) {
+    function _renderThreadMsgDetail(msg) {
       const none = t('admin.parsed_detail_none');
       return `
         <div class="small mb-2">
@@ -2016,10 +1924,7 @@
           ${msg.sent_date ? `<div class="text-muted">${esc(msg.sent_date)}</div>` : ''}
           ${msg.subject ? `<div class="text-muted">${esc(msg.subject)}</div>` : ''}
         </div>
-        ${msg.body ? `<pre class="small bg-body-secondary p-2 rounded mb-2" style="white-space:pre-wrap;word-break:break-word;max-height:18vh;overflow-y:auto">${esc(msg.body.slice(0, 2000))}</pre>` : `<p class="text-muted small mb-2">${none}</p>`}
-        <div class="text-end">
-          <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openThreadMessageAttach(${inboundId},${msg.index})">${t('admin.thread_attach_btn')}</button>
-        </div>`;
+        ${msg.body ? `<pre class="small bg-body-secondary p-2 rounded mb-2" style="white-space:pre-wrap;word-break:break-word;max-height:18vh;overflow-y:auto">${esc(msg.body.slice(0, 2000))}</pre>` : `<p class="text-muted small mb-2">${none}</p>`}`;
     }
 
     function _selectThreadMsg(btn, inboundId, listIndex) {
@@ -2029,7 +1934,7 @@
       if (!msg) return;
       btn.parentElement.querySelectorAll('.list-group-item').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      document.getElementById('threadMsgDetailPane').innerHTML = _renderThreadMsgDetail(inboundId, msg);
+      document.getElementById('threadMsgDetailPane').innerHTML = _renderThreadMsgDetail(msg);
     }
 
     let _parsedEmailDetailId = null;
@@ -2115,71 +2020,17 @@
       _rawBodyModal.show();
     }
 
-    let _threadMessageAttachModal = null;
-
-    function openThreadMessageAttach(inboundId, msgIndex) {
-      const r = _parsedEmailsCache.find(x => x.id === inboundId);
-      const msg = r && r.thread_messages ? r.thread_messages.find(m => m.index === msgIndex) : null;
-      show('threadAttachInboundId').value = inboundId;
-      show('threadAttachMsgIndex').value = msgIndex;
-      // Already-known org/subject prefilled -- this is exactly the case a
-      // brand-new thread with a proper subject shouldn't need re-entering,
-      // just confirming or overriding.
-      show('threadAttachOrgCode').value = (r && r.matched_org_code) || '';
-      show('threadAttachOrgSearch').value = (r && r.matched_org_label) || '';
-      _threadAttachRefreshCases((r && r.matched_org_code) || '');
-      show('threadAttachSubject').value = (msg && msg.subject) || (r && r.subject) || '';
-      show('threadAttachContactEmail').value = '';
-      show('threadAttachError').classList.add('d-none');
-      if (!_threadMessageAttachModal) _threadMessageAttachModal = new bootstrap.Modal(document.getElementById('threadMessageAttachModal'));
-      _threadMessageAttachModal.show();
-    }
-
-    async function saveThreadMessageAttach() {
-      const inboundId = show('threadAttachInboundId').value;
-      const msgIndex  = show('threadAttachMsgIndex').value;
-      const errEl = show('threadAttachError');
-      errEl.classList.add('d-none');
-      const orgCode  = show('threadAttachOrgCode').value.trim();
-      const caseId   = document.getElementById('threadAttachCaseSelect').value.trim();
-      if (!orgCode && !caseId) {
-        errEl.textContent = t('admin.thread_attach_need_org_or_case');
-        errEl.classList.remove('d-none');
-        return;
-      }
-      try {
-        const resp = await fetch(`../api/inbound-emails/${inboundId}/thread-messages/${msgIndex}/attach`, {
-          method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            org_code: orgCode, case_id: caseId || undefined,
-            // Only actually used server-side when this org has no Open case
-            // yet and a new one needs opening -- harmless to send otherwise.
-            subject: show('threadAttachSubject').value.trim(),
-            org_title: show('threadAttachOrgSearch').value.trim(),
-            contact_email: show('threadAttachContactEmail').value.trim(),
-          }),
-        });
-        const data = await resp.json();
-        if (!resp.ok) {
-          // The case picker already lists every open case for this org by
-          // subject, so this shouldn't normally fire from here anymore --
-          // kept as a fallback for a case opening/closing elsewhere in the
-          // instant between loading this list and hitting Save. Re-fetch
-          // the list rather than leaving the raw "multiple_open_cases"
-          // error code on screen with nothing the admin can act on.
-          if (data.error === 'multiple_open_cases') {
-            await _threadAttachRefreshCases(orgCode);
-            throw new Error(t('admin.thread_attach_pick_case'));
-          }
-          throw new Error(data.error || t('admin.failed'));
-        }
-        _threadMessageAttachModal.hide();
-        await loadParsedEmails();
-        showParsedEmailDetail(Number(inboundId));
-      } catch (e) {
-        errEl.textContent = e.message;
-        errEl.classList.remove('d-none');
-      }
+    // The Comms edit modal's own "Attach Email to a Case" flow lives on the
+    // main dashboard, not this standalone page -- deep-link over there the
+    // same way editLinkedCommunication does for editing, rather than
+    // duplicating the whole attach modal (org guessing, case picker,
+    // register-as-contact) here a second time. Replaces the old per-thread-
+    // message "Log as Communication" action, which only ever logged one
+    // message under a case with no way to see which case was which; this
+    // attaches the whole email using the same well-built flow every other
+    // pending_review email already goes through.
+    function attachParsedEmail(id) {
+      window.location.href = `${INDEX_URL}?action=attach-email&inbound=${id}`;
     }
 
     function _findUnmatchedContact(unmatchedId) {

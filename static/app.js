@@ -6394,8 +6394,16 @@ function _onInboundAttachCaseChange() {
   document.getElementById('inboundAttachSubjectWrap').classList.toggle('d-none', !!sel.value);
 }
 
-function openInboundAttachModal(id) {
-  const e = _inboundEmailsData.find(x => x.id === id);
+async function openInboundAttachModal(id) {
+  let e = _inboundEmailsData.find(x => x.id === id);
+  if (!e) {
+    // The admin panel's Parsed Emails view deep-links its own "Attach to a
+    // Case" button here (?action=attach-email&inbound=<id>) -- can name an
+    // email nothing on this page has loaded yet, same situation openCommModal
+    // already handles for its own edit-comm deep link.
+    await _loadInboundEmails();
+    e = _inboundEmailsData.find(x => x.id === id);
+  }
   if (!e) return;
 
   show('inboundAttachId').value = id;
@@ -10540,6 +10548,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const _deepLinkAction = _deepLinkParams.get('action');
   if (_deepLinkAction) {
     const _deepLinkCommId = Number(_deepLinkParams.get('comm'));
+    const _deepLinkInboundId = Number(_deepLinkParams.get('inbound'));
     history.replaceState(null, '', location.pathname);
     if (_deepLinkAction === 'edit-name') openEditNameModal();
     else if (_deepLinkAction === 'change-password') openChangePasswordModal();
@@ -10547,6 +10556,10 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (_deepLinkAction === 'edit-comm' && _deepLinkCommId) {
       if (typeof _activateTabByKey === 'function') _activateTabByKey('comms');
       openCommModal(_deepLinkCommId);
+    }
+    else if (_deepLinkAction === 'attach-email' && _deepLinkInboundId) {
+      if (typeof _activateTabByKey === 'function') _activateTabByKey('comms');
+      openInboundAttachModal(_deepLinkInboundId);
     }
   }
   loadOverview();

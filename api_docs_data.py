@@ -205,8 +205,6 @@ ROUTES = {
          "desc": "Permanently deletes a Parsed Emails row (cascades to its link/unmatched rows only, never to any Communication it produced)."},
         {"methods": ["DELETE"], "path": "/api/inbound-emails/<int:inbound_id>/communications/<int:comm_id>", "admin": "superadmin",
          "desc": "Un-links a Communication from this email without deleting the Communication -- reverts the email to pending_review if that was its only remaining link."},
-        {"methods": ["POST"], "path": "/api/inbound-emails/<int:inbound_id>/thread-messages/<int:msg_index>/attach", "admin": "superadmin",
-         "desc": "Manually logs one specific message from a split forwarded thread (by its 0-based index in thread_messages) as its own Communication, using that message's own sender/date/subject/body rather than the whole email's. Needs org_code or case_id, plus an optional contact_id, contact_email, subject, and org_title; org_code with no existing Open case opens a new one on the spot using the given/message's subject."},
         {"methods": ["POST"], "path": "/api/unmatched-contacts/<int:unmatched_id>/drop", "admin": "superadmin",
          "desc": "Dismisses an UnmatchedEmailContact flag (a participant found on a processed email who isn't a registered contact) without registering them."},
         {"methods": ["POST"], "path": "/api/unmatched-contacts/<int:unmatched_id>/create", "admin": "superadmin",
