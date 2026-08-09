@@ -415,6 +415,7 @@ const TRANSLATIONS = {
     'inbound.use_this_contact': 'Use this contact',
     'inbound.detected_hint': 'Detected in this email:',
     'inbound.register_contact': 'Also register this sender as a contact',
+    'inbound.skip_duplicate_contact': "Don't create a duplicate",
     'inbound.attach_required': 'Organization and subject are required to open a new case.',
     'inbound.dismiss_confirm': 'Dismiss this email? It will not be attached to any case.',
     'inbound.auto_badge': 'Auto',
@@ -993,6 +994,7 @@ const TRANSLATIONS = {
     'inbound.use_this_contact': 'Χρήση αυτής της επαφής',
     'inbound.detected_hint': 'Εντοπίστηκε σε αυτό το email:',
     'inbound.register_contact': 'Καταχώρηση και του αποστολέα ως επαφή',
+    'inbound.skip_duplicate_contact': 'Να μην δημιουργηθεί διπλή εγγραφή',
     'inbound.attach_required': 'Απαιτούνται οργανισμός και θέμα για το άνοιγμα νέας υπόθεσης.',
     'inbound.dismiss_confirm': 'Απόρριψη αυτού του email; Δεν θα επισυναφθεί σε καμία υπόθεση.',
     'inbound.auto_badge': 'Αυτόματο',
@@ -6479,6 +6481,17 @@ function openInboundAttachModal(id) {
     show('inboundAttachRegisterContact').checked = true;
     document.getElementById('inboundAttachNewContactFields').classList.remove('d-none');
     contactWrap.classList.remove('d-none');
+    _inboundAttachCheckEmailDuplicate();
+    // The duplicate check reads the same portal-members/file-contacts caches
+    // openCommModal warms -- if nothing's opened one yet this session (a
+    // comms-only user may never hit that path at all), warm it here too so
+    // the check isn't silently a no-op the whole time, then re-run once it
+    // lands.
+    const _canPrefetchContacts = !ALLOWED_TABS || ALLOWED_TABS.includes('contacts');
+    if (_canPrefetchContacts && !_commContactsPrefetchStarted && _portalMembersCache === null) {
+      _commContactsPrefetchStarted = true;
+      loadContactsTab().then(_inboundAttachCheckEmailDuplicate);
+    }
   } else {
     show('inboundAttachUnmatchedId').value = '';
     contactWrap.classList.add('d-none');
@@ -6488,6 +6501,35 @@ function openInboundAttachModal(id) {
 
   if (!_inboundAttachModal) _inboundAttachModal = new bootstrap.Modal(document.getElementById('inboundAttachModal'));
   _inboundAttachModal.show();
+}
+
+// Same duplicate check the Contacts tab's own blank-new form runs
+// (_findExistingContactByEmail, via _upCheckEmailDuplicate) -- catches
+// someone editing the prefilled email into one that's already a real
+// contact (whether they mistyped the original or the sender turned out to
+// be someone already on record). "Don't create a duplicate" just unchecks
+// the registration checkbox rather than navigating away like the Contacts
+// tab's own hint does -- this modal's job is attaching the email to a
+// case, which still goes ahead either way.
+function _inboundAttachCheckEmailDuplicate() {
+  const hint = document.getElementById('inboundAttachEmailHint');
+  if (!hint) return;
+  const found = _findExistingContactByEmail(show('inboundAttachContactEmail').value);
+  if (found) {
+    document.getElementById('inboundAttachEmailHintMsg').textContent =
+      t('contacts.email_duplicate_found').replace('{who}', [found.label, found.org].filter(Boolean).join(' — '));
+    hint.classList.remove('d-none');
+  } else {
+    hint.classList.add('d-none');
+  }
+}
+function _inboundAttachSkipDuplicateContact() {
+  show('inboundAttachRegisterContact').checked = false;
+  document.getElementById('inboundAttachNewContactFields').classList.add('d-none');
+  document.getElementById('inboundAttachEmailHint').classList.add('d-none');
+}
+function _inboundAttachDismissEmailHint() {
+  document.getElementById('inboundAttachEmailHint').classList.add('d-none');
 }
 
 // See /api/contacts/guess-org-by-domain -- fires after the modal's already
@@ -7349,44 +7391,46 @@ function _upOrgSearch(q) { _orgSearchDropdown(q, 'upOrgDropdown', '_upOrgSelect'
 // Save create a second, duplicate contact record for them), this reopens the
 // panel on the ALREADY-EXISTING record -- same fix, no duplicate risk, and
 // the Portal|File columns immediately reflect who they really are.
+// Shared by _upCheckEmailDuplicate and the inbound-attach modal's own
+// register-a-new-contact fields -- both run on the main dashboard, which
+// already has these two caches loaded, so a local scan is instant and
+// needs no server round trip (contrast the admin panel's own check, which
+// has neither cache and hits /api/contacts/check-email instead). Unmatched
+// file contacts first, then portal members -- same priority pmEditModal
+// used.
+function _findExistingContactByEmail(email) {
+  email = (email || '').trim().toLowerCase();
+  if (!email) return null;
+  for (const c of (_pmUnmatched || [])) {
+    if ((c.email || '').toLowerCase() === email) {
+      return { type: 'file', id: c.id,
+        label: [c.first_name, c.last_name].filter(Boolean).join(' ') || email,
+        org: c.org_label || c.org_code || '' };
+    }
+  }
+  const seen = new Set();
+  for (const m of (_portalMembersCache || [])) {
+    if ((m.email || '').toLowerCase() !== email || seen.has(m.username)) continue;
+    seen.add(m.username);
+    return { type: 'portal', username: m.username,
+      label: m.contact_name || m.display_name || email,
+      org: m.org_title || m.org_name || '' };
+  }
+  return null;
+}
+
 let _upExistingMatch = null;
 function _upCheckEmailDuplicate() {
   const emailInput = document.getElementById('upEditEmail');
   const hint = document.getElementById('upEmailHint');
   if (!emailInput || !hint) return;
-  const email = emailInput.value.trim().toLowerCase();
-  if (!email) { hint.classList.add('d-none'); _upExistingMatch = null; return; }
-
-  // Unmatched file contacts first, then portal members -- same priority the
-  // old pmEditModal used.
-  let found = null;
-  for (const c of (_pmUnmatched || [])) {
-    if ((c.email || '').toLowerCase() === email) {
-      found = { type: 'file', id: c.id,
-        label: [c.first_name, c.last_name].filter(Boolean).join(' ') || email,
-        org: c.org_label || c.org_code || '' };
-      break;
-    }
-  }
-  if (!found) {
-    const seen = new Set();
-    for (const m of (_portalMembersCache || [])) {
-      if ((m.email || '').toLowerCase() !== email || seen.has(m.username)) continue;
-      seen.add(m.username);
-      found = { type: 'portal', username: m.username,
-        label: m.contact_name || m.display_name || email,
-        org: m.org_title || m.org_name || '' };
-      break;
-    }
-  }
-
+  const found = _findExistingContactByEmail(emailInput.value);
+  _upExistingMatch = found;
   if (found) {
-    _upExistingMatch = found;
     document.getElementById('upEmailHintMsg').textContent =
       t('contacts.email_duplicate_found').replace('{who}', [found.label, found.org].filter(Boolean).join(' — '));
     hint.classList.remove('d-none');
   } else {
-    _upExistingMatch = null;
     hint.classList.add('d-none');
   }
 }

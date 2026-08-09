@@ -1578,7 +1578,17 @@
                 <input type="text" class="form-control form-control-sm" id="inboundAttachContactLastName" placeholder="Last Name" data-i18n-ph="contacts.last_name">
               </div>
               <div class="col-6">
-                <input type="email" class="form-control form-control-sm" id="inboundAttachContactEmail" placeholder="Email" data-i18n-ph="contacts.email">
+                <input type="email" class="form-control form-control-sm" id="inboundAttachContactEmail" placeholder="Email" data-i18n-ph="contacts.email"
+                       onblur="_inboundAttachCheckEmailDuplicate()">
+              </div>
+              <div class="col-12 d-none" id="inboundAttachEmailHint" style="margin-top:-.25rem">
+                <div class="p-2 rounded border border-warning-subtle bg-warning-subtle small">
+                  <span id="inboundAttachEmailHintMsg"></span>
+                  <div class="mt-1">
+                    <button type="button" class="btn btn-warning btn-sm py-0 px-2 me-1" onclick="_inboundAttachSkipDuplicateContact()" data-i18n="inbound.skip_duplicate_contact">Don't create a duplicate</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="_inboundAttachDismissEmailHint()" data-i18n="contacts.ignore">Ignore</button>
+                  </div>
+                </div>
               </div>
               <div class="col-6">
                 <input type="text" class="form-control form-control-sm" id="inboundAttachContactPosition" placeholder="Position" data-i18n-ph="contacts.position">
