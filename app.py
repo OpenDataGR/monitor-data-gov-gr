@@ -6102,6 +6102,21 @@ def inbound_email_dismiss(inbound_id):
     return jsonify(inbound.to_dict())
 
 
+@app.route("/api/inbound-emails/<int:inbound_id>/restore", methods=["POST"])
+def inbound_email_restore(inbound_id):
+    """Undoes a manual dismiss -- puts the row back in pending_review, exactly
+    where it sat before someone dismissed it, so it re-enters the review
+    queue (and can be attached, rematched, or dismissed again) instead of
+    being stuck as dismissed forever. Same permission level as dismiss
+    itself (no superadmin gate) since it's just that action's inverse."""
+    inbound = InboundEmail.query.get_or_404(inbound_id)
+    if inbound.status != "dismissed":
+        return jsonify({"error": "not dismissed"}), 400
+    inbound.status = "pending_review"
+    db.session.commit()
+    return jsonify(inbound.to_dict())
+
+
 @app.route("/api/unmatched-contacts/<int:unmatched_id>/drop", methods=["POST"])
 def unmatched_contact_drop(unmatched_id):
     err = _require_superadmin()

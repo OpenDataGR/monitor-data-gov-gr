@@ -197,6 +197,8 @@ ROUTES = {
          "desc": "Attaches an email to an existing case or opens a new one, creating a communication."},
         {"methods": ["POST"], "path": "/api/inbound-emails/<int:inbound_id>/dismiss",
          "desc": "Marks an inbound email dismissed -- no action taken."},
+        {"methods": ["POST"], "path": "/api/inbound-emails/<int:inbound_id>/restore",
+         "desc": "Undoes a dismiss -- puts the row back in pending_review, exactly where it sat before. Only dismissed rows qualify."},
         {"methods": ["POST"], "path": "/api/inbound-emails/<int:inbound_id>/rematch", "admin": "superadmin",
          "desc": "Reprocesses a pending_review email's stored From/To/subject/body against the current contact registry and excluded/listen config -- for after fixing a config gap or registering a previously-unmatched contact, without waiting for a new email. Only pending_review rows qualify."},
         {"methods": ["DELETE"], "path": "/api/inbound-emails/<int:inbound_id>", "admin": "superadmin",

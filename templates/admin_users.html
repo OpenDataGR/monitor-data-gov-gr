@@ -554,6 +554,9 @@
           <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="parsedDetailDismissBtn" onclick="dismissParsedEmail(_parsedEmailDetailId)">
             <i class="bi bi-x-circle me-1"></i><span data-i18n="admin.parsed_dismiss">Dismiss</span>
           </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="parsedDetailRestoreBtn" onclick="restoreParsedEmail(_parsedEmailDetailId)">
+            <i class="bi bi-arrow-counterclockwise me-1"></i><span data-i18n="admin.parsed_restore">Restore</span>
+          </button>
           <button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteParsedEmail(_parsedEmailDetailId)">
             <i class="bi bi-trash me-1"></i><span data-i18n="admin.parsed_delete">Delete</span>
           </button>
@@ -843,7 +846,7 @@
         'admin.parsed_detail_matched_org': 'Matched organization', 'admin.parsed_detail_communication': 'Linked communication',
         'admin.parsed_detail_communications': 'Linked communications', 'admin.parsed_detail_unmatched': 'Unregistered participants',
         'admin.parsed_detail_thread': 'Thread', 'admin.thread_attach_btn': 'Log as Communication',
-        'admin.parsed_rematch': 'Re-run matching', 'admin.parsed_dismiss': 'Dismiss', 'admin.parsed_delete': 'Delete',
+        'admin.parsed_rematch': 'Re-run matching', 'admin.parsed_dismiss': 'Dismiss', 'admin.parsed_restore': 'Restore', 'admin.parsed_delete': 'Delete',
         'admin.parsed_confirm_dismiss': 'Dismiss this email? No Communication will be created from it.',
         'admin.parsed_confirm_delete': 'Permanently delete this Parsed Emails row? Any Communication it already produced stays untouched -- only this record and its review flags go away.',
         'admin.parsed_confirm_detach': 'Un-link this Communication from this email? The Communication itself is kept; the email just stops being credited with producing it.',
@@ -982,7 +985,7 @@
         'admin.parsed_detail_matched_org': 'Αντιστοιχισμένος φορέας', 'admin.parsed_detail_communication': 'Συνδεδεμένη επικοινωνία',
         'admin.parsed_detail_communications': 'Συνδεδεμένες επικοινωνίες', 'admin.parsed_detail_unmatched': 'Μη καταχωρημένοι συμμετέχοντες',
         'admin.parsed_detail_thread': 'Νήμα', 'admin.thread_attach_btn': 'Καταγραφή ως Επικοινωνία',
-        'admin.parsed_rematch': 'Επανάληψη αντιστοίχισης', 'admin.parsed_dismiss': 'Απόρριψη', 'admin.parsed_delete': 'Διαγραφή',
+        'admin.parsed_rematch': 'Επανάληψη αντιστοίχισης', 'admin.parsed_dismiss': 'Απόρριψη', 'admin.parsed_restore': 'Επαναφορά', 'admin.parsed_delete': 'Διαγραφή',
         'admin.parsed_confirm_dismiss': 'Απόρριψη αυτού του email; Δεν θα δημιουργηθεί Επικοινωνία από αυτό.',
         'admin.parsed_confirm_delete': 'Οριστική διαγραφή αυτής της εγγραφής Parsed Emails; Οποιαδήποτε Επικοινωνία έχει ήδη παραχθεί παραμένει ανεπηρέαστη -- διαγράφεται μόνο αυτή η εγγραφή και οι επισημάνσεις ελέγχου της.',
         'admin.parsed_confirm_detach': 'Αποσύνδεση αυτής της Επικοινωνίας από αυτό το email; Η Επικοινωνία παραμένει -- το email απλώς δεν θα εμφανίζεται πλέον ως αυτό που την παρήγαγε.',
@@ -1965,6 +1968,7 @@
       _parsedEmailDetailId = id;
       document.getElementById('parsedDetailRematchBtn').classList.toggle('d-none', r.status !== 'pending_review');
       document.getElementById('parsedDetailDismissBtn').classList.toggle('d-none', r.status !== 'pending_review');
+      document.getElementById('parsedDetailRestoreBtn').classList.toggle('d-none', r.status !== 'dismissed');
       if (!_parsedEmailDetailModal) _parsedEmailDetailModal = new bootstrap.Modal(document.getElementById('parsedEmailDetailModal'));
       _parsedEmailDetailModal.show();
     }
@@ -2006,6 +2010,14 @@
     async function dismissParsedEmail(id) {
       if (!confirm(t('admin.parsed_confirm_dismiss'))) return;
       const resp = await fetch(`../api/inbound-emails/${id}/dismiss`, {method: 'POST'});
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.error || t('admin.failed')); return; }
+      await loadParsedEmails();
+      showParsedEmailDetail(id);
+    }
+
+    async function restoreParsedEmail(id) {
+      const resp = await fetch(`../api/inbound-emails/${id}/restore`, {method: 'POST'});
       const data = await resp.json();
       if (!resp.ok) { alert(data.error || t('admin.failed')); return; }
       await loadParsedEmails();
