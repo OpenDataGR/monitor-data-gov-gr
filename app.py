@@ -5666,6 +5666,7 @@ def inbound_email_thread_message_attach(inbound_id, msg_index):
     body = _decode_payload()
     case_id = body.get("case_id")
     org_code = (body.get("org_code") or "").strip()
+    case_created = False
     if case_id:
         case = Case.query.get_or_404(int(case_id))
     elif org_code:
@@ -5685,6 +5686,7 @@ def inbound_email_thread_message_attach(inbound_id, msg_index):
             )
             db.session.add(case)
             db.session.flush()
+            case_created = True
     else:
         return jsonify({"error": "org_code or case_id is required"}), 400
 
@@ -5709,7 +5711,7 @@ def inbound_email_thread_message_attach(inbound_id, msg_index):
         org_name=case.org_name,
         org_title=case.org_title,
         subject=msg.get("subject") or inbound.subject or case.subject,
-        status="Intermediate Contact",
+        status="Initial Contact" if case_created else "Intermediate Contact",
         medium="Email",
         contact_person=contact_names or msg.get("from_name") or msg.get("from_email") or None,
         notes=_auto_captured_notes(msg.get("body") or ""),
