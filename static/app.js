@@ -10187,22 +10187,34 @@ function _liveVisitKey(v) {
   return v.id_visit ?? `${v.lat},${v.lon},${v.timestamp}`;
 }
 
+// openTooltip() forces a tooltip open regardless of hover state, and
+// Leaflet never closes it again on its own -- selecting one visit after
+// another left every previously-opened tooltip stuck on the map
+// simultaneously. Tracked here so a new selection always closes the last
+// one first.
+let _liveOpenTooltipMarker = null;
+
 // Clicking either a map marker or a list row selects both -- pans/opens the
 // marker's tooltip and highlights the matching row (or vice versa). A visit
 // with no lat/lon never got a marker in the first place (see
 // _updateLiveMapMarkers), so the map side is silently skipped for those;
 // the row still highlights on its own.
 function _selectLiveVisit(key) {
+  if (_liveOpenTooltipMarker) {
+    _liveOpenTooltipMarker.closeTooltip();
+    _liveOpenTooltipMarker = null;
+  }
   const entry = _liveMarkers.get(key);
   if (entry && _liveMap) {
     _liveMap.panTo(entry.marker.getLatLng());
     entry.marker.openTooltip();
+    _liveOpenTooltipMarker = entry.marker;
   }
-  document.querySelectorAll('#liveVisitorsList tr.table-warning')
-    .forEach(el => el.classList.remove('table-warning'));
+  document.querySelectorAll('#liveVisitorsList tr.live-row-selected')
+    .forEach(el => el.classList.remove('live-row-selected'));
   const row = document.querySelector(`#liveVisitorsList tr[data-visit-key="${CSS.escape(String(key))}"]`);
   if (row) {
-    row.classList.add('table-warning');
+    row.classList.add('live-row-selected');
     row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 }
