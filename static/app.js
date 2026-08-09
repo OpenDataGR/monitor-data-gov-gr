@@ -10187,28 +10187,45 @@ function _liveVisitKey(v) {
   return v.id_visit ?? `${v.lat},${v.lon},${v.timestamp}`;
 }
 
-// openTooltip() forces a tooltip open regardless of hover state, and
-// Leaflet never closes it again on its own -- selecting one visit after
-// another left every previously-opened tooltip stuck on the map
-// simultaneously. Tracked here so a new selection always closes the last
-// one first.
-let _liveOpenTooltipMarker = null;
+const LIVE_MARKER_COLOR = '#dc3545';
+const LIVE_MARKER_SELECTED_COLOR = '#ffc107';
+const LIVE_TOOLTIP_AUTOCLOSE_MS = 2500;
 
-// Clicking either a map marker or a list row selects both -- pans/opens the
-// marker's tooltip and highlights the matching row (or vice versa). A visit
-// with no lat/lon never got a marker in the first place (see
-// _updateLiveMapMarkers), so the map side is silently skipped for those;
-// the row still highlights on its own.
+// Selecting a visit recolors its marker so the selection persists on the
+// map -- with several markers clustered close together (e.g. multiple
+// Athens visits), that's a clearer indicator than a label. The tooltip
+// still pops up too (so a click still names the place), but only briefly:
+// openTooltip() forces it open regardless of hover and Leaflet never closes
+// it again on its own, so left alone it would stay stuck open forever.
+let _liveSelectedMarker = null;
+let _liveTooltipTimer = null;
+
+// Clicking either a map marker or a list row selects both -- pans to,
+// recolors, and briefly labels the marker, and highlights the matching row
+// (or vice versa). A visit with no lat/lon never got a marker in the first
+// place (see _updateLiveMapMarkers), so the map side is silently skipped
+// for those; the row still highlights on its own.
 function _selectLiveVisit(key) {
-  if (_liveOpenTooltipMarker) {
-    _liveOpenTooltipMarker.closeTooltip();
-    _liveOpenTooltipMarker = null;
+  if (_liveTooltipTimer) {
+    clearTimeout(_liveTooltipTimer);
+    _liveTooltipTimer = null;
+  }
+  if (_liveSelectedMarker) {
+    _liveSelectedMarker.closeTooltip();
+    _liveSelectedMarker.setStyle({ color: LIVE_MARKER_COLOR, fillColor: LIVE_MARKER_COLOR });
+    _liveSelectedMarker = null;
   }
   const entry = _liveMarkers.get(key);
   if (entry && _liveMap) {
-    _liveMap.panTo(entry.marker.getLatLng());
-    entry.marker.openTooltip();
-    _liveOpenTooltipMarker = entry.marker;
+    const marker = entry.marker;
+    _liveMap.panTo(marker.getLatLng());
+    marker.setStyle({ color: LIVE_MARKER_SELECTED_COLOR, fillColor: LIVE_MARKER_SELECTED_COLOR });
+    marker.openTooltip();
+    _liveTooltipTimer = setTimeout(() => {
+      marker.closeTooltip();
+      _liveTooltipTimer = null;
+    }, LIVE_TOOLTIP_AUTOCLOSE_MS);
+    _liveSelectedMarker = marker;
   }
   document.querySelectorAll('#liveVisitorsList tr.live-row-selected')
     .forEach(el => el.classList.remove('live-row-selected'));
@@ -10259,7 +10276,7 @@ function _updateLiveMapMarkers(visits) {
       continue;
     }
     const marker = L.circleMarker([v.lat, v.lon], {
-      radius: 6, color: '#dc3545', fillColor: '#dc3545', fillOpacity: 0.6, weight: 1, opacity: 1,
+      radius: 6, color: LIVE_MARKER_COLOR, fillColor: LIVE_MARKER_COLOR, fillOpacity: 0.6, weight: 1, opacity: 1,
     }).bindTooltip(`${esc(v.city ? v.city + ', ' : '')}${esc(v.country || t('live.unknown'))}`)
       .on('click', () => _selectLiveVisit(key));
     marker.addTo(_liveMap);
