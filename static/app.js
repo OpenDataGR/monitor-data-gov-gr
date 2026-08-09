@@ -414,6 +414,7 @@ const TRANSLATIONS = {
     'inbound.candidates_label': 'Which contact is this?',
     'inbound.use_this_contact': 'Use this contact',
     'inbound.detected_hint': 'Detected in this email:',
+    'inbound.register_contact': 'Also register this sender as a contact',
     'inbound.attach_required': 'Organization and subject are required to open a new case.',
     'inbound.dismiss_confirm': 'Dismiss this email? It will not be attached to any case.',
     'inbound.auto_badge': 'Auto',
@@ -991,6 +992,7 @@ const TRANSLATIONS = {
     'inbound.candidates_label': 'Ποια είναι η σωστή επαφή;',
     'inbound.use_this_contact': 'Χρήση αυτής της επαφής',
     'inbound.detected_hint': 'Εντοπίστηκε σε αυτό το email:',
+    'inbound.register_contact': 'Καταχώρηση και του αποστολέα ως επαφή',
     'inbound.attach_required': 'Απαιτούνται οργανισμός και θέμα για το άνοιγμα νέας υπόθεσης.',
     'inbound.dismiss_confirm': 'Απόρριψη αυτού του email; Δεν θα επισυναφθεί σε καμία υπόθεση.',
     'inbound.auto_badge': 'Αυτόματο',
@@ -6431,6 +6433,34 @@ function openInboundAttachModal(id) {
   // search isn't a completely blind pick-from-every-org either.
   if (!hasOrg && e.detected_email) _inboundAttachGuessOrgByDomain(id, e.detected_email);
 
+  // Offer to register the detected sender as a contact in the same action
+  // -- reuses the same extraction functions (contact_extract.js) the admin
+  // panel's own Register Contact flow uses, so a regular comms-tab user
+  // doesn't have to make a separate trip through the (superadmin-only)
+  // admin page just to get this person on record. Only when still pending
+  // -- if it was already resolved/dropped there's nothing left to offer.
+  const stillUnmatched = (e.unmatched_contacts || []).find(u => u.status === 'pending');
+  const contactWrap = document.getElementById('inboundAttachNewContactWrap');
+  if (!hasOrg && stillUnmatched) {
+    const u = stillUnmatched;
+    const senderMsg = _findSenderMessage(e, u.email);
+    const nameSource = (senderMsg && _extractName(senderMsg.body)) || u.name || _guessNameFromEmail(u.email) || '';
+    const parts = nameSource.trim().split(/\s+/);
+    show('inboundAttachUnmatchedId').value = u.id;
+    show('inboundAttachContactFirstName').value = parts.slice(0, -1).join(' ') || parts[0] || '';
+    show('inboundAttachContactLastName').value  = parts.length > 1 ? parts[parts.length - 1] : '';
+    show('inboundAttachContactEmail').value    = u.email || '';
+    show('inboundAttachContactPosition').value = (senderMsg && _extractPosition(senderMsg.body)) || '';
+    show('inboundAttachContactTel').value      = (senderMsg && _extractPhone(senderMsg.body)) || '';
+    show('inboundAttachContactMobile').value   = '';
+    show('inboundAttachRegisterContact').checked = true;
+    document.getElementById('inboundAttachNewContactFields').classList.remove('d-none');
+    contactWrap.classList.remove('d-none');
+  } else {
+    show('inboundAttachUnmatchedId').value = '';
+    contactWrap.classList.add('d-none');
+  }
+
   _refreshInboundAttachCases();
 
   if (!_inboundAttachModal) _inboundAttachModal = new bootstrap.Modal(document.getElementById('inboundAttachModal'));
@@ -6508,6 +6538,23 @@ async function saveInboundAttach() {
     body.org_name  = orgCode;
     body.org_title = orgLabel;
     body.subject   = subject;
+  }
+
+  // Register the detected sender as a contact in the same request -- see
+  // inbound_email_attach's own new_contact handling, which always credits
+  // it under whichever org the case above resolves to, never something
+  // separately supplied.
+  const unmatchedId = show('inboundAttachUnmatchedId').value;
+  if (unmatchedId && show('inboundAttachRegisterContact').checked) {
+    body.unmatched_id = unmatchedId;
+    body.new_contact = {
+      first_name: show('inboundAttachContactFirstName').value.trim(),
+      last_name:  show('inboundAttachContactLastName').value.trim(),
+      email:      show('inboundAttachContactEmail').value.trim(),
+      position:   show('inboundAttachContactPosition').value.trim(),
+      tel:        show('inboundAttachContactTel').value.trim(),
+      mobile:     show('inboundAttachContactMobile').value.trim(),
+    };
   }
 
   btn.disabled = true;

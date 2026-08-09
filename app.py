@@ -6049,6 +6049,40 @@ def inbound_email_attach(inbound_id):
         db.session.flush()
         comm_status = "Initial Contact"
 
+    # Optionally register a brand-new contact for this email's real sender
+    # in the same action -- this route is already open to any comms-tab
+    # user (unlike the admin panel's Register Contact flow, which is
+    # superadmin-only), so a regular user attaching a no_contact_match
+    # email can finish the job in one step instead of needing a superadmin
+    # to redo it through the other page. Always uses the case's own org,
+    # never something separately supplied, so a contact can never end up
+    # registered under an org that disagrees with the case it's tied to.
+    new_contact = body.get("new_contact")
+    if new_contact and not contact:
+        tel, mobile = _fix_tel_mobile(new_contact.get("tel"), new_contact.get("mobile"))
+        contact = OrgContact(
+            org_code=case.org_name, org_label=case.org_title,
+            org_codes=json.dumps([{"code": case.org_name, "label": case.org_title or case.org_name}]),
+            first_name=(new_contact.get("first_name") or "").strip() or None,
+            last_name=(new_contact.get("last_name") or "").strip() or None,
+            position=(new_contact.get("position") or "").strip() or None,
+            email=(new_contact.get("email") or "").strip() or None,
+            tel=tel, mobile=mobile,
+        )
+        db.session.add(contact)
+        db.session.flush()
+        _pm_cache_sync_contact(contact.to_dict())
+        # Marks whichever UnmatchedEmailContact row named this same person
+        # resolved, same bookkeeping /api/unmatched-contacts/<id>/resolve
+        # does, so they don't linger in the review queue as still-pending
+        # once they're a real registered contact crediting this entry.
+        unmatched_id = body.get("unmatched_id")
+        if unmatched_id:
+            u_row = UnmatchedEmailContact.query.get(int(unmatched_id))
+            if u_row and u_row.status == "pending":
+                u_row.status = "created"
+                u_row.resolved_contact_id = contact.id
+
     comm = _create_email_communication(inbound, case, [contact] if contact else [], comm_status, contact_date,
                                         direction=_direction_for_resolved_inbound(inbound, contact))
     db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
