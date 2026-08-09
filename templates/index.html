@@ -182,11 +182,12 @@
        .table-warning reads as a plain, fairly bright yellow bar in dark
        mode (its dark-theme variant isn't tuned for this app's own darker
        card backgrounds), so this is a dedicated, explicitly dark-aware
-       highlight instead of relying on that contextual class. !important
-       because .table-hover's own hover background would otherwise compete
-       with it on the same row. */
-    .live-row-selected { background-color: rgba(255, 193, 7, .18) !important; }
-    [data-bs-theme="dark"] .live-row-selected { background-color: rgba(255, 193, 7, .12) !important; }
+       highlight instead of relying on that contextual class. Bootstrap 5
+       paints table backgrounds on the *cells* (`.table > :not(caption) >
+       * > *`), not the row, so a background-color on the <tr> itself sits
+       underneath and never shows -- must target the <td>s directly. */
+    .live-row-selected > td { background-color: rgba(255, 193, 7, .18) !important; }
+    [data-bs-theme="dark"] .live-row-selected > td { background-color: rgba(255, 193, 7, .12) !important; }
     /* Slim, themed scrollbar -- this is a data-dense dashboard with a lot of
        scrollable tables/panels, and the browser default looks out of place
        next to everything else here being deliberately styled. Firefox uses
