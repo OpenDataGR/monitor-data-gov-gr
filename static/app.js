@@ -10179,6 +10179,34 @@ let _liveMap = null;
 const _liveMarkers = new Map();  // id_visit -> {marker, removedAt: null|epochSeconds}
 const LIVE_MAP_EXIT_FADE_SECONDS = 8;  // how long a marker takes to fade once it drops off the list
 
+// Shared by both the marker map and the list's own row rendering so the two
+// always agree on which key identifies "the same visit" -- id_visit when
+// Matomo gives one (always, in practice), falling back to a composite key
+// for the rare visit missing it rather than dropping it from either side.
+function _liveVisitKey(v) {
+  return v.id_visit ?? `${v.lat},${v.lon},${v.timestamp}`;
+}
+
+// Clicking either a map marker or a list row selects both -- pans/opens the
+// marker's tooltip and highlights the matching row (or vice versa). A visit
+// with no lat/lon never got a marker in the first place (see
+// _updateLiveMapMarkers), so the map side is silently skipped for those;
+// the row still highlights on its own.
+function _selectLiveVisit(key) {
+  const entry = _liveMarkers.get(key);
+  if (entry && _liveMap) {
+    _liveMap.panTo(entry.marker.getLatLng());
+    entry.marker.openTooltip();
+  }
+  document.querySelectorAll('#liveVisitorsList tr.table-warning')
+    .forEach(el => el.classList.remove('table-warning'));
+  const row = document.querySelector(`#liveVisitorsList tr[data-visit-key="${CSS.escape(String(key))}"]`);
+  if (row) {
+    row.classList.add('table-warning');
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
 function _initLiveMap() {
   if (_liveMap || typeof L === 'undefined') return;
   _liveMap = L.map('liveVisitorsMap', { attributionControl: true, scrollWheelZoom: true })
@@ -10207,7 +10235,7 @@ function _updateLiveMapMarkers(visits) {
   const currentKeys = new Set();
   for (const v of visits) {
     if (v.lat == null || v.lon == null) continue;
-    const key = v.id_visit ?? `${v.lat},${v.lon},${v.timestamp}`;
+    const key = _liveVisitKey(v);
     currentKeys.add(key);
     if (_liveMarkers.has(key)) {
       // still in the list — cancel any fade-out in case it had just started
@@ -10220,7 +10248,8 @@ function _updateLiveMapMarkers(visits) {
     }
     const marker = L.circleMarker([v.lat, v.lon], {
       radius: 6, color: '#dc3545', fillColor: '#dc3545', fillOpacity: 0.6, weight: 1, opacity: 1,
-    }).bindTooltip(`${esc(v.city ? v.city + ', ' : '')}${esc(v.country || t('live.unknown'))}`);
+    }).bindTooltip(`${esc(v.city ? v.city + ', ' : '')}${esc(v.country || t('live.unknown'))}`)
+      .on('click', () => _selectLiveVisit(key));
     marker.addTo(_liveMap);
     _liveMarkers.set(key, { marker, removedAt: null });
   }
@@ -10303,7 +10332,7 @@ async function loadLiveVisitors() {
           </thead>
           <tbody>
             ${data.visits.map(v => `
-              <tr>
+              <tr data-visit-key="${esc(String(_liveVisitKey(v)))}" style="cursor:pointer" onclick='_selectLiveVisit(${JSON.stringify(_liveVisitKey(v))})'>
                 <td class="text-nowrap small text-muted" style="width:80px">${esc(relTime(v.timestamp, v.time_pretty))}</td>
                 <td style="width:32px" class="text-center fs-5" title="${esc(v.country || '')}">${flagHtml(v.country_code)}</td>
                 <td class="small">
