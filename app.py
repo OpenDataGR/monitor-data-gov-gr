@@ -8357,7 +8357,12 @@ def matomo_live():
         out = []
         for v in (visits or []):
             actions = v.get("actionDetails") or []
-            pages = [a.get("pageTitle") or a.get("url") for a in actions if a.get("type") == "action"]
+            # Keep the actual pageview actions as their own dicts (not just
+            # collapsed title-or-url strings) so the last one's real URL is
+            # still available for linking, alongside its title for display.
+            page_actions = [a for a in actions if a.get("type") == "action"]
+            entry_action = page_actions[0] if page_actions else None
+            last_action  = page_actions[-1] if page_actions else None
             out.append({
                 "id_visit":        v.get("idVisit"),
                 "time_pretty":     v.get("lastActionDateTime") or v.get("serverTimePretty") or "",
@@ -8374,8 +8379,9 @@ def matomo_live():
                 "duration_pretty": v.get("visitDurationPretty") or "",
                 "referrer_type":   v.get("referrerType") or "",
                 "referrer_name":   v.get("referrerName") or "",
-                "entry_page":      pages[0] if pages else "",
-                "last_page":       pages[-1] if pages else "",
+                "entry_page":      (entry_action.get("pageTitle") or entry_action.get("url") or "") if entry_action else "",
+                "last_page":       (last_action.get("pageTitle") or last_action.get("url") or "") if last_action else "",
+                "last_page_url":   (last_action.get("url") or "") if last_action else "",
             })
         return jsonify({
             "active_visits":   counters.get("visits", 0) or 0,

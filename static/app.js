@@ -10309,7 +10309,11 @@ async function loadLiveVisitors() {
                 <td class="small">
                   <span class="fw-semibold">${esc(v.country || t('live.unknown'))}</span>
                   ${v.city ? `<span class="text-muted"> — ${esc(v.city)}</span>` : ''}
-                  <div class="text-muted text-truncate" style="max-width:320px" title="${esc(v.last_page || '')}">${esc(v.last_page || '')}</div>
+                  <div class="text-truncate" style="max-width:320px" title="${esc(v.last_page_url || v.last_page || '')}">
+                    ${v.last_page_url
+                      ? `<a href="${esc(v.last_page_url)}" target="_blank" rel="noopener" class="text-muted">${esc(v.last_page || v.last_page_url)}</a>`
+                      : `<span class="text-muted">${esc(v.last_page || '')}</span>`}
+                  </div>
                 </td>
                 <td class="text-muted small text-center" style="width:32px" title="${esc(v.device_type || '')}"><i class="bi ${deviceIconFor(v.device_type)}"></i></td>
                 <td class="text-muted small text-nowrap" style="width:90px">${esc(v.browser || '')}</td>
