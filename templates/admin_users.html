@@ -1863,7 +1863,7 @@
           <div class="col-4 col-sm-3 text-muted small">${t('admin.parsed_detail_communications')}</div>
           <div class="col-8 col-sm-9 small">${r.communications.map(c => `
             <div class="d-flex align-items-center justify-content-between gap-2 py-1">
-              <span>#${c.id} — ${esc(c.org_title || c.org_name)}</span>
+              <span>#${c.id} — ${esc(c.contact_date || '')}${c.contact_date ? ' — ' : ''}${esc(c.subject || c.org_title || c.org_name)}<span class="text-muted"> (${esc(c.status || '')})</span></span>
               <span class="d-flex gap-1 flex-shrink-0">
                 <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" title="${esc(t('admin.parsed_comm_edit'))}" onclick="editLinkedCommunication(${c.id})"><i class="bi bi-pencil"></i></button>
                 <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" title="${esc(t('admin.parsed_comm_detach'))}" onclick="detachLinkedCommunication(${r.id},${c.id})"><i class="bi bi-link-45deg"></i></button>
