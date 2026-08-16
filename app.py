@@ -343,6 +343,9 @@ if _is_main_process():
         if 'deadline' not in _case_cols:
             db.session.execute(text('ALTER TABLE cases ADD COLUMN deadline VARCHAR(10)'))
             db.session.commit()
+        if 'org_codes' not in _case_cols:
+            db.session.execute(text('ALTER TABLE cases ADD COLUMN org_codes TEXT'))
+            db.session.commit()
         # Cleanup: a case whose last communication was deleted used to linger forever
         # with zero entries, still counted in the Communications tab's Total/Open/
         # Closed/stale summaries (communications_delete() now deletes the case itself
@@ -4792,53 +4795,94 @@ def _org_identifiers_for_contacts(contacts):
     return org_codes, org_labels
 
 
+def _case_org_list(case):
+    """A case's own {code, label} org list -- mirrors OrgContact.to_dict()'s
+    same parse-with-fallback exactly, so a pre-migration case (org_codes
+    still NULL) resolves correctly from its legacy org_name/org_title
+    columns with no backfill needed."""
+    try:
+        orgs = json.loads(case.org_codes or "[]")
+    except Exception:
+        orgs = []
+    if not orgs and case.org_name:
+        orgs = [{"code": case.org_name, "label": case.org_title or case.org_name}]
+    return orgs
+
+
+def _org_list_from_contacts(contacts):
+    """Every {code, label} org this set of contacts is affiliated with,
+    de-duped by code (first label seen wins) -- primary org_code/org_label
+    first, then each contact's own secondary org_codes. Same shape as
+    OrgContact.org_codes, used to seed a new Case's own org_codes so a case
+    opened for a multi-org email/thread carries every org involved instead
+    of just the first contact's."""
+    seen, orgs = set(), []
+    for c in contacts:
+        pairs = [(c.org_code, c.org_label)]
+        try:
+            pairs += [(o.get("code"), o.get("label")) for o in json.loads(c.org_codes or "[]") if o.get("code")]
+        except Exception:
+            pass
+        for code, label in pairs:
+            if code and code not in seen:
+                seen.add(code)
+                orgs.append({"code": code, "label": label or code})
+    return orgs
+
+
+def _case_matches_org_identifiers(case, org_codes, org_labels):
+    """Does any of this case's own orgs match one of the given candidate
+    codes/normalized labels -- the multi-org-aware replacement for the old
+    single-value Case.org_name/org_title comparison."""
+    return any(
+        o.get("code") in org_codes or (o.get("label") and _norm_org_text(o["label"]) in org_labels)
+        for o in _case_org_list(case)
+    )
+
+
+def _case_last_activity(case):
+    """ISO date of this case's most recent Communication, or '' if it has
+    none -- ISO YYYY-MM-DD strings sort correctly as plain strings, so this
+    is usable directly as a max() key."""
+    dates = [c.contact_date for c in case.communications if c.contact_date]
+    return max(dates) if dates else ""
+
+
 def _resolve_case_for_contacts(contacts, subject: str = "", contact_date: str = None):
-    """Given one or more confidently-matched contacts from the same org,
-    find the Open case this email actually belongs to, or open a new one
-    when none of the org's Open cases look related.
+    """Given one or more confidently-matched contacts -- possibly spanning
+    more than one org, since _match_inbound_email now resolves the case
+    ONCE across every org named on an email/thread instead of once per org
+    -- find the Open case this belongs to, or open a new one when none
+    looks related. Always returns a case; there is no longer a human-review
+    ambiguity outcome here (see the multiple-subject-match branch below).
 
-    Having exactly one Open case for the org used to be enough to attach to
-    it outright -- but that's a coincidence, not evidence it's the same
-    matter. Two signals decide it now, checked in order, NOT combined into
-    one pool of candidates:
+    One signal decides it: does the case's own subject, or any Communication
+    already logged under it, normalize (Re:/Fwd:-stripped) to a string that
+    either contains or is contained by this email's own subject.
 
-      1. Subject match -- the case's own subject, or any Communication
-         already logged under it, normalizes (Re:/Fwd:-stripped) to the
-         same text as this email's subject. Exactly one match -> attach.
-         More than one -> genuinely ambiguous (multiple_open_cases): the
-         subjects themselves don't distinguish which case this belongs to,
-         and no other signal can resolve that for a human.
-      2. Only when subject matches NONE of the org's Open cases: whether
-         one of these same contacts already has a Communication logged on
-         a case -- a harder signal than subject text, covering a reply
-         whose subject drifted (no Re: prefix, reworded, appended text)
-         too far to match by text alone. Exactly one such case -> attach.
+      - Exactly one match -> attach.
+      - More than one match -> auto-resolved: prefer whichever candidate(s)
+        also have prior Communication history with one of these same
+        contacts (a much narrower, safer use of history than treating it as
+        an alternative matching signal -- it only ever tie-breaks among
+        cases that already passed the subject-match bar); if still tied,
+        the most recently active one wins.
+      - No match at all -> always open a new case. A contact having open
+        history on some other case is completely normal and never enough
+        on its own to attach to it -- only subject text (as tie-broken
+        above) ever decides an attach.
 
-    A contact routinely has open history on more than one case at once --
-    that alone is not ambiguity. Two-or-more history hits with nothing to
-    tell them apart by subject (or zero either way) isn't "ambiguous"
-    either, it's just a new matter: falls through to opening a fresh case,
-    same as when the org has no Open case at all. multiple_open_cases is
-    reserved for when subject text itself is what's actually unclear --
-    using contacts[0] for the new case since every contact passed in is
-    already grouped under the same org."""
+    A fresh case's primary org_name/org_title (the back-compat columns)
+    come from contacts[0]; its full org_codes list covers every org among
+    every contact passed in, via _org_list_from_contacts."""
     org_codes, org_labels = _org_identifiers_for_contacts(contacts)
 
-    # _looks_related below walks every candidate case's communications and
-    # every communication's contact_links -- eager-loading both up front
-    # means that's answered from what's already in memory, not an N+1 of
-    # lazy queries (one per case, then one per communication) fired while
-    # checking each candidate one at a time.
+    # Eager-loading both up front means the checks below are answered from
+    # what's already in memory, not an N+1 of lazy queries (one per case,
+    # then one per communication) fired while checking each candidate.
     _open_case_opts = (db.selectinload(Case.communications).selectinload(Communication.contact_links),)
-    open_cases = Case.query.options(*_open_case_opts).filter(Case.status == "Open", Case.org_name.in_(org_codes)).all()
-    if not open_cases and org_labels:
-        # A contact's org_code is often an HRMS code/label rather than the CKAN
-        # slug Case.org_name stores (the same mismatch fixed earlier for the org
-        # panel's comms summary) -- fall back to comparing normalized org titles.
-        open_cases = [
-            case for case in Case.query.options(*_open_case_opts).filter(Case.status == "Open").all()
-            if case.org_title and _norm_org_text(case.org_title) in org_labels
-        ]
+    open_cases = Case.query.options(*_open_case_opts).filter(Case.status == "Open").all()
+    open_cases = [c for c in open_cases if _case_matches_org_identifiers(c, org_codes, org_labels)]
 
     norm_subject = _norm_org_text(_strip_reply_prefixes(subject))
     contact_ids = {c.id for c in contacts}
@@ -4847,7 +4891,11 @@ def _resolve_case_for_contacts(contacts, subject: str = "", contact_date: str = 
         if not norm_subject:
             return False
         case_subjects = {case.subject} | {c.subject for c in case.communications}
-        return any(s and _norm_org_text(_strip_reply_prefixes(s)) == norm_subject for s in case_subjects)
+        for s in case_subjects:
+            ns = s and _norm_org_text(_strip_reply_prefixes(s))
+            if ns and (ns in norm_subject or norm_subject in ns):
+                return True
+        return False
 
     def _has_contact_history(case):
         return any(
@@ -4860,17 +4908,12 @@ def _resolve_case_for_contacts(contacts, subject: str = "", contact_date: str = 
     if len(subject_candidates) == 1:
         return {"case": subject_candidates[0], "reason": None, "created": False}
     if len(subject_candidates) > 1:
-        return {"case": None, "reason": "multiple_open_cases", "created": False}
+        history_hits = [c for c in subject_candidates if _has_contact_history(c)]
+        pool = history_hits or subject_candidates
+        winner = max(pool, key=_case_last_activity)
+        return {"case": winner, "reason": None, "created": False}
 
-    # No case's subject matches at all -- only now does sender history get
-    # a say, and only as a tie-breaker, not a second pool of candidates to
-    # combine with subject: a contact having open history on several
-    # unrelated cases is normal, not ambiguous, so 2+ hits here fall
-    # through to opening a new case exactly like 0 hits would.
-    history_candidates = [c for c in open_cases if _has_contact_history(c)]
-    if len(history_candidates) == 1:
-        return {"case": history_candidates[0], "reason": None, "created": False}
-
+    # No case's subject matches anything -- always open a new case.
     first = contacts[0]
     contact_name = f"{first.first_name or ''} {first.last_name or ''}".strip()
     # Stripped of Re:/Fwd:/Απ: prefixes for a cleaner title -- whichever
@@ -4882,6 +4925,7 @@ def _resolve_case_for_contacts(contacts, subject: str = "", contact_date: str = 
     fallback_subject = _strip_reply_prefixes((subject or "").strip()) or contact_name or "(no subject)"
     case = Case(
         org_name=first.org_code, org_title=first.org_label,
+        org_codes=json.dumps(_org_list_from_contacts(contacts)),
         subject=fallback_subject, status="Open", deadline=_default_deadline(contact_date),
     )
     db.session.add(case)
@@ -5000,10 +5044,13 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
     genuine live reply's own headers resolving directly never needs any of
     this in the first place.
 
-    Each org (or org-per-message) group is resolved independently -- see
-    _resolve_case_for_contacts for what "resolved" means now. Returns
-    "reason" (for the caller's pending_review bookkeeping) only when
-    literally nothing could be attached to anything.
+    The case itself is resolved ONCE per email/thread, across every
+    contact matched anywhere in it regardless of org -- an email or backlog
+    thread always ends up on exactly one case, however many orgs or
+    messages it touches (see _resolve_case_for_contacts). Each org (or
+    org-per-message) still gets its own Communication, all pointed at that
+    one shared case. Returns "reason" (for the caller's pending_review
+    bookkeeping) only when literally nothing could be attached to anything.
     """
     excluded_addrs, excluded_domains = _load_excluded_matchers()
     outer_from_addr = (parseaddr(from_field)[1] or "").lower()
@@ -5026,6 +5073,7 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
             # individual quoted message's own headers would otherwise
             # silently vanish instead of still being flagged unmatched.
             seen_unmatched = {email for _, email in unmatched}
+            msg_infos = []  # (msg, msg_subject, m_contacts) for messages with at least one matched contact
             for msg in thread_msgs:
                 msg_body = msg.get("body") or ""
                 if not _MEANINGFUL_BODY_RE.search(_strip_signature_delimiter(msg_body)):
@@ -5043,19 +5091,35 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
                         unmatched.append((name, email))
                 if not m_contacts:
                     continue
-                msg_subject = msg.get("subject") or subject
+                msg_infos.append((msg, msg.get("subject") or subject, m_contacts))
+            contacts = all_contacts
+
+            # One shared case for the whole thread -- an email/thread always
+            # attaches to exactly one case, never splits across several,
+            # however many messages or orgs it touches. Resolved once here
+            # using every contact named anywhere in the thread, then reused
+            # below for every individual message's own per-org groups.
+            _thread_date_fallback = (_extract_quoted_thread_info(body_text) or {}).get("sent_date")
+            shared = _resolve_case_for_contacts(all_contacts, subject, contact_date=_thread_date_fallback) if all_contacts else None
+            _case_opened = False
+            for msg, msg_subject, m_contacts in msg_infos:
                 msg_groups_by_org = {}
                 for c in m_contacts:
                     msg_groups_by_org.setdefault(c.org_code, []).append(c)
                 for org_contacts in msg_groups_by_org.values():
-                    result = _resolve_case_for_contacts(org_contacts, msg_subject, contact_date=msg.get("sent_date"))
+                    # Only the very first group across the whole thread opens
+                    # the case as its Initial Contact entry -- every other
+                    # group (same message's other orgs, or any later message)
+                    # is a follow-up on that same, already-open case.
+                    created_now = bool(shared and shared["created"] and not _case_opened)
+                    _case_opened = _case_opened or bool(shared and shared["created"])
                     per_message_groups.append({
-                        "contacts": org_contacts, "case": result["case"], "reason": result["reason"],
-                        "created": result["created"], "subject": msg_subject, "contact_date": msg.get("sent_date"),
-                        "body": msg_body, "is_thread_message": True,
-                        "direction": _detect_email_direction(msg_from or "", None, False, excluded_addrs, excluded_domains),
+                        "contacts": org_contacts, "case": shared["case"] if shared else None,
+                        "reason": shared["reason"] if shared else None,
+                        "created": created_now, "subject": msg_subject, "contact_date": msg.get("sent_date"),
+                        "body": msg.get("body") or "", "is_thread_message": True,
+                        "direction": _detect_email_direction(msg.get("from_email") or "", None, False, excluded_addrs, excluded_domains),
                     })
-            contacts = all_contacts
         else:
             quoted = _extract_quoted_thread_info(body_text)
             if quoted:
@@ -5078,8 +5142,8 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
     # conversation actually happened -- not from today, which is just
     # whenever this got forwarded. quoted is already populated above when
     # the flat quoted-thread fallback fired; only re-extract when it didn't
-    # (contacts resolved directly from the outer headers, or the per-message
-    # path fired instead -- that path uses each message's own date anyway).
+    # (contacts resolved directly from the outer headers -- the per-message
+    # path above has already resolved its own shared case by this point).
     quoted_for_date = quoted if quoted is not None else _extract_quoted_thread_info(body_text)
     contact_date_fallback = (quoted_for_date and quoted_for_date.get("sent_date")) or None
 
@@ -5090,10 +5154,19 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
         for c in contacts:
             groups_by_org.setdefault(c.org_code, []).append(c)
 
+        # One shared case for the whole email, however many orgs it
+        # touches -- resolved once across every matched contact, then
+        # reused for each org's own Communication group below (only the
+        # first group opens the case as its Initial Contact entry).
+        shared = _resolve_case_for_contacts(contacts, subject, contact_date=contact_date_fallback) if contacts else None
         match_groups = []
-        for org_contacts in groups_by_org.values():
-            result = _resolve_case_for_contacts(org_contacts, subject, contact_date=contact_date_fallback)
-            match_groups.append({"contacts": org_contacts, "case": result["case"], "reason": result["reason"], "created": result["created"]})
+        for i, org_contacts in enumerate(groups_by_org.values()):
+            match_groups.append({
+                "contacts": org_contacts,
+                "case": shared["case"] if shared else None,
+                "reason": shared["reason"] if shared else None,
+                "created": bool(shared and shared["created"] and i == 0),
+            })
 
     resolved_groups = [g for g in match_groups if g["case"]]
     # A best-effort org guess for whoever's unmatched -- only when every
@@ -5106,15 +5179,12 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
         only = next(g["contacts"][0] for g in match_groups if g["contacts"])
         guess_org_code, guess_org_label = only.org_code, only.org_label
 
-    # _resolve_case_for_contacts now opens a new case itself whenever none
-    # of the org's Open cases look related, so a group only ever comes back
-    # case-less when several candidates were EQUALLY plausible (a human has
-    # to pick) -- "no_open_case" can no longer actually occur here.
-    overall_reason = None
-    if not match_groups:
-        overall_reason = "no_contact_match"
-    elif not resolved_groups:
-        overall_reason = "multiple_open_cases"
+    # _resolve_case_for_contacts always returns a case now, so a group only
+    # ever comes back case-less when there were no matched contacts to
+    # resolve in the first place. "no_open_case" and "multiple_open_cases"
+    # are both legacy reasons that can still appear on rows written before
+    # this design, but new processing can never produce either anymore.
+    overall_reason = "no_contact_match" if not match_groups else None
 
     return {
         "match_groups": resolved_groups,

@@ -384,6 +384,7 @@ class Case(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
     org_name   = db.Column(db.String(200), nullable=False, index=True)
     org_title  = db.Column(db.String(200))
+    org_codes  = db.Column(db.Text)  # JSON: [{code, label}, ...] -- a case can span more than one org
     subject    = db.Column(db.String(500), nullable=False)
     status     = db.Column(db.String(20), nullable=False, default="Open", index=True)  # Open | Closed
     deadline   = db.Column(db.String(10))  # ISO date; past this with no follow-up -> treated as No Response
@@ -420,10 +421,19 @@ class Case(db.Model):
     def to_dict(self, include_communications=False):
         entries = sorted(self.communications, key=lambda c: (c.contact_date, c.created_at))
         last_entry = entries[-1] if entries else None
+        orgs = []
+        if self.org_codes:
+            try:
+                orgs = json.loads(self.org_codes)
+            except Exception:
+                pass
+        if not orgs and self.org_name:
+            orgs = [{"code": self.org_name, "label": self.org_title or self.org_name}]
         d = {
             "id":          self.id,
             "org_name":    self.org_name,
             "org_title":   self.org_title or self.org_name,
+            "org_codes":   orgs,
             "subject":     self.subject,
             "status":      self.status,
             "deadline":    self.deadline,
