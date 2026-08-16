@@ -108,6 +108,27 @@ class TestMatchInboundEmail:
         orgs = {o["code"] for o in appmod._case_org_list(case)}
         assert orgs == {"ORGX", "ORGY"}
 
+    def test_each_communication_keeps_its_own_org_not_the_shared_case_primary_org(self, app):
+        """Regression: _create_email_communication used to stamp every
+        Communication with the CASE's primary org (case.org_name), which
+        was harmless back when a case only ever had one org -- now that a
+        case can span several, that mislabeled every Communication crediting
+        a non-primary org with the wrong one."""
+        mk_contact("i1@orgx.gr", "ORGX")
+        mk_contact("i2@orgy.gr", "ORGY")
+        inbound = InboundEmail(from_email="i1@orgx.gr", to_email="logger@parser.data.gov.gr",
+                                subject="Joint request 2", body_text="Body.")
+        db.session.add(inbound)
+        db.session.flush()
+        match = appmod._match_inbound_email(
+            from_field="Sender One <i1@orgx.gr>", to_field="logger@parser.data.gov.gr",
+            cc_field="Sender Two <i2@orgy.gr>", subject="Joint request 2", body_text="Body.",
+        )
+        created = appmod._apply_inbound_match(inbound, match)
+        db.session.commit()
+        org_names = {c.org_name for c in created}
+        assert org_names == {"ORGX", "ORGY"}, org_names
+
     def test_multi_message_thread_across_orgs_shares_one_case(self, app, monkeypatch):
         mk_contact("g1@orgp.gr", "ORGP")
         mk_contact("g2@orgq.gr", "ORGQ")

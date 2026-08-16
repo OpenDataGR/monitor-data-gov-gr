@@ -5229,13 +5229,23 @@ def _create_email_communication(inbound: "InboundEmail", case: "Case", contacts,
     not given -- _match_inbound_email's per-thread-message groups pass
     that specific message's own subject/body instead, so each message in a
     split thread gets its own accurately-dated, accurately-worded entry
-    rather than every message in the thread sharing one blob."""
+    rather than every message in the thread sharing one blob.
+
+    org_name/org_title come from `contacts[0]` (every contact passed in is
+    already grouped under the same org, per _match_inbound_email's own
+    grouping), NOT from `case.org_name` -- a case can now span more than
+    one org, so its own primary org would mislabel a Communication crediting
+    a DIFFERENT one of its orgs. Falls back to the case's org only when
+    contacts is empty (a manual pending-review attach where nothing ever
+    resolved to a real contact at all)."""
     contact_names = ", ".join(" ".join(p for p in [c.first_name, c.last_name] if p) for c in contacts if c.first_name or c.last_name)
+    org_name  = contacts[0].org_code if contacts else case.org_name
+    org_title = (contacts[0].org_label if contacts else case.org_title) or org_name
     comm = Communication(
         case_id=case.id,
         contact_date=contact_date or _resolved_contact_date(inbound),
-        org_name=case.org_name,
-        org_title=case.org_title,
+        org_name=org_name,
+        org_title=org_title,
         subject=subject or inbound.subject or case.subject,
         status=comm_status,
         medium="Email",
@@ -6110,6 +6120,34 @@ def inbound_email_restore(inbound_id):
     return jsonify(inbound.to_dict())
 
 
+@app.route("/api/unmatched-contacts", methods=["GET"])
+def unmatched_contacts_list():
+    """Flat, cross-email queue of every unmatched participant -- the
+    Contacts-to-Review page's own list. Nothing before this route exposed
+    UnmatchedEmailContact independent of its parent email; explicitly
+    superadmin-gated here rather than relying on tab rules the way GET
+    /api/inbound-emails does, since this page is meant to be superadmin-only
+    from the start."""
+    err = _require_superadmin()
+    if err:
+        return err
+    status_filter = (freq.args.get("status") or "pending").strip()
+    q = UnmatchedEmailContact.query.options(db.joinedload(UnmatchedEmailContact.inbound_email))
+    if status_filter:
+        q = q.filter(UnmatchedEmailContact.status == status_filter)
+    rows = []
+    for u in q.order_by(UnmatchedEmailContact.created_at.desc()).all():
+        d = u.to_dict()
+        e = u.inbound_email
+        d["inbound_email"] = {
+            "id": e.id, "subject": e.subject or "", "from_email": e.from_email or "",
+            "from_name": e.from_name or "", "received_at": e.received_at.isoformat() if e.received_at else None,
+        } if e else None
+        d["thread_messages"] = _thread_messages_json(e.body_text) if e else []
+        rows.append(d)
+    return jsonify(rows)
+
+
 @app.route("/api/unmatched-contacts/<int:unmatched_id>/drop", methods=["POST"])
 def unmatched_contact_drop(unmatched_id):
     err = _require_superadmin()
@@ -6133,6 +6171,59 @@ def _retroactively_credit_unmatched(row: "UnmatchedEmailContact", contact: "OrgC
         if comm and comm.org_name == org_code:
             existing_ids = [cc.org_contact_id for cc in comm.contact_links]
             _sync_communication_contacts(comm, existing_ids + [contact.id])
+
+
+def _finish_unmatched_resolution(row: "UnmatchedEmailContact", contact: "OrgContact", org_code: str):
+    """Case matching/creation/logging is fully automatic once a contact is
+    identified -- _retroactively_credit_unmatched above only updates a
+    Communication this email already produced for `org_code`, which is a
+    no-op for a no_contact_match email (nothing matched at all, so nothing
+    was created). If that's the case here, resolve/open a case and log a
+    fresh Communication for this one org now. If _retroactively_credit_
+    unmatched already found and updated an existing entry for this org,
+    skip creating a new one -- the contact's already credited, and a second
+    Communication would double-log the same participant on the same org.
+
+    Only ever handles the ONE org this specific resolution concerns (the
+    row's own flagged org, or whichever org an admin explicitly picked when
+    approving it) -- a newly-registered contact CAN separately span more
+    than one org on their own profile, but that doesn't mean this one
+    inbound email is about all of them; nothing here fabricates a
+    Communication for an org this email never actually named.
+
+    Deliberately does NOT just re-run the ordinary email-based matcher
+    (_match_inbound_email) -- that matches purely by scanning the email's
+    own From/To/Cc/body for addresses that happen to already be registered,
+    which fails exactly when it matters most here: merging into an existing
+    contact registered under a DIFFERENT email than whichever address this
+    participant actually sent from (the whole point of "merge into an
+    existing contact" as opposed to "register a new one"). Since the
+    contact is already known directly, resolve/create a case for them
+    directly instead -- mirrors inbound_email_attach's own manual-attach
+    path, just triggered automatically instead of by a human click.
+
+    Not gated on the email's current status -- an email naming unmatched
+    participants from more than one org can have each one resolved
+    separately (at different times, via different actions), and each
+    resolution should independently produce its own Communication for its
+    own org/case regardless of whether some other participant's resolution
+    already flipped the email to "attached"."""
+    inbound = row.inbound_email
+    if not inbound:
+        return
+    already_covered = any(
+        link.communication and link.communication.org_name == org_code
+        for link in inbound.email_communications
+    )
+    if not already_covered:
+        result = _resolve_case_for_contacts([contact], inbound.subject or "", contact_date=_resolved_contact_date(inbound))
+        comm_status = "Initial Contact" if result["created"] else "Intermediate Contact"
+        comm = _create_email_communication(inbound, result["case"], [contact], comm_status,
+                                            direction=_direction_for_resolved_inbound(inbound, contact))
+        db.session.add(InboundEmailCommunication(inbound_email_id=inbound.id, communication_id=comm.id))
+        inbound.communication_id = inbound.communication_id or comm.id
+    inbound.status = "attached"
+    inbound.reason = None
 
 
 @app.route("/api/unmatched-contacts/<int:unmatched_id>/create", methods=["POST"])
@@ -6177,6 +6268,7 @@ def unmatched_contact_create(unmatched_id):
     row.resolved_contact_id = contact.id
     for org in (orgs or [{"code": org_code}]):
         _retroactively_credit_unmatched(row, contact, org["code"])
+    _finish_unmatched_resolution(row, contact, org_code)
     db.session.commit()
     return jsonify(row.to_dict()), 201
 
@@ -6184,10 +6276,11 @@ def unmatched_contact_create(unmatched_id):
 @app.route("/api/unmatched-contacts/<int:unmatched_id>/resolve", methods=["POST"])
 def unmatched_contact_resolve(unmatched_id):
     """Like /create, but for when the real OrgContact was already created
-    elsewhere (e.g. saved via the regular /api/contacts/save) -- points this
-    flagged participant at that existing contact and runs the same
-    retroactive Communication-crediting, instead of building a second,
-    duplicate OrgContact record."""
+    elsewhere (e.g. saved via the regular /api/contacts/save, or picked from
+    the Contacts-to-Review queue's own merge-into-existing-contact search)
+    -- points this flagged participant at that existing contact and runs
+    the same retroactive Communication-crediting, instead of building a
+    second, duplicate OrgContact record."""
     err = _require_superadmin()
     if err:
         return err
@@ -6199,9 +6292,12 @@ def unmatched_contact_resolve(unmatched_id):
     if not contact_id:
         return jsonify({"error": "contact_id is required"}), 400
     contact = OrgContact.query.get_or_404(int(contact_id))
-    row.status = "created"
+    # "merged" rather than "created" -- this row's participant turned out to
+    # already be an existing contact, distinct from /create's brand-new one.
+    row.status = "merged"
     row.resolved_contact_id = contact.id
     _retroactively_credit_unmatched(row, contact, contact.org_code)
+    _finish_unmatched_resolution(row, contact, contact.org_code)
     db.session.commit()
     return jsonify(row.to_dict())
 

@@ -689,7 +689,7 @@ class UnmatchedEmailContact(db.Model):
     email             = db.Column(db.String(320))
     org_code          = db.Column(db.String(200))
     org_label         = db.Column(db.String(300))
-    status            = db.Column(db.String(20), nullable=False, default="pending")  # pending | dropped | created
+    status            = db.Column(db.String(20), nullable=False, default="pending")  # pending | dropped | created | merged
     resolved_contact_id = db.Column(db.Integer, db.ForeignKey("org_contacts.id"))
     created_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
