@@ -6458,9 +6458,6 @@ async function openInboundAttachModal(id) {
     hintEl.classList.add('d-none');
   }
 
-  const stillUnmatched = (e.unmatched_contacts || []).find(u => u.status === 'pending');
-  const senderMsg = stillUnmatched ? _findSenderMessage(e, stillUnmatched.email) : null;
-
   // Two auto-guess tiers, weakest first so something shows immediately: an
   // ALL-CAPS acronym in the subject/signature (sync, e.g. "... ΡΑΑΕΥ")
   // prefills right away; a domain match against an already-registered
@@ -6470,81 +6467,19 @@ async function openInboundAttachModal(id) {
   // once the user has actually picked/typed something themselves.
   _inboundAttachOrgAutoFilled = false;
   if (!hasOrg) {
-    const textGuess = _guessOrgFromText(e.subject) || (senderMsg && _guessOrgFromText(senderMsg.body));
+    const textGuess = _guessOrgFromText(e.subject) || (e.detected_name && _guessOrgFromText(e.detected_name));
     if (textGuess) _inboundAttachSetOrg(textGuess.code, textGuess.label, true);
   }
   if (!hasOrg && e.detected_email) _inboundAttachGuessOrgByDomain(id, e.detected_email);
 
-  // Offer to register the detected sender as a contact in the same action
-  // -- reuses the same extraction functions (contact_extract.js) the admin
-  // panel's own Register Contact flow uses, so a regular comms-tab user
-  // doesn't have to make a separate trip through the (superadmin-only)
-  // admin page just to get this person on record. Only when still pending
-  // -- if it was already resolved/dropped there's nothing left to offer.
-  const contactWrap = document.getElementById('inboundAttachNewContactWrap');
-  if (!hasOrg && stillUnmatched) {
-    const u = stillUnmatched;
-    const nameSource = (senderMsg && _extractName(senderMsg.body)) || u.name || _guessNameFromEmail(u.email) || '';
-    const parts = nameSource.trim().split(/\s+/);
-    show('inboundAttachUnmatchedId').value = u.id;
-    show('inboundAttachContactFirstName').value = parts.slice(0, -1).join(' ') || parts[0] || '';
-    show('inboundAttachContactLastName').value  = parts.length > 1 ? parts[parts.length - 1] : '';
-    show('inboundAttachContactEmail').value    = u.email || '';
-    show('inboundAttachContactPosition').value = (senderMsg && _extractPosition(senderMsg.body)) || '';
-    show('inboundAttachContactTel').value      = (senderMsg && _extractPhone(senderMsg.body)) || '';
-    show('inboundAttachContactMobile').value   = '';
-    show('inboundAttachRegisterContact').checked = true;
-    document.getElementById('inboundAttachNewContactFields').classList.remove('d-none');
-    contactWrap.classList.remove('d-none');
-    _inboundAttachCheckEmailDuplicate();
-    // The duplicate check reads the same portal-members/file-contacts caches
-    // openCommModal warms -- if nothing's opened one yet this session (a
-    // comms-only user may never hit that path at all), warm it here too so
-    // the check isn't silently a no-op the whole time, then re-run once it
-    // lands.
-    const _canPrefetchContacts = !ALLOWED_TABS || ALLOWED_TABS.includes('contacts');
-    if (_canPrefetchContacts && !_commContactsPrefetchStarted && _portalMembersCache === null) {
-      _commContactsPrefetchStarted = true;
-      loadContactsTab().then(_inboundAttachCheckEmailDuplicate);
-    }
-  } else {
-    show('inboundAttachUnmatchedId').value = '';
-    contactWrap.classList.add('d-none');
-  }
+  // Registering the detected sender as a contact used to happen inline
+  // here too -- moved to the superadmin-only Contacts to Review queue
+  // (admin_users.html), the sole place contact resolution happens now.
 
   _refreshInboundAttachCases();
 
   if (!_inboundAttachModal) _inboundAttachModal = new bootstrap.Modal(document.getElementById('inboundAttachModal'));
   _inboundAttachModal.show();
-}
-
-// Same duplicate check the Contacts tab's own blank-new form runs
-// (_findExistingContactByEmail, via _upCheckEmailDuplicate) -- catches
-// someone editing the prefilled email into one that's already a real
-// contact (whether they mistyped the original or the sender turned out to
-// be someone already on record). "Don't create a duplicate" just unchecks
-// the registration checkbox rather than navigating away like the Contacts
-// tab's own hint does -- this modal's job is attaching the email to a
-// case, which still goes ahead either way.
-function _inboundAttachCheckEmailDuplicate() {
-  const hint = document.getElementById('inboundAttachEmailHint');
-  if (!hint) return;
-  const found = _findExistingContactByEmail(show('inboundAttachContactEmail').value);
-  if (found) {
-    document.getElementById('inboundAttachEmailHintMsg').textContent =
-      t('contacts.email_duplicate_found').replace('{who}', [found.label, found.org].filter(Boolean).join(' — '));
-    hint.classList.remove('d-none');
-  } else {
-    hint.classList.add('d-none');
-  }
-}
-function _inboundAttachSkipDuplicateContact() {
-  show('inboundAttachRegisterContact').checked = false;
-  document.getElementById('inboundAttachNewContactFields').classList.add('d-none');
-  document.getElementById('inboundAttachEmailHint').classList.add('d-none');
-}
-function _inboundAttachDismissEmailHint() {
-  document.getElementById('inboundAttachEmailHint').classList.add('d-none');
 }
 
 // See /api/contacts/guess-org-by-domain -- fires after the modal's already
@@ -6620,23 +6555,6 @@ async function saveInboundAttach() {
     body.org_name  = orgCode;
     body.org_title = orgLabel;
     body.subject   = subject;
-  }
-
-  // Register the detected sender as a contact in the same request -- see
-  // inbound_email_attach's own new_contact handling, which always credits
-  // it under whichever org the case above resolves to, never something
-  // separately supplied.
-  const unmatchedId = show('inboundAttachUnmatchedId').value;
-  if (unmatchedId && show('inboundAttachRegisterContact').checked) {
-    body.unmatched_id = unmatchedId;
-    body.new_contact = {
-      first_name: show('inboundAttachContactFirstName').value.trim(),
-      last_name:  show('inboundAttachContactLastName').value.trim(),
-      email:      show('inboundAttachContactEmail').value.trim(),
-      position:   show('inboundAttachContactPosition').value.trim(),
-      tel:        show('inboundAttachContactTel').value.trim(),
-      mobile:     show('inboundAttachContactMobile').value.trim(),
-    };
   }
 
   btn.disabled = true;

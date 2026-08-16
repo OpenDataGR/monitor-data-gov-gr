@@ -607,70 +607,10 @@
     </div>
   </div>
 
-  <!-- Register an unmatched participant as a real contact -->
-  <div class="modal fade" id="unmatchedContactCreateModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header border-bottom">
-          <h5 class="modal-title fw-bold"><i class="bi bi-person-plus me-2"></i><span data-i18n="admin.unmatched_create_title">Register Contact</span></h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body pt-3">
-          <input type="hidden" id="unmatchedContactId">
-          <div class="row g-2">
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_first_name">First name</label>
-              <input type="text" id="unmatchedFirstName" class="form-control form-control-sm">
-            </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_last_name">Last name</label>
-              <input type="text" id="unmatchedLastName" class="form-control form-control-sm">
-            </div>
-            <div class="col-12">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_org_search">Organization</label>
-              <div id="unmatchedOrgTags" class="mb-1 d-flex flex-wrap gap-1"></div>
-              <div class="position-relative">
-                <input type="text" class="form-control form-control-sm" id="unmatchedOrgSearch" autocomplete="off"
-                       data-i18n-ph="admin.org_search_ph" placeholder="Search organizations…"
-                       oninput="_orgSearchDropdown(this.value,'unmatchedOrgDropdown','_unmatchedOrgSelect')"
-                       onfocus="_orgSearchDropdown(this.value,'unmatchedOrgDropdown','_unmatchedOrgSelect')"
-                       onblur="setTimeout(()=>document.getElementById('unmatchedOrgDropdown').classList.add('d-none'),150)">
-                <ul class="list-group shadow-sm position-absolute w-100 d-none" id="unmatchedOrgDropdown" style="z-index:1060;max-height:220px;overflow-y:auto;top:100%"></ul>
-              </div>
-            </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_email">Email</label>
-              <input type="email" id="unmatchedEmail" class="form-control form-control-sm" oninput="_unmatchedCheckEmail()">
-              <div id="unmatchedEmailHint" class="small text-warning mt-1 d-none"></div>
-            </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_position">Position</label>
-              <input type="text" id="unmatchedPosition" class="form-control form-control-sm">
-            </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_tel">Phone</label>
-              <input type="text" id="unmatchedTel" class="form-control form-control-sm">
-            </div>
-            <div class="col-6">
-              <label class="form-label small mb-1" data-i18n="admin.unmatched_mobile">Mobile</label>
-              <input type="text" id="unmatchedMobile" class="form-control form-control-sm">
-            </div>
-          </div>
-          <div id="unmatchedContactError" class="alert alert-danger small mt-3 mb-0 d-none"></div>
-        </div>
-        <div class="modal-footer border-top">
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
-          <button type="button" class="btn btn-primary btn-sm" onclick="saveUnmatchedContactCreate()">
-            <i class="bi bi-check me-1"></i><span data-i18n="admin.unmatched_create_save">Register</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Contacts-to-Review resolve modal: register as new, or merge into an
-       existing contact -- opened from the new flat queue above. A separate
-       modal/element-ids from unmatchedContactCreateModal on purpose (both
+       existing contact -- opened from the new flat queue above. This used
+       to be a separate modal/element-ids from the old, now-removed
+       unmatchedContactCreateModal, kept side by side while both
        exist side by side until that older, per-email flow is removed). -->
   <div class="modal fade" id="contactReviewModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -913,6 +853,7 @@
         'admin.parsed_detail_candidates': 'Candidate contacts', 'admin.parsed_detail_detected': 'Detected (unregistered)',
         'admin.parsed_detail_matched_org': 'Matched organization', 'admin.parsed_detail_communication': 'Linked communication',
         'admin.parsed_detail_communications': 'Linked communications', 'admin.parsed_detail_unmatched': 'Unregistered participants',
+        'admin.parsed_unmatched_see_review': 'resolve from Contacts to Review',
         'admin.parsed_detail_thread': 'Thread', 'admin.parsed_attach': 'Attach to a Case',
         'admin.parsed_rematch': 'Re-run matching', 'admin.parsed_dismiss': 'Dismiss', 'admin.parsed_restore': 'Restore', 'admin.parsed_delete': 'Delete',
         'admin.parsed_confirm_dismiss': 'Dismiss this email? No Communication will be created from it.',
@@ -1057,6 +998,7 @@
         'admin.parsed_detail_candidates': 'Υποψήφιες επαφές', 'admin.parsed_detail_detected': 'Εντοπίστηκε (μη καταχωρημένο)',
         'admin.parsed_detail_matched_org': 'Αντιστοιχισμένος φορέας', 'admin.parsed_detail_communication': 'Συνδεδεμένη επικοινωνία',
         'admin.parsed_detail_communications': 'Συνδεδεμένες επικοινωνίες', 'admin.parsed_detail_unmatched': 'Μη καταχωρημένοι συμμετέχοντες',
+        'admin.parsed_unmatched_see_review': 'επίλυση από τις Επαφές προς Έλεγχο',
         'admin.parsed_detail_thread': 'Νήμα', 'admin.parsed_attach': 'Επισύναψη σε Υπόθεση',
         'admin.parsed_rematch': 'Επανάληψη αντιστοίχισης', 'admin.parsed_dismiss': 'Απόρριψη', 'admin.parsed_restore': 'Επαναφορά', 'admin.parsed_delete': 'Διαγραφή',
         'admin.parsed_confirm_dismiss': 'Απόρριψη αυτού του email; Δεν θα δημιουργηθεί Επικοινωνία από αυτό.',
@@ -1266,51 +1208,6 @@
     // _findSenderMessage/_extractPhone/_extractPosition/_extractName/
     // _guessNameFromEmail all live in contact_extract.js, shared with the
     // main dashboard's own "Attach Email to a Case" flow.
-    // Multi-org tag list for Register Contact -- mirrors the main
-    // dashboard's own _upEditOrgs/_upOrgRenderTags pattern (same badge
-    // markup) so a contact spanning more than one org can be registered in
-    // one go, same as there.
-    let _unmatchedOrgs = [];
-    function _unmatchedOrgSelect(code, label) {
-      if (!code || _unmatchedOrgs.some(o => o.code === code)) return;
-      _unmatchedOrgs.push({code, label: label || code});
-      _unmatchedOrgRenderTags();
-      show('unmatchedOrgSearch').value = '';
-      document.getElementById('unmatchedOrgDropdown').classList.add('d-none');
-    }
-    function _unmatchedOrgRemove(code) {
-      _unmatchedOrgs = _unmatchedOrgs.filter(o => o.code !== code);
-      _unmatchedOrgRenderTags();
-    }
-    function _unmatchedOrgRenderTags() {
-      document.getElementById('unmatchedOrgTags').innerHTML = _unmatchedOrgs.map(o =>
-        `<span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em;white-space:normal;text-align:left">${esc(o.label || o.code)}` +
-        `<button type="button" class="btn-close btn-close-white flex-shrink-0" style="font-size:.55em;margin-left:.25em"` +
-        ` onclick="_unmatchedOrgRemove('${esc(o.code)}')" title="${t('admin.remove')}"></button></span>`
-      ).join('');
-    }
-    // Duplicate-email check (see /api/contacts/check-email) -- this page has
-    // no preloaded portal-members/file-contacts cache the way the main
-    // dashboard's own duplicate check does, so it just asks the server
-    // directly instead of requiring one.
-    let _unmatchedCheckEmailTimer = null;
-    function _unmatchedCheckEmail() {
-      clearTimeout(_unmatchedCheckEmailTimer);
-      const hint = document.getElementById('unmatchedEmailHint');
-      const email = show('unmatchedEmail').value.trim();
-      if (!email) { hint.classList.add('d-none'); return; }
-      _unmatchedCheckEmailTimer = setTimeout(async () => {
-        try {
-          const data = await fetch(`../api/contacts/check-email?email=${encodeURIComponent(email)}`).then(r => r.json());
-          if (data.found) {
-            hint.textContent = t('admin.unmatched_email_duplicate').replace('{who}', [data.found.label, data.found.org].filter(Boolean).join(' — '));
-            hint.classList.remove('d-none');
-          } else {
-            hint.classList.add('d-none');
-          }
-        } catch (_) { hint.classList.add('d-none'); }
-      }, 400);
-    }
     let _usersCache = [];
     let _usersSortCol = null;  // null = whatever order /api/users returned, until a header's clicked
     let _usersSortDir = 'asc';
@@ -1992,20 +1889,9 @@
               </span>
             </div>`).join('')}</div>
         </div>` : (r.communication_id ? row(t('admin.parsed_detail_communication'), `#${r.communication_id}`) : '')}
-        ${r.unmatched_contacts && r.unmatched_contacts.length ? `
-        <div class="row mb-2">
-          <div class="col-4 col-sm-3 text-muted small">${t('admin.parsed_detail_unmatched')}</div>
-          <div class="col-8 col-sm-9 small">${r.unmatched_contacts.map(u => {
-            const label = `${esc(u.name || u.email || none)}${u.name && u.email ? ' — ' + esc(u.email) : ''}${u.org_label ? ` (${esc(u.org_label)}?)` : ''}`;
-            const actions = u.status === 'pending'
-              ? `<button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="dropUnmatchedContact(${u.id})">${t('admin.unmatched_drop')}</button>
-                 <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openUnmatchedContactCreate(${u.id})">${t('admin.unmatched_create')}</button>`
-              : `<span class="badge bg-secondary" style="font-size:.65em">${esc(u.status)}</span>`;
-            return `<div class="d-flex align-items-center justify-content-between gap-2 py-1">
-                      <span>${label}</span><span class="d-flex gap-1 flex-shrink-0">${actions}</span>
-                    </div>`;
-          }).join('')}</div>
-        </div>` : ''}
+        ${r.unmatched_contacts && r.unmatched_contacts.length ? row(t('admin.parsed_detail_unmatched'),
+          r.unmatched_contacts.map(u => `${esc(u.name || u.email || none)}${u.name && u.email ? ' — ' + esc(u.email) : ''} <span class="badge bg-secondary" style="font-size:.65em">${esc(u.status)}</span>`).join('<br>')
+          + ` <span class="text-muted">(${t('admin.parsed_unmatched_see_review')})</span>`) : ''}
         <div class="mb-2">
           <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" onclick="showRawBodyPane(${r.id})"><i class="bi bi-file-text me-1"></i>${t('admin.parsed_view_body')}</button>
         </div>
@@ -2152,128 +2038,6 @@
     // pending_review email already goes through.
     function attachParsedEmail(id) {
       window.location.href = `${INDEX_URL}?action=attach-email&inbound=${id}`;
-    }
-
-    function _findUnmatchedContact(unmatchedId) {
-      for (const r of _parsedEmailsCache) {
-        const u = (r.unmatched_contacts || []).find(x => x.id === unmatchedId);
-        if (u) return { parsedEmail: r, unmatched: u };
-      }
-      return null;
-    }
-
-    async function dropUnmatchedContact(unmatchedId) {
-      if (!confirm(t('admin.unmatched_confirm_drop'))) return;
-      const resp = await fetch(`../api/unmatched-contacts/${unmatchedId}/drop`, { method: 'POST' });
-      if (!resp.ok) { const d = await resp.json(); alert(d.error || t('admin.failed')); return; }
-      await loadParsedEmails();
-      if (_parsedEmailDetailId != null) showParsedEmailDetail(_parsedEmailDetailId);
-    }
-
-    function openUnmatchedContactCreate(unmatchedId) {
-      const found = _findUnmatchedContact(unmatchedId);
-      if (!found) return;
-      const { unmatched: u, parsedEmail: r } = found;
-      show('unmatchedContactId').value = u.id;
-      const senderMsg = _findSenderMessage(r, u.email);
-      // Three tiers, strongest signal wins: the signature's own name line
-      // (someone typing their own name is about as reliable as it gets,
-      // and more likely to be the person's real full name than a mail
-      // account's display name might be) -- then u.name (the message's own
-      // "From:" display name, missing when this address was only ever seen
-      // swept in from a To:/Cc: line) -- then, weakest of all, a guess from
-      // the email address's own local part. Each is only reached when
-      // every stronger one before it came up empty.
-      const nameSource = (senderMsg && _extractName(senderMsg.body)) || u.name || _guessNameFromEmail(u.email) || '';
-      const parts = nameSource.trim().split(/\s+/);
-      show('unmatchedFirstName').value = parts.slice(0, -1).join(' ') || parts[0] || '';
-      show('unmatchedLastName').value  = parts.length > 1 ? parts[parts.length - 1] : '';
-      // u.org_code/org_label only ever come from _match_inbound_email's
-      // single-group best guess (every OTHER participant on the email
-      // converging on the same org) -- already as reliable as it gets, so
-      // only try weaker signals when it's missing: the email-domain match
-      // (async, see _unmatchedGuessOrgByDomain below) first, then an
-      // ALL-CAPS acronym word-matched against the org's own label as a last
-      // resort (see _guessOrgFromText).
-      let orgCode = u.org_code || '', orgLabel = u.org_label || '';
-      const hadReliableOrgGuess = !!orgCode;
-      if (!orgCode) {
-        const guess = _guessOrgFromText(r.subject) || (senderMsg && _guessOrgFromText(senderMsg.body));
-        if (guess) { orgCode = guess.code; orgLabel = guess.label; }
-      }
-      _unmatchedOrgs = orgCode ? [{code: orgCode, label: orgLabel || orgCode}] : [];
-      _unmatchedOrgRenderTags();
-      show('unmatchedOrgSearch').value = '';
-      show('unmatchedEmail').value    = u.email || '';
-      show('unmatchedPosition').value = (senderMsg && _extractPosition(senderMsg.body)) || '';
-      show('unmatchedTel').value      = (senderMsg && _extractPhone(senderMsg.body)) || '';
-      show('unmatchedMobile').value   = '';
-      document.getElementById('unmatchedEmailHint').classList.add('d-none');
-      show('unmatchedContactError').classList.add('d-none');
-      if (u.email) _unmatchedCheckEmail();
-      if (!hadReliableOrgGuess && u.email) _unmatchedGuessOrgByDomain(unmatchedId, u.email);
-      if (!_unmatchedContactCreateModal) _unmatchedContactCreateModal = new bootstrap.Modal(document.getElementById('unmatchedContactCreateModal'));
-      _unmatchedContactCreateModal.show();
-    }
-
-    let _unmatchedContactCreateModal = null;
-
-    // See /api/contacts/guess-org-by-domain -- fires after the modal's
-    // already open (no reason to make the admin wait on a round-trip before
-    // seeing it), and only applies its result if the modal's still sitting
-    // on this same participant when it resolves (guards against it landing
-    // late after the modal moved on to a different one, or closed).
-    async function _unmatchedGuessOrgByDomain(unmatchedId, email) {
-      try {
-        const data = await fetch(`../api/contacts/guess-org-by-domain?email=${encodeURIComponent(email)}`).then(r => r.json());
-        if (show('unmatchedContactId').value !== String(unmatchedId)) return;
-        if (data.found) {
-          _unmatchedOrgs = [{code: data.found.code, label: data.found.label}];
-          _unmatchedOrgRenderTags();
-        }
-      } catch (_) {}
-    }
-
-    // Saves through the same /api/contacts/save the main dashboard's own
-    // contact editor uses (not a bespoke admin-only insert), then resolves
-    // the flag against whatever contact that produced -- see
-    // /api/unmatched-contacts/<id>/resolve.
-    async function saveUnmatchedContactCreate() {
-      const id = show('unmatchedContactId').value;
-      const errEl = show('unmatchedContactError');
-      errEl.classList.add('d-none');
-      if (!_unmatchedOrgs.length) {
-        errEl.textContent = t('admin.unmatched_org_required');
-        errEl.classList.remove('d-none');
-        return;
-      }
-      try {
-        const saveResp = await fetch('../api/contacts/save', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            org_codes: _unmatchedOrgs,
-            first_name: show('unmatchedFirstName').value.trim(),
-            last_name: show('unmatchedLastName').value.trim(),
-            email: show('unmatchedEmail').value.trim(),
-            position: show('unmatchedPosition').value.trim(),
-            tel: show('unmatchedTel').value.trim(),
-            mobile: show('unmatchedMobile').value.trim(),
-          }),
-        });
-        const contact = await saveResp.json();
-        if (!saveResp.ok) throw new Error(contact.error || t('admin.failed'));
-        const resolveResp = await fetch(`../api/unmatched-contacts/${id}/resolve`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({contact_id: contact.id}),
-        });
-        if (!resolveResp.ok) { const d = await resolveResp.json(); throw new Error(d.error || t('admin.failed')); }
-        _unmatchedContactCreateModal.hide();
-        await loadParsedEmails();
-        if (_parsedEmailDetailId != null) showParsedEmailDetail(_parsedEmailDetailId);
-      } catch (e) {
-        errEl.textContent = e.message;
-        errEl.classList.remove('d-none');
-      }
     }
 
     // ── Contacts to Review (flat cross-email queue) ─────────────────────────
