@@ -5,3 +5,4 @@ instance/
 *.db
 .env
 build_date.txt
+.pytest_cache/

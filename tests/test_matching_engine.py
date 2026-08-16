@@ -1,0 +1,173 @@
+"""Regression tests for the mail-ingestion matching engine
+(_resolve_case_for_contacts / _match_inbound_email / _apply_inbound_match
+in app.py) -- the highest-risk, most-recently-rewritten logic in the
+ingestion pipeline: it decides which case (if any) an inbound email
+attaches to, and now resolves that once per email/thread across every org
+involved rather than once per org.
+"""
+import json
+
+import app as appmod
+from models import db, Case, Communication, CommunicationContact, OrgContact, InboundEmail
+
+
+def mk_contact(email, org_code, first="A", last="B"):
+    c = OrgContact(org_code=org_code, org_label=org_code + " Label", first_name=first, last_name=last, email=email)
+    db.session.add(c)
+    db.session.flush()
+    return c
+
+
+def mk_case(org_code, org_title, subject, status="Open", org_codes=None):
+    c = Case(org_name=org_code, org_title=org_title, subject=subject, status=status,
+             org_codes=json.dumps(org_codes) if org_codes else None)
+    db.session.add(c)
+    db.session.flush()
+    return c
+
+
+def mk_comm(case, org_code, org_title, subject, status, contact_date, contact=None):
+    comm = Communication(case_id=case.id, org_name=org_code, org_title=org_title,
+                          subject=subject, status=status, contact_date=contact_date)
+    db.session.add(comm)
+    db.session.flush()
+    if contact:
+        db.session.add(CommunicationContact(communication_id=comm.id, org_contact_id=contact.id))
+    return comm
+
+
+class TestResolveCaseForContacts:
+    def test_substring_containment_subject_match(self, app):
+        contact = mk_contact("a@raaey.gr", "RAAEY")
+        case = mk_case("RAAEY", "RAAEY", "Aithma Dedomenon")
+        result = appmod._resolve_case_for_contacts([contact], "Aithma Dedomenon - epeigon")
+        assert result["case"].id == case.id
+        assert result["created"] is False
+
+    def test_no_subject_match_always_opens_new_case_even_with_history(self, app):
+        """The sender-history tie-breaker was removed -- history alone must
+        never attach to an existing case when nothing matches by subject."""
+        contact = mk_contact("b@minhealth.gr", "MINHEALTH")
+        old_case = mk_case("MINHEALTH", "Ministry of Health", "Some older unrelated matter")
+        mk_comm(old_case, "MINHEALTH", "Ministry of Health", "Some older unrelated matter",
+                "Initial Contact", "2026-01-01", contact=contact)
+
+        result = appmod._resolve_case_for_contacts([contact], "Completely different new topic")
+        assert result["created"] is True
+        assert result["case"].id != old_case.id
+
+    def test_multiple_open_cases_prefers_history_match(self, app):
+        contact = mk_contact("c@minagric.gr", "MINAGRIC")
+        with_history = mk_case("MINAGRIC", "Ministry of Agriculture", "HVD Data Request")
+        without_history = mk_case("MINAGRIC", "Ministry of Agriculture", "HVD Data Request")
+        mk_comm(with_history, "MINAGRIC", "Ministry of Agriculture", "HVD Data Request",
+                "Initial Contact", "2026-01-01", contact=contact)
+
+        result = appmod._resolve_case_for_contacts([contact], "HVD Data Request")
+        assert result["case"].id == with_history.id
+        assert without_history.id != result["case"].id
+
+    def test_multiple_open_cases_falls_back_to_most_recently_active(self, app):
+        contact = mk_contact("d@mineduc.gr", "MINEDUC")
+        other_contact = mk_contact("other@mineduc.gr", "MINEDUC")
+        older = mk_case("MINEDUC", "Ministry of Education", "Dataset licensing question")
+        newer = mk_case("MINEDUC", "Ministry of Education", "Dataset licensing question")
+        # neither has history with `contact` -- both get unrelated activity, `newer` more recent
+        mk_comm(older, "MINEDUC", "Ministry of Education", "Dataset licensing question", "Initial Contact", "2026-01-01")
+        mk_comm(newer, "MINEDUC", "Ministry of Education", "Dataset licensing question", "Initial Contact", "2026-06-01")
+
+        result = appmod._resolve_case_for_contacts([contact], "Dataset licensing question")
+        assert result["case"].id == newer.id
+
+    def test_new_case_org_codes_covers_every_contact(self, app):
+        c1 = mk_contact("e1@orga.gr", "ORGA")
+        c2 = mk_contact("e2@orgb.gr", "ORGB")
+        result = appmod._resolve_case_for_contacts([c1, c2], "Brand new joint matter")
+        assert result["created"] is True
+        codes = {o["code"] for o in appmod._case_org_list(result["case"])}
+        assert codes == {"ORGA", "ORGB"}
+
+
+class TestMatchInboundEmail:
+    def test_single_email_multiple_orgs_share_one_case(self, app):
+        mk_contact("f1@orgx.gr", "ORGX")
+        mk_contact("f2@orgy.gr", "ORGY")
+        match = appmod._match_inbound_email(
+            from_field="Sender One <f1@orgx.gr>",
+            to_field="logger@parser.data.gov.gr",
+            cc_field="Sender Two <f2@orgy.gr>",
+            subject="Joint request",
+            body_text="Hello, this is the body.",
+        )
+        case_ids = {g["case"].id for g in match["match_groups"]}
+        assert len(case_ids) == 1
+        assert len(match["match_groups"]) == 2
+        assert sum(g["created"] for g in match["match_groups"]) == 1
+
+        case = db.session.get(Case, next(iter(case_ids)))
+        orgs = {o["code"] for o in appmod._case_org_list(case)}
+        assert orgs == {"ORGX", "ORGY"}
+
+    def test_multi_message_thread_across_orgs_shares_one_case(self, app, monkeypatch):
+        mk_contact("g1@orgp.gr", "ORGP")
+        mk_contact("g2@orgq.gr", "ORGQ")
+        monkeypatch.setattr(appmod, "_extract_thread_messages", lambda body_text: [
+            {"from_name": "G One", "from_email": "g1@orgp.gr", "subject": "Backlog thread",
+             "sent_date": "2026-01-10", "body": "First historical message with real content here.",
+             "addrs": {"g1@orgp.gr"}},
+            {"from_name": "G Two", "from_email": "g2@orgq.gr", "subject": "RE: Backlog thread",
+             "sent_date": "2026-01-12", "body": "Second historical message with real content here too.",
+             "addrs": {"g2@orgq.gr"}},
+        ])
+
+        match = appmod._match_inbound_email(
+            from_field="Forwarder <staff@internal.gr>",
+            to_field="logger@parser.data.gov.gr",
+            cc_field="",
+            subject="Fwd: Backlog thread",
+            body_text="whatever, thread extraction is monkeypatched",
+        )
+        case_ids = {g["case"].id for g in match["match_groups"]}
+        assert len(case_ids) == 1
+        assert len(match["match_groups"]) == 2
+        assert sum(g["created"] for g in match["match_groups"]) == 1
+
+        case = db.session.get(Case, next(iter(case_ids)))
+        orgs = {o["code"] for o in appmod._case_org_list(case)}
+        assert orgs == {"ORGP", "ORGQ"}
+        subjects = {g["subject"] for g in match["match_groups"]}
+        assert subjects == {"Backlog thread", "RE: Backlog thread"}
+
+    def test_no_contact_match_reason(self, app):
+        match = appmod._match_inbound_email(
+            from_field="Nobody <nobody@unknown.gr>",
+            to_field="logger@parser.data.gov.gr",
+            cc_field="",
+            subject="Random subject",
+            body_text="No registered contact anywhere in this.",
+        )
+        assert match["reason"] == "no_contact_match"
+        assert match["match_groups"] == []
+
+
+class TestApplyInboundMatch:
+    def test_multi_org_email_end_to_end(self, app):
+        mk_contact("h1@orgm.gr", "ORGM")
+        mk_contact("h2@orgn.gr", "ORGN")
+        inbound = InboundEmail(from_email="h1@orgm.gr", from_name="H One", to_email="logger@parser.data.gov.gr",
+                                subject="Multi org webhook test", body_text="Body text here.")
+        db.session.add(inbound)
+        db.session.flush()
+
+        match = appmod._match_inbound_email(
+            from_field="H One <h1@orgm.gr>", to_field="logger@parser.data.gov.gr",
+            cc_field="H Two <h2@orgn.gr>", subject="Multi org webhook test", body_text="Body text here.",
+        )
+        created = appmod._apply_inbound_match(inbound, match)
+        db.session.commit()
+
+        assert inbound.status == "attached"
+        assert inbound.reason is None
+        assert len(created) == 2
+        assert len({c.case_id for c in created}) == 1
+        assert sorted(c.status for c in created) == ["Initial Contact", "Intermediate Contact"]
