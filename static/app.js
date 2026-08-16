@@ -5678,6 +5678,11 @@ async function _fetchCommsCaseRows(caseId) {
     const params = _commsQueryParams();
     params.set('case_id', caseId);
     params.set('rows', 200);  // generous cap for one case; a larger one would need its own load-more
+    // Oldest first -- this is one case's own thread, read top-to-bottom like
+    // a real conversation (Initial Contact first), unlike the flat/grouped
+    // views elsewhere in this tab where "most recent activity first" is the
+    // more useful default.
+    params.set('dir', 'asc');
     const resp = await fetch(API_BASE + 'api/communications?' + params.toString());
     const data = await _fetchJsonOrThrow(resp);
     _commsCaseExpandRows.set(caseId, data.rows || []);
