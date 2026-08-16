@@ -143,14 +143,22 @@ Key decisions already implemented:
   automatic. Deliberately does NOT just re-run the ordinary email-based
   matcher (which fails when merging into a contact registered under a
   different email than the one the participant actually sent from).
+- **Contacts to Review** page shipped: `admin_users.html`'s
+  `panel-contact-review` tab (superadmin-only) — a flat table of every
+  pending `UnmatchedEmailContact` (via `GET /api/unmatched-contacts`),
+  with a resolve modal (`contactReviewModal`) offering "Register as new"
+  (calls `/create` directly, one request) or "Merge into existing" (a new
+  contact search-and-pick widget, feeds `/resolve`).
 
 Still pending (see conversation history for the full numbered plan if
 picking this back up — not persisted here since it's long-form):
-- A dedicated "Contacts to Review" frontend page (flat queue of pending
-  `UnmatchedEmailContact` rows, superadmin-only, replacing today's
-  per-email admin-panel section and the main dashboard's inline
-  register-contact checkbox).
-- Removing those now-deprecated inline flows once the new queue is live.
+- **Removing the now-deprecated old inline flows**, now that the new
+  queue is live: `admin_users.html`'s old per-email "Unregistered
+  participants" section + `unmatchedContactCreateModal`, and the main
+  dashboard's inline "Also register this sender as a contact" checkbox in
+  `openInboundAttachModal`/`inboundAttachModal`. Both still exist
+  side-by-side with the new page on purpose — remove only once the new
+  page's been watched handling real traffic for a bit.
 - New superadmin-only tools: reassign a Communication to a different
   case, edit a case's org list after creation, merge two cases together.
 - i18n/copy cleanup for anything the above makes dead.
