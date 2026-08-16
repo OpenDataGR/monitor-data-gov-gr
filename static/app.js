@@ -352,6 +352,19 @@ const TRANSLATIONS = {
     'comms.case_close': 'Close Case',
     'comms.case_reopen': 'Reopen Case',
     'comms.case_col': 'Case',
+    'comms.case_edit_orgs': 'Edit organizations',
+    'comms.case_edit_orgs_title': 'Edit Case Organizations',
+    'comms.case_edit_orgs_required': 'At least one organization is required.',
+    'comms.case_merge': 'Merge into another case',
+    'comms.case_merge_title': 'Merge Case',
+    'comms.case_merge_desc': 'Every communication on this case will move onto the case you pick below, and this case will be deleted. The case you pick keeps its own Initial Contact; this case\'s Initial Contact becomes a regular entry.',
+    'comms.case_merge_confirm': 'Merge',
+    'comms.reassign_case': 'Reassign to another case…',
+    'comms.reassign_case_title': 'Reassign Communication',
+    'comms.reassign_case_desc': 'Moves just this entry onto a different case.',
+    'comms.reassign_case_confirm': 'Reassign',
+    'comms.case_target_search_ph': 'Search open cases…',
+    'comms.case_target_required': 'Pick a case first.',
     'comms.search': 'Search communications…',
     'comms.download_excel_title': 'Download current view as Excel',
     'comms.add_comm_for_org': 'Add new communication for this organization',
@@ -932,6 +945,19 @@ const TRANSLATIONS = {
     'comms.case_close': 'Κλείσιμο Υπόθεσης',
     'comms.case_reopen': 'Επανάνοιγμα Υπόθεσης',
     'comms.case_col': 'Υπόθεση',
+    'comms.case_edit_orgs': 'Επεξεργασία οργανισμών',
+    'comms.case_edit_orgs_title': 'Επεξεργασία Οργανισμών Υπόθεσης',
+    'comms.case_edit_orgs_required': 'Απαιτείται τουλάχιστον ένας οργανισμός.',
+    'comms.case_merge': 'Συγχώνευση σε άλλη υπόθεση',
+    'comms.case_merge_title': 'Συγχώνευση Υπόθεσης',
+    'comms.case_merge_desc': 'Κάθε επικοινωνία αυτής της υπόθεσης θα μεταφερθεί στην υπόθεση που θα επιλέξετε παρακάτω, και αυτή η υπόθεση θα διαγραφεί. Η υπόθεση που θα επιλέξετε διατηρεί τη δική της Αρχική Επικοινωνία· η Αρχική Επικοινωνία αυτής της υπόθεσης γίνεται απλή καταχώρηση.',
+    'comms.case_merge_confirm': 'Συγχώνευση',
+    'comms.reassign_case': 'Μεταφορά σε άλλη υπόθεση…',
+    'comms.reassign_case_title': 'Μεταφορά Επικοινωνίας',
+    'comms.reassign_case_desc': 'Μεταφέρει μόνο αυτή την καταχώρηση σε διαφορετική υπόθεση.',
+    'comms.reassign_case_confirm': 'Μεταφορά',
+    'comms.case_target_search_ph': 'Αναζήτηση ανοιχτών υποθέσεων…',
+    'comms.case_target_required': 'Επιλέξτε πρώτα μια υπόθεση.',
     'comms.search': 'Αναζήτηση επικοινωνιών…',
     'comms.download_excel_title': 'Λήψη της τρέχουσας προβολής ως Excel',
     'comms.add_comm_for_org': 'Προσθήκη νέας επικοινωνίας για αυτόν τον οργανισμό',
@@ -1376,6 +1402,7 @@ const API_BASE = (() => {
 // null = unrestricted (admins, or a user with no explicit allow-list); otherwise
 // an array of tab keys (e.g. "health") matching the "tab-health" pane id suffix.
 const ALLOWED_TABS = window.__ALLOWED_TABS__;
+const IS_SUPERADMIN = !!window.__IS_SUPERADMIN__;
 
 function _applyTabRestrictions() {
   if (!ALLOWED_TABS) return;
@@ -5984,6 +6011,8 @@ function _renderCommCaseInfo(cs, isEdit = false) {
   show('commCaseInfoText').textContent = `${t('comms.case_col')} #${cs.id} · ${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
     (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : ''));
   show('commCaseFollowupBtn').classList.toggle('d-none', !isEdit);
+  show('commCaseEditOrgsBtn').classList.toggle('d-none', !IS_SUPERADMIN);
+  show('commCaseMergeBtn').classList.toggle('d-none', !IS_SUPERADMIN);
   const btn = show('commCaseToggleBtn');
   btn.textContent = isClosed ? t('comms.case_reopen') : t('comms.case_close');
   btn.className = 'btn btn-sm py-0 px-2 ms-auto ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
@@ -6004,6 +6033,168 @@ function _addFollowupFromModal() {
   const caseId = parseInt(show('commCaseInfo').dataset.caseId, 10);
   if (!caseId) return;
   openFollowupForCase(caseId);
+}
+
+// ── Superadmin case-correction tools (edit orgs / merge / reassign) ─────────
+// Three small tools for when the automatic ingestion matcher gets something
+// wrong: a case's own org list can be corrected directly, two cases that
+// turned out to be the same conversation can be folded into one, and a
+// single misfiled Communication can be moved onto a different case. All
+// three are superadmin-only (buttons are hidden otherwise; the backend
+// routes are independently gated too).
+
+let _caseOrgEditOrgs = [];
+
+async function openCaseOrgEditModal() {
+  const caseId = parseInt(show('commCaseInfo').dataset.caseId, 10);
+  if (!caseId) return;
+  show('caseOrgEditCaseId').value = caseId;
+  show('caseOrgEditError').classList.add('d-none');
+  show('caseOrgEditSearch').value = '';
+  let cs;
+  try { cs = await _commsFetchCaseDetail(caseId); } catch (e) { return; }
+  _caseOrgEditOrgs = (cs.org_codes && cs.org_codes.length) ? cs.org_codes.slice() : [{code: cs.org_name, label: cs.org_title || cs.org_name}];
+  _caseOrgEditRenderTags();
+  if (!_caseOrgEditModal) _caseOrgEditModal = new bootstrap.Modal(document.getElementById('caseOrgEditModal'));
+  _caseOrgEditModal.show();
+}
+let _caseOrgEditModal = null;
+
+function _caseOrgEditRenderTags() {
+  const container = document.getElementById('caseOrgEditTags');
+  container.innerHTML = _caseOrgEditOrgs.map(o =>
+    `<span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em;white-space:normal;text-align:left">${esc(o.label || o.code)}` +
+    `<button type="button" class="btn-close btn-close-white flex-shrink-0" style="font-size:.55em;margin-left:.25em"` +
+    ` onclick="_caseOrgEditRemove('${esc(o.code)}')" title="${t('common.remove')}"></button></span>`
+  ).join('');
+}
+function _caseOrgEditRemove(code) {
+  _caseOrgEditOrgs = _caseOrgEditOrgs.filter(o => o.code !== code);
+  _caseOrgEditRenderTags();
+}
+function _caseOrgEditSelect(code, label) {
+  if (!code || _caseOrgEditOrgs.some(o => o.code === code)) return;
+  _caseOrgEditOrgs.push({code, label: label || code});
+  _caseOrgEditRenderTags();
+  show('caseOrgEditSearch').value = '';
+  document.getElementById('caseOrgEditDropdown').classList.add('d-none');
+}
+function _caseOrgEditSearch(q) { _orgSearchDropdown(q, 'caseOrgEditDropdown', '_caseOrgEditSelect'); }
+
+async function saveCaseOrgEdit() {
+  const caseId = show('caseOrgEditCaseId').value;
+  const err = show('caseOrgEditError');
+  err.classList.add('d-none');
+  if (!_caseOrgEditOrgs.length) {
+    err.textContent = t('comms.case_edit_orgs_required');
+    err.classList.remove('d-none');
+    return;
+  }
+  const resp = await fetch(`${API_BASE}api/cases/${caseId}`, {
+    method: 'PATCH', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({org_codes: _caseOrgEditOrgs}),
+  });
+  const json = await resp.json();
+  if (!resp.ok) { err.textContent = json.error || t('common.save_failed'); err.classList.remove('d-none'); return; }
+  _caseOrgEditModal.hide();
+  _commsCaseDetailCache.delete(parseInt(caseId, 10));
+  await _reloadCasesAndComms();
+  const cs = await _commsFetchCaseDetail(caseId).catch(() => null);
+  _renderCommCaseInfo(cs, show('commCaseInfo').dataset.isEdit === '1');
+}
+
+// Shared target-case picker for both merge and reassign -- _caseTargetMode
+// ('merge'|'reassign') and _caseTargetSourceId (a case id for merge, a
+// Communication id for reassign) decide what Confirm actually submits.
+let _caseTargetModal = null;
+let _caseTargetMode = null;
+let _caseTargetSourceId = null;
+let _caseTargetSearchResults = [];
+
+function openCaseMergeModal() {
+  const caseId = parseInt(show('commCaseInfo').dataset.caseId, 10);
+  if (!caseId) return;
+  _caseTargetMode = 'merge';
+  _caseTargetSourceId = caseId;
+  show('caseTargetModalTitle').textContent = t('comms.case_merge_title');
+  show('caseTargetModalDesc').textContent = t('comms.case_merge_desc');
+  show('caseTargetConfirmBtn').textContent = t('comms.case_merge_confirm');
+  _openCaseTargetModal();
+}
+
+function openCaseReassignModal() {
+  const commId = parseInt(show('commId').value, 10);
+  if (!commId) return;
+  _caseTargetMode = 'reassign';
+  _caseTargetSourceId = commId;
+  show('caseTargetModalTitle').textContent = t('comms.reassign_case_title');
+  show('caseTargetModalDesc').textContent = t('comms.reassign_case_desc');
+  show('caseTargetConfirmBtn').textContent = t('comms.reassign_case_confirm');
+  _openCaseTargetModal();
+}
+
+function _openCaseTargetModal() {
+  show('caseTargetCaseId').value = '';
+  show('caseTargetSearch').value = '';
+  show('caseTargetError').classList.add('d-none');
+  document.getElementById('caseTargetDropdown').classList.add('d-none');
+  if (!_caseTargetModal) _caseTargetModal = new bootstrap.Modal(document.getElementById('caseTargetModal'));
+  _caseTargetModal.show();
+}
+
+// All open cases is small and bounded (see _refreshInboundAttachCases's own
+// note) -- fine to fetch fresh on every keystroke rather than needing a cache.
+async function _caseTargetSearch(q) {
+  const dd = document.getElementById('caseTargetDropdown');
+  let cases;
+  try { cases = await fetch(`${API_BASE}api/cases?status=Open`).then(r => r.ok ? r.json() : []); } catch (_) { cases = []; }
+  const nq = (q || '').trim().toLowerCase();
+  const excludeCaseId = _caseTargetMode === 'merge' ? _caseTargetSourceId : null;
+  _caseTargetSearchResults = (Array.isArray(cases) ? cases : [])
+    .filter(c => c.id !== excludeCaseId)
+    .filter(c => !nq || (c.subject || '').toLowerCase().includes(nq) || (c.org_title || c.org_name || '').toLowerCase().includes(nq))
+    .slice(0, 20);
+  if (!_caseTargetSearchResults.length) { dd.classList.add('d-none'); return; }
+  dd.innerHTML = _caseTargetSearchResults.map((c, i) => `
+    <li class="list-group-item list-group-item-action py-1 px-2 small" style="cursor:pointer" onmousedown="_caseTargetPick(${i})">
+      <span class="fw-semibold">${esc(c.subject)}</span> <span class="text-muted ms-1">#${c.id} · ${esc(c.org_title || c.org_name)}</span>
+    </li>`).join('');
+  dd.classList.remove('d-none');
+}
+function _caseTargetPick(i) {
+  const c = _caseTargetSearchResults[i];
+  if (!c) return;
+  show('caseTargetCaseId').value = c.id;
+  show('caseTargetSearch').value = `${c.subject} (#${c.id})`;
+  document.getElementById('caseTargetDropdown').classList.add('d-none');
+}
+async function _confirmCaseTarget() {
+  const targetCaseId = show('caseTargetCaseId').value;
+  const err = show('caseTargetError');
+  err.classList.add('d-none');
+  if (!targetCaseId) {
+    err.textContent = t('comms.case_target_required');
+    err.classList.remove('d-none');
+    return;
+  }
+  const url = _caseTargetMode === 'merge'
+    ? `${API_BASE}api/cases/${_caseTargetSourceId}/merge`
+    : `${API_BASE}api/communications/${_caseTargetSourceId}/reassign-case`;
+  const body = _caseTargetMode === 'merge' ? {into_case_id: targetCaseId} : {case_id: targetCaseId};
+  const resp = await fetch(url, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+  });
+  const json = await resp.json();
+  if (!resp.ok) { err.textContent = json.error || t('common.save_failed'); err.classList.remove('d-none'); return; }
+  _caseTargetModal.hide();
+  if (_caseTargetMode === 'reassign') {
+    // The comm just moved off the case the modal is currently showing --
+    // close the whole Communication modal rather than leaving it open on
+    // stale case info the user just changed out from under themselves.
+    _commModal.hide();
+  }
+  _commsCaseDetailCache.clear();
+  await _reloadCasesAndComms();
 }
 
 function addFollowupForComm(commId) {
@@ -6042,6 +6233,10 @@ function _onCommStatusChange() {
   const status = show('commStatus').value;
   const closes = isAdding && (status === 'Positive Response' || status === 'Negative Response');
   show('commStatusCloseHint').classList.toggle('d-none', !closes);
+  // Reassigning only makes sense for an already-saved, non-opening entry --
+  // the Initial Contact entry has to stay on the case it opened (case_merge
+  // is the tool for that situation instead).
+  show('commReassignCaseBtn').classList.toggle('d-none', !(IS_SUPERADMIN && !isAdding && status !== 'Initial Contact'));
 }
 
 function _plus14(dateStr) {

@@ -1846,6 +1846,7 @@ def index():
                            git_sha=_BUILD_SHA,
                            user_name=session.get("user_name"),
                            is_admin=session.get("is_admin", False),
+                           is_superadmin=session.get("is_superadmin", False),
                            allowed_tabs=_effective_allowed_tabs(user))
 
 
@@ -4418,6 +4419,37 @@ def communications_delete(comm_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/communications/<int:comm_id>/reassign-case", methods=["POST"])
+def communication_reassign_case(comm_id):
+    """Superadmin-only correction tool for a Communication the automatic
+    matcher put on the wrong case -- moves just this one entry. The
+    "Initial Contact" entry stays put; reassigning it would leave its case
+    without an opening entry, which is what case_merge is for instead."""
+    err = _require_superadmin()
+    if err:
+        return err
+    comm = Communication.query.get_or_404(comm_id)
+    if comm.status == "Initial Contact":
+        return jsonify({"error": "Initial Contact can't be reassigned -- use case merge instead"}), 400
+    body = _decode_payload()
+    case_id = body.get("case_id")
+    if not case_id:
+        return jsonify({"error": "case_id is required"}), 400
+    new_case = Case.query.get_or_404(int(case_id))
+    if new_case.id == comm.case_id:
+        return jsonify({"error": "already on that case"}), 400
+    old_case_id = comm.case_id
+    comm.case = new_case  # via the relationship, not the raw column -- see case_merge's own note on why
+    db.session.commit()
+    # Same empty-case cleanup communications_delete already applies above.
+    if old_case_id and not Communication.query.filter_by(case_id=old_case_id).first():
+        old_case = Case.query.get(old_case_id)
+        if old_case:
+            db.session.delete(old_case)
+            db.session.commit()
+    return jsonify(comm.to_dict())
+
+
 # ── Cases ─────────────────────────────────────────────────────────────────────
 
 @app.route("/api/cases", methods=["GET"])
@@ -4445,10 +4477,31 @@ def case_update(case_id):
         if not subject:
             return jsonify({"error": "subject cannot be empty"}), 400
         case.subject = subject
-    if "org_name" in body:
-        case.org_name = (body["org_name"] or "").strip()
-    if "org_title" in body:
-        case.org_title = (body["org_title"] or "").strip() or None
+    if "org_codes" in body or "org_name" in body or "org_title" in body:
+        # Additive superadmin gate, per the standing rule that superadmin is
+        # always a strict superset -- nothing today calls this branch as a
+        # regular user (no frontend PATCH exists yet), so this doesn't take
+        # away a capability anyone already has.
+        err = _require_superadmin()
+        if err:
+            return err
+        if "org_codes" in body:
+            raw = body["org_codes"] if isinstance(body["org_codes"], list) else []
+            seen, orgs = set(), []
+            for o in raw:
+                code = isinstance(o, dict) and (o.get("code") or "").strip()
+                if code and code not in seen:
+                    seen.add(code)
+                    orgs.append({"code": code, "label": (o.get("label") or code).strip() or code})
+            if not orgs:
+                return jsonify({"error": "org_codes must be a non-empty list"}), 400
+            case.org_codes = json.dumps(orgs)
+            case.org_name, case.org_title = orgs[0]["code"], orgs[0]["label"]
+        else:
+            if "org_name" in body:
+                case.org_name = (body["org_name"] or "").strip()
+            if "org_title" in body:
+                case.org_title = (body["org_title"] or "").strip() or None
     if "deadline" in body:
         case.deadline = (body["deadline"] or "").strip() or None
     db.session.commit()
@@ -4479,6 +4532,48 @@ def case_delete(case_id):
     db.session.delete(case)  # cascades to its communications
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@app.route("/api/cases/<int:case_id>/merge", methods=["POST"])
+def case_merge(case_id):
+    """Superadmin-only: folds one case entirely into another, for when the
+    automatic matcher opened two cases that turn out to be the same
+    conversation. Every Communication moves onto the target case (the
+    source's own Initial Contact demotes to Intermediate, since the target
+    already has its own opening entry); the target's org_codes absorbs
+    whatever orgs the source covered that it didn't already; the source
+    case is then deleted."""
+    err = _require_superadmin()
+    if err:
+        return err
+    source = Case.query.get_or_404(case_id)
+    body = _decode_payload()
+    into_case_id = body.get("into_case_id")
+    if not into_case_id:
+        return jsonify({"error": "into_case_id is required"}), 400
+    target = Case.query.get_or_404(int(into_case_id))
+    if target.id == source.id:
+        return jsonify({"error": "cannot merge a case into itself"}), 400
+    for comm in list(source.communications):
+        if comm.status == "Initial Contact":
+            comm.status = "Intermediate Contact"
+        # Reassign via the relationship (comm.case = target), not the raw
+        # comm.case_id column -- Case.communications carries
+        # cascade="all, delete-orphan" (models.py), which tracks membership
+        # off the in-memory collection, not the FK value. Setting case_id
+        # directly would leave `comm` sitting in source.communications'
+        # already-loaded collection, so deleting source below would cascade
+        # -delete it despite its FK now pointing at target.
+        comm.case = target
+    db.session.flush()
+    seen = {o["code"] for o in _case_org_list(target)}
+    target_orgs = _case_org_list(target) + [o for o in _case_org_list(source) if o["code"] not in seen]
+    target.org_codes = json.dumps(target_orgs)
+    if target_orgs:
+        target.org_name, target.org_title = target_orgs[0]["code"], target_orgs[0]["label"]
+    db.session.delete(source)
+    db.session.commit()
+    return jsonify(target.to_dict(include_communications=True))
 
 
 # ── Email sync (auto-captured communications) ────────────────────────────────
