@@ -169,6 +169,9 @@
           <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-mail-parser" type="button">
             <i class="bi bi-envelope-paper-fill me-2"></i><span class="sidebar-label" data-i18n="admin.nav_mail_parser">Mail Parser</span>
           </button>
+          <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-contact-review" type="button" onclick="loadUnmatchedContacts()">
+            <i class="bi bi-person-lines-fill me-2"></i><span class="sidebar-label" data-i18n="admin.nav_contact_review">Contacts to Review</span>
+          </button>
           {% endif %}
         </div>
       </nav>
@@ -385,6 +388,22 @@
               </div>
               <p class="text-muted small mb-3" data-i18n="admin.parsed_emails_desc">Every email the webhook has processed, whether it auto-attached, is waiting for review, or was dismissed -- most recent first.</p>
               <div id="parsedEmailsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
+            </div>
+          </div>
+
+          <!-- Contacts to Review -- flat, cross-email queue of every
+               UnmatchedEmailContact still pending. Replaces the old
+               per-email "Unregistered participants" section above (still
+               present for now -- removed once this page's been verified
+               handling real traffic). -->
+          <div class="tab-pane fade" id="panel-contact-review">
+            <div class="card p-4">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <h6 class="fw-semibold mb-0"><i class="bi bi-person-lines-fill me-2"></i><span data-i18n="admin.contact_review_title">Contacts to Review</span></h6>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadUnmatchedContacts()"><i class="bi bi-arrow-clockwise"></i></button>
+              </div>
+              <p class="text-muted small mb-3" data-i18n="admin.contact_review_desc">Everyone a processed email named who isn't a registered contact yet -- approve as a new contact, merge into an existing one, or drop the flag. Resolving one automatically finishes attaching whatever case/communication it unblocks.</p>
+              <div id="unmatchedContactsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
             </div>
           </div>
           {% endif %}
@@ -649,6 +668,90 @@
     </div>
   </div>
 
+  <!-- Contacts-to-Review resolve modal: register as new, or merge into an
+       existing contact -- opened from the new flat queue above. A separate
+       modal/element-ids from unmatchedContactCreateModal on purpose (both
+       exist side by side until that older, per-email flow is removed). -->
+  <div class="modal fade" id="contactReviewModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold"><i class="bi bi-person-check me-2"></i><span data-i18n="admin.contact_review_modal_title">Resolve Contact</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-3">
+          <input type="hidden" id="reviewContactId">
+          <ul class="nav nav-tabs mb-3">
+            <li class="nav-item"><button type="button" class="nav-link active" id="reviewTabNewBtn" data-bs-toggle="tab" data-bs-target="#reviewTabNew"><span data-i18n="admin.review_tab_new">Register as new</span></button></li>
+            <li class="nav-item"><button type="button" class="nav-link" id="reviewTabMergeBtn" data-bs-toggle="tab" data-bs-target="#reviewTabMerge"><span data-i18n="admin.review_tab_merge">Merge into existing</span></button></li>
+          </ul>
+          <div class="tab-content">
+            <div class="tab-pane fade show active" id="reviewTabNew">
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label small mb-1" data-i18n="admin.unmatched_first_name">First name</label>
+                  <input type="text" id="reviewFirstName" class="form-control form-control-sm">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-1" data-i18n="admin.unmatched_last_name">Last name</label>
+                  <input type="text" id="reviewLastName" class="form-control form-control-sm">
+                </div>
+                <div class="col-12">
+                  <label class="form-label small mb-1" data-i18n="admin.unmatched_org_search">Organization</label>
+                  <div id="reviewOrgTags" class="mb-1 d-flex flex-wrap gap-1"></div>
+                  <div class="position-relative">
+                    <input type="text" class="form-control form-control-sm" id="reviewOrgSearch" autocomplete="off"
+                           data-i18n-ph="admin.org_search_ph" placeholder="Search organizations…"
+                           oninput="_orgSearchDropdown(this.value,'reviewOrgDropdown','_reviewOrgSelect')"
+                           onfocus="_orgSearchDropdown(this.value,'reviewOrgDropdown','_reviewOrgSelect')"
+                           onblur="setTimeout(()=>document.getElementById('reviewOrgDropdown').classList.add('d-none'),150)">
+                    <ul class="list-group shadow-sm position-absolute w-100 d-none" id="reviewOrgDropdown" style="z-index:1060;max-height:220px;overflow-y:auto;top:100%"></ul>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-1" data-i18n="admin.unmatched_email">Email</label>
+                  <input type="email" id="reviewEmail" class="form-control form-control-sm" oninput="_reviewCheckEmail()">
+                  <div id="reviewEmailHint" class="small text-warning mt-1 d-none"></div>
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-1" data-i18n="admin.unmatched_position">Position</label>
+                  <input type="text" id="reviewPosition" class="form-control form-control-sm">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-1" data-i18n="admin.unmatched_tel">Phone</label>
+                  <input type="text" id="reviewTel" class="form-control form-control-sm">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small mb-1" data-i18n="admin.unmatched_mobile">Mobile</label>
+                  <input type="text" id="reviewMobile" class="form-control form-control-sm">
+                </div>
+              </div>
+            </div>
+            <div class="tab-pane fade" id="reviewTabMerge">
+              <label class="form-label small mb-1" data-i18n="admin.review_merge_search">Search existing contacts</label>
+              <div class="position-relative">
+                <input type="text" class="form-control form-control-sm" id="reviewMergeSearch" autocomplete="off"
+                       data-i18n-ph="admin.review_merge_search_ph" placeholder="Name or email…"
+                       oninput="_reviewContactSearch(this.value)" onfocus="_reviewContactSearch(this.value)"
+                       onblur="setTimeout(()=>document.getElementById('reviewMergeDropdown').classList.add('d-none'),150)">
+                <ul class="list-group shadow-sm position-absolute w-100 d-none" id="reviewMergeDropdown" style="z-index:1060;max-height:260px;overflow-y:auto;top:100%"></ul>
+              </div>
+              <input type="hidden" id="reviewMergeContactId">
+              <div class="mt-2 small fw-semibold" id="reviewMergeContactLabel"></div>
+            </div>
+          </div>
+          <div id="reviewContactError" class="alert alert-danger small mt-3 mb-0 d-none"></div>
+        </div>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveContactReview()">
+            <i class="bi bi-check me-1"></i><span data-i18n="admin.save">Save</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Mass email confirmation modal -->
   <div class="modal fade" id="massEmailModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -747,7 +850,16 @@
         'footer.changelog': 'Changelog', 'footer.changelog_title': 'Changelog',
         'footer.changelog_none': 'No changelog entries available.', 'footer.error': 'Error:',
         'admin.nav_users': 'Users', 'admin.nav_mass_email': 'Mass Email', 'admin.nav_system': 'System',
-        'admin.nav_mail_parser': 'Mail Parser',
+        'admin.nav_mail_parser': 'Mail Parser', 'admin.nav_contact_review': 'Contacts to Review',
+        'admin.contact_review_title': 'Contacts to Review',
+        'admin.contact_review_desc': "Everyone a processed email named who isn't a registered contact yet -- approve as a new contact, merge into an existing one, or drop the flag. Resolving one automatically finishes attaching whatever case/communication it unblocks.",
+        'admin.contact_review_none': 'Nothing waiting on a decision right now.',
+        'admin.contact_review_modal_title': 'Resolve Contact',
+        'admin.review_tab_new': 'Register as new', 'admin.review_tab_merge': 'Merge into existing',
+        'admin.review_merge_search': 'Search existing contacts', 'admin.review_merge_search_ph': 'Name or email…',
+        'admin.review_merge_required': 'Search for and pick an existing contact to merge into.',
+        'admin.review_resolve': 'Resolve', 'admin.review_col_participant': 'Participant',
+        'admin.review_col_email_subject': 'Email subject', 'admin.review_col_org_guess': 'Guessed org',
         'admin.invite_title': 'Invite a new user', 'admin.email': 'Email', 'admin.name': 'Name',
         'admin.admin_checkbox': 'Admin', 'admin.invite': 'Invite',
         'admin.compose': 'Compose', 'admin.compose_desc': 'Send an announcement to some or all dashboard users.',
@@ -881,7 +993,16 @@
         'footer.changelog': 'Ιστορικό αλλαγών', 'footer.changelog_title': 'Ιστορικό αλλαγών',
         'footer.changelog_none': 'Δεν υπάρχουν διαθέσιμες καταχωρήσεις ιστορικού.', 'footer.error': 'Σφάλμα:',
         'admin.nav_users': 'Χρήστες', 'admin.nav_mass_email': 'Μαζική Αποστολή', 'admin.nav_system': 'Σύστημα',
-        'admin.nav_mail_parser': 'Ανάλυση Email',
+        'admin.nav_mail_parser': 'Ανάλυση Email', 'admin.nav_contact_review': 'Επαφές προς Έλεγχο',
+        'admin.contact_review_title': 'Επαφές προς Έλεγχο',
+        'admin.contact_review_desc': 'Όσοι εμφανίστηκαν σε επεξεργασμένο email αλλά δεν είναι ακόμα καταχωρημένη επαφή -- εγκρίνετε ως νέα επαφή, συγχωνεύστε με υπάρχουσα, ή απορρίψτε την επισήμανση. Η επίλυση ολοκληρώνει αυτόματα την επισύναψη όποιας υπόθεσης/επικοινωνίας ξεμπλοκάρει.',
+        'admin.contact_review_none': 'Δεν εκκρεμεί καμία απόφαση αυτή τη στιγμή.',
+        'admin.contact_review_modal_title': 'Επίλυση Επαφής',
+        'admin.review_tab_new': 'Καταχώρηση ως νέα', 'admin.review_tab_merge': 'Συγχώνευση με υπάρχουσα',
+        'admin.review_merge_search': 'Αναζήτηση υπαρχουσών επαφών', 'admin.review_merge_search_ph': 'Όνομα ή email…',
+        'admin.review_merge_required': 'Αναζητήστε και επιλέξτε μια υπάρχουσα επαφή για συγχώνευση.',
+        'admin.review_resolve': 'Επίλυση', 'admin.review_col_participant': 'Συμμετέχων',
+        'admin.review_col_email_subject': 'Θέμα email', 'admin.review_col_org_guess': 'Εικαζόμενος φορέας',
         'admin.invite_title': 'Πρόσκληση νέου χρήστη', 'admin.email': 'Email', 'admin.name': 'Όνομα',
         'admin.admin_checkbox': 'Διαχειριστής', 'admin.invite': 'Πρόσκληση',
         'admin.compose': 'Σύνταξη', 'admin.compose_desc': 'Στείλτε μια ανακοίνωση σε μερικούς ή όλους τους χρήστες του dashboard.',
@@ -2153,6 +2274,265 @@
         errEl.textContent = e.message;
         errEl.classList.remove('d-none');
       }
+    }
+
+    // ── Contacts to Review (flat cross-email queue) ─────────────────────────
+
+    let _unmatchedContactsCache = [];
+    const UNMATCHED_STATUS_BADGE = {pending: 'bg-warning text-dark', dropped: 'bg-secondary', created: 'bg-success', merged: 'bg-info text-dark'};
+
+    async function loadUnmatchedContacts() {
+      const el = document.getElementById('unmatchedContactsTable');
+      if (!el) return;
+      el.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div>`;
+      try {
+        const resp = await fetch('../api/unmatched-contacts');
+        const rows = await resp.json();
+        if (!resp.ok) throw new Error((rows && rows.error) || t('admin.failed'));
+        _unmatchedContactsCache = Array.isArray(rows) ? rows : [];
+        _renderUnmatchedContactsTable();
+      } catch (e) {
+        el.innerHTML = `<p class="text-danger small mb-0">${t('admin.failed_to_load').replace('{err}', esc(e.message))}</p>`;
+      }
+    }
+
+    function _renderUnmatchedContactsTable() {
+      const el = document.getElementById('unmatchedContactsTable');
+      if (!el) return;
+      if (!_unmatchedContactsCache.length) {
+        el.innerHTML = `<p class="text-muted small mb-0">${t('admin.contact_review_none')}</p>`;
+        return;
+      }
+      el.innerHTML = `
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead><tr>
+              <th data-i18n="admin.parsed_col_received">Received</th>
+              <th data-i18n="admin.review_col_participant">Participant</th>
+              <th data-i18n="admin.review_col_email_subject">From email</th>
+              <th data-i18n="admin.review_col_org_guess">Guessed org</th>
+              <th data-i18n="admin.parsed_col_status">Status</th>
+              <th></th>
+            </tr></thead>
+            <tbody>${_unmatchedContactsCache.map(u => {
+              const e = u.inbound_email;
+              const actions = u.status === 'pending'
+                ? `<button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" onclick="dropUnmatchedContactReview(${u.id})">${t('admin.unmatched_drop')}</button>
+                   <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" onclick="openContactReviewModal(${u.id})">${t('admin.review_resolve')}</button>`
+                : `<span class="badge ${UNMATCHED_STATUS_BADGE[u.status] || 'bg-secondary'}" style="font-size:.7em">${esc(u.status)}</span>`;
+              return `
+                <tr>
+                  <td class="small text-nowrap">${esc((e && (e.received_at || '').replace('T', ' ').slice(0, 16)) || '')}</td>
+                  <td class="small">${esc(u.name || u.email || '')}${u.name && u.email ? `<div class="text-muted" style="font-size:.75em">${esc(u.email)}</div>` : ''}</td>
+                  <td class="small">${esc((e && e.subject) || '')}</td>
+                  <td class="small">${esc(u.org_label || u.org_code || '')}</td>
+                  <td><span class="badge ${UNMATCHED_STATUS_BADGE[u.status] || 'bg-secondary'}" style="font-size:.7em">${esc(u.status)}</span></td>
+                  <td class="text-end text-nowrap">${actions}</td>
+                </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>`;
+    }
+
+    async function dropUnmatchedContactReview(unmatchedId) {
+      if (!confirm(t('admin.unmatched_confirm_drop'))) return;
+      const resp = await fetch(`../api/unmatched-contacts/${unmatchedId}/drop`, { method: 'POST' });
+      if (!resp.ok) { const d = await resp.json(); alert(d.error || t('admin.failed')); return; }
+      await loadUnmatchedContacts();
+    }
+
+    let _contactReviewModal = null;
+    let _reviewOrgs = [];
+
+    function openContactReviewModal(unmatchedId) {
+      const u = _unmatchedContactsCache.find(x => x.id === unmatchedId);
+      if (!u) return;
+      show('reviewContactId').value = u.id;
+
+      // Same three-tier cascade the old per-email flow used: signature name
+      // line first (strongest signal), then the message's own From: display
+      // name, then a last-resort guess from the email address itself.
+      const senderMsg = _findSenderMessage({thread_messages: u.thread_messages}, u.email);
+      const nameSource = (senderMsg && _extractName(senderMsg.body)) || u.name || _guessNameFromEmail(u.email) || '';
+      const parts = nameSource.trim().split(/\s+/);
+      show('reviewFirstName').value = parts.slice(0, -1).join(' ') || parts[0] || '';
+      show('reviewLastName').value  = parts.length > 1 ? parts[parts.length - 1] : '';
+
+      let orgCode = u.org_code || '', orgLabel = u.org_label || '';
+      const hadReliableOrgGuess = !!orgCode;
+      if (!orgCode) {
+        const subject = (u.inbound_email && u.inbound_email.subject) || '';
+        const guess = _guessOrgFromText(subject) || (senderMsg && _guessOrgFromText(senderMsg.body));
+        if (guess) { orgCode = guess.code; orgLabel = guess.label; }
+      }
+      _reviewOrgs = orgCode ? [{code: orgCode, label: orgLabel || orgCode}] : [];
+      _reviewOrgRenderTags();
+      show('reviewOrgSearch').value = '';
+      show('reviewEmail').value    = u.email || '';
+      show('reviewPosition').value = (senderMsg && _extractPosition(senderMsg.body)) || '';
+      show('reviewTel').value      = (senderMsg && _extractPhone(senderMsg.body)) || '';
+      show('reviewMobile').value   = '';
+      document.getElementById('reviewEmailHint').classList.add('d-none');
+      show('reviewContactError').classList.add('d-none');
+      if (u.email) _reviewCheckEmail();
+      if (!hadReliableOrgGuess && u.email) _reviewGuessOrgByDomain(unmatchedId, u.email);
+
+      // Reset the merge tab and default back to "Register as new".
+      show('reviewMergeSearch').value = '';
+      show('reviewMergeContactId').value = '';
+      document.getElementById('reviewMergeContactLabel').textContent = '';
+      document.getElementById('reviewMergeDropdown').classList.add('d-none');
+      bootstrap.Tab.getOrCreateInstance(document.getElementById('reviewTabNewBtn')).show();
+
+      if (!_contactReviewModal) _contactReviewModal = new bootstrap.Modal(document.getElementById('contactReviewModal'));
+      _contactReviewModal.show();
+    }
+
+    function _reviewOrgSelect(code, label) {
+      if (!code || _reviewOrgs.some(o => o.code === code)) return;
+      _reviewOrgs.push({code, label: label || code});
+      _reviewOrgRenderTags();
+      show('reviewOrgSearch').value = '';
+      document.getElementById('reviewOrgDropdown').classList.add('d-none');
+    }
+    function _reviewOrgRemove(code) {
+      _reviewOrgs = _reviewOrgs.filter(o => o.code !== code);
+      _reviewOrgRenderTags();
+    }
+    function _reviewOrgRenderTags() {
+      document.getElementById('reviewOrgTags').innerHTML = _reviewOrgs.map(o =>
+        `<span class="badge bg-secondary d-inline-flex align-items-center gap-1" style="font-size:.8em;white-space:normal;text-align:left">${esc(o.label || o.code)}` +
+        `<button type="button" class="btn-close btn-close-white flex-shrink-0" style="font-size:.55em;margin-left:.25em"` +
+        ` onclick="_reviewOrgRemove('${esc(o.code)}')" title="${t('admin.remove')}"></button></span>`
+      ).join('');
+    }
+
+    let _reviewCheckEmailTimer = null;
+    function _reviewCheckEmail() {
+      clearTimeout(_reviewCheckEmailTimer);
+      const hint = document.getElementById('reviewEmailHint');
+      const email = show('reviewEmail').value.trim();
+      if (!email) { hint.classList.add('d-none'); return; }
+      _reviewCheckEmailTimer = setTimeout(async () => {
+        try {
+          const data = await fetch(`../api/contacts/check-email?email=${encodeURIComponent(email)}`).then(r => r.json());
+          if (data.found) {
+            hint.textContent = t('admin.unmatched_email_duplicate').replace('{who}', [data.found.label, data.found.org].filter(Boolean).join(' — '));
+            hint.classList.remove('d-none');
+          } else {
+            hint.classList.add('d-none');
+          }
+        } catch (_) { hint.classList.add('d-none'); }
+      }, 400);
+    }
+
+    async function _reviewGuessOrgByDomain(unmatchedId, email) {
+      try {
+        const data = await fetch(`../api/contacts/guess-org-by-domain?email=${encodeURIComponent(email)}`).then(r => r.json());
+        if (show('reviewContactId').value !== String(unmatchedId)) return;
+        if (data.found) {
+          _reviewOrgs = [{code: data.found.code, label: data.found.label}];
+          _reviewOrgRenderTags();
+        }
+      } catch (_) {}
+    }
+
+    // Approves straight through the dedicated /create route in one request
+    // -- unlike the older per-email flow (saveUnmatchedContactCreate), which
+    // saves via the generic /api/contacts/save and then a second call to
+    // /resolve, since /create already does exactly this in one round trip.
+    async function approveNewContactReview() {
+      const id = show('reviewContactId').value;
+      const errEl = show('reviewContactError');
+      errEl.classList.add('d-none');
+      if (!_reviewOrgs.length) {
+        errEl.textContent = t('admin.unmatched_org_required');
+        errEl.classList.remove('d-none');
+        return;
+      }
+      try {
+        const resp = await fetch(`../api/unmatched-contacts/${id}/create`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            org_codes: _reviewOrgs,
+            first_name: show('reviewFirstName').value.trim(),
+            last_name: show('reviewLastName').value.trim(),
+            email: show('reviewEmail').value.trim(),
+            position: show('reviewPosition').value.trim(),
+            tel: show('reviewTel').value.trim(),
+            mobile: show('reviewMobile').value.trim(),
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || t('admin.failed'));
+        _contactReviewModal.hide();
+        await loadUnmatchedContacts();
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.classList.remove('d-none');
+      }
+    }
+
+    // No exact existing precedent for this specific widget (org search
+    // looks up orgs, not contacts) -- structurally the same dropdown-list
+    // pattern as _orgSearchDropdown, just searching /api/contacts instead.
+    let _reviewContactSearchResults = [];
+    async function _reviewContactSearch(q) {
+      const dd = document.getElementById('reviewMergeDropdown');
+      const nq = q.trim();
+      if (!nq) { dd.classList.add('d-none'); return; }
+      try {
+        const data = await fetch(`../api/contacts?q=${encodeURIComponent(nq)}&rows=8`).then(r => r.ok ? r.json() : {contacts: []});
+        _reviewContactSearchResults = data.contacts || [];
+      } catch (_) {
+        _reviewContactSearchResults = [];
+      }
+      dd.innerHTML = _reviewContactSearchResults.map((c, i) => `
+        <li class="list-group-item list-group-item-action py-2 px-2" style="cursor:pointer" onmousedown="_reviewContactPick(${i})">
+          <span class="fw-semibold">${esc([c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || '')}</span>
+          ${c.org_label ? `<span class="badge bg-light text-dark border ms-1">${esc(c.org_label)}</span>` : ''}
+          ${c.email ? `<div class="text-muted small">${esc(c.email)}</div>` : ''}
+        </li>`).join('');
+      dd.classList.toggle('d-none', !_reviewContactSearchResults.length);
+    }
+    function _reviewContactPick(i) {
+      const c = _reviewContactSearchResults[i];
+      if (!c) return;
+      show('reviewMergeContactId').value = c.id;
+      show('reviewMergeSearch').value = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.email || '';
+      document.getElementById('reviewMergeContactLabel').textContent =
+        [[c.first_name, c.last_name].filter(Boolean).join(' '), c.org_label, c.email].filter(Boolean).join(' — ');
+      document.getElementById('reviewMergeDropdown').classList.add('d-none');
+    }
+
+    async function mergeContactReview() {
+      const id = show('reviewContactId').value;
+      const errEl = show('reviewContactError');
+      errEl.classList.add('d-none');
+      const contactId = show('reviewMergeContactId').value;
+      if (!contactId) {
+        errEl.textContent = t('admin.review_merge_required');
+        errEl.classList.remove('d-none');
+        return;
+      }
+      try {
+        const resp = await fetch(`../api/unmatched-contacts/${id}/resolve`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({contact_id: contactId}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || t('admin.failed'));
+        _contactReviewModal.hide();
+        await loadUnmatchedContacts();
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.classList.remove('d-none');
+      }
+    }
+
+    function saveContactReview() {
+      const merging = document.getElementById('reviewTabMergeBtn').classList.contains('active');
+      return merging ? mergeContactReview() : approveNewContactReview();
     }
 
     async function sendTestEmail(ev) {
