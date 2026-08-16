@@ -158,12 +158,31 @@ Key decisions already implemented:
   `inbound_email_attach`'s handling of it in app.py). The **Contacts to
   Review** queue is now the sole place a sender gets turned into a
   contact.
+- **Superadmin case-correction tools shipped**: `PATCH /api/cases/<id>`
+  now also accepts `org_codes`/`org_name`/`org_title` (superadmin-gated;
+  `subject`/`deadline` stay open to everyone). New
+  `POST /api/communications/<id>/reassign-case` (move one entry off the
+  wrong case; refuses the Initial Contact entry) and
+  `POST /api/cases/<id>/merge` (fold one case entirely into another,
+  demoting the source's Initial Contact to a regular entry, unioning
+  `org_codes`). Frontend: "Edit organizations"/"Merge into another case"
+  buttons on the Comm modal's case-info box, plus a "Reassign to another
+  case" link by the status field — all gated on the main dashboard's new
+  `window.__IS_SUPERADMIN__` flag (`is_superadmin` wasn't previously
+  passed to `index.html` at all; only `admin_users.html` had it). When
+  moving a `Communication` between cases in code, always assign via the
+  relationship (`comm.case = target`), never the raw `comm.case_id`
+  column — `Case.communications` carries `cascade="all,
+  delete-orphan"`, which tracks membership off the in-memory collection,
+  so a raw FK write left stale in a loaded `case.communications`
+  collection gets cascade-deleted out from under you the moment the old
+  case is deleted.
 
 Still pending (see conversation history for the full numbered plan if
 picking this back up — not persisted here since it's long-form):
-- New superadmin-only tools: reassign a Communication to a different
-  case, edit a case's org list after creation, merge two cases together.
-- i18n/copy cleanup for anything the above makes dead.
+- i18n/copy cleanup: dead keys `admin.unmatched_create`,
+  `admin.unmatched_create_title`, `admin.unmatched_create_save` in
+  `admin_users.html`, left over from Section 5's removal.
 
 If you're picking this up fresh (e.g. on a different machine, or a new
 session with no memory of the design discussion), the safest move is to
