@@ -185,3 +185,49 @@ through many iterations and reversals during the original discussion
 to superadmin-only) that aren't all re-derivable from the code alone — a
 quick recap of intent from the user before diving in is the safest move
 for anything non-trivial here.
+
+## Communications tab: split-workspace layout (shipped 2026-08-25)
+
+The Comms tab is a list-left/detail-right layout (`col-lg-7`/`col-lg-5`,
+stacking below 992px like every other 2-column area in the app), not a
+single full-width list. All four view modes (Cases/Timeline/By
+Org/All) keep their own existing grouping/expand behavior on the left;
+clicking any row or case-header selects that entry's case and shows its
+full thread in one shared, sticky right-hand panel (`#commsDetailPanel`)
+— reading a case no longer needs the Add/Edit modal or an inline expand.
+
+- Selection state is two plain module vars, `_commsSelectedCaseId`/
+  `_commsSelectedCommId` (in-memory only, not persisted) — same shape as
+  the Live Visitors list↔map selection (`_selectLiveVisit`).
+  `_selectCommsEntry(commId)` is the one entry point every row's
+  `onclick` calls; it resolves to `_selectCommsCase` unless the entry
+  has no `case_id`. Highlight is a pure CSS-class toggle
+  (`.comms-row-selected`, resolved via `data-case-id`/`data-comm-id`
+  attributes already on each row) reapplied at the end of every one of
+  the 4 render functions, since each fully replaces `#commsTable`'s
+  innerHTML.
+- `_renderCommsDetailPanel`/`_renderCommsDetailHeader` (app.js) reuse
+  the existing row/table renderers (`_commsHistRowHtml`,
+  `_commsGroupTableShell`) and case-detail fetch (`_fetchCommsCaseRows`,
+  `_commsFetchCaseDetail`) verbatim — there's no separate detail-panel
+  data path. The panel hosts Add-follow-up, Close/Reopen, and
+  (superadmin-only) Edit-orgs/Merge; `openCaseOrgEditModal`/
+  `openCaseMergeModal`/`openCaseReassignModal` each take an optional
+  id-override parameter so they can be triggered from the panel (which
+  has no `#commModal`/`#commCaseInfo` DOM to read a case id off of) as
+  well as from their original modal-internal buttons.
+- A superadmin-only Reassign icon exists on every row template
+  (`_commsReassignIconHtml`), not just in the modal — reassigning
+  without ever opening `#commModal` in that session is now a normal
+  path, which is what surfaced (and required fixing) a latent bug:
+  `_confirmCaseTarget`'s reassign branch called `_commModal.hide()`
+  unconditionally; it's now guarded (`if (_commModal)`).
+- The filter-facet panel (3 tabbed dimensions, unchanged logic) moved
+  behind a "Filters" dropdown button, reusing the same
+  `data-bs-auto-close="outside"` pattern as the Contacts tab's role
+  picker.
+- `_commsRefreshInPlace()` (SSE/save/close/reopen/merge/reassign all
+  funnel through it) also refreshes the selected detail panel now
+  (`_commsRefreshSelectedDetail`), independent of which left-view mode
+  is active — the selected case can differ from whatever the left
+  column happens to be displaying.
