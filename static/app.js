@@ -4610,7 +4610,6 @@ let _commsSortCol   = 'contact_date';
 let _commsSortDir   = 'desc';
 let _commsViewMode  = 'cases';
 let _expandedOrgs   = new Set();
-let _expandedCases  = new Set();
 let _expandedTimelineDays = new Set();
 let _timelineDaysInitialized = false;
 // Set right before a render call that should reveal-animate exactly one
@@ -4902,16 +4901,10 @@ async function _loadInboundEmails() {
 // conditionally keeps data fresh without the visible churn when it wasn't.
 async function _commsRefreshInPlace() {
   if (_commsViewMode === 'cases') {
+    // No inline-expand cache to refresh here anymore -- _loadCommsCaseGroups
+    // already re-renders on change, and the selected case's own thread is
+    // refreshed independently below via _commsRefreshSelectedDetail.
     await _loadCommsCaseGroups(true);
-    const stillExpanded = [..._expandedCases].filter(id => _commsCaseGroups.some(cs => cs.id === id));
-    let rowsChanged = false;
-    await Promise.all(stillExpanded.map(async id => {
-      const before = _commsCaseExpandRows.get(id);
-      _commsCaseExpandRows.delete(id);
-      await _fetchCommsCaseRows(id);
-      if (JSON.stringify(before) !== JSON.stringify(_commsCaseExpandRows.get(id))) rowsChanged = true;
-    }));
-    if (rowsChanged) _renderCommsCaseGroups();
   } else if (_commsViewMode === 'grouped') {
     await _loadCommsOrgGroups(true);
     const stillExpanded = [..._expandedOrgs].filter(k => _commsOrgGroups.some(g => g.org_title === k));
@@ -5215,7 +5208,7 @@ function _commsSyncView() {
 // which no longer necessarily apply to the new result set) is stale.
 function filterComms() {
   _commsFlatRows = []; _commsFlatLoaded = false; _commsFlatStart = 0; _commsFlatTotal = 0;
-  _commsCaseGroups = []; _commsCaseGroupsLoaded = false; _commsCaseExpandRows.clear(); _expandedCases.clear();
+  _commsCaseGroups = []; _commsCaseGroupsLoaded = false; _commsCaseExpandRows.clear();
   _commsOrgGroups = []; _commsOrgGroupsLoaded = false; _commsOrgExpandRows.clear(); _expandedOrgs.clear();
   _commsDayGroups = []; _commsDayGroupsLoaded = false; _commsDayExpandRows.clear(); _expandedTimelineDays.clear(); _timelineDaysInitialized = false;
   _commsSyncView();
@@ -5233,7 +5226,7 @@ function setCommsView(mode) {
   show('commsViewGroupedBtn').className  = 'btn btn-sm ' + (mode === 'grouped'  ? 'btn-primary' : 'btn-outline-primary');
   show('commsViewCasesBtn').className    = 'btn btn-sm ' + (mode === 'cases'    ? 'btn-primary' : 'btn-outline-primary');
   show('commsViewTimelineBtn').className = 'btn btn-sm ' + (mode === 'timeline' ? 'btn-primary' : 'btn-outline-primary');
-  const showExpandBtns = (mode === 'cases' || mode === 'grouped' || mode === 'timeline');
+  const showExpandBtns = (mode === 'grouped' || mode === 'timeline');  // 'cases' has no inline expand anymore -- see _renderCommsCaseGroups
   show('commsExpandAllBtn').classList.toggle('d-none', !showExpandBtns);
   show('commsCollapseAllBtn').classList.toggle('d-none', !showExpandBtns);
   _commsSyncView();  // reuses already-loaded data for this view if we have it
@@ -5264,10 +5257,7 @@ async function _commsThrottledExpand(keys, markFn, fetchFn, renderFn) {
 }
 
 async function expandAllComms() {
-  if (_commsViewMode === 'cases') {
-    const ids = _commsCaseGroups.map(cs => cs.id).filter(id => !_expandedCases.has(id));
-    if (ids.length) await _commsThrottledExpand(ids, id => _expandedCases.add(id), id => _fetchCommsCaseRows(id), _renderCommsCaseGroups);
-  } else if (_commsViewMode === 'grouped') {
+  if (_commsViewMode === 'grouped') {
     const keys = _commsOrgGroups.map(g => g.org_title).filter(k => !_expandedOrgs.has(k));
     if (keys.length) await _commsThrottledExpand(keys, k => _expandedOrgs.add(k), k => _fetchCommsOrgRows(k), _renderCommsOrgGroups);
   } else if (_commsViewMode === 'timeline') {
@@ -5277,8 +5267,7 @@ async function expandAllComms() {
 }
 
 function collapseAllComms() {
-  if (_commsViewMode === 'cases') { _expandedCases.clear(); _renderCommsCaseGroups(); }
-  else if (_commsViewMode === 'grouped') { _expandedOrgs.clear(); _renderCommsOrgGroups(); }
+  if (_commsViewMode === 'grouped') { _expandedOrgs.clear(); _renderCommsOrgGroups(); }
   else if (_commsViewMode === 'timeline') { _expandedTimelineDays.clear(); _renderCommsDayGroups(); }
 }
 
@@ -5706,35 +5695,23 @@ async function _loadCommsCaseGroups(background = false) {
   }
 }
 
+// No inline expand here (unlike the org/timeline views below) -- a case
+// row only ever selects into the detail panel now, which already shows its
+// full thread; expanding the same thread a second time in the list itself
+// would just duplicate it.
 function _renderCommsCaseGroups() {
   const el = show('commsTable');
   if (!_commsCaseGroups.length) {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
-  // See _renderCommsOrgGroups's comment -- same capture-and-clear so a full
-  // rebuild triggered by something other than expanding this exact case
-  // doesn't replay the reveal animation on it.
-  const revealKey = _commsRevealKey;
-  _commsRevealKey = null;
   const rows = _commsCaseGroups.map(cs => {
-    const isExpanded = _expandedCases.has(cs.id);
-    const isClosed    = cs.status === 'Closed';
-    const cachedRows = _commsCaseExpandRows.get(cs.id);
-    const isLoading  = _commsCaseExpandLoading.has(cs.id);
-    const reveal     = cs.id === revealKey;
-    let body = '';
-    if (isExpanded) {
-      body = (isLoading || !cachedRows)
-        ? `<tr class="comm-hist-row${reveal ? ' just-revealed' : ''}"><td colspan="6" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>`
-        : cachedRows.map(c => _commsHistRowHtml(c, false, reveal)).join('');
-    }
+    const isClosed = cs.status === 'Closed';
     return `
-      <tr class="comm-group-row" data-case-id="${cs.id}" style="cursor:pointer" onclick="toggleCaseExpand(${cs.id})">
+      <tr class="comm-group-row" data-case-id="${cs.id}" style="cursor:pointer" onclick="_selectCommsCase(${cs.id})">
         <td colspan="6">
           <div class="d-flex flex-column gap-1">
             <div class="d-flex align-items-center gap-2 flex-wrap">
-              <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
               <span class="text-muted small mono">#${cs.id}</span>
               <span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">
                 <i class="bi ${isClosed ? 'bi-folder-check' : 'bi-folder2-open'} me-1"></i>${caseStatusLabel(cs.status)}
@@ -5759,31 +5736,11 @@ function _renderCommsCaseGroups() {
             </div>
           </div>
         </td>
-      </tr>
-      ${body}`;
+      </tr>`;
   }).join('');
 
   el.innerHTML = _commsGroupTableShell(rows);
   _commsApplySelectionHighlight();
-}
-
-function toggleCaseExpand(caseId) {
-  _selectCommsCase(caseId);
-  const el = show('commsTable');
-  if (_expandedCases.has(caseId)) {
-    _expandedCases.delete(caseId);
-    _animateHeightSwap(el, _renderCommsCaseGroups);
-    return;
-  }
-  _expandedCases.add(caseId);
-  // See toggleOrgComms's comment -- delay the spinner instead of showing it
-  // immediately.
-  const spinnerTimer = setTimeout(() => { _commsRevealKey = caseId; _animateHeightSwap(el, _renderCommsCaseGroups); }, COMMS_SPINNER_DELAY_MS);
-  _fetchCommsCaseRows(caseId).then(() => {
-    clearTimeout(spinnerTimer);
-    _commsRevealKey = caseId;
-    _animateHeightSwap(el, _renderCommsCaseGroups);
-  });
 }
 
 async function _fetchCommsCaseRows(caseId) {
