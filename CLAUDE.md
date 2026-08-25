@@ -111,15 +111,17 @@ don't let it go stale.
 - Don't originate test/verification traffic at the actual production
   infrastructure without asking first.
 
-## Current initiative: Mail-ingestion pipeline redesign
+## Mail-ingestion pipeline redesign (completed 2026-08-17)
 
 Goal: automate the inbound-email → Case/Communication pipeline end to end,
 **except contact creation**, which stays the one human checkpoint (via a
 new superadmin-only review queue), because a bad contact pollutes a
 persistent, reused directory (mailing lists, exports) in a way a bad case
-match doesn't.
+match doesn't. All 7 planned sections have shipped; kept here as a
+reference for the reasoning behind the current shape of this subsystem,
+not as a pending-work tracker.
 
-Key decisions already implemented:
+Key decisions implemented:
 - `_resolve_case_for_contacts` (app.py): no more sender-history
   tie-breaker for attaching to an existing case — if no Open case's
   subject matches, a new case is always opened. Subject matching is
@@ -149,7 +151,6 @@ Key decisions already implemented:
   with a resolve modal (`contactReviewModal`) offering "Register as new"
   (calls `/create` directly, one request) or "Merge into existing" (a new
   contact search-and-pick widget, feeds `/resolve`).
-
 - **Deprecated old inline flows removed**: `admin_users.html`'s old
   per-email "Unregistered participants" register-contact block +
   `unmatchedContactCreateModal`, and the main dashboard's inline "Also
@@ -178,15 +179,9 @@ Key decisions already implemented:
   collection gets cascade-deleted out from under you the moment the old
   case is deleted.
 
-Still pending (see conversation history for the full numbered plan if
-picking this back up — not persisted here since it's long-form):
-- i18n/copy cleanup: dead keys `admin.unmatched_create`,
-  `admin.unmatched_create_title`, `admin.unmatched_create_save` in
-  `admin_users.html`, left over from Section 5's removal.
-
-If you're picking this up fresh (e.g. on a different machine, or a new
-session with no memory of the design discussion), the safest move is to
-ask the user for a quick recap of intent before changing this area
-further — the design went through many iterations and reversals (e.g.
-several "open to everyone" permission decisions were later reversed to
-superadmin-only) that aren't all re-derivable from the code alone.
+If you need to change this area further, note that the design went
+through many iterations and reversals during the original discussion
+(e.g. several "open to everyone" permission decisions were later reversed
+to superadmin-only) that aren't all re-derivable from the code alone — a
+quick recap of intent from the user before diving in is the safest move
+for anything non-trivial here.
