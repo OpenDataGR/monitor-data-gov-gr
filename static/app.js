@@ -365,6 +365,8 @@ const TRANSLATIONS = {
     'comms.reassign_case_confirm': 'Reassign',
     'comms.case_target_search_ph': 'Search open cases…',
     'comms.case_target_required': 'Pick a case first.',
+    'comms.detail_empty': 'Select a communication to view its thread',
+    'comms.filters_btn': 'Filters',
     'comms.search': 'Search communications…',
     'comms.download_excel_title': 'Download current view as Excel',
     'comms.add_comm_for_org': 'Add new communication for this organization',
@@ -958,6 +960,8 @@ const TRANSLATIONS = {
     'comms.reassign_case_confirm': 'Μεταφορά',
     'comms.case_target_search_ph': 'Αναζήτηση ανοιχτών υποθέσεων…',
     'comms.case_target_required': 'Επιλέξτε πρώτα μια υπόθεση.',
+    'comms.detail_empty': 'Επιλέξτε μια επικοινωνία για να δείτε το νήμα της',
+    'comms.filters_btn': 'Φίλτρα',
     'comms.search': 'Αναζήτηση επικοινωνιών…',
     'comms.download_excel_title': 'Λήψη της τρέχουσας προβολής ως Excel',
     'comms.add_comm_for_org': 'Προσθήκη νέας επικοινωνίας για αυτόν τον οργανισμό',
@@ -4631,6 +4635,16 @@ let _commsCaseStatusCounts = null;
 let _commsStaleCounts      = null;
 let _commsStatusCounts     = null;
 
+// Drives the split-workspace detail panel -- in-memory only, cleared on
+// reload, same pattern as the Live Visitors list<->map selection
+// (_liveSelectedMarker): a plain module var, not persisted, not tied to any
+// one view mode, so it survives switching between Cases/Timeline/By Org/All.
+// _commsSelectedCommId is only ever set for a comm with no case_id (the
+// column is nullable, models.py, though no current creation path leaves it
+// null on purpose -- this is defensive, not a currently-exercised path).
+let _commsSelectedCaseId = null;
+let _commsSelectedCommId = null;
+
 // q/case_status/stale/status shared by every /api/communications call this
 // tab makes (flat rows, group listings, and a single group's expand-fetch)
 // -- so all of them stay in sync with the search box and filter cards.
@@ -4678,6 +4692,40 @@ function _commsFindById(id) {
     if (hit) return hit;
   }
   return null;
+}
+
+// Split-workspace selection -- one entry point regardless of which of the 4
+// view modes the click came from (same "one function, several trigger
+// surfaces" shape as the Live Visitors _selectLiveVisit). Resolves to a case
+// whenever the clicked entry has one (the normal case); falls back to
+// showing just that one entry when it doesn't.
+function _selectCommsEntry(commId) {
+  const c = _commsFindById(commId);
+  if (c && c.case_id) {
+    _selectCommsCase(c.case_id);
+  } else {
+    _commsSelectedCommId = commId;
+    _commsSelectedCaseId = null;
+    _commsApplySelectionHighlight();
+    _renderCommsDetailPanel();
+  }
+}
+function _selectCommsCase(caseId) {
+  _commsSelectedCaseId = caseId;
+  _commsSelectedCommId = null;
+  _commsApplySelectionHighlight();
+  _renderCommsDetailPanel();
+}
+// Pure CSS-class toggle driven by data-case-id/data-comm-id attributes
+// already on each row, not a stored "previous element" reference -- clearing
+// and re-applying on every call is what makes this idempotent regardless of
+// which view re-rendered in between (same approach as .live-row-selected).
+function _commsApplySelectionHighlight() {
+  document.querySelectorAll('#commsTable .comms-row-selected').forEach(el => el.classList.remove('comms-row-selected'));
+  const sel = _commsSelectedCaseId != null
+    ? `[data-case-id="${_commsSelectedCaseId}"]`
+    : `[data-comm-id="${_commsSelectedCommId}"]`;
+  document.querySelectorAll(`#commsTable ${sel}`).forEach(el => el.classList.add('comms-row-selected'));
 }
 
 // Case-level fields (deadline/opened_at/closed_at/status) aren't carried by
@@ -4889,6 +4937,22 @@ async function _commsRefreshInPlace() {
   } else {
     await loadCommsFlat(false, true);
   }
+  await _commsRefreshSelectedDetail();
+}
+
+// The detail panel shows whichever case is selected, independent of which
+// left-view mode is active -- refetch-and-diff it too on every refresh, same
+// idiom as the three view-specific blocks above, so SSE/save/close/reopen/
+// merge/reassign all keep it in sync without the user re-clicking.
+async function _commsRefreshSelectedDetail() {
+  if (_commsSelectedCaseId == null) return;
+  const caseId = _commsSelectedCaseId;
+  const before = _commsCaseExpandRows.get(caseId);
+  _commsCaseExpandRows.delete(caseId);
+  _commsCaseDetailCache.delete(caseId);
+  await Promise.all([_fetchCommsCaseRows(caseId), _commsFetchCaseDetail(caseId).catch(() => null)]);
+  if (caseId !== _commsSelectedCaseId) return;  // selection changed mid-fetch
+  if (JSON.stringify(before) !== JSON.stringify(_commsCaseExpandRows.get(caseId))) _renderCommsDetailPanel();
 }
 
 let _commsReloadInFlight = null;
@@ -5155,6 +5219,12 @@ function filterComms() {
   _commsOrgGroups = []; _commsOrgGroupsLoaded = false; _commsOrgExpandRows.clear(); _expandedOrgs.clear();
   _commsDayGroups = []; _commsDayGroupsLoaded = false; _commsDayExpandRows.clear(); _expandedTimelineDays.clear(); _timelineDaysInitialized = false;
   _commsSyncView();
+  // A search/filter change never clears the detail-panel selection -- it
+  // just wiped the panel's own cache above along with everything else's, so
+  // transparently refetch instead of leaving it showing stale data (the
+  // panel keeps showing the selected case even if the new filter no longer
+  // matches it -- an independent fetch-by-id, not a filtered view).
+  _renderCommsDetailPanel();
 }
 
 function setCommsView(mode) {
@@ -5215,7 +5285,7 @@ function collapseAllComms() {
 function _commsFlatRowHtml(c) {
   const statusLabel = _commsStatusLabels();
   return `
-    <tr onclick="openCommModal(${c.id})" style="cursor:pointer">
+    <tr data-case-id="${c.case_id || ''}" data-comm-id="${c.id}" onclick="_selectCommsEntry(${c.id})" style="cursor:pointer">
       <td class="text-muted small mono text-nowrap">${esc(c.contact_date)}</td>
       <td class="fw-semibold small">${esc(c.org_title)}</td>
       <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
@@ -5226,10 +5296,23 @@ function _commsFlatRowHtml(c) {
         <div class="d-flex gap-1 justify-content-end">
           ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
           <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+          ${_commsReassignIconHtml(c)}
           <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
         </div>
       </td>
     </tr>`;
+}
+
+// Shared by every row template's actions cell -- superadmin-only, reuses the
+// same #caseTargetModal reassign flow the Add/Edit modal's own
+// commReassignCaseBtn already drives, just triggered with this row's own
+// comm id instead of reading show('commId').value. Hidden for the entry
+// that opened its case (reassigning it would leave the case without an
+// opener -- case merge is the tool for that) and for anything with no case
+// at all (nothing to reassign away from).
+function _commsReassignIconHtml(c) {
+  if (!IS_SUPERADMIN || !c.case_id || c.status === 'Initial Contact') return '';
+  return `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCaseReassignModal(${c.id})" title="${t('comms.reassign_case')}"><i class="bi bi-signpost-split"></i></button>`;
 }
 
 // ── Communications: flat/all view (real infinite scroll) ───────────────────
@@ -5354,6 +5437,7 @@ function _renderCommsFlat(rows, append) {
       </table>
       <div id="commsLoadMoreSentinel" class="text-center text-muted small py-2"></div>`;
   }
+  _commsApplySelectionHighlight();
   const sentinel = document.getElementById('commsLoadMoreSentinel');
   if (sentinel) {
     if (_commsFlatStart < _commsFlatTotal) {
@@ -5372,7 +5456,7 @@ function _renderCommsFlat(rows, append) {
 function _commsHistRowHtml(c, showCaseBadge, reveal = false) {
   const statusLabel = _commsStatusLabels();
   return `
-    <tr class="comm-hist-row${reveal ? ' just-revealed' : ''}" onclick="openCommModal(${c.id})" style="cursor:pointer">
+    <tr class="comm-hist-row${reveal ? ' just-revealed' : ''}" data-case-id="${c.case_id || ''}" data-comm-id="${c.id}" onclick="_selectCommsEntry(${c.id})" style="cursor:pointer">
       <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
       <td class="small">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${autoEmailBadge(c) ? ' ' + autoEmailBadge(c) : ''}${contactPersonHtml(c)}</td>
       <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}" style="white-space:normal">${statusLabel[c.status] || c.status}</span></td>
@@ -5382,6 +5466,7 @@ function _commsHistRowHtml(c, showCaseBadge, reveal = false) {
         <div class="d-flex gap-1 justify-content-end">
           ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
           <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+          ${_commsReassignIconHtml(c)}
           <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
         </div>
       </td>
@@ -5495,6 +5580,7 @@ function _renderCommsOrgGroups() {
   }).join('');
 
   el.innerHTML = _commsGroupTableShell(rows);
+  _commsApplySelectionHighlight();
 }
 
 // A group's spinner-row is short; the rows that replace it usually aren't --
@@ -5644,7 +5730,7 @@ function _renderCommsCaseGroups() {
         : cachedRows.map(c => _commsHistRowHtml(c, false, reveal)).join('');
     }
     return `
-      <tr class="comm-group-row" style="cursor:pointer" onclick="toggleCaseExpand(${cs.id})">
+      <tr class="comm-group-row" data-case-id="${cs.id}" style="cursor:pointer" onclick="toggleCaseExpand(${cs.id})">
         <td colspan="6">
           <div class="d-flex flex-column gap-1">
             <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -5678,9 +5764,11 @@ function _renderCommsCaseGroups() {
   }).join('');
 
   el.innerHTML = _commsGroupTableShell(rows);
+  _commsApplySelectionHighlight();
 }
 
 function toggleCaseExpand(caseId) {
+  _selectCommsCase(caseId);
   const el = show('commsTable');
   if (_expandedCases.has(caseId)) {
     _expandedCases.delete(caseId);
@@ -5718,6 +5806,73 @@ async function _fetchCommsCaseRows(caseId) {
   } finally {
     _commsCaseExpandLoading.delete(caseId);
   }
+}
+
+// ── Split-workspace detail panel ────────────────────────────────────────────
+// Shows whichever case/entry is currently selected (_selectCommsEntry et al,
+// above), identically regardless of which of the 4 left-side view modes the
+// selection came from. Reuses _commsHistRowHtml/_commsGroupTableShell for the
+// thread body verbatim, and _fetchCommsCaseRows/_commsFetchCaseDetail
+// verbatim for data -- both already cache-checked, so this is a no-op fetch
+// when the left column already expanded the same case.
+async function _renderCommsDetailPanel() {
+  const empty = show('commsDetailEmpty'), content = show('commsDetailContent');
+  if (_commsSelectedCaseId == null && _commsSelectedCommId == null) {
+    empty.classList.remove('d-none');
+    content.classList.add('d-none');
+    return;
+  }
+  empty.classList.add('d-none');
+  content.classList.remove('d-none');
+  if (_commsSelectedCaseId != null) {
+    const caseId = _commsSelectedCaseId;
+    const [cs] = await Promise.all([
+      _commsFetchCaseDetail(caseId).catch(() => null),
+      _fetchCommsCaseRows(caseId),
+    ]);
+    if (caseId !== _commsSelectedCaseId) return;  // selection changed while awaiting
+    const rows = _commsCaseExpandRows.get(caseId) || [];
+    show('commsDetailBody').innerHTML = _commsGroupTableShell(rows.map(c => _commsHistRowHtml(c, false)).join(''));
+    _renderCommsDetailHeader(cs, caseId);
+  } else {
+    const c = _commsFindById(_commsSelectedCommId);
+    show('commsDetailBody').innerHTML = c ? _commsGroupTableShell(_commsHistRowHtml(c, true)) : '';
+    _renderCommsDetailHeader(null, null);
+  }
+}
+
+function _renderCommsDetailHeader(cs, caseId) {
+  show('commsDetailFollowupBtn').classList.toggle('d-none', !caseId);
+  show('commsDetailEditOrgsBtn').classList.toggle('d-none', !IS_SUPERADMIN || !caseId);
+  show('commsDetailMergeBtn').classList.toggle('d-none', !IS_SUPERADMIN || !caseId);
+  const toggleBtn = show('commsDetailToggleBtn');
+  toggleBtn.classList.toggle('d-none', !caseId);
+  const headerText = show('commsDetailHeaderText');
+  if (!cs) {
+    show('commsDetailHeader').dataset.caseId = '';
+    headerText.textContent = '';
+    return;
+  }
+  show('commsDetailHeader').dataset.caseId = cs.id;
+  show('commsDetailHeader').dataset.caseStatus = cs.status;
+  const isClosed = cs.status === 'Closed';
+  toggleBtn.textContent = isClosed ? t('comms.case_reopen') : t('comms.case_close');
+  toggleBtn.className = 'btn btn-sm py-0 px-2 ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
+  headerText.innerHTML = `<span class="text-muted small mono">#${cs.id}</span> ` +
+    `<span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">${caseStatusLabel(cs.status)}</span> ` +
+    `<span class="fw-semibold ms-1">${esc(cs.org_title)}</span> <span class="text-muted small">— ${esc(cs.subject)}</span><br>` +
+    `<span class="text-muted small">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
+    (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')) + `</span>`;
+}
+
+// Reuses the existing closeCase/reopenCase (already invalidate the case-
+// detail cache and call _reloadCasesAndComms) rather than duplicating their
+// fetch -- just also re-renders the panel directly for immediate feedback.
+function _togglePanelCase() {
+  const caseId = _commsSelectedCaseId;
+  if (!caseId) return;
+  const isClosed = show('commsDetailHeader').dataset.caseStatus === 'Closed';
+  (isClosed ? reopenCase(caseId) : closeCase(caseId)).then(_renderCommsDetailPanel);
 }
 
 async function closeCase(caseId) {
@@ -5806,7 +5961,7 @@ function _commsDayLabel(iso) {
 function _commsTimelineItemHtml(c, reveal = false) {
   const statusLabel = _commsStatusLabels();
   return `
-    <div class="comm-timeline-item${reveal ? ' just-revealed' : ''}" onclick="openCommModal(${c.id})" style="cursor:pointer">
+    <div class="comm-timeline-item${reveal ? ' just-revealed' : ''}" data-case-id="${c.case_id || ''}" data-comm-id="${c.id}" onclick="_selectCommsEntry(${c.id})" style="cursor:pointer">
       <span class="comm-dot" style="background:${COMM_STATUS_DOT[c.status] || '#6c757d'}"></span>
       <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
         <div>
@@ -5820,6 +5975,7 @@ function _commsTimelineItemHtml(c, reveal = false) {
           <div class="d-flex gap-1 justify-content-end">
             ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
             <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+            ${_commsReassignIconHtml(c)}
             <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
           </div>
         </div>
@@ -5858,6 +6014,7 @@ function _renderCommsDayGroups() {
   }
   html += '</div>';
   el.innerHTML = html;
+  _commsApplySelectionHighlight();
 }
 
 function toggleTimelineDay(day) {
@@ -6045,8 +6202,8 @@ function _addFollowupFromModal() {
 
 let _caseOrgEditOrgs = [];
 
-async function openCaseOrgEditModal() {
-  const caseId = parseInt(show('commCaseInfo').dataset.caseId, 10);
+async function openCaseOrgEditModal(caseIdOverride) {
+  const caseId = caseIdOverride || parseInt(show('commCaseInfo').dataset.caseId, 10);
   if (!caseId) return;
   show('caseOrgEditCaseId').value = caseId;
   show('caseOrgEditError').classList.add('d-none');
@@ -6111,8 +6268,8 @@ let _caseTargetMode = null;
 let _caseTargetSourceId = null;
 let _caseTargetSearchResults = [];
 
-function openCaseMergeModal() {
-  const caseId = parseInt(show('commCaseInfo').dataset.caseId, 10);
+function openCaseMergeModal(caseIdOverride) {
+  const caseId = caseIdOverride || parseInt(show('commCaseInfo').dataset.caseId, 10);
   if (!caseId) return;
   _caseTargetMode = 'merge';
   _caseTargetSourceId = caseId;
@@ -6122,8 +6279,8 @@ function openCaseMergeModal() {
   _openCaseTargetModal();
 }
 
-function openCaseReassignModal() {
-  const commId = parseInt(show('commId').value, 10);
+function openCaseReassignModal(commIdOverride) {
+  const commId = commIdOverride || parseInt(show('commId').value, 10);
   if (!commId) return;
   _caseTargetMode = 'reassign';
   _caseTargetSourceId = commId;
@@ -6187,10 +6344,14 @@ async function _confirmCaseTarget() {
   const json = await resp.json();
   if (!resp.ok) { err.textContent = json.error || t('common.save_failed'); err.classList.remove('d-none'); return; }
   _caseTargetModal.hide();
-  if (_caseTargetMode === 'reassign') {
-    // The comm just moved off the case the modal is currently showing --
-    // close the whole Communication modal rather than leaving it open on
-    // stale case info the user just changed out from under themselves.
+  if (_caseTargetMode === 'reassign' && _commModal) {
+    // If the Communication modal is the one open (reassign triggered from
+    // its commReassignCaseBtn), the comm just moved off the case it's
+    // showing -- close it rather than leaving it open on stale info the
+    // user just changed out from under themselves. Reassign triggered from
+    // the split-workspace detail panel instead (its own per-row action)
+    // never opened this modal at all, so _commModal is still null here --
+    // nothing to hide.
     _commModal.hide();
   }
   _commsCaseDetailCache.clear();

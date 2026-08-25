@@ -188,6 +188,18 @@
        underneath and never shows -- must target the <td>s directly. */
     .live-row-selected > td { background-color: rgba(255, 193, 7, .18) !important; }
     [data-bs-theme="dark"] .live-row-selected > td { background-color: rgba(255, 193, 7, .12) !important; }
+    /* Comms split-workspace: highlights whichever row/case-header drives the
+       right-hand detail panel -- same td-not-tr targeting as .live-row-selected
+       above, for the same Bootstrap 5 reason. */
+    .comms-row-selected > td { background-color: rgba(0, 87, 184, .10) !important; }
+    [data-bs-theme="dark"] .comms-row-selected > td { background-color: rgba(0, 87, 184, .18) !important; }
+    .comm-timeline-item.comms-row-selected { outline: 2px solid rgba(0, 87, 184, .4); }
+    @media (min-width: 992px) {
+      /* Only makes sense once col-lg-7/col-lg-5 actually sit side by side --
+         reuses Bootstrap's own lg breakpoint value rather than inventing a
+         new one, matching every other 2-column layout in this app. */
+      #commsDetailPanel { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
+    }
     /* Slim, themed scrollbar -- this is a data-dense dashboard with a lot of
        scrollable tables/panels, and the browser default looks out of place
        next to everything else here being deliberately styled. Firefox uses
@@ -1175,8 +1187,8 @@
 
     <!-- Communications -->
     <div class="tab-pane fade" id="tab-comms">
-      <div class="row g-3">
-        <div class="col-12">
+      <div class="row g-3 align-items-start">
+        <div class="col-12 col-lg-7">
           <div class="card p-4">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
               <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -1195,50 +1207,80 @@
                   <input type="search" id="commsSearch" class="form-control form-control-sm w-100" placeholder="Search communications…" data-i18n-ph="comms.search" oninput="debouncedFilterComms()">
                   <button type="button" class="search-clear-btn" tabindex="-1" data-i18n-title="common.clear" title="Clear" onclick="_clearSearchInput('commsSearch')">&times;</button>
                 </div>
+                <div class="dropdown">
+                  <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                    <i class="bi bi-funnel me-1"></i><span data-i18n="comms.filters_btn">Filters</span>
+                  </button>
+                  <div class="dropdown-menu p-2" style="width:520px;max-height:70vh;overflow-y:auto">
+                    <div class="filter-summary-panel">
+                      <div class="d-flex justify-content-between align-items-center">
+                        <ul class="nav nav-underline small mb-2">
+                          <li class="nav-item">
+                            <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#commsCaseSummaryPane" type="button">
+                              <i class="bi bi-folder2-open me-1"></i><span data-i18n="comms.filter_group_case">Case</span>
+                              <span id="commsCaseTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                            </button>
+                          </li>
+                          <li class="nav-item">
+                            <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#commsStaleSummaryPane" type="button">
+                              <i class="bi bi-hourglass-split me-1"></i><span data-i18n="comms.filter_group_stale">Follow-up</span>
+                              <span id="commsStaleTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                            </button>
+                          </li>
+                          <li class="nav-item">
+                            <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#commsStatusSummaryPane" type="button">
+                              <i class="bi bi-envelope me-1"></i><span data-i18n="comms.filter_group_status">Status</span>
+                              <span id="commsStatusTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
+                            </button>
+                          </li>
+                        </ul>
+                        <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1 mb-2 flex-shrink-0" onclick="clearCommsFilters()">
+                          <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">Clear filters</span>
+                        </button>
+                      </div>
+                      <div class="tab-content">
+                        <div class="tab-pane fade show active" id="commsCaseSummaryPane">
+                          <div id="commsCaseSummary" class="row g-2"></div>
+                        </div>
+                        <div class="tab-pane fade" id="commsStaleSummaryPane">
+                          <div id="commsStaleSummary" class="row g-2"></div>
+                        </div>
+                        <div class="tab-pane fade" id="commsStatusSummaryPane">
+                          <div id="commsStatusSummary" class="row g-2"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <button class="btn btn-outline-secondary btn-sm" onclick="downloadCommsExcel()" data-i18n-title="comms.download_excel_title" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span></button>
                 <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
               </div>
             </div>
-            <div class="p-2 rounded-3 mb-3 filter-summary-panel">
-              <div class="d-flex justify-content-between align-items-center">
-                <ul class="nav nav-underline small mb-2">
-                  <li class="nav-item">
-                    <button class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#commsCaseSummaryPane" type="button">
-                      <i class="bi bi-folder2-open me-1"></i><span data-i18n="comms.filter_group_case">Case</span>
-                      <span id="commsCaseTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
-                    </button>
-                  </li>
-                  <li class="nav-item">
-                    <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#commsStaleSummaryPane" type="button">
-                      <i class="bi bi-hourglass-split me-1"></i><span data-i18n="comms.filter_group_stale">Follow-up</span>
-                      <span id="commsStaleTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
-                    </button>
-                  </li>
-                  <li class="nav-item">
-                    <button class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#commsStatusSummaryPane" type="button">
-                      <i class="bi bi-envelope me-1"></i><span data-i18n="comms.filter_group_status">Status</span>
-                      <span id="commsStatusTabDot" class="rounded-circle d-none ms-1" style="width:6px;height:6px;background:#0057b8;display:inline-block"></span>
-                    </button>
-                  </li>
-                </ul>
-                <button type="button" class="btn btn-sm btn-link text-muted text-decoration-none py-0 px-1 mb-2 flex-shrink-0" onclick="clearCommsFilters()">
-                  <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">Clear filters</span>
-                </button>
-              </div>
-              <div class="tab-content">
-                <div class="tab-pane fade show active" id="commsCaseSummaryPane">
-                  <div id="commsCaseSummary" class="row g-2"></div>
-                </div>
-                <div class="tab-pane fade" id="commsStaleSummaryPane">
-                  <div id="commsStaleSummary" class="row g-2"></div>
-                </div>
-                <div class="tab-pane fade" id="commsStatusSummaryPane">
-                  <div id="commsStatusSummary" class="row g-2"></div>
-                </div>
-              </div>
-            </div>
             <div id="commsReviewSection" class="d-none mb-3"></div>
             <div id="commsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-5">
+          <div class="card p-4" id="commsDetailPanel">
+            <div id="commsDetailEmpty" class="text-center text-muted py-5">
+              <i class="bi bi-envelope-open display-6 d-block mb-2"></i>
+              <span data-i18n="comms.detail_empty">Select a communication to view its thread</span>
+            </div>
+            <div id="commsDetailContent" class="d-none">
+              <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="commsDetailHeader">
+                <span id="commsDetailHeaderText"></span>
+                <div class="d-flex gap-1 ms-auto">
+                  <button class="btn btn-outline-primary btn-sm py-0 px-2 d-none" id="commsDetailFollowupBtn"
+                          onclick="openFollowupForCase(_commsSelectedCaseId)" data-i18n-title="comms.case_add_followup" title="Add follow-up"><i class="bi bi-plus-lg"></i></button>
+                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none" id="commsDetailEditOrgsBtn"
+                          onclick="openCaseOrgEditModal(_commsSelectedCaseId)" data-i18n-title="comms.case_edit_orgs" title="Edit organizations"><i class="bi bi-building-gear"></i></button>
+                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none" id="commsDetailMergeBtn"
+                          onclick="openCaseMergeModal(_commsSelectedCaseId)" data-i18n-title="comms.case_merge" title="Merge into another case"><i class="bi bi-signpost-split"></i></button>
+                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none" id="commsDetailToggleBtn" onclick="_togglePanelCase()"></button>
+                </div>
+              </div>
+              <div id="commsDetailBody"></div>
+            </div>
           </div>
         </div>
       </div>
