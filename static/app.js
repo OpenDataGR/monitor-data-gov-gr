@@ -5811,10 +5811,13 @@ async function _fetchCommsCaseRows(caseId) {
 // ── Split-workspace detail panel ────────────────────────────────────────────
 // Shows whichever case/entry is currently selected (_selectCommsEntry et al,
 // above), identically regardless of which of the 4 left-side view modes the
-// selection came from. Reuses _commsHistRowHtml/_commsGroupTableShell for the
-// thread body verbatim, and _fetchCommsCaseRows/_commsFetchCaseDetail
+// selection came from. Reuses _fetchCommsCaseRows/_commsFetchCaseDetail
 // verbatim for data -- both already cache-checked, so this is a no-op fetch
-// when the left column already expanded the same case.
+// when the left column already expanded the same case. The row markup is
+// NOT reused from _commsHistRowHtml/_commsGroupTableShell, though -- that's
+// a fixed-pixel-column <table> sized for a full-width card (a 190px status
+// column alone), which breaks badly at this panel's actual width. See
+// _commsDetailRowHtml below.
 async function _renderCommsDetailPanel() {
   const empty = show('commsDetailEmpty'), content = show('commsDetailContent');
   if (_commsSelectedCaseId == null && _commsSelectedCommId == null) {
@@ -5832,13 +5835,68 @@ async function _renderCommsDetailPanel() {
     ]);
     if (caseId !== _commsSelectedCaseId) return;  // selection changed while awaiting
     const rows = _commsCaseExpandRows.get(caseId) || [];
-    show('commsDetailBody').innerHTML = _commsGroupTableShell(rows.map(c => _commsHistRowHtml(c, false)).join(''));
+    show('commsDetailBody').innerHTML = rows.map(_commsDetailRowHtml).join('');
     _renderCommsDetailHeader(cs, caseId);
   } else {
     const c = _commsFindById(_commsSelectedCommId);
-    show('commsDetailBody').innerHTML = c ? _commsGroupTableShell(_commsHistRowHtml(c, true)) : '';
+    show('commsDetailBody').innerHTML = c ? _commsDetailRowHtml(c) : '';
     _renderCommsDetailHeader(null, null);
   }
+}
+
+// Detail-panel-only row: flex, not a fixed-width table, so it degrades
+// gracefully at whatever width the panel actually has instead of assuming
+// full card width. The panel's own header already names the case's subject
+// once -- each entry here only needs who it's from and whether it was a
+// reply/forward (a small chip + tooltip carrying that entry's real subject
+// line), freeing the space a repeated subject would have taken for notes.
+function _commsDetailRowHtml(c) {
+  const statusLabel = _commsStatusLabels();
+  return `
+    <div class="d-flex align-items-center gap-2 py-2 border-top flex-wrap" style="font-size:.83rem">
+      <div class="text-muted small mono text-nowrap" style="width:72px;flex-shrink:0">${esc(c.contact_date)}</div>
+      <div class="d-flex align-items-center gap-1" style="width:150px;flex-shrink:0;min-width:0">
+        <i class="bi bi-person text-muted" style="font-size:.8em"></i>
+        ${_commsContactNameHtml(c)}
+        ${_commsReplyChipHtml(c.subject)}
+      </div>
+      <div style="width:120px;flex-shrink:0"><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}" style="font-size:.64rem;white-space:normal">${statusLabel[c.status] || c.status}</span></div>
+      <div class="text-muted" style="width:18px;flex-shrink:0">${directionIcon(c)}</div>
+      <div class="text-muted small text-truncate flex-grow-1" style="min-width:80px" title="${esc(c.notes || '')}">${esc(c.notes || '')}</div>
+      <div class="d-flex gap-1 flex-shrink-0" onclick="event.stopPropagation()">
+        <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
+        ${_commsReassignIconHtml(c)}
+        <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+      </div>
+    </div>`;
+}
+
+// The org/case subject already carries an Απ:/Re:/Fw:/Fwd: prefix when it's
+// a reply or forward (see the email-ingestion pipeline) -- surface that as
+// a tiny chip with the real subject line in its tooltip, instead of
+// printing the whole subject a second time per entry.
+function _commsReplyChipHtml(subject) {
+  const m = /^(απ|re|fw|fwd)\s*:/i.exec((subject || '').trim());
+  if (!m) return '';
+  return `<span class="badge bg-secondary flex-shrink-0" style="font-size:.6em;cursor:default" title="${esc(subject)}">${esc(m[1].toUpperCase().slice(0, 2))}</span>`;
+}
+
+// Prefers the entry's real linked OrgContact(s) over the denormalized
+// free-text contact_person, same preference order _commPreselectFromComm
+// already uses for the edit modal -- first contact shown, any others
+// folded into a "+N" chip (their names in its tooltip) rather than running
+// every name together on one line.
+function _commsContactNameHtml(c) {
+  if (c.contacts && c.contacts.length) {
+    const label = x => [x.first_name, x.last_name].filter(Boolean).join(' ') || x.email || '';
+    const first = label(c.contacts[0]);
+    const rest = c.contacts.slice(1).map(label).filter(Boolean);
+    const more = rest.length
+      ? ` <span class="badge bg-secondary flex-shrink-0" style="font-size:.6em;cursor:default" title="${esc(rest.join(', '))}">+${rest.length}</span>`
+      : '';
+    return `<span class="text-truncate">${esc(first)}</span>${more}`;
+  }
+  return c.contact_person ? `<span class="text-truncate">${esc(c.contact_person)}</span>` : `<span class="text-muted">—</span>`;
 }
 
 function _renderCommsDetailHeader(cs, caseId) {
