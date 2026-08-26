@@ -223,8 +223,17 @@
     .comms-case-item.comms-row-selected { background-color: rgba(0, 87, 184, .08); border-left-color: #0057b8; }
     [data-bs-theme="dark"] .comms-case-item.comms-row-selected { background-color: rgba(110,168,254,.12); border-left-color: #6ea8fe; }
     .comms-case-dot { width: 8px; height: 8px; }
+    /* Small pill toggles, not full-width buttons -- a plain .btn-group here
+       stretched to fill the whole (narrow) list column and dwarfed the
+       list below it, which is the opposite of "quick". */
+    .comms-quick-chip { display: inline-flex; align-items: center; font-size: .72rem; font-weight: 700; padding: .3rem .65rem; border-radius: 999px; cursor: pointer; background: rgba(0,0,0,.05); color: var(--bs-secondary-color, #667085); }
+    [data-bs-theme="dark"] .comms-quick-chip { background: rgba(255,255,255,.07); }
+    .comms-quick-chip-warning.active { background: #fff3d6; color: #8a5a00; }
+    [data-bs-theme="dark"] .comms-quick-chip-warning.active { background: rgba(255,193,7,.18); color: #ffc107; }
+    .comms-quick-chip-success.active { background: #e3f6ea; color: #1f8a4c; }
+    [data-bs-theme="dark"] .comms-quick-chip-success.active { background: rgba(25,135,84,.22); color: #4ade80; }
     @media (min-width: 992px) {
-      /* Only makes sense once col-lg-7/col-lg-5 actually sit side by side --
+      /* Only makes sense once col-lg-4/col-lg-8 actually sit side by side --
          reuses Bootstrap's own lg breakpoint value rather than inventing a
          new one, matching every other 2-column layout in this app. */
       #commsDetailPanel { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
@@ -1260,9 +1269,9 @@
               <input type="search" id="commsSearch" class="form-control form-control-sm w-100" placeholder="Search communications…" data-i18n-ph="comms.search" oninput="debouncedFilterComms()">
               <button type="button" class="search-clear-btn" tabindex="-1" data-i18n-title="common.clear" title="Clear" onclick="_clearSearchInput('commsSearch')">&times;</button>
             </div>
-            <div class="btn-group btn-group-sm mb-2" role="group" id="commsQuickCaseChips">
-              <button type="button" class="btn btn-outline-warning" id="commsQuickOpenBtn" onclick="setCommsFilter(1)"></button>
-              <button type="button" class="btn btn-outline-success" id="commsQuickClosedBtn" onclick="setCommsFilter(2)"></button>
+            <div class="d-flex gap-2 mb-2" id="commsQuickCaseChips">
+              <span class="comms-quick-chip comms-quick-chip-warning" id="commsQuickOpenBtn" role="button" onclick="setCommsFilter(1)"></span>
+              <span class="comms-quick-chip comms-quick-chip-success" id="commsQuickClosedBtn" role="button" onclick="setCommsFilter(2)"></span>
             </div>
             <div id="commsReviewSection" class="d-none mb-3"></div>
             <div id="commsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>

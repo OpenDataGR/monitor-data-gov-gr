@@ -338,6 +338,8 @@ const TRANSLATIONS = {
     'comms.case_closed': 'Closed',
     'comms.open_cases': 'Open Cases',
     'comms.closed_cases': 'Closed Cases',
+    'comms.open_short': 'open',
+    'comms.closed_short': 'closed',
     'comms.stale_cases': 'Needs Follow-up',
     'comms.not_stale_cases': 'On Track',
     'comms.filter_group_case': 'Case',
@@ -933,6 +935,8 @@ const TRANSLATIONS = {
     'comms.case_closed': 'Κλειστή',
     'comms.open_cases': 'Ανοιχτές Υποθέσεις',
     'comms.closed_cases': 'Κλειστές Υποθέσεις',
+    'comms.open_short': 'ανοιχτές',
+    'comms.closed_short': 'κλειστές',
     'comms.stale_cases': 'Χρήζει Παρακολούθησης',
     'comms.not_stale_cases': 'Εντάξει',
     'comms.filter_group_case': 'Υπόθεση',
@@ -5130,12 +5134,12 @@ function renderCommsSummary() {
   // (_commsSummaryCards[1]/[2]), so toggling either one keeps the other in
   // sync for free next time this function runs.
   show('commsQuickStats').innerHTML =
-    `<span><b class="text-body">${csc.total}</b> ${t('comms.total')}</span>` +
-    `<span><b class="text-warning">${csc.Open || 0}</b> ${t('comms.open_cases')}</span>` +
-    `<span><b class="text-success">${csc.Closed || 0}</b> ${t('comms.closed_cases')}</span>`;
+    `<span><b class="text-body">${csc.total}</b> ${t('comms.total').toLowerCase()}</span>` +
+    `<span><b class="text-warning">${csc.Open || 0}</b> ${t('comms.open_short')}</span>` +
+    `<span><b class="text-success">${csc.Closed || 0}</b> ${t('comms.closed_short')}</span>`;
   const openBtn = show('commsQuickOpenBtn'), closedBtn = show('commsQuickClosedBtn');
-  openBtn.textContent = `${t('comms.open_cases')} · ${csc.Open || 0}`;
-  closedBtn.textContent = `${t('comms.closed_cases')} · ${csc.Closed || 0}`;
+  openBtn.textContent = `${t('comms.open_short')} · ${csc.Open || 0}`;
+  closedBtn.textContent = `${t('comms.closed_short')} · ${csc.Closed || 0}`;
   openBtn.classList.toggle('active', _commsCaseStatusFilter === 'Open');
   closedBtn.classList.toggle('active', _commsCaseStatusFilter === 'Closed');
 }
@@ -5885,7 +5889,12 @@ function _renderCommsDetailHeader(cs, caseId) {
   show('commsDetailHeader').dataset.caseId = cs.id;
   show('commsDetailHeader').dataset.caseStatus = cs.status;
   const isClosed = cs.status === 'Closed';
-  toggleBtn.textContent = isClosed ? t('comms.case_reopen') : t('comms.case_close');
+  // Icon-only, matching the follow-up/edit-orgs/merge buttons beside it --
+  // the modal's own equivalent button keeps its text label (more room
+  // there, only one action next to it), but this row has 3-4 icon buttons
+  // already and a text button here reads as heavier than its siblings.
+  toggleBtn.innerHTML = `<i class="bi ${isClosed ? 'bi-arrow-counterclockwise' : 'bi-check2-circle'}"></i>`;
+  toggleBtn.title = isClosed ? t('comms.case_reopen') : t('comms.case_close');
   toggleBtn.className = 'btn btn-sm py-0 px-2 ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
   headerText.innerHTML = `<span class="text-muted small mono">#${cs.id}</span> ` +
     `<span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">${caseStatusLabel(cs.status)}</span> ` +
