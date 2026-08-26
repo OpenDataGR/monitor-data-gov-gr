@@ -4653,13 +4653,11 @@ let _commsStatusCounts     = null;
 
 // Drives the split-workspace detail panel -- in-memory only, cleared on
 // reload, same pattern as the Live Visitors list<->map selection
-// (_liveSelectedMarker): a plain module var, not persisted, not tied to any
-// one view mode, so it survives switching between Cases/Timeline/By Org/All.
-// _commsSelectedCommId is only ever set for a comm with no case_id (the
-// column is nullable, models.py, though no current creation path leaves it
-// null on purpose -- this is defensive, not a currently-exercised path).
+// (_liveSelectedMarker). Only the Cases view keeps this panel (see
+// setCommsView) -- Timeline/By-Org/All are browse views over individual
+// entries, not single-case reading, so there's nothing else that ever
+// selects into it.
 let _commsSelectedCaseId = null;
-let _commsSelectedCommId = null;
 
 // q/case_status/stale/status shared by every /api/communications call this
 // tab makes (flat rows, group listings, and a single group's expand-fetch)
@@ -4710,38 +4708,22 @@ function _commsFindById(id) {
   return null;
 }
 
-// Split-workspace selection -- one entry point regardless of which of the 4
-// view modes the click came from (same "one function, several trigger
-// surfaces" shape as the Live Visitors _selectLiveVisit). Resolves to a case
-// whenever the clicked entry has one (the normal case); falls back to
-// showing just that one entry when it doesn't.
-function _selectCommsEntry(commId) {
-  const c = _commsFindById(commId);
-  if (c && c.case_id) {
-    _selectCommsCase(c.case_id);
-  } else {
-    _commsSelectedCommId = commId;
-    _commsSelectedCaseId = null;
-    _commsApplySelectionHighlight();
-    _renderCommsDetailPanel();
-  }
-}
+// Split-workspace selection -- Cases view's own card list is the only
+// caller (see setCommsView; Timeline/By-Org/All have no panel to select
+// into any more, their rows open the ordinary edit modal instead).
 function _selectCommsCase(caseId) {
   _commsSelectedCaseId = caseId;
-  _commsSelectedCommId = null;
   _commsApplySelectionHighlight();
   _renderCommsDetailPanel();
 }
-// Pure CSS-class toggle driven by data-case-id/data-comm-id attributes
-// already on each row, not a stored "previous element" reference -- clearing
-// and re-applying on every call is what makes this idempotent regardless of
+// Pure CSS-class toggle driven by the data-case-id attribute already on
+// each case card, not a stored "previous element" reference -- clearing and
+// re-applying on every call is what makes this idempotent regardless of
 // which view re-rendered in between (same approach as .live-row-selected).
 function _commsApplySelectionHighlight() {
   document.querySelectorAll('#commsTable .comms-row-selected').forEach(el => el.classList.remove('comms-row-selected'));
-  const sel = _commsSelectedCaseId != null
-    ? `[data-case-id="${_commsSelectedCaseId}"]`
-    : `[data-comm-id="${_commsSelectedCommId}"]`;
-  document.querySelectorAll(`#commsTable ${sel}`).forEach(el => el.classList.add('comms-row-selected'));
+  if (_commsSelectedCaseId == null) return;
+  document.querySelectorAll(`#commsTable [data-case-id="${_commsSelectedCaseId}"]`).forEach(el => el.classList.add('comms-row-selected'));
 }
 
 // Case-level fields (deadline/opened_at/closed_at/status) aren't carried by
@@ -5281,6 +5263,16 @@ function setCommsView(mode) {
   const showExpandBtns = (mode === 'grouped' || mode === 'timeline');  // 'cases' has no inline expand anymore -- see _renderCommsCaseGroups
   show('commsExpandAllBtn').classList.toggle('d-none', !showExpandBtns);
   show('commsCollapseAllBtn').classList.toggle('d-none', !showExpandBtns);
+  // The split-workspace detail panel only makes sense for Cases -- Timeline/
+  // By-Org/All are browse views over individual entries (their rows open
+  // the ordinary edit modal, see _commsListRowHtml/_commsTimelineItemHtml),
+  // not a "read one case's thread" view, so showing an empty panel next to
+  // them the rest of the time was just dead space. Cases keeps the
+  // col-lg-4/col-lg-8 split; the other 3 get the full list width.
+  const isCases = mode === 'cases';
+  show('commsListCol').className = isCases ? 'col-12 col-lg-4' : 'col-12';
+  show('commsDetailCol').classList.toggle('d-none', !isCases);
+  if (!isCases) _commsSelectedCaseId = null;
   _commsSyncView();  // reuses already-loaded data for this view if we have it
 }
 
@@ -5330,14 +5322,15 @@ function collapseAllComms() {
 // split-workspace left column actually has (that's what a <table> full of
 // column headers like "Σημειώσεις" broke badly at). Medium/notes are left
 // out entirely here (unlike the old table columns) -- they're a click away
-// in the detail panel once an entry is selected, and didn't fit this width
-// without wrapping either. showOrg is only true in the flat view -- an
-// org's own entries under By-Org's group header would just repeat the
-// group's own name on every row.
+// by opening the entry, and didn't fit this width without wrapping either.
+// showOrg is only true in the flat view -- an org's own entries under
+// By-Org's group header would just repeat the group's own name on every
+// row. Opens the ordinary edit modal on click, not the split-workspace
+// panel -- these views have no panel (see setCommsView).
 function _commsListRowHtml(c, { showOrg = false, showCaseBadge = false, reveal = false } = {}) {
   const statusLabel = _commsStatusLabels();
   return `
-    <div class="comms-case-item${reveal ? ' just-revealed' : ''}" data-case-id="${c.case_id || ''}" data-comm-id="${c.id}" onclick="_selectCommsEntry(${c.id})" title="${esc(c.subject)}">
+    <div class="comms-case-item${reveal ? ' just-revealed' : ''}" onclick="openCommModal(${c.id})" title="${esc(c.subject)}">
       <span class="text-muted small mono flex-shrink-0" style="width:60px">${esc(c.contact_date)}</span>
       <div class="flex-grow-1" style="min-width:0">
         ${showOrg ? `<div class="fw-semibold small text-truncate">${esc(c.org_title)}</div>` : ''}
@@ -5778,39 +5771,32 @@ async function _fetchCommsCaseRows(caseId) {
   }
 }
 
-// ── Split-workspace detail panel ────────────────────────────────────────────
-// Shows whichever case/entry is currently selected (_selectCommsEntry et al,
-// above), identically regardless of which of the 4 left-side view modes the
-// selection came from. Reuses _fetchCommsCaseRows/_commsFetchCaseDetail
-// verbatim for data -- both already cache-checked, so this is a no-op fetch
-// when the left column already expanded the same case. Uses its own row
-// markup (_commsDetailRowHtml below), not _commsListRowHtml -- the panel
-// already names the case's org/subject once in its own header, so its rows
-// lead with contact name instead of repeating the subject on every line.
+// ── Split-workspace detail panel (Cases view only) ──────────────────────────
+// Shows whichever case is currently selected. Reuses _fetchCommsCaseRows/
+// _commsFetchCaseDetail verbatim for data -- both already cache-checked, so
+// this is a no-op fetch when the left column already expanded the same
+// case. Uses its own row markup (_commsDetailRowHtml below), not
+// _commsListRowHtml -- the panel already names the case's org/subject once
+// in its own header, so its rows lead with contact name instead of
+// repeating the subject on every line.
 async function _renderCommsDetailPanel() {
   const empty = show('commsDetailEmpty'), content = show('commsDetailContent');
-  if (_commsSelectedCaseId == null && _commsSelectedCommId == null) {
+  if (_commsSelectedCaseId == null) {
     empty.classList.remove('d-none');
     content.classList.add('d-none');
     return;
   }
   empty.classList.add('d-none');
   content.classList.remove('d-none');
-  if (_commsSelectedCaseId != null) {
-    const caseId = _commsSelectedCaseId;
-    const [cs] = await Promise.all([
-      _commsFetchCaseDetail(caseId).catch(() => null),
-      _fetchCommsCaseRows(caseId),
-    ]);
-    if (caseId !== _commsSelectedCaseId) return;  // selection changed while awaiting
-    const rows = _commsCaseExpandRows.get(caseId) || [];
-    show('commsDetailBody').innerHTML = rows.map(_commsDetailRowHtml).join('');
-    _renderCommsDetailHeader(cs, caseId);
-  } else {
-    const c = _commsFindById(_commsSelectedCommId);
-    show('commsDetailBody').innerHTML = c ? _commsDetailRowHtml(c) : '';
-    _renderCommsDetailHeader(null, null);
-  }
+  const caseId = _commsSelectedCaseId;
+  const [cs] = await Promise.all([
+    _commsFetchCaseDetail(caseId).catch(() => null),
+    _fetchCommsCaseRows(caseId),
+  ]);
+  if (caseId !== _commsSelectedCaseId) return;  // selection changed while awaiting
+  const rows = _commsCaseExpandRows.get(caseId) || [];
+  show('commsDetailBody').innerHTML = rows.map(_commsDetailRowHtml).join('');
+  _renderCommsDetailHeader(cs, caseId);
 }
 
 // Detail-panel-only row: flex, not a fixed-width table, so it degrades
@@ -6000,10 +5986,12 @@ function _commsDayLabel(iso) {
   return d.toLocaleDateString(_lang === 'el' ? 'el-GR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+// Opens the ordinary edit modal on click, not the split-workspace panel --
+// Timeline has no panel (see setCommsView).
 function _commsTimelineItemHtml(c, reveal = false) {
   const statusLabel = _commsStatusLabels();
   return `
-    <div class="comm-timeline-item${reveal ? ' just-revealed' : ''}" data-case-id="${c.case_id || ''}" data-comm-id="${c.id}" onclick="_selectCommsEntry(${c.id})" style="cursor:pointer">
+    <div class="comm-timeline-item${reveal ? ' just-revealed' : ''}" onclick="openCommModal(${c.id})" style="cursor:pointer">
       <span class="comm-dot" style="background:${COMM_STATUS_DOT[c.status] || '#6c757d'}"></span>
       <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
         <div>

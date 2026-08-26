@@ -188,26 +188,31 @@ for anything non-trivial here.
 
 ## Communications tab: split-workspace layout (shipped 2026-08-25, revised through 2026-08-26)
 
-The Comms tab is a list-left/detail-right layout (`col-lg-4`/`col-lg-8` —
-widened from an initial `col-lg-7`/`col-lg-5` per user feedback that the
-detail panel should be the dominant column, stacking below 992px like
-every other 2-column area in the app), not a single full-width list. All
-four view modes (Cases/Timeline/By Org/All) keep their own left-side
-grouping; clicking any row or case-header selects that entry's case and
-shows its full thread in one shared, sticky right-hand panel
-(`#commsDetailPanel`) — reading a case no longer needs the Add/Edit modal
-or an inline expand.
+**The split-workspace list-left/detail-right layout only applies to the
+Cases view** (`col-lg-4`/`col-lg-8` — widened from an initial
+`col-lg-7`/`col-lg-5` per user feedback that the detail panel should be
+the dominant column, stacking below 992px like every other 2-column area
+in the app). Timeline/By Org/All were originally meant to share the same
+panel, but the user decided the panel doesn't belong on those 3 —
+they're browse/scan views over individual entries, not a "read one
+case's thread" view — so `setCommsView(mode)` now sets
+`#commsListCol`/`#commsDetailCol`'s width/visibility per mode: only
+`mode === 'cases'` keeps the split (`col-lg-4` + visible panel), the
+other 3 get `#commsListCol` at full `col-12` and `#commsDetailCol`
+hidden (`d-none`), and clicking a row in those 3 falls back to opening
+the ordinary Add/Edit modal (`openCommModal`) the way it always did
+before this redesign. Only Cases-view's own case cards select into the
+panel (`_selectCommsCase`); switching away from Cases clears
+`_commsSelectedCaseId` too, so there's no stale selection sitting behind
+the hidden panel.
 
-- Selection state is two plain module vars, `_commsSelectedCaseId`/
-  `_commsSelectedCommId` (in-memory only, not persisted) — same shape as
-  the Live Visitors list↔map selection (`_selectLiveVisit`).
-  `_selectCommsEntry(commId)` is the one entry point every row's
-  `onclick` calls; it resolves to `_selectCommsCase` unless the entry
-  has no `case_id`. Highlight is a pure CSS-class toggle
-  (`.comms-row-selected`, resolved via `data-case-id`/`data-comm-id`
-  attributes already on each row) reapplied at the end of every one of
-  the 4 render functions, since each fully replaces `#commsTable`'s
-  innerHTML.
+- Selection state is one plain module var, `_commsSelectedCaseId`
+  (in-memory only, not persisted) — same shape as the Live Visitors
+  list↔map selection (`_selectLiveVisit`). `_selectCommsCase(caseId)`,
+  called only from a Cases-view card's own `onclick`, is the sole entry
+  point. Highlight is a pure CSS-class toggle (`.comms-row-selected`,
+  resolved via the `data-case-id` attribute already on each case card)
+  reapplied at the end of `_renderCommsCaseGroups`.
 - **None of the left column's row templates are `<table>`s any more.**
   The original implementation kept each view's pre-existing fixed-pixel
   `<table>` (e.g. a 190px status column, sized for the old full-width
@@ -220,8 +225,9 @@ or an inline expand.
   too: `_commsListRowHtml(c, {showOrg, showCaseBadge, reveal})` is the
   one shared compact one-line row (date · org (flat view only) · subject
   · status pill · kebab actions menu — medium/direction/notes were
-  dropped from this row entirely; they're a click away in the detail
-  panel) used by both `_renderCommsFlat` and an expanded org's entries in
+  dropped from this row entirely, and the row opens the ordinary
+  Add/Edit modal on click, not a panel — see the layout note above) used
+  by both `_renderCommsFlat` and an expanded org's entries in
   `_renderCommsOrgGroups`. The flat view's old clickable `<th>` column
   sort UI became `_commsSortMenuHtml()`, a small dropdown driving the
   same `_commsSortCol`/`_commsSortDir`/`sortComms()` state — there's no
