@@ -4746,6 +4746,17 @@ const STATUS_BADGE = {
   "Negative Response":    "bg-danger",
   "No Response":          "bg-secondary",
 };
+// Detail-panel-only variant of the map above -- solid-fill pills matching
+// the approved Direction B mockup (see .comms-status-pill), used only by
+// _commsDetailRowHtml. Every other STATUS_BADGE call site (the 3 list
+// views, the modal, Contacts-to-Review) keeps the plain Bootstrap badge.
+const COMMS_STATUS_PILL_CLASS = {
+  "Initial Contact":      "status-initial",
+  "Intermediate Contact": "status-intermediate",
+  "Positive Response":    "status-positive",
+  "Negative Response":    "status-negative",
+  "No Response":          "status-none",
+};
 // Built lazily (not at module-eval time) since it depends on t(), which
 // needs i18n strings loaded first -- called fresh by every renderer below
 // rather than cached, since the active language can change mid-session.
@@ -5820,7 +5831,7 @@ function _commsDetailRowHtml(c) {
         ${_commsContactNameHtml(c)}
         ${_commsReplyChipHtml(c.subject)}
       </div>
-      <div class="text-nowrap" style="flex-shrink:0"><span class="badge rounded-pill ${STATUS_BADGE[c.status] || 'bg-secondary'}" style="font-size:.68rem">${statusLabel[c.status] || c.status}</span></div>
+      <div class="text-nowrap" style="flex-shrink:0"><span class="comms-status-pill ${COMMS_STATUS_PILL_CLASS[c.status] || 'status-none'}">${statusLabel[c.status] || c.status}</span></div>
       <div class="text-muted" style="width:16px;flex-shrink:0">${directionIcon(c)}</div>
       <div class="text-muted small text-truncate flex-grow-1" style="min-width:40px" title="${esc(c.notes || '')}">${esc(c.notes || '')}</div>
       <div class="flex-shrink-0" onclick="event.stopPropagation()">
@@ -5836,7 +5847,7 @@ function _commsDetailRowHtml(c) {
 function _commsReplyChipHtml(subject) {
   const m = /^(απ|re|fw|fwd)\s*:/i.exec((subject || '').trim());
   if (!m) return '';
-  return `<span class="badge bg-secondary flex-shrink-0" style="font-size:.6em;cursor:default" title="${esc(subject)}">${esc(m[1].toUpperCase().slice(0, 2))}</span>`;
+  return `<span class="comms-detail-chip flex-shrink-0" style="cursor:default" title="${esc(subject)}">${esc(m[1].toUpperCase().slice(0, 2))}</span>`;
 }
 
 // Prefers the entry's real linked OrgContact(s) over the denormalized
@@ -5850,7 +5861,7 @@ function _commsContactNameHtml(c) {
     const first = label(c.contacts[0]);
     const rest = c.contacts.slice(1).map(label).filter(Boolean);
     const more = rest.length
-      ? ` <span class="badge bg-secondary flex-shrink-0" style="font-size:.6em;cursor:default" title="${esc(rest.join(', '))}">+${rest.length}</span>`
+      ? ` <span class="comms-detail-chip flex-shrink-0" style="cursor:default" title="${esc(rest.join(', '))}">+${rest.length}</span>`
       : '';
     return `<span class="text-truncate">${esc(first)}</span>${more}`;
   }
@@ -5882,11 +5893,13 @@ function _renderCommsDetailHeader(cs, caseId) {
   toggleBtn.className = 'btn btn-sm py-0 px-2 comms-pill-btn ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
   // Case status/no-response/auto-captured surface as their own pill badges
   // (Case.to_dict already computes is_stale/has_auto_entry -- no new
-  // backend field needed) instead of being folded into one run-on text line.
+  // backend field needed) instead of being folded into one run-on text
+  // line -- colors match the approved Direction B mockup (.comms-case-pill),
+  // not Bootstrap's subtle/emphasis pair.
   badges.innerHTML = `<span class="text-muted small mono">#${cs.id}</span>` +
-    `<span class="badge rounded-pill ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.72rem">${caseStatusLabel(cs.status)}</span>` +
-    (cs.is_stale ? `<span class="badge rounded-pill bg-danger-subtle text-danger-emphasis" style="font-size:.72rem"><i class="bi bi-x-lg me-1"></i>${t('comms.case_stale')}</span>` : '') +
-    (cs.has_auto_entry ? `<span class="badge rounded-pill bg-primary-subtle text-primary-emphasis" style="font-size:.72rem"><i class="bi bi-lightning-charge-fill me-1"></i>${t('inbound.auto_badge')}</span>` : '');
+    `<span class="comms-case-pill ${isClosed ? 'closed' : 'open'}">${caseStatusLabel(cs.status)}</span>` +
+    (cs.is_stale ? `<span class="comms-case-pill no-answer"><i class="bi bi-x-lg"></i>${t('comms.case_stale')}</span>` : '') +
+    (cs.has_auto_entry ? `<span class="comms-case-pill auto"><i class="bi bi-lightning-charge-fill"></i>${t('inbound.auto_badge')}</span>` : '');
   headerText.innerHTML = `<div class="fw-bold fs-5">${esc(cs.org_title)}</div>` +
     `<div class="text-muted">${esc(cs.subject)}</div>` +
     `<div class="text-muted small mt-1">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +

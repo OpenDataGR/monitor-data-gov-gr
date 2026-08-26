@@ -219,6 +219,23 @@
     .comms-case-item.comms-row-selected { background-color: rgba(0, 87, 184, .08); border-left-color: #0057b8; }
     [data-bs-theme="dark"] .comms-case-item.comms-row-selected { background-color: rgba(110,168,254,.12); border-left-color: #6ea8fe; }
     .comms-case-dot { width: 8px; height: 8px; }
+    /* Detail-panel pills -- solid saturated fill + white/tinted text taken
+       directly from the approved Direction B mockup, not Bootstrap's badge
+       palette (which read flatter/lower-contrast for this specific panel).
+       Same values regardless of theme -- these are small solid chips, not a
+       page surface color, so they read fine on either light or dark ground. */
+    .comms-status-pill { display: inline-flex; align-items: center; font-size: .68rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; color: #fff; white-space: nowrap; }
+    .comms-status-pill.status-initial      { background: #3b6fe0; }
+    .comms-status-pill.status-intermediate { background: #1f97a8; }
+    .comms-status-pill.status-positive     { background: #198754; }
+    .comms-status-pill.status-negative     { background: #dc3545; }
+    .comms-status-pill.status-none         { background: #6c757d; }
+    .comms-case-pill { display: inline-flex; align-items: center; gap: 4px; font-size: .68rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+    .comms-case-pill.open      { background: #4a3a15; color: #e3b34a; }
+    .comms-case-pill.closed    { background: #16332a; color: #6fd7a8; }
+    .comms-case-pill.no-answer { background: #384252; color: #ff9aa2; }
+    .comms-case-pill.auto      { background: #223049; color: #a9bcd9; }
+    .comms-detail-chip { display: inline-flex; align-items: center; font-size: .62rem; font-weight: 800; padding: 2px 6px; border-radius: 5px; background: #232f42; color: #b7c2d6; }
     /* Small pill toggles, not full-width buttons -- a plain .btn-group here
        stretched to fill the whole (narrow) list column and dwarfed the
        list below it, which is the opposite of "quick". */
