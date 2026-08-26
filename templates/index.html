@@ -1203,12 +1203,12 @@
       <div class="card p-3 mb-3">
         <div class="d-flex align-items-center flex-wrap gap-3">
           <h6 class="fw-semibold mb-0"><i class="bi bi-envelope me-2 text-primary"></i><span data-i18n="comms.title">Communications Log</span></h6>
-          <ul class="nav nav-underline">
-            <li class="nav-item"><button id="commsViewCasesBtn" type="button" class="nav-link active" onclick="setCommsView('cases')" data-i18n="comms.view_cases">Cases</button></li>
-            <li class="nav-item"><button id="commsViewTimelineBtn" type="button" class="nav-link" onclick="setCommsView('timeline')" data-i18n="comms.view_timeline">Timeline</button></li>
-            <li class="nav-item"><button id="commsViewGroupedBtn" type="button" class="nav-link" onclick="setCommsView('grouped')" data-i18n="comms.view_by_org">By Organization</button></li>
-            <li class="nav-item"><button id="commsViewFlatBtn" type="button" class="nav-link" onclick="setCommsView('flat')" data-i18n="comms.view_all">All</button></li>
-          </ul>
+          <div class="btn-group btn-group-sm" role="group">
+            <button id="commsViewCasesBtn" type="button" class="btn btn-primary" onclick="setCommsView('cases')" data-i18n="comms.view_cases">Cases</button>
+            <button id="commsViewTimelineBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('timeline')" data-i18n="comms.view_timeline">Timeline</button>
+            <button id="commsViewGroupedBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('grouped')" data-i18n="comms.view_by_org">By Organization</button>
+            <button id="commsViewFlatBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('flat')" data-i18n="comms.view_all">All</button>
+          </div>
           <div class="small text-muted d-flex align-items-center gap-3" id="commsQuickStats"></div>
           <div class="d-flex align-items-center gap-2 flex-wrap ms-auto">
             <button id="commsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm comms-pill-btn" onclick="expandAllComms()" data-i18n-title="comms.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
