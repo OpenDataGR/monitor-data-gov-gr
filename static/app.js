@@ -376,6 +376,7 @@ const TRANSLATIONS = {
     'comms.add_contact_for_org': 'Add contact for this organization',
     'comms.add': 'Add',
     'comms.none': 'No communications recorded yet — click Add to start.',
+    'comms.sort_by': 'Sort by',
     'comms.col_date': 'Date',
     'comms.col_org': 'Organization',
     'comms.col_subject': 'Subject',
@@ -975,6 +976,7 @@ const TRANSLATIONS = {
     'comms.add_contact_for_org': 'Προσθήκη επαφής για αυτόν τον οργανισμό',
     'comms.add': 'Προσθήκη',
     'comms.none': 'Δεν έχουν καταγραφεί επικοινωνίες — κάντε κλικ στο «Προσθήκη».',
+    'comms.sort_by': 'Ταξινόμηση',
     'comms.col_date': 'Ημερομηνία',
     'comms.col_org': 'Οργανισμός',
     'comms.col_subject': 'Θέμα',
@@ -4785,11 +4787,6 @@ function caseBadgeHtml(c, extraClass = '') {
   return `<span class="badge ${CASE_STATUS_BADGE[c.case_status] || 'bg-secondary'} ${extraClass}" style="font-size:.62rem" title="${t('comms.case_col')} #${c.case_id}">#${c.case_id}${label ? ' · ' + label : ''}</span>`;
 }
 
-function contactPersonHtml(c) {
-  if (!c.contact_person) return '';
-  return `<div class="text-muted" style="font-size:.7rem"><i class="bi bi-person me-1"></i>${esc(c.contact_person)}</div>`;
-}
-
 const MEDIUM_ICON = {
   "Telephone": "bi-telephone",
   "Email":     "bi-envelope",
@@ -5200,9 +5197,34 @@ function sortComms(col) {
   loadCommsFlat(false);  // only the flat view exposes sorting -- the 3 grouped views are unaffected
 }
 
-function commsArrow(col) {
-  if (_commsSortCol !== col) return '<span style="opacity:.25;font-size:.8em"> ↕</span>';
-  return _commsSortDir === 'asc' ? ' ↑' : ' ↓';
+// Sortable columns used to be clickable <th> headers on the flat view's own
+// <table> -- now that that table is a compact row list (see
+// _commsListRowHtml), there's no header row to click, so this collapses
+// into one small dropdown above the list instead. Still drives the exact
+// same _commsSortCol/_commsSortDir state and sortComms(), just from a menu
+// item instead of a header click.
+const COMMS_SORT_COLS = [
+  { col: 'contact_date', key: 'comms.col_date' },
+  { col: 'org_title',    key: 'comms.col_org' },
+  { col: 'subject',      key: 'comms.col_subject' },
+  { col: 'status',       key: 'comms.col_status' },
+];
+function _commsSortMenuHtml() {
+  const active = COMMS_SORT_COLS.find(s => s.col === _commsSortCol);
+  const items = COMMS_SORT_COLS.map(s => {
+    const isActive = s.col === _commsSortCol;
+    const dirIcon = isActive ? (_commsSortDir === 'asc' ? 'bi-arrow-up' : 'bi-arrow-down') : '';
+    return `<li><a class="dropdown-item d-flex align-items-center justify-content-between${isActive ? ' active' : ''}" href="#" onclick="event.preventDefault();sortComms('${s.col}')">${t(s.key)}${dirIcon ? ` <i class="bi ${dirIcon} ms-2"></i>` : ''}</a></li>`;
+  }).join('');
+  return `
+    <div class="d-flex justify-content-end mb-2">
+      <div class="dropdown">
+        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="bi bi-sort-down me-1"></i>${t('comms.sort_by')}${active ? ': ' + t(active.key) : ''}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">${items}</ul>
+      </div>
+    </div>`;
 }
 
 // Re-syncs whichever view is currently selected, reusing already-loaded data
@@ -5301,20 +5323,29 @@ function collapseAllComms() {
   else if (_commsViewMode === 'timeline') { _expandedTimelineDays.clear(); _renderCommsDayGroups(); }
 }
 
-function _commsFlatRowHtml(c) {
+// Shared compact one-line-per-entry row for every left-column list that
+// shows individual communications rather than a case (the flat "All" view,
+// and an expanded org's entries in By-Org) -- a plain flex row, not a
+// fixed-pixel <table>, so it degrades gracefully at the narrower width the
+// split-workspace left column actually has (that's what a <table> full of
+// column headers like "Σημειώσεις" broke badly at). Medium/notes are left
+// out entirely here (unlike the old table columns) -- they're a click away
+// in the detail panel once an entry is selected, and didn't fit this width
+// without wrapping either. showOrg is only true in the flat view -- an
+// org's own entries under By-Org's group header would just repeat the
+// group's own name on every row.
+function _commsListRowHtml(c, { showOrg = false, showCaseBadge = false, reveal = false } = {}) {
   const statusLabel = _commsStatusLabels();
   return `
-    <tr data-case-id="${c.case_id || ''}" data-comm-id="${c.id}" onclick="_selectCommsEntry(${c.id})" style="cursor:pointer">
-      <td class="text-muted small mono text-nowrap">${esc(c.contact_date)}</td>
-      <td class="fw-semibold small">${esc(c.org_title)}</td>
-      <td class="small">${esc(c.subject)} ${caseBadgeHtml(c)}${contactPersonHtml(c)}</td>
-      <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}">${statusLabel[c.status] || c.status}</span></td>
-      <td class="small text-muted">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
-      <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
-      <td class="text-end text-nowrap" onclick="event.stopPropagation()">
-        ${_commsRowActionsMenuHtml(c, { followup: true })}
-      </td>
-    </tr>`;
+    <div class="comms-case-item${reveal ? ' just-revealed' : ''}" data-case-id="${c.case_id || ''}" data-comm-id="${c.id}" onclick="_selectCommsEntry(${c.id})" title="${esc(c.subject)}">
+      <span class="text-muted small mono flex-shrink-0" style="width:60px">${esc(c.contact_date)}</span>
+      <div class="flex-grow-1" style="min-width:0">
+        ${showOrg ? `<div class="fw-semibold small text-truncate">${esc(c.org_title)}</div>` : ''}
+        <div class="text-truncate" style="font-size:${showOrg ? '.74rem' : '.8rem'}${showOrg ? ';color:var(--bs-secondary-color)' : ''}">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${autoEmailBadge(c)}</div>
+      </div>
+      <span class="badge rounded-pill ${STATUS_BADGE[c.status] || 'bg-secondary'} flex-shrink-0" style="font-size:.62rem">${statusLabel[c.status] || c.status}</span>
+      <div class="flex-shrink-0" onclick="event.stopPropagation()">${_commsRowActionsMenuHtml(c, { followup: true })}</div>
+    </div>`;
 }
 
 // Shared by every row template's actions cell -- a single kebab-menu button
@@ -5448,25 +5479,12 @@ async function loadCommsFlat(append = false, background = false) {
 // just these new rows at the bottom of the existing table".
 function _renderCommsFlat(rows, append) {
   if (append) {
-    const tbody = document.querySelector('#commsTable tbody');
-    if (tbody) tbody.insertAdjacentHTML('beforeend', rows.map(_commsFlatRowHtml).join(''));
+    const list = document.getElementById('commsFlatList');
+    if (list) list.insertAdjacentHTML('beforeend', rows.map(c => _commsListRowHtml(c, { showOrg: true, showCaseBadge: true })).join(''));
   } else {
-    const thS = (col, label, cls = '') =>
-      `<th class="${cls}" style="cursor:pointer;user-select:none;white-space:nowrap" onclick="sortComms('${col}')">${label}${commsArrow(col)}</th>`;
     show('commsTable').innerHTML = `
-      <table class="table table-hover table-sm align-middle mb-0" style="table-layout:fixed">
-        <colgroup><col style="width:110px"><col><col><col style="width:140px"><col style="width:120px"><col><col style="width:80px"></colgroup>
-        <thead><tr>
-          ${thS('contact_date', t('comms.col_date'), 'text-nowrap')}
-          ${thS('org_title',    t('comms.col_org'))}
-          ${thS('subject',      t('comms.col_subject'))}
-          ${thS('status',       t('comms.col_status'))}
-          <th>${t('comms.col_medium')}</th>
-          <th>${t('comms.col_notes')}</th>
-          <th></th>
-        </tr></thead>
-        <tbody>${rows.map(_commsFlatRowHtml).join('')}</tbody>
-      </table>
+      ${_commsSortMenuHtml()}
+      <div id="commsFlatList">${rows.map(c => _commsListRowHtml(c, { showOrg: true, showCaseBadge: true })).join('')}</div>
       <div id="commsLoadMoreSentinel" class="text-center text-muted small py-2"></div>`;
   }
   _commsApplySelectionHighlight();
@@ -5480,39 +5498,6 @@ function _renderCommsFlat(rows, append) {
       sentinel.innerHTML = _commsFlatTotal ? t('catalog.end_of_results') : '';
     }
   }
-}
-
-// Shared by the org and case grouped views' expanded rows -- identical
-// markup except the case view omits the case badge (redundant once you're
-// already looking inside that case's own group).
-function _commsHistRowHtml(c, showCaseBadge, reveal = false) {
-  const statusLabel = _commsStatusLabels();
-  return `
-    <tr class="comm-hist-row${reveal ? ' just-revealed' : ''}" data-case-id="${c.case_id || ''}" data-comm-id="${c.id}" onclick="_selectCommsEntry(${c.id})" style="cursor:pointer">
-      <td class="text-muted small mono text-nowrap ps-4">${esc(c.contact_date)}</td>
-      <td class="small">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${autoEmailBadge(c) ? ' ' + autoEmailBadge(c) : ''}${contactPersonHtml(c)}</td>
-      <td><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}" style="white-space:normal">${statusLabel[c.status] || c.status}</span></td>
-      <td class="small text-muted">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
-      <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
-      <td class="text-end text-nowrap" onclick="event.stopPropagation()">
-        ${_commsRowActionsMenuHtml(c, { followup: true })}
-      </td>
-    </tr>`;
-}
-function _commsGroupTableShell(rows) {
-  return `
-    <table class="table table-hover table-sm align-middle mb-0" style="table-layout:fixed">
-      <colgroup><col style="width:110px"><col><col style="width:190px"><col style="width:110px"><col><col style="width:80px"></colgroup>
-      <thead><tr>
-        <th>${t('comms.col_date')}</th>
-        <th>${t('comms.col_subject')}</th>
-        <th>${t('comms.col_status')}</th>
-        <th>${t('comms.col_medium')}</th>
-        <th>${t('comms.col_notes')}</th>
-        <th></th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
 }
 
 // ── Communications: By-Organization view ────────────────────────────────────
@@ -5573,7 +5558,7 @@ function _renderCommsOrgGroups() {
   const revealKey = _commsRevealKey;
   _commsRevealKey = null;
   const statusLabel = _commsStatusLabels();
-  const rows = _commsOrgGroups.map(g => {
+  const html = _commsOrgGroups.map(g => {
     const orgTitle   = g.org_title;
     const isExpanded = _expandedOrgs.has(orgTitle);
     const cachedRows = _commsOrgExpandRows.get(orgTitle);
@@ -5583,37 +5568,37 @@ function _renderCommsOrgGroups() {
     let body = '';
     if (isExpanded) {
       body = (isLoading || !cachedRows)
-        ? `<tr class="comm-hist-row${reveal ? ' just-revealed' : ''}"><td colspan="6" class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>`
-        : cachedRows.map(c => _commsHistRowHtml(c, true, reveal)).join('');
+        ? `<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>`
+        // Indented one level (ps-3) so an org's own entries read as nested
+        // under its header instead of sitting at the same list depth --
+        // showCaseBadge:true since one org can span more than one case.
+        : `<div class="ps-3">${cachedRows.map(c => _commsListRowHtml(c, { showCaseBadge: true, reveal })).join('')}</div>`;
     }
     return `
-      <tr class="comm-group-row" style="cursor:pointer" data-org="${safeAttr}" onclick="toggleOrgComms(this.dataset.org)">
-        <td colspan="6">
-          <div class="d-flex align-items-center gap-2">
-            <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted small"></i>
-            <span class="fw-semibold">${esc(orgTitle)}</span>
-            <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${g.count} ${g.count === 1 ? t('comms.entry') : t('comms.entries')}</span>
-            <span class="badge ${STATUS_BADGE[g.latest_status] || 'bg-secondary'}" style="font-size:.7rem">${statusLabel[g.latest_status] || g.latest_status}</span>
-            <span class="text-muted small ms-auto">${g.latest_date}</span>
-            <button class="btn btn-outline-primary btn-sm py-0 px-2 ms-2" data-org="${safeAttr}" data-orgcode="${esc(g.org_name || '')}"
-                    onclick="event.stopPropagation();openCommModal(null,this.dataset.org,this.dataset.orgcode)"
-                    title="${t('comms.add_comm_for_org')}">
-              <i class="bi bi-plus"></i>
-            </button>
-          </div>
-        </td>
-      </tr>
+      <div class="comms-case-item" style="cursor:pointer" data-org="${safeAttr}" onclick="toggleOrgComms(this.dataset.org)">
+        <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted flex-shrink-0"></i>
+        <div class="flex-grow-1" style="min-width:0">
+          <div class="fw-semibold text-truncate">${esc(orgTitle)}</div>
+          <div class="text-muted text-truncate" style="font-size:.72rem">${g.count} ${g.count === 1 ? t('comms.entry') : t('comms.entries')} · ${g.latest_date}</div>
+        </div>
+        <span class="badge ${STATUS_BADGE[g.latest_status] || 'bg-secondary'} flex-shrink-0" style="font-size:.65rem">${statusLabel[g.latest_status] || g.latest_status}</span>
+        <button class="btn btn-outline-primary btn-sm py-0 px-1 flex-shrink-0" data-org="${safeAttr}" data-orgcode="${esc(g.org_name || '')}"
+                onclick="event.stopPropagation();openCommModal(null,this.dataset.org,this.dataset.orgcode)"
+                title="${t('comms.add_comm_for_org')}">
+          <i class="bi bi-plus"></i>
+        </button>
+      </div>
       ${body}`;
   }).join('');
 
-  el.innerHTML = _commsGroupTableShell(rows);
+  el.innerHTML = html;
   _commsApplySelectionHighlight();
 }
 
 // A group's spinner-row is short; the rows that replace it usually aren't --
 // swapping between them with no transition snaps #commsTable to its new
 // height in one frame, instantly shoving everything below it down (or up,
-// on collapse). This fades the *content* (see the .comm-hist-row/
+// on collapse). This fades the *content* (see the .just-revealed/
 // .comm-timeline-item CSS animation), but never smoothed the *height*
 // change itself, which is the bigger part of what actually reads as a
 // jump. Wraps a render call so the container's height animates from its
@@ -5798,11 +5783,10 @@ async function _fetchCommsCaseRows(caseId) {
 // above), identically regardless of which of the 4 left-side view modes the
 // selection came from. Reuses _fetchCommsCaseRows/_commsFetchCaseDetail
 // verbatim for data -- both already cache-checked, so this is a no-op fetch
-// when the left column already expanded the same case. The row markup is
-// NOT reused from _commsHistRowHtml/_commsGroupTableShell, though -- that's
-// a fixed-pixel-column <table> sized for a full-width card (a 190px status
-// column alone), which breaks badly at this panel's actual width. See
-// _commsDetailRowHtml below.
+// when the left column already expanded the same case. Uses its own row
+// markup (_commsDetailRowHtml below), not _commsListRowHtml -- the panel
+// already names the case's org/subject once in its own header, so its rows
+// lead with contact name instead of repeating the subject on every line.
 async function _renderCommsDetailPanel() {
   const empty = show('commsDetailEmpty'), content = show('commsDetailContent');
   if (_commsSelectedCaseId == null && _commsSelectedCommId == null) {

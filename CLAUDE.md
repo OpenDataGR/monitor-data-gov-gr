@@ -186,15 +186,17 @@ to superadmin-only) that aren't all re-derivable from the code alone — a
 quick recap of intent from the user before diving in is the safest move
 for anything non-trivial here.
 
-## Communications tab: split-workspace layout (shipped 2026-08-25)
+## Communications tab: split-workspace layout (shipped 2026-08-25, revised through 2026-08-26)
 
-The Comms tab is a list-left/detail-right layout (`col-lg-7`/`col-lg-5`,
-stacking below 992px like every other 2-column area in the app), not a
-single full-width list. All four view modes (Cases/Timeline/By
-Org/All) keep their own existing grouping/expand behavior on the left;
-clicking any row or case-header selects that entry's case and shows its
-full thread in one shared, sticky right-hand panel (`#commsDetailPanel`)
-— reading a case no longer needs the Add/Edit modal or an inline expand.
+The Comms tab is a list-left/detail-right layout (`col-lg-4`/`col-lg-8` —
+widened from an initial `col-lg-7`/`col-lg-5` per user feedback that the
+detail panel should be the dominant column, stacking below 992px like
+every other 2-column area in the app), not a single full-width list. All
+four view modes (Cases/Timeline/By Org/All) keep their own left-side
+grouping; clicking any row or case-header selects that entry's case and
+shows its full thread in one shared, sticky right-hand panel
+(`#commsDetailPanel`) — reading a case no longer needs the Add/Edit modal
+or an inline expand.
 
 - Selection state is two plain module vars, `_commsSelectedCaseId`/
   `_commsSelectedCommId` (in-memory only, not persisted) — same shape as
@@ -206,28 +208,73 @@ full thread in one shared, sticky right-hand panel (`#commsDetailPanel`)
   attributes already on each row) reapplied at the end of every one of
   the 4 render functions, since each fully replaces `#commsTable`'s
   innerHTML.
+- **None of the left column's row templates are `<table>`s any more.**
+  The original implementation kept each view's pre-existing fixed-pixel
+  `<table>` (e.g. a 190px status column, sized for the old full-width
+  card) and only added the detail panel alongside it — at the narrower
+  `col-lg-4` width that produced actually-broken rendering (a column
+  header like "Σημειώσεις" wrapping one character per line because its
+  column had been squeezed to near-zero). Cases view was rebuilt first
+  (compact `.comms-case-item` divs, no table). By-Org and the flat "All"
+  view were rebuilt the same way once the same breakage showed up there
+  too: `_commsListRowHtml(c, {showOrg, showCaseBadge, reveal})` is the
+  one shared compact one-line row (date · org (flat view only) · subject
+  · status pill · kebab actions menu — medium/direction/notes were
+  dropped from this row entirely; they're a click away in the detail
+  panel) used by both `_renderCommsFlat` and an expanded org's entries in
+  `_renderCommsOrgGroups`. The flat view's old clickable `<th>` column
+  sort UI became `_commsSortMenuHtml()`, a small dropdown driving the
+  same `_commsSortCol`/`_commsSortDir`/`sortComms()` state — there's no
+  header row left to click. Timeline's own `.comm-timeline-item` divs
+  were already flex-based, not a table, so they were never affected by
+  this and are untouched. The detail panel's own row template
+  (`_commsDetailRowHtml`) is separate again from `_commsListRowHtml` —
+  the panel already names the case's org/subject once in its own header,
+  so its rows lead with contact name instead of repeating the subject on
+  every line.
+- Every row's edit/reassign/delete/follow-up actions collapsed from 2-4
+  separate icon buttons into one round kebab-menu button
+  (`_commsRowActionsMenuHtml(c, {followup})`, a Bootstrap dropdown) —
+  shared by every row template (including the detail panel's own row) —
+  once the narrower left column made that many icon buttons stop
+  fitting without wrapping. Reassign is superadmin-gated inside that
+  same menu, not a separate icon.
 - `_renderCommsDetailPanel`/`_renderCommsDetailHeader` (app.js) reuse
-  the existing row/table renderers (`_commsHistRowHtml`,
-  `_commsGroupTableShell`) and case-detail fetch (`_fetchCommsCaseRows`,
-  `_commsFetchCaseDetail`) verbatim — there's no separate detail-panel
-  data path. The panel hosts Add-follow-up, Close/Reopen, and
-  (superadmin-only) Edit-orgs/Merge; `openCaseOrgEditModal`/
+  `_fetchCommsCaseRows`/`_commsFetchCaseDetail` verbatim for data — no
+  separate detail-panel data path. The header shows the case's
+  status/no-response/auto-captured state as separate pill badges
+  (`Case.to_dict` already computes `is_stale`/`has_auto_entry` — no
+  backend change needed) rather than one run-on text line, with the org
+  name/subject/opened-deadline info stacked below. Its action buttons:
+  a superadmin-only "case tools" dropdown (Edit-orgs + Merge, folded
+  into one button the same way row actions are), Close/Reopen
+  (`#commsDetailToggleBtn`), and Add Follow-up. `openCaseOrgEditModal`/
   `openCaseMergeModal`/`openCaseReassignModal` each take an optional
   id-override parameter so they can be triggered from the panel (which
   has no `#commModal`/`#commCaseInfo` DOM to read a case id off of) as
   well as from their original modal-internal buttons.
-- A superadmin-only Reassign icon exists on every row template
-  (`_commsReassignIconHtml`), not just in the modal — reassigning
-  without ever opening `#commModal` in that session is now a normal
-  path, which is what surfaced (and required fixing) a latent bug:
-  `_confirmCaseTarget`'s reassign branch called `_commModal.hide()`
-  unconditionally; it's now guarded (`if (_commModal)`).
+- Fixed a latent bug this surfaced: `_confirmCaseTarget`'s reassign
+  branch called `_commModal.hide()` unconditionally; reassigning without
+  ever opening `#commModal` in that session (now a normal path via the
+  row kebab menu or the panel) would throw. It's now guarded
+  (`if (_commModal)`).
 - The filter-facet panel (3 tabbed dimensions, unchanged logic) moved
   behind a "Filters" dropdown button, reusing the same
   `data-bs-auto-close="outside"` pattern as the Contacts tab's role
-  picker.
+  picker. Its filter-card icons (and every other filter panel that
+  reuses the shared `_renderFilterCardsGrid` — Catalog type, Contacts,
+  File-contacts) are a small solid-color circle (white icon on the
+  card's own accent color, via the existing `CARD_BORDER_COLOR` map)
+  instead of a bare colored glyph.
 - `_commsRefreshInPlace()` (SSE/save/close/reopen/merge/reassign all
   funnel through it) also refreshes the selected detail panel now
   (`_commsRefreshSelectedDetail`), independent of which left-view mode
   is active — the selected case can differ from whatever the left
   column happens to be displaying.
+- **Button shape:** a fully-rounded "pill" button style (`border-radius:
+  999px`) was tried on the main header and the Comms toolbar/detail-panel
+  buttons, then explicitly reverted the same session — the user prefers
+  Bootstrap's default rectangular (~6px corner) button style everywhere.
+  Don't reintroduce a blanket pill-button rule; see
+  `feedback_no_pill_shaped_buttons` in local memory for the fuller history
+  if this comes up again.
