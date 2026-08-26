@@ -194,6 +194,17 @@
     .comms-row-selected > td { background-color: rgba(0, 87, 184, .10) !important; }
     [data-bs-theme="dark"] .comms-row-selected > td { background-color: rgba(0, 87, 184, .18) !important; }
     .comm-timeline-item.comms-row-selected { outline: 2px solid rgba(0, 87, 184, .4); }
+    /* Cases view's own compact card list -- a plain div per case, not a
+       table row, so .comms-row-selected's own >td targeting above doesn't
+       apply here; a left accent border instead of a background match is
+       also more legible against a single-line item this narrow. */
+    .comms-case-item { display: flex; align-items: center; gap: .6rem; padding: .5rem .25rem; border-top: 1px solid var(--bs-border-color); cursor: pointer; border-left: 3px solid transparent; }
+    .comms-case-item:first-child { border-top: none; }
+    .comms-case-item:hover { background-color: rgba(0,0,0,.03); }
+    [data-bs-theme="dark"] .comms-case-item:hover { background-color: rgba(255,255,255,.04); }
+    .comms-case-item.comms-row-selected { background-color: rgba(0, 87, 184, .08); border-left-color: #0057b8; }
+    [data-bs-theme="dark"] .comms-case-item.comms-row-selected { background-color: rgba(110,168,254,.12); border-left-color: #6ea8fe; }
+    .comms-case-dot { width: 8px; height: 8px; }
     @media (min-width: 992px) {
       /* Only makes sense once col-lg-7/col-lg-5 actually sit side by side --
          reuses Bootstrap's own lg breakpoint value rather than inventing a

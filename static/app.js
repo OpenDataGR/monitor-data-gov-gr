@@ -5699,47 +5699,37 @@ async function _loadCommsCaseGroups(background = false) {
 // row only ever selects into the detail panel now, which already shows its
 // full thread; expanding the same thread a second time in the list itself
 // would just duplicate it.
+// Compact card list, not a table -- each case is a single-glance row (status
+// dot, org/subject, entry count + stale-or-closed-date) that just selects
+// into the detail panel; #id, the Open/Closed badge text, and per-row
+// Add-follow-up/Close/Reopen all live in the panel's own header now instead
+// of being repeated per row here.
 function _renderCommsCaseGroups() {
   const el = show('commsTable');
   if (!_commsCaseGroups.length) {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
-  const rows = _commsCaseGroups.map(cs => {
+  const items = _commsCaseGroups.map(cs => {
     const isClosed = cs.status === 'Closed';
+    const metaText = isClosed
+      ? `${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}`
+      : (cs.is_stale ? `✕ ${t('comms.case_stale')}` : (cs.deadline ? `${t('comm_modal.deadline')}: ${cs.deadline}` : ''));
     return `
-      <tr class="comm-group-row" data-case-id="${cs.id}" style="cursor:pointer" onclick="_selectCommsCase(${cs.id})">
-        <td colspan="6">
-          <div class="d-flex flex-column gap-1">
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-              <span class="text-muted small mono">#${cs.id}</span>
-              <span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">
-                <i class="bi ${isClosed ? 'bi-folder-check' : 'bi-folder2-open'} me-1"></i>${caseStatusLabel(cs.status)}
-              </span>
-              ${cs.is_stale ? `<span class="badge bg-secondary" style="font-size:.7rem" title="${t('comms.case_stale_hint')}"><i class="bi bi-hourglass-split me-1"></i>${t('comms.case_stale')}</span>` : ''}
-              <span class="fw-semibold">${esc(cs.org_title)}</span>
-              <span class="text-muted small">— ${esc(cs.subject)}</span>
-              <span class="badge bg-secondary rounded-pill" style="font-size:.7rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</span>
-              ${cs.has_auto_entry ? `<span class="badge rounded-pill" style="font-size:.65rem;background:#e8f0fe;color:#1a56db" title="${esc(t('inbound.auto_badge_title'))}"><i class="bi bi-robot me-1"></i>${esc(t('inbound.auto_badge'))}</span>` : ''}
-            </div>
-            <div class="d-flex align-items-center gap-2">
-              <span class="text-muted small">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}${isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')}</span>
-              <div class="d-flex gap-1 ms-auto">
-                <button class="btn btn-outline-primary btn-sm py-0 px-2" title="${t('comms.case_add_entry')}"
-                        onclick="event.stopPropagation();openFollowupForCase(${cs.id})">
-                  <i class="bi bi-plus"></i>
-                </button>
-                ${isClosed
-                  ? `<button class="btn btn-outline-success btn-sm py-0 px-2" title="${t('comms.case_reopen')}" onclick="event.stopPropagation();reopenCase(${cs.id})"><i class="bi bi-arrow-counterclockwise"></i></button>`
-                  : `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="${t('comms.case_close')}" onclick="event.stopPropagation();closeCase(${cs.id})"><i class="bi bi-check2-circle"></i></button>`}
-              </div>
-            </div>
-          </div>
-        </td>
-      </tr>`;
+      <div class="comms-case-item" data-case-id="${cs.id}" onclick="_selectCommsCase(${cs.id})" title="#${cs.id} · ${esc(caseStatusLabel(cs.status))}">
+        <span class="comms-case-dot rounded-circle flex-shrink-0 ${isClosed ? 'bg-success' : 'bg-warning'}"></span>
+        <div class="flex-grow-1" style="min-width:0">
+          <div class="fw-semibold small text-truncate">${esc(cs.org_title)}</div>
+          <div class="text-muted text-truncate" style="font-size:.74rem">${esc(cs.subject)}</div>
+        </div>
+        <div class="text-end flex-shrink-0">
+          <div class="text-muted fw-semibold" style="font-size:.68rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</div>
+          <div class="${cs.is_stale && !isClosed ? 'text-danger' : 'text-muted'}" style="font-size:.68rem">${metaText}</div>
+        </div>
+      </div>`;
   }).join('');
 
-  el.innerHTML = _commsGroupTableShell(rows);
+  el.innerHTML = items;
   _commsApplySelectionHighlight();
 }
 
@@ -5809,17 +5799,22 @@ async function _renderCommsDetailPanel() {
 // line), freeing the space a repeated subject would have taken for notes.
 function _commsDetailRowHtml(c) {
   const statusLabel = _commsStatusLabels();
+  // No flex-wrap here (unlike most row layouts elsewhere in this file) --
+  // this row must stay strictly one line even in a narrow panel, so a tight
+  // fit truncates the notes column further rather than breaking onto a
+  // second visual line, which is what actually caused the unreadable
+  // wrapping this replaced.
   return `
-    <div class="d-flex align-items-center gap-2 py-2 border-top flex-wrap" style="font-size:.83rem">
-      <div class="text-muted small mono text-nowrap" style="width:72px;flex-shrink:0">${esc(c.contact_date)}</div>
-      <div class="d-flex align-items-center gap-1" style="width:150px;flex-shrink:0;min-width:0">
-        <i class="bi bi-person text-muted" style="font-size:.8em"></i>
+    <div class="d-flex align-items-center gap-2 py-2 border-top" style="font-size:.83rem">
+      <div class="text-muted small mono text-nowrap" style="width:64px;flex-shrink:0">${esc(c.contact_date)}</div>
+      <div class="d-flex align-items-center gap-1" style="width:120px;flex-shrink:0;min-width:0">
+        <i class="bi bi-person text-muted flex-shrink-0" style="font-size:.8em"></i>
         ${_commsContactNameHtml(c)}
         ${_commsReplyChipHtml(c.subject)}
       </div>
-      <div style="width:120px;flex-shrink:0"><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}" style="font-size:.64rem;white-space:normal">${statusLabel[c.status] || c.status}</span></div>
-      <div class="text-muted" style="width:18px;flex-shrink:0">${directionIcon(c)}</div>
-      <div class="text-muted small text-truncate flex-grow-1" style="min-width:80px" title="${esc(c.notes || '')}">${esc(c.notes || '')}</div>
+      <div class="text-truncate" style="width:100px;flex-shrink:0"><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}" style="font-size:.62rem">${statusLabel[c.status] || c.status}</span></div>
+      <div class="text-muted" style="width:16px;flex-shrink:0">${directionIcon(c)}</div>
+      <div class="text-muted small text-truncate flex-grow-1" style="min-width:40px" title="${esc(c.notes || '')}">${esc(c.notes || '')}</div>
       <div class="d-flex gap-1 flex-shrink-0" onclick="event.stopPropagation()">
         <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
         ${_commsReassignIconHtml(c)}
