@@ -232,22 +232,11 @@
     [data-bs-theme="dark"] .comms-quick-chip-warning.active { background: rgba(255,193,7,.18); color: #ffc107; }
     .comms-quick-chip-success.active { background: #e3f6ea; color: #1f8a4c; }
     [data-bs-theme="dark"] .comms-quick-chip-success.active { background: rgba(25,135,84,.22); color: #4ade80; }
-    /* Fully-rounded action buttons, matching the quick chips' own pill
-       shape -- applied to the Comms command bar and the detail panel's
-       header so the two rows read as one consistent, softer style instead
-       of mixing pill chips with Bootstrap's default ~6px button corners. */
-    .comms-pill-btn { border-radius: 999px !important; }
     /* Every row's edit/reassign/delete/follow-up actions now collapse into
        one round kebab-menu button instead of 3-4 separate icon buttons --
        the left list is narrower now that the detail panel takes the other
        column, so that many icon buttons no longer fit without wrapping. */
     .comms-row-menu-btn { width: 26px; height: 26px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
-    /* Same treatment for the main header's own buttons -- scoped to this
-       page's own header only (this rule lives in index.html's own <style>,
-       not header_shared.css, so admin_users.html/api_docs.html/
-       api_console.html -- which reuse .gov-header-bg for their own headers
-       -- are untouched). */
-    .gov-header-bg .btn { border-radius: 999px !important; }
     @media (min-width: 992px) {
       /* Only makes sense once col-lg-4/col-lg-8 actually sit side by side --
          reuses Bootstrap's own lg breakpoint value rather than inventing a
