@@ -1755,13 +1755,16 @@ function _renderFilterCardsGrid(elId, cards, tabDotId, dotInfo) {
   if (!el) return;
   el.innerHTML = cards.map(c => {
     const clickable = !!c.onclick;
-    const borderColor = c.active ? (CARD_BORDER_COLOR[c.text] || '#0057b8') : 'rgba(0,0,0,.06)';
+    const iconBg = CARD_BORDER_COLOR[c.text] || '#6c757d';
+    const borderColor = c.active ? iconBg : 'rgba(0,0,0,.06)';
     return `
     <div class="col-6 col-sm-4 col-lg-2">
       <div class="rounded-3 p-2 d-flex align-items-center gap-2 ${c.bg}"
            style="border:${c.active ? 2 : 1}px solid ${borderColor};${clickable ? 'cursor:pointer' : ''}"
            ${clickable ? `onclick="${c.onclick}"` : ''}${c.title ? ` title="${esc(c.title)}"` : ''}>
-        <i class="bi ${c.icon} fs-5 ${c.text}"></i>
+        <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width:28px;height:28px;background:${iconBg}">
+          <i class="bi ${c.icon}" style="font-size:.78rem;color:#fff"></i>
+        </div>
         <div>
           <div class="fw-bold fs-6 lh-1 ${c.text}">${fmt(c.value)}</div>
           <div class="text-muted" style="font-size:.7rem">${c.label}</div>
