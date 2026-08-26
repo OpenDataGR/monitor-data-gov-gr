@@ -188,31 +188,48 @@ for anything non-trivial here.
 
 ## Communications tab: split-workspace layout (shipped 2026-08-25, revised through 2026-08-26)
 
-**The split-workspace list-left/detail-right layout only applies to the
-Cases view** (`col-lg-4`/`col-lg-8` — widened from an initial
+**The split-workspace list-left/detail-right layout applies to Cases and
+By-Org** (`col-lg-4`/`col-lg-8` — widened from an initial
 `col-lg-7`/`col-lg-5` per user feedback that the detail panel should be
 the dominant column, stacking below 992px like every other 2-column area
-in the app). Timeline/By Org/All were originally meant to share the same
-panel, but the user decided the panel doesn't belong on those 3 —
-they're browse/scan views over individual entries, not a "read one
-case's thread" view — so `setCommsView(mode)` now sets
-`#commsListCol`/`#commsDetailCol`'s width/visibility per mode: only
-`mode === 'cases'` keeps the split (`col-lg-4` + visible panel), the
-other 3 get `#commsListCol` at full `col-12` and `#commsDetailCol`
-hidden (`d-none`), and clicking a row in those 3 falls back to opening
-the ordinary Add/Edit modal (`openCommModal`) the way it always did
-before this redesign. Only Cases-view's own case cards select into the
-panel (`_selectCommsCase`); switching away from Cases clears
-`_commsSelectedCaseId` too, so there's no stale selection sitting behind
-the hidden panel.
+in the app). Timeline/All don't get it — they're plain browse/scan views
+over individual entries, not a "read one thing's detail" view — so
+`setCommsView(mode)` sets `#commsListCol`/`#commsDetailCol`'s width/
+visibility per mode: `mode === 'cases'` or `mode === 'grouped'` keeps the
+split (`col-lg-4` + visible panel), Timeline/All get `#commsListCol` at
+full `col-12` and `#commsDetailCol` hidden (`d-none`), and clicking a row
+in those 2 opens the ordinary Add/Edit modal (`openCommModal`) instead.
+Cases and By-Org show different things in the same panel — a case's
+thread vs. an org's communications (which, unlike a case, can span
+several cases) — so `_renderCommsDetailPanel()` is just a small
+dispatcher on `_commsViewMode` that calls `_renderCommsCaseDetailPanel()`
+or `_renderCommsOrgDetailPanel()`. `setCommsView` clears whichever
+selection doesn't belong to the mode being switched to and re-renders the
+panel immediately, so there's no stale selection/content left visible
+behind a mode switch.
 
-- Selection state is one plain module var, `_commsSelectedCaseId`
-  (in-memory only, not persisted) — same shape as the Live Visitors
-  list↔map selection (`_selectLiveVisit`). `_selectCommsCase(caseId)`,
-  called only from a Cases-view card's own `onclick`, is the sole entry
-  point. Highlight is a pure CSS-class toggle (`.comms-row-selected`,
-  resolved via the `data-case-id` attribute already on each case card)
-  reapplied at the end of `_renderCommsCaseGroups`.
+- Selection state is two plain module vars, `_commsSelectedCaseId`/
+  `_commsSelectedOrgTitle` (in-memory only, not persisted, only one set at
+  a time) — same shape as the Live Visitors list↔map selection
+  (`_selectLiveVisit`). `_selectCommsCase(caseId)`/`_selectCommsOrg(orgTitle)`,
+  called only from a Cases-view card's or By-Org row's own `onclick`, are
+  the two entry points. Highlight is a pure CSS-class toggle
+  (`.comms-row-selected`) reapplied at the end of `_renderCommsCaseGroups`/
+  `_renderCommsOrgGroups` — resolved via the `data-case-id` attribute for
+  cases, but via a plain `dataset.org` comparison (not a
+  `[data-org="..."]` selector string) for orgs, since an org title
+  containing a `"` would otherwise break the selector.
+- By-Org's own left-column rows dropped their inline expand-in-place
+  entirely (same move Cases view made first) — clicking an org selects it
+  into the panel instead, which shows every communication for that org
+  (`_commsListRowHtml` rows, `showCaseBadge: true` since one org can span
+  more than one case) with an "Add" button in the header
+  (`openCommModal(null, org, orgCode)`, replacing the old per-row "+"
+  button). An org has no status/deadline/close-reopen concept the way a
+  case does, so its header only names it and its entry count — no
+  case-tools dropdown, no Close/Reopen, no Add Follow-up (those 3 buttons
+  are explicitly hidden by `_renderCommsOrgDetailHeader`, and the case
+  header explicitly hides the org's own Add button in turn).
 - **None of the left column's row templates are `<table>`s any more.**
   The original implementation kept each view's pre-existing fixed-pixel
   `<table>` (e.g. a 190px status column, sized for the old full-width
@@ -225,15 +242,17 @@ the hidden panel.
   too: `_commsListRowHtml(c, {showOrg, showCaseBadge, reveal})` is the
   one shared compact one-line row (date · org (flat view only) · subject
   · status pill · kebab actions menu — medium/direction/notes were
-  dropped from this row entirely, and the row opens the ordinary
-  Add/Edit modal on click, not a panel — see the layout note above) used
-  by both `_renderCommsFlat` and an expanded org's entries in
-  `_renderCommsOrgGroups`. The flat view's old clickable `<th>` column
-  sort UI became `_commsSortMenuHtml()`, a small dropdown driving the
-  same `_commsSortCol`/`_commsSortDir`/`sortComms()` state — there's no
-  header row left to click. Timeline's own `.comm-timeline-item` divs
-  were already flex-based, not a table, so they were never affected by
-  this and are untouched. The detail panel's own row template
+  dropped from this row entirely). It's used by `_renderCommsFlat`
+  (rows open the ordinary Add/Edit modal on click, no panel there) and,
+  separately, by `_renderCommsOrgDetailPanel` for the selected org's
+  entries inside the detail panel (rows there also open the Add/Edit
+  modal — there's no further nested selection once you're already inside
+  the panel). The flat view's old clickable `<th>` column sort UI became
+  `_commsSortMenuHtml()`, a small dropdown driving the same
+  `_commsSortCol`/`_commsSortDir`/`sortComms()` state — there's no header
+  row left to click. Timeline's own `.comm-timeline-item` divs were
+  already flex-based, not a table, so they were never affected by this
+  and are untouched. The Cases-view detail panel's own row template
   (`_commsDetailRowHtml`) is separate again from `_commsListRowHtml` —
   the panel already names the case's org/subject once in its own header,
   so its rows lead with contact name instead of repeating the subject on
@@ -245,7 +264,7 @@ the hidden panel.
   once the narrower left column made that many icon buttons stop
   fitting without wrapping. Reassign is superadmin-gated inside that
   same menu, not a separate icon.
-- `_renderCommsDetailPanel`/`_renderCommsDetailHeader` (app.js) reuse
+- `_renderCommsCaseDetailPanel`/`_renderCommsDetailHeader` (app.js) reuse
   `_fetchCommsCaseRows`/`_commsFetchCaseDetail` verbatim for data — no
   separate detail-panel data path. The header shows the case's
   status/no-response/auto-captured state as separate pill badges

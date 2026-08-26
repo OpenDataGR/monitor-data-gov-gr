@@ -1315,6 +1315,8 @@
                   <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailToggleBtn" onclick="_togglePanelCase()"></button>
                   <button class="btn btn-primary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailFollowupBtn"
                           onclick="openFollowupForCase(_commsSelectedCaseId)"><i class="bi bi-plus-lg me-1"></i><span data-i18n="comms.case_add_followup">Add Follow-up</span></button>
+                  <button class="btn btn-primary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailOrgAddBtn"
+                          onclick="openCommModal(null, this.dataset.org, this.dataset.orgcode)"><i class="bi bi-plus-lg me-1"></i><span data-i18n="comms.add">Add</span></button>
                 </div>
               </div>
               <div id="commsDetailHeaderText" class="mb-3"></div>

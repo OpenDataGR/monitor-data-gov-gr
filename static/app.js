@@ -372,7 +372,6 @@ const TRANSLATIONS = {
     'comms.filters_btn': 'Filters',
     'comms.search': 'Search communications…',
     'comms.download_excel_title': 'Download current view as Excel',
-    'comms.add_comm_for_org': 'Add new communication for this organization',
     'comms.add_contact_for_org': 'Add contact for this organization',
     'comms.add': 'Add',
     'comms.none': 'No communications recorded yet — click Add to start.',
@@ -972,7 +971,6 @@ const TRANSLATIONS = {
     'comms.filters_btn': 'Φίλτρα',
     'comms.search': 'Αναζήτηση επικοινωνιών…',
     'comms.download_excel_title': 'Λήψη της τρέχουσας προβολής ως Excel',
-    'comms.add_comm_for_org': 'Προσθήκη νέας επικοινωνίας για αυτόν τον οργανισμό',
     'comms.add_contact_for_org': 'Προσθήκη επαφής για αυτόν τον οργανισμό',
     'comms.add': 'Προσθήκη',
     'comms.none': 'Δεν έχουν καταγραφεί επικοινωνίες — κάντε κλικ στο «Προσθήκη».',
@@ -4626,7 +4624,6 @@ let _commContactsPrefetchStarted = false;
 let _commsSortCol   = 'contact_date';
 let _commsSortDir   = 'desc';
 let _commsViewMode  = 'cases';
-let _expandedOrgs   = new Set();
 let _expandedTimelineDays = new Set();
 let _timelineDaysInitialized = false;
 // Set right before a render call that should reveal-animate exactly one
@@ -4651,13 +4648,13 @@ let _commsCaseStatusCounts = null;
 let _commsStaleCounts      = null;
 let _commsStatusCounts     = null;
 
-// Drives the split-workspace detail panel -- in-memory only, cleared on
+// Drive the split-workspace detail panel -- in-memory only, cleared on
 // reload, same pattern as the Live Visitors list<->map selection
-// (_liveSelectedMarker). Only the Cases view keeps this panel (see
-// setCommsView) -- Timeline/By-Org/All are browse views over individual
-// entries, not single-case reading, so there's nothing else that ever
-// selects into it.
+// (_liveSelectedMarker). Cases and By-Org each keep their own selection
+// (a case's thread vs. an org's communications); Timeline/All have no
+// panel at all (see setCommsView), so there's nothing else that sets these.
 let _commsSelectedCaseId = null;
+let _commsSelectedOrgTitle = null;
 
 // q/case_status/stale/status shared by every /api/communications call this
 // tab makes (flat rows, group listings, and a single group's expand-fetch)
@@ -4716,14 +4713,28 @@ function _selectCommsCase(caseId) {
   _commsApplySelectionHighlight();
   _renderCommsDetailPanel();
 }
-// Pure CSS-class toggle driven by the data-case-id attribute already on
-// each case card, not a stored "previous element" reference -- clearing and
-// re-applying on every call is what makes this idempotent regardless of
-// which view re-rendered in between (same approach as .live-row-selected).
+function _selectCommsOrg(orgTitle) {
+  _commsSelectedOrgTitle = orgTitle;
+  _commsApplySelectionHighlight();
+  _renderCommsDetailPanel();
+}
+// Pure CSS-class toggle driven by the data-case-id/data-org attribute
+// already on each row, not a stored "previous element" reference --
+// clearing and re-applying on every call is what makes this idempotent
+// regardless of which view re-rendered in between (same approach as
+// .live-row-selected). Org titles are matched via a plain dataset
+// comparison rather than building them into a CSS attribute-selector
+// string, since a title containing a `"` would otherwise break the
+// selector.
 function _commsApplySelectionHighlight() {
   document.querySelectorAll('#commsTable .comms-row-selected').forEach(el => el.classList.remove('comms-row-selected'));
-  if (_commsSelectedCaseId == null) return;
-  document.querySelectorAll(`#commsTable [data-case-id="${_commsSelectedCaseId}"]`).forEach(el => el.classList.add('comms-row-selected'));
+  if (_commsSelectedCaseId != null) {
+    document.querySelectorAll(`#commsTable [data-case-id="${_commsSelectedCaseId}"]`).forEach(el => el.classList.add('comms-row-selected'));
+  } else if (_commsSelectedOrgTitle != null) {
+    document.querySelectorAll('#commsTable [data-org]').forEach(el => {
+      if (el.dataset.org === _commsSelectedOrgTitle) el.classList.add('comms-row-selected');
+    });
+  }
 }
 
 // Case-level fields (deadline/opened_at/closed_at/status) aren't carried by
@@ -4911,16 +4922,10 @@ async function _commsRefreshInPlace() {
     // refreshed independently below via _commsRefreshSelectedDetail.
     await _loadCommsCaseGroups(true);
   } else if (_commsViewMode === 'grouped') {
+    // No inline-expand cache to refresh here anymore -- the selected org's
+    // own communications are refreshed independently below via
+    // _commsRefreshSelectedDetail.
     await _loadCommsOrgGroups(true);
-    const stillExpanded = [..._expandedOrgs].filter(k => _commsOrgGroups.some(g => g.org_title === k));
-    let rowsChanged = false;
-    await Promise.all(stillExpanded.map(async k => {
-      const before = _commsOrgExpandRows.get(k);
-      _commsOrgExpandRows.delete(k);
-      await _fetchCommsOrgRows(k);
-      if (JSON.stringify(before) !== JSON.stringify(_commsOrgExpandRows.get(k))) rowsChanged = true;
-    }));
-    if (rowsChanged) _renderCommsOrgGroups();
   } else if (_commsViewMode === 'timeline') {
     await _loadCommsDayGroups(true);
     const stillExpanded = [..._expandedTimelineDays].filter(d => _commsDayGroups.some(g => g.day === d));
@@ -4938,19 +4943,28 @@ async function _commsRefreshInPlace() {
   await _commsRefreshSelectedDetail();
 }
 
-// The detail panel shows whichever case is selected, independent of which
-// left-view mode is active -- refetch-and-diff it too on every refresh, same
-// idiom as the three view-specific blocks above, so SSE/save/close/reopen/
-// merge/reassign all keep it in sync without the user re-clicking.
+// The detail panel shows whichever case or org is selected -- refetch-and-
+// diff it too on every refresh, same idiom as the view-specific blocks
+// above, so SSE/save/close/reopen/merge/reassign all keep it in sync
+// without the user re-clicking. Only one of the two is ever set at once
+// (setCommsView clears the other when switching view modes).
 async function _commsRefreshSelectedDetail() {
-  if (_commsSelectedCaseId == null) return;
-  const caseId = _commsSelectedCaseId;
-  const before = _commsCaseExpandRows.get(caseId);
-  _commsCaseExpandRows.delete(caseId);
-  _commsCaseDetailCache.delete(caseId);
-  await Promise.all([_fetchCommsCaseRows(caseId), _commsFetchCaseDetail(caseId).catch(() => null)]);
-  if (caseId !== _commsSelectedCaseId) return;  // selection changed mid-fetch
-  if (JSON.stringify(before) !== JSON.stringify(_commsCaseExpandRows.get(caseId))) _renderCommsDetailPanel();
+  if (_commsSelectedCaseId != null) {
+    const caseId = _commsSelectedCaseId;
+    const before = _commsCaseExpandRows.get(caseId);
+    _commsCaseExpandRows.delete(caseId);
+    _commsCaseDetailCache.delete(caseId);
+    await Promise.all([_fetchCommsCaseRows(caseId), _commsFetchCaseDetail(caseId).catch(() => null)]);
+    if (caseId !== _commsSelectedCaseId) return;  // selection changed mid-fetch
+    if (JSON.stringify(before) !== JSON.stringify(_commsCaseExpandRows.get(caseId))) _renderCommsDetailPanel();
+  } else if (_commsSelectedOrgTitle != null) {
+    const orgTitle = _commsSelectedOrgTitle;
+    const before = _commsOrgExpandRows.get(orgTitle);
+    _commsOrgExpandRows.delete(orgTitle);
+    await _fetchCommsOrgRows(orgTitle);
+    if (orgTitle !== _commsSelectedOrgTitle) return;  // selection changed mid-fetch
+    if (JSON.stringify(before) !== JSON.stringify(_commsOrgExpandRows.get(orgTitle))) _renderCommsDetailPanel();
+  }
 }
 
 let _commsReloadInFlight = null;
@@ -5254,14 +5268,14 @@ function _commsSyncView() {
 function filterComms() {
   _commsFlatRows = []; _commsFlatLoaded = false; _commsFlatStart = 0; _commsFlatTotal = 0;
   _commsCaseGroups = []; _commsCaseGroupsLoaded = false; _commsCaseExpandRows.clear();
-  _commsOrgGroups = []; _commsOrgGroupsLoaded = false; _commsOrgExpandRows.clear(); _expandedOrgs.clear();
+  _commsOrgGroups = []; _commsOrgGroupsLoaded = false; _commsOrgExpandRows.clear();
   _commsDayGroups = []; _commsDayGroupsLoaded = false; _commsDayExpandRows.clear(); _expandedTimelineDays.clear(); _timelineDaysInitialized = false;
   _commsSyncView();
   // A search/filter change never clears the detail-panel selection -- it
   // just wiped the panel's own cache above along with everything else's, so
   // transparently refetch instead of leaving it showing stale data (the
-  // panel keeps showing the selected case even if the new filter no longer
-  // matches it -- an independent fetch-by-id, not a filtered view).
+  // panel keeps showing the selected case/org even if the new filter no
+  // longer matches it -- an independent fetch-by-id, not a filtered view).
   _renderCommsDetailPanel();
 }
 
@@ -5271,20 +5285,23 @@ function setCommsView(mode) {
   show('commsViewGroupedBtn').className  = 'btn btn-sm ' + (mode === 'grouped'  ? 'btn-primary' : 'btn-outline-primary');
   show('commsViewCasesBtn').className    = 'btn btn-sm ' + (mode === 'cases'    ? 'btn-primary' : 'btn-outline-primary');
   show('commsViewTimelineBtn').className = 'btn btn-sm ' + (mode === 'timeline' ? 'btn-primary' : 'btn-outline-primary');
-  const showExpandBtns = (mode === 'grouped' || mode === 'timeline');  // 'cases' has no inline expand anymore -- see _renderCommsCaseGroups
+  const showExpandBtns = (mode === 'timeline');  // 'cases'/'grouped' select into the detail panel instead of expanding inline -- see _renderCommsCaseGroups/_renderCommsOrgGroups
   show('commsExpandAllBtn').classList.toggle('d-none', !showExpandBtns);
   show('commsCollapseAllBtn').classList.toggle('d-none', !showExpandBtns);
-  // The split-workspace detail panel only makes sense for Cases -- Timeline/
-  // By-Org/All are browse views over individual entries (their rows open
-  // the ordinary edit modal, see _commsListRowHtml/_commsTimelineItemHtml),
-  // not a "read one case's thread" view, so showing an empty panel next to
-  // them the rest of the time was just dead space. Cases keeps the
-  // col-lg-4/col-lg-8 split; the other 3 get the full list width.
+  // The split-workspace detail panel applies to Cases (a case's thread) and
+  // By-Org (an org's communications) -- Timeline/All are still plain
+  // browse views over individual entries (their rows open the ordinary
+  // edit modal, see _commsListRowHtml/_commsTimelineItemHtml), so a panel
+  // next to them was just dead space.
   const isCases = mode === 'cases';
-  show('commsListCol').className = isCases ? 'col-12 col-lg-4' : 'col-12';
-  show('commsDetailCol').classList.toggle('d-none', !isCases);
+  const isGrouped = mode === 'grouped';
+  const showPanel = isCases || isGrouped;
+  show('commsListCol').className = showPanel ? 'col-12 col-lg-4' : 'col-12';
+  show('commsDetailCol').classList.toggle('d-none', !showPanel);
   if (!isCases) _commsSelectedCaseId = null;
+  if (!isGrouped) _commsSelectedOrgTitle = null;
   _commsSyncView();  // reuses already-loaded data for this view if we have it
+  _renderCommsDetailPanel();  // reflects the (possibly just-cleared) selection immediately, not stale content from whichever mode was active before
 }
 
 // Shared by expandAllComms's 3 group-view branches -- throttled (not
@@ -5312,18 +5329,14 @@ async function _commsThrottledExpand(keys, markFn, fetchFn, renderFn) {
 }
 
 async function expandAllComms() {
-  if (_commsViewMode === 'grouped') {
-    const keys = _commsOrgGroups.map(g => g.org_title).filter(k => !_expandedOrgs.has(k));
-    if (keys.length) await _commsThrottledExpand(keys, k => _expandedOrgs.add(k), k => _fetchCommsOrgRows(k), _renderCommsOrgGroups);
-  } else if (_commsViewMode === 'timeline') {
+  if (_commsViewMode === 'timeline') {
     const days = _commsDayGroups.map(g => g.day).filter(d => !_expandedTimelineDays.has(d));
     if (days.length) await _commsThrottledExpand(days, d => _expandedTimelineDays.add(d), d => _fetchCommsDayRows(d), _renderCommsDayGroups);
   }
 }
 
 function collapseAllComms() {
-  if (_commsViewMode === 'grouped') { _expandedOrgs.clear(); _renderCommsOrgGroups(); }
-  else if (_commsViewMode === 'timeline') { _expandedTimelineDays.clear(); _renderCommsDayGroups(); }
+  if (_commsViewMode === 'timeline') { _expandedTimelineDays.clear(); _renderCommsDayGroups(); }
 }
 
 // Shared compact one-line-per-entry row for every left-column list that
@@ -5507,8 +5520,9 @@ function _renderCommsFlat(rows, append) {
 // ── Communications: By-Organization view ────────────────────────────────────
 // Same lazy-loading design as Portal Members' org grouping: group_by=org
 // gets accurate per-org counts from one aggregate pass with no row fetching,
-// so every group card renders immediately; a group's actual rows are only
-// fetched the first time it's expanded, then cached here.
+// so every group card renders immediately; an org's actual rows are only
+// fetched the first time it's selected into the detail panel, then cached
+// here.
 let _commsOrgGroups = [];
 let _commsOrgGroupsLoaded = false;
 const _commsOrgExpandRows = new Map();     // org_title -> rows[]
@@ -5547,52 +5561,28 @@ async function _loadCommsOrgGroups(background = false) {
   }
 }
 
+// Flat, non-expanding org list -- same "select into the right-hand panel"
+// shape as Cases view's own card list (_renderCommsCaseGroups), not an
+// inline expand. Clicking an org shows all of its communications in
+// #commsDetailPanel (see _selectCommsOrg/_renderCommsOrgDetailPanel).
 function _renderCommsOrgGroups() {
   const el = show('commsTable');
   if (!_commsOrgGroups.length) {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
-  // Every call rebuilds every group's rows, not just the one actually being
-  // toggled -- capturing (and immediately clearing) the key here means only
-  // the group that just got explicitly expanded gets the reveal animation
-  // this pass; a full rebuild triggered by something else (a background
-  // refresh, or toggling a *different* group) leaves _commsRevealKey unset
-  // and so animates nothing.
-  const revealKey = _commsRevealKey;
-  _commsRevealKey = null;
   const statusLabel = _commsStatusLabels();
   const html = _commsOrgGroups.map(g => {
-    const orgTitle   = g.org_title;
-    const isExpanded = _expandedOrgs.has(orgTitle);
-    const cachedRows = _commsOrgExpandRows.get(orgTitle);
-    const isLoading  = _commsOrgExpandLoading.has(orgTitle);
-    const safeAttr   = orgTitle.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-    const reveal     = orgTitle === revealKey;
-    let body = '';
-    if (isExpanded) {
-      body = (isLoading || !cachedRows)
-        ? `<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>`
-        // Indented one level (ps-3) so an org's own entries read as nested
-        // under its header instead of sitting at the same list depth --
-        // showCaseBadge:true since one org can span more than one case.
-        : `<div class="ps-3">${cachedRows.map(c => _commsListRowHtml(c, { showCaseBadge: true, reveal })).join('')}</div>`;
-    }
+    const orgTitle = g.org_title;
+    const safeAttr = orgTitle.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
     return `
-      <div class="comms-case-item" style="cursor:pointer" data-org="${safeAttr}" onclick="toggleOrgComms(this.dataset.org)">
-        <i class="bi bi-chevron-${isExpanded ? 'down' : 'right'} text-muted flex-shrink-0"></i>
+      <div class="comms-case-item" data-org="${safeAttr}" onclick="_selectCommsOrg(this.dataset.org)" title="${esc(orgTitle)}">
         <div class="flex-grow-1" style="min-width:0">
           <div class="fw-semibold text-truncate">${esc(orgTitle)}</div>
           <div class="text-muted text-truncate" style="font-size:.72rem">${g.count} ${g.count === 1 ? t('comms.entry') : t('comms.entries')} · ${g.latest_date}</div>
         </div>
         <span class="badge ${STATUS_BADGE[g.latest_status] || 'bg-secondary'} flex-shrink-0" style="font-size:.65rem">${statusLabel[g.latest_status] || g.latest_status}</span>
-        <button class="btn btn-outline-primary btn-sm py-0 px-1 flex-shrink-0" data-org="${safeAttr}" data-orgcode="${esc(g.org_name || '')}"
-                onclick="event.stopPropagation();openCommModal(null,this.dataset.org,this.dataset.orgcode)"
-                title="${t('comms.add_comm_for_org')}">
-          <i class="bi bi-plus"></i>
-        </button>
-      </div>
-      ${body}`;
+      </div>`;
   }).join('');
 
   el.innerHTML = html;
@@ -5647,26 +5637,6 @@ function _animateHeightSwap(el, updateFn) {
   // fires first under normal conditions, just guarantees this can't stay
   // pinned indefinitely no matter what goes wrong.
   const fallback = setTimeout(() => { release(); el.removeEventListener('transitionend', done); }, 500);
-}
-
-function toggleOrgComms(orgTitle) {
-  const el = show('commsTable');
-  if (_expandedOrgs.has(orgTitle)) {
-    _expandedOrgs.delete(orgTitle);
-    _animateHeightSwap(el, _renderCommsOrgGroups);
-    return;
-  }
-  _expandedOrgs.add(orgTitle);
-  // Rendering the spinner immediately, then replacing it with the real rows
-  // a beat later once the (usually fast) fetch resolves, is itself the
-  // "flash" that reads as a jump -- delay showing it until the fetch has
-  // actually taken long enough to need one (see COMMS_SPINNER_DELAY_MS).
-  const spinnerTimer = setTimeout(() => { _commsRevealKey = orgTitle; _animateHeightSwap(el, _renderCommsOrgGroups); }, COMMS_SPINNER_DELAY_MS);
-  _fetchCommsOrgRows(orgTitle).then(() => {
-    clearTimeout(spinnerTimer);
-    _commsRevealKey = orgTitle;
-    _animateHeightSwap(el, _renderCommsOrgGroups);
-  });
 }
 
 async function _fetchCommsOrgRows(orgTitle) {
@@ -5782,7 +5752,18 @@ async function _fetchCommsCaseRows(caseId) {
   }
 }
 
-// ── Split-workspace detail panel (Cases view only) ──────────────────────────
+// ── Split-workspace detail panel (Cases + By-Org) ───────────────────────────
+// Cases and By-Org each select into the same #commsDetailPanel, but show
+// different things (a case's thread vs. an org's communications, which can
+// span several cases) -- this just dispatches to whichever one applies.
+// Timeline/All have no selection state at all (see setCommsView), so
+// falling through to the case branch there is harmless: _commsSelectedCaseId
+// is always null and it renders the empty state.
+async function _renderCommsDetailPanel() {
+  if (_commsViewMode === 'grouped') return _renderCommsOrgDetailPanel();
+  return _renderCommsCaseDetailPanel();
+}
+
 // Shows whichever case is currently selected. Reuses _fetchCommsCaseRows/
 // _commsFetchCaseDetail verbatim for data -- both already cache-checked, so
 // this is a no-op fetch when the left column already expanded the same
@@ -5790,7 +5771,7 @@ async function _fetchCommsCaseRows(caseId) {
 // _commsListRowHtml -- the panel already names the case's org/subject once
 // in its own header, so its rows lead with contact name instead of
 // repeating the subject on every line.
-async function _renderCommsDetailPanel() {
+async function _renderCommsCaseDetailPanel() {
   const empty = show('commsDetailEmpty'), content = show('commsDetailContent');
   if (_commsSelectedCaseId == null) {
     empty.classList.remove('d-none');
@@ -5808,6 +5789,48 @@ async function _renderCommsDetailPanel() {
   const rows = _commsCaseExpandRows.get(caseId) || [];
   show('commsDetailBody').innerHTML = rows.map(_commsDetailRowHtml).join('');
   _renderCommsDetailHeader(cs, caseId);
+}
+
+// Shows whichever org is currently selected -- every communication logged
+// for it, which (unlike a case) can span more than one case, so each row
+// carries its own case badge (_commsListRowHtml's showCaseBadge). Reuses
+// _fetchCommsOrgRows/_commsOrgExpandRows verbatim, same cache the row
+// templates elsewhere already populate.
+async function _renderCommsOrgDetailPanel() {
+  const empty = show('commsDetailEmpty'), content = show('commsDetailContent');
+  if (_commsSelectedOrgTitle == null) {
+    empty.classList.remove('d-none');
+    content.classList.add('d-none');
+    return;
+  }
+  empty.classList.add('d-none');
+  content.classList.remove('d-none');
+  const orgTitle = _commsSelectedOrgTitle;
+  await _fetchCommsOrgRows(orgTitle);
+  if (orgTitle !== _commsSelectedOrgTitle) return;  // selection changed while awaiting
+  const rows = _commsOrgExpandRows.get(orgTitle) || [];
+  show('commsDetailBody').innerHTML = rows.length
+    ? rows.map(c => _commsListRowHtml(c, { showCaseBadge: true })).join('')
+    : `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
+  _renderCommsOrgDetailHeader(orgTitle);
+}
+
+// An org has no status/deadline/close-reopen concept the way a case does --
+// the header just names it and its entry count, and the only action is
+// logging a new communication for it (reusing the same
+// openCommModal(null, org, orgCode) call the old per-row "+" button used).
+function _renderCommsOrgDetailHeader(orgTitle) {
+  show('commsDetailFollowupBtn').classList.add('d-none');
+  show('commsDetailToolsWrap').classList.add('d-none');
+  show('commsDetailToggleBtn').classList.add('d-none');
+  const g = _commsOrgGroups.find(g => g.org_title === orgTitle);
+  const addBtn = show('commsDetailOrgAddBtn');
+  addBtn.classList.remove('d-none');
+  addBtn.dataset.org = orgTitle;
+  addBtn.dataset.orgcode = (g && g.org_name) || '';
+  show('commsDetailBadges').innerHTML = '';
+  show('commsDetailHeaderText').innerHTML = `<div class="fw-bold fs-5">${esc(orgTitle)}</div>` +
+    `<div class="text-muted small mt-1">${g ? g.count : 0} ${(g && g.count === 1) ? t('comms.entry') : t('comms.entries')}</div>`;
 }
 
 // Detail-panel-only row: flex, not a fixed-width table, so it degrades
@@ -5871,6 +5894,7 @@ function _commsContactNameHtml(c) {
 function _renderCommsDetailHeader(cs, caseId) {
   show('commsDetailFollowupBtn').classList.toggle('d-none', !caseId);
   show('commsDetailToolsWrap').classList.toggle('d-none', !IS_SUPERADMIN || !caseId);
+  show('commsDetailOrgAddBtn').classList.add('d-none');  // that's By-Org's own button, see _renderCommsOrgDetailHeader
   const toggleBtn = show('commsDetailToggleBtn');
   toggleBtn.classList.toggle('d-none', !caseId);
   const badges = show('commsDetailBadges');
@@ -6063,8 +6087,10 @@ function toggleTimelineDay(day) {
     return;
   }
   _expandedTimelineDays.add(day);
-  // See toggleOrgComms's comment -- delay the spinner instead of showing it
-  // immediately.
+  // Rendering the spinner immediately, then replacing it with the real rows
+  // a beat later once the (usually fast) fetch resolves, is itself the
+  // "flash" that reads as a jump -- delay showing it until the fetch has
+  // actually taken long enough to need one (see COMMS_SPINNER_DELAY_MS).
   const spinnerTimer = setTimeout(() => { _commsRevealKey = day; _animateHeightSwap(el, _renderCommsDayGroups); }, COMMS_SPINNER_DELAY_MS);
   _fetchCommsDayRows(day).then(() => {
     clearTimeout(spinnerTimer);
@@ -9479,7 +9505,7 @@ function togglePortalMembersOrg(slug) {
     return;
   }
   _pmExpandedOrgs.add(slug);
-  // Delay the spinner (see Comms' toggleOrgComms for the full reasoning) --
+  // Delay the spinner (see Comms' toggleTimelineDay for the full reasoning) --
   // these per-group fetches are usually fast enough that showing one
   // immediately just to replace it a beat later is itself the visible jump.
   const spinnerTimer = setTimeout(() => { _pmRevealKey = slug; _animateHeightSwap(el, _renderPortalMembersGroups); }, COMMS_SPINNER_DELAY_MS);
@@ -10129,7 +10155,7 @@ function toggleFileContactsOrg(slug) {
     return;
   }
   _fileContactsExpandedOrgs.add(slug);
-  // See Comms' toggleOrgComms for the full reasoning behind the delay.
+  // See Comms' toggleTimelineDay for the full reasoning behind the delay.
   const spinnerTimer = setTimeout(() => { _fileContactsRevealKey = slug; _animateHeightSwap(el, _renderFileContactsGroups); }, COMMS_SPINNER_DELAY_MS);
   _fetchFileContactsGroupRows(slug).then(() => {
     clearTimeout(spinnerTimer);
