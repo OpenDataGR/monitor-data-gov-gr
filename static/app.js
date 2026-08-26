@@ -5256,10 +5256,10 @@ function filterComms() {
 
 function setCommsView(mode) {
   _commsViewMode = mode;
-  show('commsViewFlatBtn').className     = 'btn btn-sm ' + (mode === 'flat'     ? 'btn-primary' : 'btn-outline-primary');
-  show('commsViewGroupedBtn').className  = 'btn btn-sm ' + (mode === 'grouped'  ? 'btn-primary' : 'btn-outline-primary');
-  show('commsViewCasesBtn').className    = 'btn btn-sm ' + (mode === 'cases'    ? 'btn-primary' : 'btn-outline-primary');
-  show('commsViewTimelineBtn').className = 'btn btn-sm ' + (mode === 'timeline' ? 'btn-primary' : 'btn-outline-primary');
+  show('commsViewFlatBtn').className     = 'nav-link' + (mode === 'flat'     ? ' active' : '');
+  show('commsViewGroupedBtn').className  = 'nav-link' + (mode === 'grouped'  ? ' active' : '');
+  show('commsViewCasesBtn').className    = 'nav-link' + (mode === 'cases'    ? ' active' : '');
+  show('commsViewTimelineBtn').className = 'nav-link' + (mode === 'timeline' ? ' active' : '');
   const showExpandBtns = (mode === 'grouped' || mode === 'timeline');  // 'cases' has no inline expand anymore -- see _renderCommsCaseGroups
   show('commsExpandAllBtn').classList.toggle('d-none', !showExpandBtns);
   show('commsCollapseAllBtn').classList.toggle('d-none', !showExpandBtns);
