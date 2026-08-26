@@ -4757,10 +4757,13 @@ const STATUS_BADGE = {
   "Negative Response":    "bg-danger",
   "No Response":          "bg-secondary",
 };
-// Detail-panel-only variant of the map above -- solid-fill pills matching
-// the approved Direction B mockup (see .comms-status-pill), used only by
-// _commsDetailRowHtml. Every other STATUS_BADGE call site (the 3 list
-// views, the modal, Contacts-to-Review) keeps the plain Bootstrap badge.
+// Solid-fill pill variant of the map above, matching the approved Direction
+// B mockup (see .comms-status-pill) -- used by _commsDetailRowHtml (the
+// Cases-view detail panel) and _commsListRowHtml (the flat "All" view and
+// the By-Org detail panel), so every row inside a split-workspace panel (or
+// feeding into one) reads consistently. The Cases/Timeline/By-Org *list*
+// rows themselves, the Add/Edit modal, and Contacts-to-Review keep the
+// plain Bootstrap badge.
 const COMMS_STATUS_PILL_CLASS = {
   "Initial Contact":      "status-initial",
   "Intermediate Contact": "status-intermediate",
@@ -5360,7 +5363,7 @@ function _commsListRowHtml(c, { showOrg = false, showCaseBadge = false, reveal =
         ${showOrg ? `<div class="fw-semibold small text-truncate">${esc(c.org_title)}</div>` : ''}
         <div class="text-truncate" style="font-size:${showOrg ? '.74rem' : '.8rem'}${showOrg ? ';color:var(--bs-secondary-color)' : ''}">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${autoEmailBadge(c)}</div>
       </div>
-      <span class="badge rounded-pill ${STATUS_BADGE[c.status] || 'bg-secondary'} flex-shrink-0" style="font-size:.62rem">${statusLabel[c.status] || c.status}</span>
+      <span class="comms-status-pill ${COMMS_STATUS_PILL_CLASS[c.status] || 'status-none'} flex-shrink-0">${statusLabel[c.status] || c.status}</span>
       <div class="flex-shrink-0" onclick="event.stopPropagation()">${_commsRowActionsMenuHtml(c, { followup: true })}</div>
     </div>`;
 }
