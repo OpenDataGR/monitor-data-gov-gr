@@ -1644,7 +1644,11 @@ async function loadOverview() {
       const avg = crit.reduce((a, b) => a + b.uptime_pct, 0) / crit.length;
       const el  = show('statUptime');
       el.textContent = avg.toFixed(1) + '%';
-      el.className   = 'stat-value ' + (avg >= 99 ? 'text-success' : avg >= 95 ? 'text-warning' : 'text-danger');
+      // Traffic-light the value color by health -- via style, not className,
+      // since this element also carries the header stats strip's own
+      // gov-stat-value class (font-size/weight/tabular-nums); overwriting
+      // className the way this used to would silently drop that.
+      el.style.color = avg >= 99 ? '#4ade80' : avg >= 95 ? '#fbbf24' : '#f87171';
     }
 
     renderEndpointTable(summary);

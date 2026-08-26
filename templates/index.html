@@ -31,11 +31,29 @@
     .stat-card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); transition: transform .2s, background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease; }
     .stat-card:hover { transform: translateY(-2px); }
     .stat-value { font-size: 2rem; font-weight: 700; line-height: 1.1; }
-    .stat-row-sm .stat-card { box-shadow: 0 1px 4px rgba(0,0,0,.05); border-radius: 10px; }
-    .stat-row-sm .stat-value { font-size: 1.15rem; }
-    .stat-row-sm .stat-label { font-size: .68rem; }
-    .stat-row-sm .icon-box { width: 30px; height: 30px; border-radius: 8px; }
-    .stat-row-sm .icon-box i { font-size: .92rem !important; }
+    /* Header stats strip -- a slim second row inside the header's own navy
+       gradient (replaces the old card row above the page content). The
+       gradient is fixed regardless of light/dark theme (header_shared.css),
+       so these colors don't need theme variants. */
+    .gov-stats { display: flex; align-items: center; flex-wrap: wrap; gap: 0; font-variant-numeric: tabular-nums; }
+    .gov-stat { display: flex; align-items: baseline; gap: .45rem; padding: 0 1.1rem; border-left: 1px solid rgba(255,255,255,.16); }
+    .gov-stat:first-child { border-left: none; padding-left: 0; }
+    .gov-stat-value { font-size: 1.05rem; font-weight: 700; letter-spacing: -.01em; color: #fff; }
+    .gov-stat-label { font-size: .64rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: rgba(255,255,255,.62); }
+    .gov-live-dot {
+      width: 6px; height: 6px; border-radius: 50%; background: #4ade80; flex-shrink: 0;
+      box-shadow: 0 0 0 0 rgba(74,222,128,.6); animation: gov-live-pulse 2.2s ease-out infinite;
+    }
+    @media (prefers-reduced-motion: reduce) { .gov-live-dot { animation: none; } }
+    @keyframes gov-live-pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(74,222,128,.55); }
+      70%  { box-shadow: 0 0 0 6px rgba(74,222,128,0); }
+      100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); }
+    }
+    @media (max-width: 760px) {
+      .gov-stats { gap: .3rem .9rem; }
+      .gov-stat { border-left: none; padding: 0; }
+    }
     .card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
     /* ── Sidebar navigation ──────────────────────────────────────────── */
     .dashboard-sidebar {
@@ -121,7 +139,6 @@
     [data-bs-theme="dark"] .sidebar-toggle-btn { color: #adb5bd; }
     [data-bs-theme="dark"] .sidebar-toggle-btn:hover { background: rgba(255,255,255,.06); }
     [data-bs-theme="dark"] .card, [data-bs-theme="dark"] .stat-card { box-shadow: 0 2px 8px rgba(0,0,0,.4); }
-    [data-bs-theme="dark"] .stat-row-sm .stat-card { box-shadow: 0 1px 4px rgba(0,0,0,.3); }
     [data-bs-theme="dark"] .table th { color: #adb5bd; }
     [data-bs-theme="dark"] .spinner-overlay { background: rgba(15,17,20,.75); }
     [data-bs-theme="dark"] .back-to-top-btn:hover { background: #1a73d6; }
@@ -360,7 +377,7 @@
   <i class="bi bi-arrow-up"></i>
 </button>
 
-<nav class="navbar navbar-dark py-3 mb-4 gov-header-bg">
+<nav class="navbar navbar-dark py-3 mb-4 gov-header-bg flex-column align-items-stretch">
   <div class="container-fluid px-4">
     <div class="d-flex align-items-center gap-2">
       <button class="btn btn-outline-light btn-sm d-md-none" id="sidebarMobileToggle" onclick="toggleMobileSidebar()" data-i18n-title="nav.menu" title="Menu">
@@ -379,6 +396,35 @@
       {% include "_header_controls.html" %}
     </div>
   </div>
+  <!-- Portal-wide totals, moved here from a separate card row above the page
+       content -- always visible, no extra page height. The gradient itself
+       doesn't change between light/dark theme, so these colors are fixed,
+       not theme tokens. -->
+  <div class="container-fluid px-4 justify-content-start mt-2">
+    <div class="gov-stats">
+      <div class="gov-stat">
+        <span class="gov-stat-value" id="statDatasets">—</span>
+        <span class="gov-stat-label" data-i18n="stat.total_datasets">Total Datasets</span>
+      </div>
+      <div class="gov-stat">
+        <span class="gov-stat-value" style="color:#fbbf24" id="statServices">—</span>
+        <span class="gov-stat-label" data-i18n="stat.data_services">Data Services</span>
+      </div>
+      <div class="gov-stat">
+        <span class="gov-stat-value" style="color:#67e8f9" id="statResources">—</span>
+        <span class="gov-stat-label" data-i18n="stat.resources">Resources</span>
+      </div>
+      <div class="gov-stat">
+        <span class="gov-stat-value" style="color:#34d399" id="statOrgs">—</span>
+        <span class="gov-stat-label" data-i18n="stat.organizations">Organizations</span>
+      </div>
+      <div class="gov-stat">
+        <span class="gov-live-dot" aria-hidden="true"></span>
+        <span class="gov-stat-value" style="color:#4ade80" id="statUptime">—</span>
+        <span class="gov-stat-label" data-i18n="stat.uptime">Portal Uptime (24h)</span>
+      </div>
+    </div>
+  </div>
 </nav>
 
 <div class="container-fluid px-4">
@@ -394,65 +440,6 @@
     <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
   </div>
   {% endif %}
-
-  <!-- ── Stats row ──────────────────────────────────────────────────── -->
-  <div class="row row-cols-2 row-cols-xl-5 g-2 mb-3 stat-row-sm">
-    <div class="col">
-      <div class="card stat-card p-2 h-100">
-        <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <div class="text-muted stat-label mb-1" data-i18n="stat.total_datasets">Total Datasets</div>
-            <div class="stat-value text-primary" id="statDatasets">—</div>
-          </div>
-          <div class="icon-box bg-primary bg-opacity-10"><i class="bi bi-database fs-4 text-primary"></i></div>
-        </div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="card stat-card p-2 h-100">
-        <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <div class="text-muted stat-label mb-1" data-i18n="stat.data_services">Data Services</div>
-            <div class="stat-value text-warning" id="statServices">—</div>
-          </div>
-          <div class="icon-box bg-warning bg-opacity-10"><i class="bi bi-cloud-arrow-up fs-4 text-warning"></i></div>
-        </div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="card stat-card p-2 h-100">
-        <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <div class="text-muted stat-label mb-1" data-i18n="stat.resources">Resources</div>
-            <div class="stat-value text-info" id="statResources">—</div>
-          </div>
-          <div class="icon-box bg-info bg-opacity-10"><i class="bi bi-file-earmark-bar-graph fs-4 text-info"></i></div>
-        </div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="card stat-card p-2 h-100">
-        <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <div class="text-muted stat-label mb-1" data-i18n="stat.organizations">Organizations</div>
-            <div class="stat-value text-success" id="statOrgs">—</div>
-          </div>
-          <div class="icon-box bg-success bg-opacity-10"><i class="bi bi-building fs-4 text-success"></i></div>
-        </div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="card stat-card p-2 h-100">
-        <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <div class="text-muted stat-label mb-1" data-i18n="stat.uptime">Portal Uptime (24h)</div>
-            <div class="stat-value text-success" id="statUptime">—</div>
-          </div>
-          <div class="icon-box bg-success bg-opacity-10"><i class="bi bi-activity fs-4 text-success"></i></div>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- ── Sidebar + Tab content ──────────────────────────────────────────── -->
   <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileSidebar()"></div>
