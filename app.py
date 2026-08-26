@@ -4202,11 +4202,14 @@ def communications_list():
         groups = {}
         for c in filtered:
             key = c.org_title or c.org_name or ""
-            g = groups.setdefault(key, {"org_title": key, "org_name": c.org_name, "count": 0, "latest_date": None, "latest_status": None})
+            g = groups.setdefault(key, {"org_title": key, "org_name": c.org_name, "count": 0,
+                                         "latest_date": None, "latest_status": None, "has_open_case": False})
             g["count"] += 1
             if g["latest_date"] is None or c.contact_date > g["latest_date"]:
                 g["latest_date"] = c.contact_date
                 g["latest_status"] = c.status
+            if c.case and c.case.status == "Open":
+                g["has_open_case"] = True
         group_list = sorted(groups.values(), key=lambda g: g["latest_date"] or "", reverse=True)
         page = group_list[start:start + rows]
         return jsonify({"groups": page, "total_groups": len(group_list), **facets})

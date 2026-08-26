@@ -5574,17 +5574,30 @@ function _renderCommsOrgGroups() {
     el.innerHTML = `<p class="text-muted text-center py-4">${t('comms.none')}</p>`;
     return;
   }
+  // Same card shape as the Cases-view list (dot + bold title/muted subtitle
+  // + right-side count/date) -- org as the bold title here (there's no
+  // "case" to lead with), latest entry status as the subtitle, matching
+  // the org/subtitle slot Cases uses for its own secondary fact. The dot
+  // is an aggregate across the WHOLE org, not one entry's own status
+  // (unlike a case, an org can span several cases): amber if any of them
+  // is still Open, green only once every case touching this org is Closed
+  // (has_open_case, computed server-side since it needs each entry's
+  // linked Case, not just the latest one).
   const statusLabel = _commsStatusLabels();
   const html = _commsOrgGroups.map(g => {
     const orgTitle = g.org_title;
     const safeAttr = orgTitle.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
     return `
       <div class="comms-case-item" data-org="${safeAttr}" onclick="_selectCommsOrg(this.dataset.org)" title="${esc(orgTitle)}">
+        <span class="comms-case-dot rounded-circle flex-shrink-0 ${g.has_open_case ? 'bg-warning' : 'bg-success'}"></span>
         <div class="flex-grow-1" style="min-width:0">
           <div class="fw-semibold text-truncate">${esc(orgTitle)}</div>
-          <div class="text-muted text-truncate" style="font-size:.72rem">${g.count} ${g.count === 1 ? t('comms.entry') : t('comms.entries')} · ${g.latest_date}</div>
+          <div class="text-muted text-truncate" style="font-size:.74rem">${statusLabel[g.latest_status] || g.latest_status}</div>
         </div>
-        <span class="badge ${STATUS_BADGE[g.latest_status] || 'bg-secondary'} flex-shrink-0" style="font-size:.65rem">${statusLabel[g.latest_status] || g.latest_status}</span>
+        <div class="text-end flex-shrink-0">
+          <div class="text-muted fw-semibold" style="font-size:.68rem">${g.count} ${g.count === 1 ? t('comms.entry') : t('comms.entries')}</div>
+          <div class="text-muted" style="font-size:.68rem">${g.latest_date}</div>
+        </div>
       </div>`;
   }).join('');
 
