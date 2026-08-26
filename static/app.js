@@ -5123,6 +5123,21 @@ function renderCommsSummary() {
   _renderCommsFilterGroup('commsCaseSummary',   [0, 1, 2],       'commsCaseTabDot');
   _renderCommsFilterGroup('commsStaleSummary',  [3, 4, 5],       'commsStaleTabDot');
   _renderCommsFilterGroup('commsStatusSummary', [6, 7, 8, 9, 10],'commsStatusTabDot');
+
+  // Plain-text totals in the command bar, and the two quick Open/Closed
+  // toggle chips in the list column below -- both just mirror the same
+  // case_status counts/filter the "Case" facet tab above already drives
+  // (_commsSummaryCards[1]/[2]), so toggling either one keeps the other in
+  // sync for free next time this function runs.
+  show('commsQuickStats').innerHTML =
+    `<span><b class="text-body">${csc.total}</b> ${t('comms.total')}</span>` +
+    `<span><b class="text-warning">${csc.Open || 0}</b> ${t('comms.open_cases')}</span>` +
+    `<span><b class="text-success">${csc.Closed || 0}</b> ${t('comms.closed_cases')}</span>`;
+  const openBtn = show('commsQuickOpenBtn'), closedBtn = show('commsQuickClosedBtn');
+  openBtn.textContent = `${t('comms.open_cases')} · ${csc.Open || 0}`;
+  closedBtn.textContent = `${t('comms.closed_cases')} · ${csc.Closed || 0}`;
+  openBtn.classList.toggle('active', _commsCaseStatusFilter === 'Open');
+  closedBtn.classList.toggle('active', _commsCaseStatusFilter === 'Closed');
 }
 
 function _commsFilterIsActive(f) {
