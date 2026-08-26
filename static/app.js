@@ -5895,7 +5895,7 @@ function _renderCommsDetailHeader(cs, caseId) {
   // already and a text button here reads as heavier than its siblings.
   toggleBtn.innerHTML = `<i class="bi ${isClosed ? 'bi-arrow-counterclockwise' : 'bi-check2-circle'}"></i>`;
   toggleBtn.title = isClosed ? t('comms.case_reopen') : t('comms.case_close');
-  toggleBtn.className = 'btn btn-sm py-0 px-2 ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
+  toggleBtn.className = 'btn btn-sm py-0 px-2 comms-pill-btn ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
   headerText.innerHTML = `<span class="text-muted small mono">#${cs.id}</span> ` +
     `<span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">${caseStatusLabel(cs.status)}</span> ` +
     `<span class="fw-semibold ms-1">${esc(cs.org_title)}</span> <span class="text-muted small">— ${esc(cs.subject)}</span><br>` +

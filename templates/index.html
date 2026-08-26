@@ -232,6 +232,17 @@
     [data-bs-theme="dark"] .comms-quick-chip-warning.active { background: rgba(255,193,7,.18); color: #ffc107; }
     .comms-quick-chip-success.active { background: #e3f6ea; color: #1f8a4c; }
     [data-bs-theme="dark"] .comms-quick-chip-success.active { background: rgba(25,135,84,.22); color: #4ade80; }
+    /* Fully-rounded action buttons, matching the quick chips' own pill
+       shape -- applied to the Comms command bar and the detail panel's
+       header so the two rows read as one consistent, softer style instead
+       of mixing pill chips with Bootstrap's default ~6px button corners. */
+    .comms-pill-btn { border-radius: 999px !important; }
+    /* Same treatment for the main header's own buttons -- scoped to this
+       page's own header only (this rule lives in index.html's own <style>,
+       not header_shared.css, so admin_users.html/api_docs.html/
+       api_console.html -- which reuse .gov-header-bg for their own headers
+       -- are untouched). */
+    .gov-header-bg .btn { border-radius: 999px !important; }
     @media (min-width: 992px) {
       /* Only makes sense once col-lg-4/col-lg-8 actually sit side by side --
          reuses Bootstrap's own lg breakpoint value rather than inventing a
@@ -1210,10 +1221,10 @@
           </div>
           <div class="small text-muted d-flex align-items-center gap-3" id="commsQuickStats"></div>
           <div class="d-flex align-items-center gap-2 flex-wrap ms-auto">
-            <button id="commsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="expandAllComms()" data-i18n-title="comms.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
-            <button id="commsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm" onclick="collapseAllComms()" data-i18n-title="comms.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
+            <button id="commsExpandAllBtn" type="button" class="btn btn-outline-secondary btn-sm comms-pill-btn" onclick="expandAllComms()" data-i18n-title="comms.expand_all" title="Expand all"><i class="bi bi-arrows-expand"></i></button>
+            <button id="commsCollapseAllBtn" type="button" class="btn btn-outline-secondary btn-sm comms-pill-btn" onclick="collapseAllComms()" data-i18n-title="comms.collapse_all" title="Collapse all"><i class="bi bi-arrows-collapse"></i></button>
             <div class="dropdown">
-              <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+              <button type="button" class="btn btn-outline-secondary btn-sm comms-pill-btn dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                 <i class="bi bi-funnel me-1"></i><span data-i18n="comms.filters_btn">Filters</span>
               </button>
               <div class="dropdown-menu p-2" style="width:520px;max-height:70vh;overflow-y:auto">
@@ -1257,8 +1268,8 @@
                 </div>
               </div>
             </div>
-            <button class="btn btn-outline-secondary btn-sm" onclick="downloadCommsExcel()" data-i18n-title="comms.download_excel_title" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span></button>
-            <button class="btn btn-primary btn-sm" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
+            <button class="btn btn-outline-secondary btn-sm comms-pill-btn" onclick="downloadCommsExcel()" data-i18n-title="comms.download_excel_title" title="Download current view as Excel"><i class="bi bi-file-earmark-excel me-1"></i><span data-i18n="common.export_excel">Export Excel</span></button>
+            <button class="btn btn-primary btn-sm comms-pill-btn" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
           </div>
         </div>
       </div>
@@ -1287,13 +1298,13 @@
               <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="commsDetailHeader">
                 <span id="commsDetailHeaderText"></span>
                 <div class="d-flex gap-1 ms-auto">
-                  <button class="btn btn-outline-primary btn-sm py-0 px-2 d-none" id="commsDetailFollowupBtn"
-                          onclick="openFollowupForCase(_commsSelectedCaseId)" data-i18n-title="comms.case_add_followup" title="Add follow-up"><i class="bi bi-plus-lg"></i></button>
-                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none" id="commsDetailEditOrgsBtn"
+                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailEditOrgsBtn"
                           onclick="openCaseOrgEditModal(_commsSelectedCaseId)" data-i18n-title="comms.case_edit_orgs" title="Edit organizations"><i class="bi bi-building-gear"></i></button>
-                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none" id="commsDetailMergeBtn"
+                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailMergeBtn"
                           onclick="openCaseMergeModal(_commsSelectedCaseId)" data-i18n-title="comms.case_merge" title="Merge into another case"><i class="bi bi-signpost-split"></i></button>
-                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none" id="commsDetailToggleBtn" onclick="_togglePanelCase()"></button>
+                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailToggleBtn" onclick="_togglePanelCase()"></button>
+                  <button class="btn btn-primary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailFollowupBtn"
+                          onclick="openFollowupForCase(_commsSelectedCaseId)"><i class="bi bi-plus-lg me-1"></i><span data-i18n="comms.case_add_followup">Add Follow-up</span></button>
                 </div>
               </div>
               <div id="commsDetailBody"></div>
