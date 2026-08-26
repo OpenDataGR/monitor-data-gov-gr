@@ -354,6 +354,7 @@ const TRANSLATIONS = {
     'comms.case_close': 'Close Case',
     'comms.case_reopen': 'Reopen Case',
     'comms.case_col': 'Case',
+    'comms.case_tools': 'Case tools',
     'comms.case_edit_orgs': 'Edit organizations',
     'comms.case_edit_orgs_title': 'Edit Case Organizations',
     'comms.case_edit_orgs_required': 'At least one organization is required.',
@@ -608,6 +609,7 @@ const TRANSLATIONS = {
     'footer.changelog_none': 'No changelog entries available.',
     'loading': 'Loading…',
     'error': 'Error:',
+    'common.actions': 'Actions',
     'common.edit': 'Edit',
     'common.delete': 'Delete',
     'common.add': 'Add',
@@ -951,6 +953,7 @@ const TRANSLATIONS = {
     'comms.case_close': 'Κλείσιμο Υπόθεσης',
     'comms.case_reopen': 'Επανάνοιγμα Υπόθεσης',
     'comms.case_col': 'Υπόθεση',
+    'comms.case_tools': 'Εργαλεία υπόθεσης',
     'comms.case_edit_orgs': 'Επεξεργασία οργανισμών',
     'comms.case_edit_orgs_title': 'Επεξεργασία Οργανισμών Υπόθεσης',
     'comms.case_edit_orgs_required': 'Απαιτείται τουλάχιστον ένας οργανισμός.',
@@ -1205,6 +1208,7 @@ const TRANSLATIONS = {
     'footer.changelog_none': 'Δεν υπάρχουν διαθέσιμες καταχωρήσεις ιστορικού αλλαγών.',
     'loading': 'Φόρτωση…',
     'error': 'Σφάλμα:',
+    'common.actions': 'Ενέργειες',
     'common.edit': 'Επεξεργασία',
     'common.delete': 'Διαγραφή',
     'common.add': 'Προσθήκη',
@@ -5305,26 +5309,39 @@ function _commsFlatRowHtml(c) {
       <td class="small text-muted">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}${autoEmailBadge(c)}</td>
       <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
       <td class="text-end text-nowrap" onclick="event.stopPropagation()">
-        <div class="d-flex gap-1 justify-content-end">
-          ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-          <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-          ${_commsReassignIconHtml(c)}
-          <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
-        </div>
+        ${_commsRowActionsMenuHtml(c, { followup: true })}
       </td>
     </tr>`;
 }
 
-// Shared by every row template's actions cell -- superadmin-only, reuses the
-// same #caseTargetModal reassign flow the Add/Edit modal's own
-// commReassignCaseBtn already drives, just triggered with this row's own
-// comm id instead of reading show('commId').value. Hidden for the entry
-// that opened its case (reassigning it would leave the case without an
-// opener -- case merge is the tool for that) and for anything with no case
-// at all (nothing to reassign away from).
-function _commsReassignIconHtml(c) {
-  if (!IS_SUPERADMIN || !c.case_id || c.status === 'Initial Contact') return '';
-  return `<button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCaseReassignModal(${c.id})" title="${t('comms.reassign_case')}"><i class="bi bi-signpost-split"></i></button>`;
+// Shared by every row template's actions cell -- a single kebab-menu button
+// instead of 3-4 separate icon buttons, since the left list is narrower now
+// that the split-workspace detail panel takes the other column (that many
+// icon buttons no longer fit without wrapping/crowding). Reassign is
+// superadmin-only, reuses the same #caseTargetModal reassign flow the
+// Add/Edit modal's own commReassignCaseBtn already drives, just triggered
+// with this row's own comm id instead of reading show('commId').value.
+// Hidden for the entry that opened its case (reassigning it would leave the
+// case without an opener -- case merge is the tool for that) and for
+// anything with no case at all (nothing to reassign away from).
+function _commsRowActionsMenuHtml(c, { followup = false } = {}) {
+  const items = [];
+  if (followup && c.case_id) {
+    items.push(`<li><a class="dropdown-item" href="#" onclick="event.preventDefault();addFollowupForComm(${c.id})"><i class="bi bi-plus-circle me-2"></i>${t('comms.case_add_followup')}</a></li>`);
+  }
+  items.push(`<li><a class="dropdown-item" href="#" onclick="event.preventDefault();openCommModal(${c.id})"><i class="bi bi-pencil me-2"></i>${t('common.edit')}</a></li>`);
+  if (IS_SUPERADMIN && c.case_id && c.status !== 'Initial Contact') {
+    items.push(`<li><a class="dropdown-item" href="#" onclick="event.preventDefault();openCaseReassignModal(${c.id})"><i class="bi bi-signpost-split me-2"></i>${t('comms.reassign_case')}</a></li>`);
+  }
+  items.push(`<li><hr class="dropdown-divider"></li>`);
+  items.push(`<li><a class="dropdown-item text-danger" href="#" onclick="event.preventDefault();deleteComm(${c.id})"><i class="bi bi-trash me-2"></i>${t('common.delete')}</a></li>`);
+  return `
+    <div class="dropdown" onclick="event.stopPropagation()">
+      <button class="btn btn-outline-secondary btn-sm comms-row-menu-btn" data-bs-toggle="dropdown" aria-expanded="false" title="${t('common.actions')}">
+        <i class="bi bi-three-dots-vertical"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">${items.join('')}</ul>
+    </div>`;
 }
 
 // ── Communications: flat/all view (real infinite scroll) ───────────────────
@@ -5475,12 +5492,7 @@ function _commsHistRowHtml(c, showCaseBadge, reveal = false) {
       <td class="small text-muted">${directionIcon(c)}${c.medium ? `<i class="bi ${MEDIUM_ICON[c.medium] || 'bi-dash'} me-1"></i>${mediumLabel(c.medium)}` : ''}</td>
       <td class="small text-muted text-truncate" style="max-width:0" title="${esc(c.notes || '')}">${esc(c.notes || '')}</td>
       <td class="text-end text-nowrap" onclick="event.stopPropagation()">
-        <div class="d-flex gap-1 justify-content-end">
-          ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-          <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-          ${_commsReassignIconHtml(c)}
-          <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
-        </div>
+        ${_commsRowActionsMenuHtml(c, { followup: true })}
       </td>
     </tr>`;
 }
@@ -5828,20 +5840,18 @@ function _commsDetailRowHtml(c) {
   // second visual line, which is what actually caused the unreadable
   // wrapping this replaced.
   return `
-    <div class="d-flex align-items-center gap-2 py-2 border-top" style="font-size:.83rem">
+    <div class="d-flex align-items-center gap-3 py-3 border-top" style="font-size:.83rem">
       <div class="text-muted small mono text-nowrap" style="width:64px;flex-shrink:0">${esc(c.contact_date)}</div>
-      <div class="d-flex align-items-center gap-1" style="width:120px;flex-shrink:0;min-width:0">
+      <div class="d-flex align-items-center gap-1" style="width:130px;flex-shrink:0;min-width:0">
         <i class="bi bi-person text-muted flex-shrink-0" style="font-size:.8em"></i>
         ${_commsContactNameHtml(c)}
         ${_commsReplyChipHtml(c.subject)}
       </div>
-      <div class="text-truncate" style="width:100px;flex-shrink:0"><span class="badge ${STATUS_BADGE[c.status] || 'bg-secondary'}" style="font-size:.62rem">${statusLabel[c.status] || c.status}</span></div>
+      <div class="text-nowrap" style="flex-shrink:0"><span class="badge rounded-pill ${STATUS_BADGE[c.status] || 'bg-secondary'}" style="font-size:.68rem">${statusLabel[c.status] || c.status}</span></div>
       <div class="text-muted" style="width:16px;flex-shrink:0">${directionIcon(c)}</div>
       <div class="text-muted small text-truncate flex-grow-1" style="min-width:40px" title="${esc(c.notes || '')}">${esc(c.notes || '')}</div>
-      <div class="d-flex gap-1 flex-shrink-0" onclick="event.stopPropagation()">
-        <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-        ${_commsReassignIconHtml(c)}
-        <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
+      <div class="flex-shrink-0" onclick="event.stopPropagation()">
+        ${_commsRowActionsMenuHtml(c)}
       </div>
     </div>`;
 }
@@ -5876,31 +5886,38 @@ function _commsContactNameHtml(c) {
 
 function _renderCommsDetailHeader(cs, caseId) {
   show('commsDetailFollowupBtn').classList.toggle('d-none', !caseId);
-  show('commsDetailEditOrgsBtn').classList.toggle('d-none', !IS_SUPERADMIN || !caseId);
-  show('commsDetailMergeBtn').classList.toggle('d-none', !IS_SUPERADMIN || !caseId);
+  show('commsDetailToolsWrap').classList.toggle('d-none', !IS_SUPERADMIN || !caseId);
   const toggleBtn = show('commsDetailToggleBtn');
   toggleBtn.classList.toggle('d-none', !caseId);
+  const badges = show('commsDetailBadges');
   const headerText = show('commsDetailHeaderText');
   if (!cs) {
     show('commsDetailHeader').dataset.caseId = '';
-    headerText.textContent = '';
+    badges.innerHTML = '';
+    headerText.innerHTML = '';
     return;
   }
   show('commsDetailHeader').dataset.caseId = cs.id;
   show('commsDetailHeader').dataset.caseStatus = cs.status;
   const isClosed = cs.status === 'Closed';
-  // Icon-only, matching the follow-up/edit-orgs/merge buttons beside it --
-  // the modal's own equivalent button keeps its text label (more room
-  // there, only one action next to it), but this row has 3-4 icon buttons
-  // already and a text button here reads as heavier than its siblings.
+  // Icon-only, matching the tools/follow-up buttons beside it -- the modal's
+  // own equivalent button keeps its text label (more room there, only one
+  // action next to it), but this row already has other icon buttons and a
+  // text button here reads as heavier than its siblings.
   toggleBtn.innerHTML = `<i class="bi ${isClosed ? 'bi-arrow-counterclockwise' : 'bi-check2-circle'}"></i>`;
   toggleBtn.title = isClosed ? t('comms.case_reopen') : t('comms.case_close');
   toggleBtn.className = 'btn btn-sm py-0 px-2 comms-pill-btn ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
-  headerText.innerHTML = `<span class="text-muted small mono">#${cs.id}</span> ` +
-    `<span class="badge ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.7rem">${caseStatusLabel(cs.status)}</span> ` +
-    `<span class="fw-semibold ms-1">${esc(cs.org_title)}</span> <span class="text-muted small">— ${esc(cs.subject)}</span><br>` +
-    `<span class="text-muted small">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
-    (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')) + `</span>`;
+  // Case status/no-response/auto-captured surface as their own pill badges
+  // (Case.to_dict already computes is_stale/has_auto_entry -- no new
+  // backend field needed) instead of being folded into one run-on text line.
+  badges.innerHTML = `<span class="text-muted small mono">#${cs.id}</span>` +
+    `<span class="badge rounded-pill ${CASE_STATUS_BADGE[cs.status] || 'bg-secondary'}" style="font-size:.72rem">${caseStatusLabel(cs.status)}</span>` +
+    (cs.is_stale ? `<span class="badge rounded-pill bg-danger-subtle text-danger-emphasis" style="font-size:.72rem"><i class="bi bi-x-lg me-1"></i>${t('comms.case_stale')}</span>` : '') +
+    (cs.has_auto_entry ? `<span class="badge rounded-pill bg-primary-subtle text-primary-emphasis" style="font-size:.72rem"><i class="bi bi-lightning-charge-fill me-1"></i>${t('inbound.auto_badge')}</span>` : '');
+  headerText.innerHTML = `<div class="fw-bold fs-5">${esc(cs.org_title)}</div>` +
+    `<div class="text-muted">${esc(cs.subject)}</div>` +
+    `<div class="text-muted small mt-1">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
+    (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')) + `</div>`;
 }
 
 // Reuses the existing closeCase/reopenCase (already invalidate the case-
@@ -6010,12 +6027,7 @@ function _commsTimelineItemHtml(c, reveal = false) {
           ${caseBadgeHtml(c, 'ms-1')}
         </div>
         <div class="text-end text-nowrap" onclick="event.stopPropagation()">
-          <div class="d-flex gap-1 justify-content-end">
-            ${c.case_id ? `<button class="btn btn-outline-primary btn-sm py-0 px-1" onclick="addFollowupForComm(${c.id})" title="${t('comms.case_add_followup')}"><i class="bi bi-plus-circle"></i></button>` : ''}
-            <button class="btn btn-outline-secondary btn-sm py-0 px-1" onclick="openCommModal(${c.id})" title="${t('common.edit')}"><i class="bi bi-pencil"></i></button>
-            ${_commsReassignIconHtml(c)}
-            <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="deleteComm(${c.id})" title="${t('common.delete')}"><i class="bi bi-trash"></i></button>
-          </div>
+          ${_commsRowActionsMenuHtml(c, { followup: true })}
         </div>
       </div>
       <div class="small mt-1">${esc(c.subject)}</div>

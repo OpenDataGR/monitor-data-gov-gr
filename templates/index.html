@@ -237,6 +237,11 @@
        header so the two rows read as one consistent, softer style instead
        of mixing pill chips with Bootstrap's default ~6px button corners. */
     .comms-pill-btn { border-radius: 999px !important; }
+    /* Every row's edit/reassign/delete/follow-up actions now collapse into
+       one round kebab-menu button instead of 3-4 separate icon buttons --
+       the left list is narrower now that the detail panel takes the other
+       column, so that many icon buttons no longer fit without wrapping. */
+    .comms-row-menu-btn { width: 26px; height: 26px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
     /* Same treatment for the main header's own buttons -- scoped to this
        page's own header only (this rule lives in index.html's own <style>,
        not header_shared.css, so admin_users.html/api_docs.html/
@@ -1296,17 +1301,21 @@
             </div>
             <div id="commsDetailContent" class="d-none">
               <div class="d-flex align-items-center gap-2 flex-wrap mb-2" id="commsDetailHeader">
-                <span id="commsDetailHeaderText"></span>
+                <div class="d-flex align-items-center gap-2 flex-wrap" id="commsDetailBadges"></div>
                 <div class="d-flex gap-1 ms-auto">
-                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailEditOrgsBtn"
-                          onclick="openCaseOrgEditModal(_commsSelectedCaseId)" data-i18n-title="comms.case_edit_orgs" title="Edit organizations"><i class="bi bi-building-gear"></i></button>
-                  <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailMergeBtn"
-                          onclick="openCaseMergeModal(_commsSelectedCaseId)" data-i18n-title="comms.case_merge" title="Merge into another case"><i class="bi bi-signpost-split"></i></button>
+                  <div class="dropdown d-none" id="commsDetailToolsWrap">
+                    <button class="btn btn-outline-secondary btn-sm comms-pill-btn comms-row-menu-btn" data-bs-toggle="dropdown" aria-expanded="false" data-i18n-title="comms.case_tools" title="Case tools"><i class="bi bi-three-dots"></i></button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                      <li><a class="dropdown-item" href="#" onclick="event.preventDefault();openCaseOrgEditModal(_commsSelectedCaseId)"><i class="bi bi-building-gear me-2"></i><span data-i18n="comms.case_edit_orgs">Edit organizations</span></a></li>
+                      <li><a class="dropdown-item" href="#" onclick="event.preventDefault();openCaseMergeModal(_commsSelectedCaseId)"><i class="bi bi-signpost-split me-2"></i><span data-i18n="comms.case_merge">Merge into another case</span></a></li>
+                    </ul>
+                  </div>
                   <button class="btn btn-outline-secondary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailToggleBtn" onclick="_togglePanelCase()"></button>
                   <button class="btn btn-primary btn-sm py-0 px-2 d-none comms-pill-btn" id="commsDetailFollowupBtn"
                           onclick="openFollowupForCase(_commsSelectedCaseId)"><i class="bi bi-plus-lg me-1"></i><span data-i18n="comms.case_add_followup">Add Follow-up</span></button>
                 </div>
               </div>
+              <div id="commsDetailHeaderText" class="mb-3"></div>
               <div id="commsDetailBody"></div>
             </div>
           </div>
