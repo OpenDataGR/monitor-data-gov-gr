@@ -5719,8 +5719,8 @@ function _renderCommsCaseGroups() {
       <div class="comms-case-item" data-case-id="${cs.id}" onclick="_selectCommsCase(${cs.id})" title="#${cs.id} · ${esc(caseStatusLabel(cs.status))}">
         <span class="comms-case-dot rounded-circle flex-shrink-0 ${isClosed ? 'bg-success' : 'bg-warning'}"></span>
         <div class="flex-grow-1" style="min-width:0">
-          <div class="fw-semibold small text-truncate">${esc(cs.org_title)}</div>
-          <div class="text-muted text-truncate" style="font-size:.74rem">${esc(cs.subject)}</div>
+          <div class="fw-semibold small text-truncate">${esc(cs.subject)}</div>
+          <div class="text-muted text-truncate" style="font-size:.74rem">${esc(cs.org_title)}</div>
         </div>
         <div class="text-end flex-shrink-0">
           <div class="text-muted fw-semibold" style="font-size:.68rem">${cs.entry_count} ${cs.entry_count === 1 ? t('comms.entry') : t('comms.entries')}</div>
