@@ -5396,7 +5396,7 @@ function _commsListRowHtml(c, { showOrg = false, showCaseBadge = false, reveal =
   const statusLabel = _commsStatusLabels();
   return `
     <div class="comms-case-item${reveal ? ' just-revealed' : ''}" onclick="openCommModal(${c.id})" title="${esc(c.subject)}">
-      <div class="text-nowrap flex-shrink-0" style="width:60px">
+      <div class="text-nowrap flex-shrink-0" style="width:76px;overflow:hidden">
         <div class="text-muted small mono">${esc(c.contact_date)}</div>
         ${_commsEntryTimeHtml(c)}
       </div>
@@ -5920,7 +5920,7 @@ function _commsDetailRowHtml(c) {
   // wrapping this replaced.
   return `
     <div class="d-flex align-items-center gap-3 py-3 border-top" style="font-size:.83rem">
-      <div class="text-nowrap" style="width:64px;flex-shrink:0">
+      <div class="text-nowrap" style="width:76px;flex-shrink:0;overflow:hidden">
         <div class="text-muted small mono">${esc(c.contact_date)}</div>
         ${_commsEntryTimeHtml(c)}
       </div>
