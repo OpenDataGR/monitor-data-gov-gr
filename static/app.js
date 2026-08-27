@@ -1347,6 +1347,7 @@ function setTheme(theme) {
   localStorage.setItem('theme', theme);
   applyThemeIcon();
   refreshChartsForTheme();
+  refreshMapsForTheme();
 }
 
 function toggleTheme() {
@@ -2335,6 +2336,7 @@ async function _pollDatasetGrowth(attempts = 0) {
 
 // ── Geospatial dataset locations map (Geospatial Insights tab) ──────────────
 let _geoDatasetsMap = null;
+let _geoDatasetsGLLayer = null;  // the L.maplibreGL base layer, kept for refreshMapsForTheme()
 let _geoDatasetsMarkers = [];
 
 // CARTO's basemaps.cartocdn.com tiles started requiring this (as ?key=,
@@ -2342,13 +2344,38 @@ let _geoDatasetsMarkers = [];
 // watermarking unauthenticated requests as of August 2026 -- window.__
 // CARTO_API_KEY__ is injected server-side from config.CARTO_API_KEY
 // (empty string, and so the same watermark, until that's actually set).
-function _cartoTileLayer() {
+// CARTO's vector GL styles (positron/dark-matter), not the old raster
+// light_all/dark_all image tiles -- fewer, smaller tile requests (no
+// separate @2x fetch for high-DPI screens, vector geometry scales on the
+// GPU instead) and it means dark mode is a real dark basemap style
+// instead of a light one CSS-inverted to fake it. Same ?key= as the old
+// raster URL (free at https://carto.com/basemaps/apikey, 5M requests/
+// month, shared quota across both raster and vector).
+function _cartoStyleUrl() {
   const key = window.__CARTO_API_KEY__ || '';
-  const url = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' + (key ? '?key=' + encodeURIComponent(key) : '');
-  return L.tileLayer(url, {
-    maxZoom: 19, subdomains: 'abcd',
+  const style = _isDarkTheme() ? 'dark-matter-gl-style' : 'positron-gl-style';
+  return `https://basemaps.cartocdn.com/gl/${style}/style.json` + (key ? '?key=' + encodeURIComponent(key) : '');
+}
+
+// L.maplibreGL(...) (from @maplibre/maplibre-gl-leaflet) adds the GL
+// basemap as an ordinary Leaflet layer -- every L.marker/popup call
+// elsewhere in this file stays on the plain Leaflet map instance
+// completely unchanged, only this base layer is GL-rendered.
+function _cartoTileLayer() {
+  return L.maplibreGL({
+    style: _cartoStyleUrl(),
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   });
+}
+
+// setTheme() calls this so an already-open map re-styles live instead of
+// only picking up the new theme on next page load -- .getMaplibreMap()
+// (maplibre-gl-leaflet's own accessor) reaches the underlying maplibregl.
+// Map instance, whose setStyle() swaps the whole vector style in place.
+function refreshMapsForTheme() {
+  const url = _cartoStyleUrl();
+  if (_geoDatasetsGLLayer) _geoDatasetsGLLayer.getMaplibreMap().setStyle(url);
+  if (_liveMapGLLayer) _liveMapGLLayer.getMaplibreMap().setStyle(url);
 }
 
 function _initGeoDatasetsMap() {
@@ -2356,7 +2383,7 @@ function _initGeoDatasetsMap() {
   _geoDatasetsMap = L.map('geoDatasetsMap', { attributionControl: true, scrollWheelZoom: true })
     .setView([38.8, 23.7], 6);  // roughly centered on Greece
   _geoDatasetsMap.attributionControl.setPrefix(false);
-  _cartoTileLayer().addTo(_geoDatasetsMap);
+  _geoDatasetsGLLayer = _cartoTileLayer().addTo(_geoDatasetsMap);
 }
 
 function _renderGeoDatasetsMap(locations) {
@@ -10633,6 +10660,7 @@ function submitContactsExport() {
 }
 
 let _liveMap = null;
+let _liveMapGLLayer = null;  // the L.maplibreGL base layer, kept for refreshMapsForTheme()
 const _liveMarkers = new Map();  // id_visit -> {marker, removedAt: null|epochSeconds}
 const LIVE_MAP_EXIT_FADE_SECONDS = 8;  // how long a marker takes to fade once it drops off the list
 
@@ -10717,7 +10745,7 @@ function _initLiveMap() {
   _liveMap = L.map('liveVisitorsMap', { attributionControl: true, scrollWheelZoom: true })
     .setView([30, 15], 2);
   _liveMap.attributionControl.setPrefix(false);  // drops Leaflet's own logo/link from the attribution
-  _cartoTileLayer().addTo(_liveMap);
+  _liveMapGLLayer = _cartoTileLayer().addTo(_liveMap);
 
   // Leaflet measures its container once at init, but this runs very early
   // (straight from DOMContentLoaded) -- web fonts loading, the stat cards
