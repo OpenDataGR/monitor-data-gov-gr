@@ -52,10 +52,13 @@
       .gov-stats { gap: .3rem .9rem; }
       .gov-stat { border-left: none; padding: 0; }
     }
-    /* Flat panels separated by a thin visible line, not an elevated card
-       with a soft shadow -- same "line, not shadow" language the dark
-       theme below uses, for one consistent look across both themes. */
-    .card { border: 1px solid rgba(0,0,0,.12); border-radius: 12px; box-shadow: none; }
+    /* No card boundary at all -- content sits directly on the page
+       background, with .flat-section-divider/-end (further down) the only
+       thing marking a seam between sections where one's actually needed.
+       .card keeps its Bootstrap layout behavior (flex column, min-width:0)
+       since real markup still relies on that; only its visual identity as
+       a distinct panel (border/shadow/its own background) is gone. */
+    .card { border: none; border-radius: 0; box-shadow: none; background: transparent; }
     /* ── Sidebar navigation ──────────────────────────────────────────── */
     .dashboard-sidebar {
       width: 220px; flex-shrink: 0; background: #fff; border-radius: 12px;
@@ -151,14 +154,6 @@
     [data-bs-theme="dark"] .sidebar-divider { background: rgba(255,255,255,.1); }
     [data-bs-theme="dark"] .sidebar-toggle-btn { color: #adb5bd; }
     [data-bs-theme="dark"] .sidebar-toggle-btn:hover { background: rgba(255,255,255,.06); }
-    /* Bootstrap's own dark .card background (--bs-body-bg's stock dark
-       gray, never overridden) read visibly lighter/grayer than the page's
-       own custom near-black body background above -- every card looked
-       like a distinct gray box floating on a black page instead of a flat
-       panel flush with it, the opposite of the mockups' flat, hairline-
-       separated look. Flush to the same near-black, no elevation shadow --
-       that's what a *thin line*, not a shadow, is for. */
-    [data-bs-theme="dark"] .card { background-color: #15181c; border-color: rgba(255,255,255,.18); box-shadow: none; }
     [data-bs-theme="dark"] .table th { color: #adb5bd; }
     [data-bs-theme="dark"] .spinner-overlay { background: rgba(15,17,20,.75); }
     [data-bs-theme="dark"] .back-to-top-btn:hover { background: #1a73d6; }
@@ -281,8 +276,7 @@
     .flat-tile-strip > div, .flat-grid-2 > div { background: #fff; }
     [data-bs-theme="dark"] .flat-tile-strip, [data-bs-theme="dark"] .flat-grid-2 { background: rgba(255,255,255,.16); }
     [data-bs-theme="dark"] .flat-tile-strip > div, [data-bs-theme="dark"] .flat-grid-2 > div { background: #15181c; }
-    .flat-tile-strip { grid-template-columns: repeat(2, 1fr); border: 1px solid rgba(0,0,0,.1); border-radius: 12px; overflow: hidden; }
-    [data-bs-theme="dark"] .flat-tile-strip { border-color: rgba(255,255,255,.16); }
+    .flat-tile-strip { grid-template-columns: repeat(2, 1fr); }
     @media (min-width: 1200px) { .flat-tile-strip { grid-template-columns: repeat(5, 1fr); } }
     @media (min-width: 992px) { .flat-grid-2 { grid-template-columns: repeat(2, 1fr); } }
     /* Detail-panel pills -- solid saturated fill + white/tinted text taken
