@@ -5299,7 +5299,7 @@ function setCommsView(mode) {
   const isCases = mode === 'cases';
   const isGrouped = mode === 'grouped';
   const showPanel = isCases || isGrouped;
-  show('commsListCol').className = showPanel ? 'col-12 col-lg-4 comms-split-list' : 'col-12';
+  show('commsListCol').className = showPanel ? 'col-12 col-lg-4 flat-section-divider-end' : 'col-12';
   show('commsDetailCol').classList.toggle('d-none', !showPanel);
   if (!isCases) _commsSelectedCaseId = null;
   if (!isGrouped) _commsSelectedOrgTitle = null;

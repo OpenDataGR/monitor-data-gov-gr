@@ -28,8 +28,6 @@
   <style>
     #pmEditContactType option.type-spacer { min-height: 1px; height: 1px; padding: 0; margin: 4px 0; border-top: 1px solid #dee2e6; }
     body { background: #f0f2f5; }
-    .stat-card { border-radius: 12px; transition: transform .2s, background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease; }
-    .stat-card:hover { transform: translateY(-2px); }
     .stat-value { font-size: 2rem; font-weight: 700; line-height: 1.1; }
     /* Header stats strip -- a slim second row inside the header's own navy
        gradient (replaces the old card row above the page content). The
@@ -56,14 +54,8 @@
     }
     /* Flat panels separated by a thin visible line, not an elevated card
        with a soft shadow -- same "line, not shadow" language the dark
-       theme below uses, for one consistent look across both themes.
-       .stat-card (Traffic tab's tiles) is a different, genuinely
-       interactive component with its own hover lift-and-shadow effect, so
-       it keeps a border-less, shadowed look -- the .card.stat-card rule
-       right after this one (higher specificity, wins regardless of source
-       order) re-asserts that on top of this plain .card default. */
+       theme below uses, for one consistent look across both themes. */
     .card { border: 1px solid rgba(0,0,0,.12); border-radius: 12px; box-shadow: none; }
-    .card.stat-card { border: none; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
     /* ── Sidebar navigation ──────────────────────────────────────────── */
     .dashboard-sidebar {
       width: 220px; flex-shrink: 0; background: #fff; border-radius: 12px;
@@ -164,12 +156,9 @@
        own custom near-black body background above -- every card looked
        like a distinct gray box floating on a black page instead of a flat
        panel flush with it, the opposite of the mockups' flat, hairline-
-       separated look. Flush to the same near-black, no elevation shadow
-       (that's what a *thin line*, not a shadow, is for) -- .stat-card is
-       a different, genuinely interactive tile (its own hover lift-and-
-       shadow, Traffic tab) and keeps its shadow. */
+       separated look. Flush to the same near-black, no elevation shadow --
+       that's what a *thin line*, not a shadow, is for. */
     [data-bs-theme="dark"] .card { background-color: #15181c; border-color: rgba(255,255,255,.18); box-shadow: none; }
-    [data-bs-theme="dark"] .stat-card { box-shadow: 0 2px 8px rgba(0,0,0,.4); }
     [data-bs-theme="dark"] .table th { color: #adb5bd; }
     [data-bs-theme="dark"] .spinner-overlay { background: rgba(15,17,20,.75); }
     [data-bs-theme="dark"] .back-to-top-btn:hover { background: #1a73d6; }
@@ -207,10 +196,10 @@
     /* Flipping the theme toggle currently snaps every color instantly --
        fading it instead reads as far more deliberate. Scoped to elements
        that actually change between themes and have no transition of their
-       own already (.stat-card/.dashboard-sidebar already declare one --
-       merged into those directly above instead of duplicated here, since a
-       second `transition` on the same selector would replace the first
-       rather than combine with it). Deliberately excludes .modal-content/
+       own already (.dashboard-sidebar already declares one -- merged into
+       that directly above instead of duplicated here, since a second
+       `transition` on the same selector would replace the first rather
+       than combine with it). Deliberately excludes .modal-content/
        .offcanvas -- Bootstrap's own show/hide slide-and-fade transitions
        live on those and a second `transition` declaration here would
        silently replace them instead of stacking. */
@@ -254,20 +243,48 @@
        pairing is what the mockup's selected state actually uses. */
     [data-bs-theme="dark"] .comms-case-item.comms-row-selected { background-color: #1c2940; border-left-color: #4c8bfa; }
     .comms-case-dot { width: 8px; height: 8px; }
-    /* Divider between the case/org list and the detail panel -- a single
-       line where the two columns actually meet, not each one getting its
-       own all-around card border with a gap between them (which is what
-       made an earlier pass at this "invisible": the line only reads once
-       content sits flush against it). Falls back to a bottom border once
-       the columns stack below the lg breakpoint (992px, matching every
-       other 2-column layout in this app), since there's no shared vertical
-       edge to divide at that point. */
-    .comms-split-list { border-right: 1px solid var(--bs-border-color); }
-    [data-bs-theme="dark"] .comms-split-list { border-right-color: #263248; }
+    /* Site-wide "flat surface, not stacked cards" pattern -- started in the
+       Comms split-workspace (list/detail sharing one .card instead of two
+       with a gap between them, see its own commit history for why a plain
+       border-color tweak alone doesn't read as a line: it only shows once
+       content actually sits flush against it, no gap). Reused everywhere
+       a group of related widgets used to be several separate .cards with
+       mb-3/g-3 gaps: wrap them in one .card (p-0) instead, and use these
+       two classes on the internal seams:
+         .flat-section-divider      -- a horizontal line above a section
+                                        stacked below another (border-top).
+         .flat-section-divider-end  -- a vertical line after a column that
+                                        sits beside another (border-right,
+                                        falling back to a horizontal
+                                        border-bottom once columns stack
+                                        below the lg breakpoint, 992px,
+                                        matching every other 2-column layout
+                                        in this app -- there's no shared
+                                        vertical edge to divide once they're
+                                        no longer side by side). */
+    .flat-section-divider { border-top: 1px solid var(--bs-border-color); }
+    [data-bs-theme="dark"] .flat-section-divider { border-top-color: #263248; }
+    .flat-section-divider-end { border-right: 1px solid var(--bs-border-color); }
+    [data-bs-theme="dark"] .flat-section-divider-end { border-right-color: #263248; }
     @media (max-width: 991.98px) {
-      .comms-split-list { border-right: none; border-bottom: 1px solid var(--bs-border-color); }
-      [data-bs-theme="dark"] .comms-split-list { border-bottom-color: #263248; }
+      .flat-section-divider-end { border-right: none; border-bottom: 1px solid var(--bs-border-color); }
+      [data-bs-theme="dark"] .flat-section-divider-end { border-bottom-color: #263248; }
     }
+    /* Same flat idea for a GRID of tiles (Traffic's 5 summary numbers,
+       formerly 5 separate .stat-cards) where the divider needs to run both
+       between and below cells, at more than one wrap breakpoint -- a CSS
+       Grid gap painted in the divider color, with each cell's own
+       background painted back over it, draws a perfect grid of lines with
+       no per-cell border/nth-child bookkeeping, and keeps working exactly
+       the same at any column count the grid ever reflows to. */
+    .flat-tile-strip, .flat-grid-2 { display: grid; gap: 1px; background: rgba(0,0,0,.1); }
+    .flat-tile-strip > div, .flat-grid-2 > div { background: #fff; }
+    [data-bs-theme="dark"] .flat-tile-strip, [data-bs-theme="dark"] .flat-grid-2 { background: rgba(255,255,255,.16); }
+    [data-bs-theme="dark"] .flat-tile-strip > div, [data-bs-theme="dark"] .flat-grid-2 > div { background: #15181c; }
+    .flat-tile-strip { grid-template-columns: repeat(2, 1fr); border: 1px solid rgba(0,0,0,.1); border-radius: 12px; overflow: hidden; }
+    [data-bs-theme="dark"] .flat-tile-strip { border-color: rgba(255,255,255,.16); }
+    @media (min-width: 1200px) { .flat-tile-strip { grid-template-columns: repeat(5, 1fr); } }
+    @media (min-width: 992px) { .flat-grid-2 { grid-template-columns: repeat(2, 1fr); } }
     /* Detail-panel pills -- solid saturated fill + white/tinted text taken
        directly from the approved Direction B mockup, not Bootstrap's badge
        palette (which read flatter/lower-contrast for this specific panel).
@@ -592,87 +609,96 @@
     <!-- Overview -->
     <div class="tab-pane fade show active" id="tab-overview">
 
-      <!-- Today's Traffic -->
-      <div class="card p-3 mb-3" id="todayCard">
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <h6 class="fw-semibold mb-0">
-            <i class="bi bi-sun me-2 text-warning"></i><span data-i18n="traffic.today_title">Today's Traffic</span>
-            <span class="badge rounded-pill text-bg-warning ms-2" style="font-size:.7rem" data-i18n="traffic.today">Today</span>
-          </h6>
-          <span class="text-muted small" id="todayUpdated"></span>
+      <!-- Today's Traffic + Live Visitors: one flat surface, divided by a
+           line -- both are "what's happening right now" widgets, not two
+           unrelated panels (see the Comms split-workspace's own outer
+           .card/row-g-0/border-bottom pattern this follows). -->
+      <div class="card p-0 mb-3">
+        <div class="p-3" id="todayCard">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="fw-semibold mb-0">
+              <i class="bi bi-sun me-2 text-warning"></i><span data-i18n="traffic.today_title">Today's Traffic</span>
+              <span class="badge rounded-pill text-bg-warning ms-2" style="font-size:.7rem" data-i18n="traffic.today">Today</span>
+            </h6>
+            <span class="text-muted small" id="todayUpdated"></span>
+          </div>
+          <div class="row row-cols-2 row-cols-xl-4 g-2">
+            <div class="col">
+              <div class="d-flex align-items-center gap-3 p-2">
+                <div class="icon-box bg-primary bg-opacity-10"><i class="bi bi-person-walking fs-5 text-primary"></i></div>
+                <div>
+                  <div class="text-muted" style="font-size:.75rem" data-i18n="traffic.visits">Visits</div>
+                  <div class="fw-bold text-primary fs-5 lh-1" id="todayVisits">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="col">
+              <div class="d-flex align-items-center gap-3 p-2">
+                <div class="icon-box bg-success bg-opacity-10"><i class="bi bi-people fs-5 text-success"></i></div>
+                <div>
+                  <div class="text-muted" style="font-size:.75rem" data-i18n="traffic.unique">Unique Visitors</div>
+                  <div class="fw-bold text-success fs-5 lh-1" id="todayUnique">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="col">
+              <div class="d-flex align-items-center gap-3 p-2">
+                <div class="icon-box bg-info bg-opacity-10"><i class="bi bi-file-text fs-5 text-info"></i></div>
+                <div>
+                  <div class="text-muted" style="font-size:.75rem" data-i18n="traffic.pageviews">Pageviews</div>
+                  <div class="fw-bold text-info fs-5 lh-1" id="todayPageviews">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="col">
+              <div class="d-flex align-items-center gap-3 p-2">
+                <div class="icon-box bg-warning bg-opacity-10"><i class="bi bi-download fs-5 text-warning"></i></div>
+                <div>
+                  <div class="text-muted" style="font-size:.75rem" data-i18n="traffic.downloads">Downloads</div>
+                  <div class="fw-bold text-warning fs-5 lh-1" id="todayDownloads">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="row row-cols-2 row-cols-xl-4 g-2">
-          <div class="col">
-            <div class="d-flex align-items-center gap-3 p-2">
-              <div class="icon-box bg-primary bg-opacity-10"><i class="bi bi-person-walking fs-5 text-primary"></i></div>
-              <div>
-                <div class="text-muted" style="font-size:.75rem" data-i18n="traffic.visits">Visits</div>
-                <div class="fw-bold text-primary fs-5 lh-1" id="todayVisits">—</div>
-              </div>
+        <div class="p-4 flat-section-divider">
+          <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+            <h6 class="fw-semibold mb-0">
+              <i class="bi bi-broadcast-pin me-2 text-danger"></i><span data-i18n="live.title">Live Visitors</span>
+              <span class="badge rounded-pill bg-danger ms-1" style="font-size:.6rem;vertical-align:middle" id="liveDot">●</span>
+            </h6>
+            <div class="d-flex align-items-center gap-3">
+              <span class="small text-muted"><span class="fw-bold text-danger fs-6" id="liveActiveCount">—</span> <span data-i18n="live.active_now">active in the last 30 min</span></span>
             </div>
           </div>
-          <div class="col">
-            <div class="d-flex align-items-center gap-3 p-2">
-              <div class="icon-box bg-success bg-opacity-10"><i class="bi bi-people fs-5 text-success"></i></div>
-              <div>
-                <div class="text-muted" style="font-size:.75rem" data-i18n="traffic.unique">Unique Visitors</div>
-                <div class="fw-bold text-success fs-5 lh-1" id="todayUnique">—</div>
-              </div>
+          <div class="row g-3">
+            <div class="col-12 col-lg-5">
+              <div id="liveVisitorsMap" style="height:320px;border-radius:8px"></div>
             </div>
-          </div>
-          <div class="col">
-            <div class="d-flex align-items-center gap-3 p-2">
-              <div class="icon-box bg-info bg-opacity-10"><i class="bi bi-file-text fs-5 text-info"></i></div>
-              <div>
-                <div class="text-muted" style="font-size:.75rem" data-i18n="traffic.pageviews">Pageviews</div>
-                <div class="fw-bold text-info fs-5 lh-1" id="todayPageviews">—</div>
-              </div>
-            </div>
-          </div>
-          <div class="col">
-            <div class="d-flex align-items-center gap-3 p-2">
-              <div class="icon-box bg-warning bg-opacity-10"><i class="bi bi-download fs-5 text-warning"></i></div>
-              <div>
-                <div class="text-muted" style="font-size:.75rem" data-i18n="traffic.downloads">Downloads</div>
-                <div class="fw-bold text-warning fs-5 lh-1" id="todayDownloads">—</div>
-              </div>
+            <div class="col-12 col-lg-7">
+              <div id="liveVisitorsList"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="card p-4 mb-3">
-        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-          <h6 class="fw-semibold mb-0">
-            <i class="bi bi-broadcast-pin me-2 text-danger"></i><span data-i18n="live.title">Live Visitors</span>
-            <span class="badge rounded-pill bg-danger ms-1" style="font-size:.6rem;vertical-align:middle" id="liveDot">●</span>
-          </h6>
-          <div class="d-flex align-items-center gap-3">
-            <span class="small text-muted"><span class="fw-bold text-danger fs-6" id="liveActiveCount">—</span> <span data-i18n="live.active_now">active in the last 30 min</span></span>
+      <!-- Endpoint Status + Uptime: same flat-surface treatment, this time
+           side by side (a vertical divider), same shape as Comms' own
+           list/detail split. -->
+      <div class="card p-0">
+        <div class="row g-0 align-items-stretch">
+          <div class="col-12 col-lg-7 flat-section-divider-end">
+            <div class="p-4">
+              <h6 class="fw-semibold mb-3"><i class="bi bi-broadcast me-2 text-primary"></i><span data-i18n="health.endpoint_status">Endpoint Status</span></h6>
+              <div id="endpointTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
+            </div>
           </div>
-        </div>
-        <div class="row g-3">
           <div class="col-12 col-lg-5">
-            <div id="liveVisitorsMap" style="height:320px;border-radius:8px"></div>
-          </div>
-          <div class="col-12 col-lg-7">
-            <div id="liveVisitorsList"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="row g-3">
-        <div class="col-12 col-lg-7">
-          <div class="card p-4">
-            <h6 class="fw-semibold mb-3"><i class="bi bi-broadcast me-2 text-primary"></i><span data-i18n="health.endpoint_status">Endpoint Status</span></h6>
-            <div id="endpointTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
-          </div>
-        </div>
-        <div class="col-12 col-lg-5">
-          <div class="card p-4 h-100">
-            <h6 class="fw-semibold mb-3"><i class="bi bi-bar-chart me-2 text-primary"></i><span data-i18n="health.uptime_24h">Uptime Last 24h</span></h6>
-            <div style="position:relative;height:280px">
-              <canvas id="uptimeChart"></canvas>
+            <div class="p-4">
+              <h6 class="fw-semibold mb-3"><i class="bi bi-bar-chart me-2 text-primary"></i><span data-i18n="health.uptime_24h">Uptime Last 24h</span></h6>
+              <div style="position:relative;height:280px">
+                <canvas id="uptimeChart"></canvas>
+              </div>
             </div>
           </div>
         </div>
@@ -681,58 +707,52 @@
 
     <!-- Health -->
     <div class="tab-pane fade" id="tab-health">
-      <div class="row g-3">
-        <div class="col-12">
-          <div class="card p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-              <h6 class="fw-semibold mb-0"><i class="bi bi-clock-history me-2 text-primary"></i><span data-i18n="health.response_history">Response Time History</span></h6>
-              <div class="d-flex gap-2">
-                <select class="form-select form-select-sm" id="endpointSelect" style="width:210px" onchange="loadResponseTimeChart()">
-                  {% for ep in endpoints %}<option value="{{ ep.name }}">{{ ep.name }}</option>{% endfor %}
-                </select>
-                <select class="form-select form-select-sm" id="hoursSelect" style="width:90px" onchange="loadResponseTimeChart()">
-                  <option value="6" data-i18n="health.6h">6 h</option>
-                  <option value="24" selected data-i18n="health.24h">24 h</option>
-                  <option value="72" data-i18n="health.72h">72 h</option>
-                  <option value="168" data-i18n="health.7d">7 days</option>
-                </select>
-              </div>
+      <div class="card p-0">
+        <div class="p-4">
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h6 class="fw-semibold mb-0"><i class="bi bi-clock-history me-2 text-primary"></i><span data-i18n="health.response_history">Response Time History</span></h6>
+            <div class="d-flex gap-2">
+              <select class="form-select form-select-sm" id="endpointSelect" style="width:210px" onchange="loadResponseTimeChart()">
+                {% for ep in endpoints %}<option value="{{ ep.name }}">{{ ep.name }}</option>{% endfor %}
+              </select>
+              <select class="form-select form-select-sm" id="hoursSelect" style="width:90px" onchange="loadResponseTimeChart()">
+                <option value="6" data-i18n="health.6h">6 h</option>
+                <option value="24" selected data-i18n="health.24h">24 h</option>
+                <option value="72" data-i18n="health.72h">72 h</option>
+                <option value="168" data-i18n="health.7d">7 days</option>
+              </select>
             </div>
-            <div style="height:280px"><canvas id="responseTimeChart"></canvas></div>
           </div>
+          <div style="height:280px"><canvas id="responseTimeChart"></canvas></div>
         </div>
-        <div class="col-12">
-          <div class="card p-4">
-            <h6 class="fw-semibold mb-3"><i class="bi bi-list-check me-2 text-primary"></i><span data-i18n="health.recent_checks">Recent Checks</span></h6>
-            <div id="recentChecksTable"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
-          </div>
+        <div class="p-4 flat-section-divider">
+          <h6 class="fw-semibold mb-3"><i class="bi bi-list-check me-2 text-primary"></i><span data-i18n="health.recent_checks">Recent Checks</span></h6>
+          <div id="recentChecksTable"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
         </div>
       </div>
     </div>
 
     <!-- Insights -->
     <div class="tab-pane fade" id="tab-stats">
-      <div class="row g-3">
-        <div class="col-12 col-lg-8">
-          <div class="card p-4">
-            <h6 class="fw-semibold mb-3"><i class="bi bi-graph-up me-2 text-primary"></i><span data-i18n="stats.dataset_count">Dataset Count Over Time</span></h6>
-            <div style="height:280px"><canvas id="statsChart"></canvas></div>
+      <div class="card p-0">
+        <div class="row g-0 align-items-stretch">
+          <div class="col-12 col-lg-8 flat-section-divider-end">
+            <div class="p-4">
+              <h6 class="fw-semibold mb-3"><i class="bi bi-graph-up me-2 text-primary"></i><span data-i18n="stats.dataset_count">Dataset Count Over Time</span></h6>
+              <div style="height:280px"><canvas id="statsChart"></canvas></div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-4">
+            <div class="p-4">
+              <h6 class="fw-semibold mb-3"><i class="bi bi-info-circle me-2 text-primary"></i><span data-i18n="stats.latest_snapshot">Latest Snapshot</span></h6>
+              <div id="latestSnapshot"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
+            </div>
           </div>
         </div>
-        <div class="col-12 col-lg-4">
-          <div class="card p-4">
-            <h6 class="fw-semibold mb-3"><i class="bi bi-info-circle me-2 text-primary"></i><span data-i18n="stats.latest_snapshot">Latest Snapshot</span></h6>
-            <div id="latestSnapshot"><div class="text-center py-3 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
-          </div>
-        </div>
-      </div>
-      <div class="row g-3 mt-1">
-        <div class="col-12">
-          <div class="card p-4 h-100">
-            <h6 class="fw-semibold mb-3"><i class="bi bi-pie-chart me-2 text-primary"></i><span data-i18n="catalog.formats_title">Format Distribution</span></h6>
-            <div id="catalogFormatChartWrap" style="height:220px"><canvas id="catalogFormatChart"></canvas></div>
-            <div id="catalogFormatChartEmpty" class="text-center text-muted small py-4 d-none" data-i18n="catalog.formats_none">No format data available.</div>
-          </div>
+        <div class="p-4 flat-section-divider">
+          <h6 class="fw-semibold mb-3"><i class="bi bi-pie-chart me-2 text-primary"></i><span data-i18n="catalog.formats_title">Format Distribution</span></h6>
+          <div id="catalogFormatChartWrap" style="height:220px"><canvas id="catalogFormatChart"></canvas></div>
+          <div id="catalogFormatChartEmpty" class="text-center text-muted small py-4 d-none" data-i18n="catalog.formats_none">No format data available.</div>
         </div>
       </div>
     </div>
@@ -868,74 +888,62 @@
         <span id="trafficError" class="text-danger small d-none ms-2"></span>
       </div>
 
-      <!-- Summary cards -->
-      <div class="row row-cols-2 row-cols-xl-5 g-3 mb-4">
-        <div class="col">
-          <div class="card stat-card p-3 h-100">
-            <div class="text-muted small mb-1" data-i18n="traffic.visits">Visits</div>
-            <div class="stat-value text-primary" id="trafficVisits">—</div>
-          </div>
+      <!-- Summary tiles: one flat strip (grid-gap-as-divider, see
+           .flat-tile-strip) instead of 5 separate raised cards -- same
+           "no cards, one surface with divider lines" treatment as
+           everywhere else, chosen deliberately over keeping their
+           individual hover-lift look. -->
+      <div class="flat-tile-strip mb-4">
+        <div class="p-3">
+          <div class="text-muted small mb-1" data-i18n="traffic.visits">Visits</div>
+          <div class="stat-value text-primary" id="trafficVisits">—</div>
         </div>
-        <div class="col">
-          <div class="card stat-card p-3 h-100">
-            <div class="text-muted small mb-1" id="trafficUniqueLabel" data-i18n="traffic.unique">Unique Visitors</div>
-            <div class="stat-value text-success" id="trafficUnique">—</div>
-          </div>
+        <div class="p-3">
+          <div class="text-muted small mb-1" id="trafficUniqueLabel" data-i18n="traffic.unique">Unique Visitors</div>
+          <div class="stat-value text-success" id="trafficUnique">—</div>
         </div>
-        <div class="col">
-          <div class="card stat-card p-3 h-100">
-            <div class="text-muted small mb-1" data-i18n="traffic.pageviews">Pageviews</div>
-            <div class="stat-value text-info" id="trafficPageviews">—</div>
-          </div>
+        <div class="p-3">
+          <div class="text-muted small mb-1" data-i18n="traffic.pageviews">Pageviews</div>
+          <div class="stat-value text-info" id="trafficPageviews">—</div>
         </div>
-        <div class="col">
-          <div class="card stat-card p-3 h-100">
-            <div class="text-muted small mb-1" data-i18n="traffic.downloads">Downloads</div>
-            <div class="stat-value text-warning" id="trafficDownloads">—</div>
-          </div>
+        <div class="p-3">
+          <div class="text-muted small mb-1" data-i18n="traffic.downloads">Downloads</div>
+          <div class="stat-value text-warning" id="trafficDownloads">—</div>
         </div>
-        <div class="col">
-          <div class="card stat-card p-3 h-100">
-            <div class="text-muted small mb-1" data-i18n="traffic.api_calls">API Calls</div>
-            <div class="stat-value text-danger" id="trafficApiCalls">—</div>
-          </div>
+        <div class="p-3">
+          <div class="text-muted small mb-1" data-i18n="traffic.api_calls">API Calls</div>
+          <div class="stat-value text-danger" id="trafficApiCalls">—</div>
         </div>
       </div>
 
-      <!-- Visits trend chart -->
-      <div class="card p-4 mb-3">
-        <h6 class="fw-semibold mb-3"><i class="bi bi-graph-up me-2 text-primary"></i><span data-i18n="traffic.visits_chart">Visits Over Time</span></h6>
-        <div style="height:240px"><canvas id="trafficChart"></canvas></div>
-      </div>
-
-      <!-- Top datasets, searches, API calls, downloads -->
-      <div class="row g-3">
-        <div class="col-12 col-lg-6">
-          <div class="card p-4 h-100">
+      <!-- Visits trend chart + Top datasets/searches/API/downloads: one
+           flat surface, chart on top, the 2x2 grid below it divided the
+           same grid-gap way as the summary tiles above. -->
+      <div class="card p-0">
+        <div class="p-4">
+          <h6 class="fw-semibold mb-3"><i class="bi bi-graph-up me-2 text-primary"></i><span data-i18n="traffic.visits_chart">Visits Over Time</span></h6>
+          <div style="height:240px"><canvas id="trafficChart"></canvas></div>
+        </div>
+        <div class="flat-grid-2 flat-section-divider">
+          <div class="p-4">
             <h6 class="fw-semibold mb-3"><i class="bi bi-fire me-2 text-danger"></i><span data-i18n="traffic.top_datasets">Top Dataset Pages</span></h6>
             <div id="trafficTopDatasets">
               <div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div>
             </div>
           </div>
-        </div>
-        <div class="col-12 col-lg-6">
-          <div class="card p-4 h-100">
+          <div class="p-4">
             <h6 class="fw-semibold mb-3"><i class="bi bi-search me-2 text-primary"></i><span data-i18n="traffic.top_queries">Top Search Queries</span></h6>
             <div id="trafficTopSearches">
               <div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div>
             </div>
           </div>
-        </div>
-        <div class="col-12 col-lg-6">
-          <div class="card p-4 h-100">
+          <div class="p-4">
             <h6 class="fw-semibold mb-3"><i class="bi bi-code-slash me-2 text-danger"></i><span data-i18n="traffic.top_api">Top API Calls</span></h6>
             <div id="trafficTopApi">
               <div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div>
             </div>
           </div>
-        </div>
-        <div class="col-12 col-lg-6">
-          <div class="card p-4 h-100">
+          <div class="p-4">
             <h6 class="fw-semibold mb-3"><i class="bi bi-download me-2 text-warning"></i><span data-i18n="traffic.top_downloads">Top Downloads</span></h6>
             <div id="trafficTopDownloads">
               <div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div>
@@ -1262,12 +1270,12 @@
 
     <!-- Communications -->
     <div class="tab-pane fade" id="tab-comms">
-      <!-- One full-width command bar (view modes, live totals, filters,
-           export, add) instead of squeezing it into the narrower list
-           column below -- matches the approved split-workspace mockup,
-           where this row spans the whole content width. -->
-      <div class="card p-3 mb-3">
-        <div class="d-flex align-items-center flex-wrap gap-3">
+      <!-- One flat surface for the whole workspace, command bar included --
+           the mockup's own toolbar sits inside the SAME container as the
+           list/detail split below it (a border-bottom divider, no gap),
+           not a separate card floating above it. -->
+      <div class="card p-0">
+        <div class="d-flex align-items-center flex-wrap gap-3 p-3">
           <h6 class="fw-semibold mb-0"><i class="bi bi-envelope me-2 text-primary"></i><span data-i18n="comms.title">Communications Log</span></h6>
           <div class="btn-group btn-group-sm" role="group">
             <button id="commsViewCasesBtn" type="button" class="btn btn-primary" onclick="setCommsView('cases')" data-i18n="comms.view_cases">Cases</button>
@@ -1328,10 +1336,8 @@
             <button class="btn btn-primary btn-sm comms-pill-btn" onclick="openCommModal()"><i class="bi bi-plus me-1"></i><span data-i18n="comms.add">Add</span></button>
           </div>
         </div>
-      </div>
-      <div class="card p-0">
-        <div class="row g-0 align-items-stretch">
-          <div class="col-12 col-lg-4 comms-split-list" id="commsListCol">
+        <div class="row g-0 align-items-stretch flat-section-divider">
+          <div class="col-12 col-lg-4 flat-section-divider-end" id="commsListCol">
             <div class="p-3">
               <div class="search-clear-wrap mb-2">
                 <input type="search" id="commsSearch" class="form-control form-control-sm w-100" placeholder="Search communications…" data-i18n-ph="comms.search" oninput="debouncedFilterComms()">
