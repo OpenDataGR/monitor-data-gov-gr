@@ -5919,7 +5919,7 @@ function _commsDetailRowHtml(c) {
   // second visual line, which is what actually caused the unreadable
   // wrapping this replaced.
   return `
-    <div class="d-flex align-items-center gap-3 py-3 border-top" style="font-size:.83rem">
+    <div class="d-flex align-items-center gap-3 py-3 border-top" style="font-size:.83rem;cursor:pointer" onclick="openCommModal(${c.id})">
       <div class="text-nowrap" style="width:76px;flex-shrink:0;overflow:hidden">
         <div class="text-muted small mono">${esc(c.contact_date)}</div>
         ${_commsEntryTimeHtml(c)}
