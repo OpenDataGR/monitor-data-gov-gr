@@ -333,6 +333,22 @@ if _is_main_process():
                 if _link and _link.inbound_email:
                     _c.email_received_at = _link.inbound_email.received_at
             db.session.commit()
+        # One-time cleanup, not gated by column existence -- _auto_captured_
+        # notes stopped prefixing every auto-captured row's notes with
+        # "Auto-captured from inbound email." (redundant with the row's own
+        # Auto badge in the UI), but every row logged before this change
+        # still has it stored. Cheap (a single indexed-ish filter, bounded
+        # to source="email" rows) and idempotent -- a no-op once every row's
+        # notes no longer starts with it, safe to run on every startup
+        # rather than tracking whether it's already run.
+        _ac_prefix = "Auto-captured from inbound email."
+        for _c in Communication.query.filter(Communication.source == "email",
+                                              Communication.notes.like(f"{_ac_prefix}%")).all():
+            if _c.notes == _ac_prefix:
+                _c.notes = ""
+            elif _c.notes.startswith(_ac_prefix + "\n\n"):
+                _c.notes = _c.notes[len(_ac_prefix) + 2:]
+        db.session.commit()
         if 'case_id' not in _comm_cols:
             db.session.execute(text('ALTER TABLE communications ADD COLUMN case_id INTEGER'))
             db.session.commit()
@@ -4877,24 +4893,32 @@ if _is_main_process():
             _msgs = _extract_thread_messages(_inbound.body_text)
             if not _msgs:
                 continue
-            # Keyed by (subject, date) rather than subject alone -- two
-            # messages in the same thread can share a subject (e.g. two
-            # plain "RE:" replies with no other subject drift), so subject
-            # alone risks matching the wrong message's time onto a
-            # Communication that happens to share its subject but not its
-            # date.
-            _by_key = {}
-            for _m in _msgs:
-                if _m.get("sent_at"):
-                    _by_key.setdefault((_m["subject"], _m["sent_at"].date().isoformat()), _m["sent_at"])
-            if not _by_key:
+            # Matched by POSITION, not by (subject, date) -- an earlier
+            # version of this repair keyed on that pair and still left some
+            # rows sharing a timestamp, because two messages in the same
+            # same-day back-and-forth can share both an unprefixed subject
+            # AND a date, which collapses them onto the same key. Position
+            # is reliable here instead: _apply_inbound_match's own creation
+            # loop iterates _extract_thread_messages' return list in order
+            # and inserts one InboundEmailCommunication per (message, org)
+            # pair in that same order, so ordering the existing links by id
+            # (creation order) and zipping them against a fresh call to the
+            # same extraction function reproduces the original pairing --
+            # PROVIDED every message produced exactly one Communication.
+            # A message naming contacts from more than one org produces
+            # more than one, which would silently misalign a straight zip,
+            # so skip entirely (leaving those rows as they were) rather
+            # than risk stamping a confidently-wrong time on top of the
+            # merely-imprecise one already there.
+            _links = (InboundEmailCommunication.query
+                      .filter_by(inbound_email_id=_inbound_id)
+                      .order_by(InboundEmailCommunication.id).all())
+            if len(_links) != len(_msgs):
                 continue
-            for _link in InboundEmailCommunication.query.filter_by(inbound_email_id=_inbound_id).all():
+            for _link, _msg in zip(_links, _msgs):
                 _comm = _link.communication
-                if not _comm:
-                    continue
-                _sent_at = _by_key.get((_comm.subject, _comm.contact_date))
-                if _sent_at and _comm.email_received_at != _sent_at:
+                _sent_at = _msg.get("sent_at")
+                if _comm and _sent_at and _comm.email_received_at != _sent_at:
                     _comm.email_received_at = _sent_at
         db.session.commit()
 
@@ -5374,7 +5398,13 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
 
 
 def _auto_captured_notes(body_text: str) -> str:
-    return f"Auto-captured from inbound email.\n\n{body_text[:2000]}" if body_text else "Auto-captured from inbound email."
+    # No longer prefixed with "Auto-captured from inbound email." -- that
+    # boilerplate is already conveyed by the row's own autoEmailBadge/
+    # comms-case-pill "Auto" badge in the UI, so repeating it as the first
+    # line of every single entry's notes was pure noise. _thread_already_
+    # logged/_thread_message_already_logged used to split on the blank line
+    # after it to compare just the real body; they now compare notes as-is.
+    return body_text[:2000] if body_text else ""
 
 
 def _resolved_contact_date(inbound: "InboundEmail") -> str:
@@ -5517,7 +5547,7 @@ def _thread_already_logged(existing_comms, subject: str, body_text: str) -> bool
     for c in existing_comms:
         if not c.notes or not _same_conversation(subject, c.subject):
             continue
-        snippet = c.notes.split("\n\n", 1)[-1]  # strip the "Auto-captured from inbound email." prefix
+        snippet = c.notes  # _auto_captured_notes no longer prefixes this with any boilerplate
         norm_old = _normalize_for_dedup(snippet)
         if len(norm_old) > 150 and norm_old in norm_new:
             return True
@@ -5543,8 +5573,7 @@ def _thread_message_already_logged(existing_comms, subject: str, msg_body: str) 
     for c in existing_comms:
         if not c.notes or not _same_conversation(subject, c.subject):
             continue
-        snippet = c.notes.split("\n\n", 1)[-1]
-        norm_old = _normalize_for_dedup(snippet)
+        norm_old = _normalize_for_dedup(c.notes)  # _auto_captured_notes no longer prefixes this with any boilerplate
         if norm_old and (norm_old in norm_new or norm_new in norm_old):
             return True
     return False

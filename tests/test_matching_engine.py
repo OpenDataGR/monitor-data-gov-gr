@@ -249,3 +249,31 @@ class TestApplyInboundMatch:
         assert by_subject["Backlog thread"] == first_sent_at
         assert by_subject["RE: Backlog thread"] == second_sent_at
         assert first_sent_at != second_sent_at != inbound.received_at
+
+
+class TestAutoCapturedNotesHasNoBoilerplatePrefix:
+    """_auto_captured_notes used to prepend "Auto-captured from inbound
+    email." to every row's notes, redundant with the row's own Auto badge
+    in the UI -- removed, but the two dedup functions below used to split
+    on the blank line after that prefix to compare just the real body, so
+    they need covering now that they compare notes as-is."""
+
+    def test_no_prefix(self):
+        assert appmod._auto_captured_notes("Real email body here.") == "Real email body here."
+        assert appmod._auto_captured_notes("") == ""
+
+    def test_thread_already_logged_still_detects_duplicate(self, app):
+        case = mk_case("ORGS", "Org S", "Dup test")
+        existing = mk_comm(case, "ORGS", "Org S", "Dup test", "Initial Contact", "2026-01-01")
+        existing.source = "email"
+        existing.notes = appmod._auto_captured_notes("A" * 200)
+        db.session.commit()
+        assert appmod._thread_already_logged([existing], "Dup test", "A" * 200 + " plus more forwarded noise on top")
+
+    def test_thread_message_already_logged_still_detects_duplicate(self, app):
+        case = mk_case("ORGT", "Org T", "Dup msg test")
+        existing = mk_comm(case, "ORGT", "Org T", "Dup msg test", "Initial Contact", "2026-01-01")
+        existing.source = "email"
+        existing.notes = appmod._auto_captured_notes("Short reply body.")
+        db.session.commit()
+        assert appmod._thread_message_already_logged([existing], "Dup msg test", "Short reply body.")
