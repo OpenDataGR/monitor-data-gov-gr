@@ -1197,6 +1197,15 @@
       const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
       return d.toLocaleTimeString(_lang === 'el' ? 'el-GR' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
     }
+    // Thread messages: sent_at is parsed from a quoted "Sent:"/"On ... wrote:"
+    // header in the body text (app.py's _extract_thread_messages) -- only
+    // set when that header actually included a time, unlike sent_date which
+    // this same parse always reduces to date-only for Communication.contact_date.
+    function threadMsgTime(m) {
+      if (!m.sent_at) return '';
+      const d = new Date(m.sent_at.endsWith('Z') ? m.sent_at : m.sent_at + 'Z');
+      return d.toLocaleTimeString(_lang === 'el' ? 'el-GR' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
 
     // ── Org search (Register Contact / thread-message manual attach) ────────
     // _publicOrgs/_orgsData/_ns/_orgSearchDropdown all live in org_search.js
@@ -1912,7 +1921,7 @@
                 ${r.thread_messages.map((m, i) => `
                   <button type="button" class="list-group-item list-group-item-action py-2 ${i === 0 ? 'active' : ''}" onclick="_selectThreadMsg(this,${r.id},${i})">
                     <div class="small text-truncate fw-bold">${esc(m.from_name || m.from_email || none)}</div>
-                    <div class="text-truncate" style="font-size:.75em;opacity:.8">${m.sent_date ? esc(m.sent_date) : ''}${m.subject ? ' — ' + esc(m.subject) : ''}</div>
+                    <div class="text-truncate" style="font-size:.75em;opacity:.8">${m.sent_date ? esc(m.sent_date) : ''}${threadMsgTime(m) ? ' ' + esc(threadMsgTime(m)) : ''}${m.subject ? ' — ' + esc(m.subject) : ''}</div>
                   </button>`).join('')}
               </div>
             </div>
@@ -1936,7 +1945,7 @@
       return `
         <div class="small mb-2">
           <strong>${esc(msg.from_name || msg.from_email || none)}</strong>${msg.from_name && msg.from_email ? ` &lt;${esc(msg.from_email)}&gt;` : ''}
-          ${msg.sent_date ? `<div class="text-muted">${esc(msg.sent_date)}</div>` : ''}
+          ${msg.sent_date ? `<div class="text-muted">${esc(msg.sent_date)}${threadMsgTime(msg) ? ' ' + esc(threadMsgTime(msg)) : ''}</div>` : ''}
           ${msg.subject ? `<div class="text-muted">${esc(msg.subject)}</div>` : ''}
         </div>
         ${msg.body ? `<pre class="small bg-body-secondary p-2 rounded mb-2" style="white-space:pre-wrap;word-break:break-word;max-height:18vh;overflow-y:auto">${esc(msg.body.slice(0, 2000))}</pre>` : `<p class="text-muted small mb-2">${none}</p>`}`;

@@ -5497,6 +5497,12 @@ def _thread_messages_json(body_text: str):
     for idx, m in enumerate(messages):
         m["addrs"] = sorted(m["addrs"])
         m["index"] = idx
+        # sent_at is a raw datetime here (other callers write it straight
+        # into Communication.email_received_at, a DateTime column) --
+        # jsonify would otherwise render it as an HTTP-date string instead
+        # of ISO like every other timestamp field in this app, so convert
+        # only at this JSON-response boundary.
+        m["sent_at"] = m["sent_at"].isoformat() if m.get("sent_at") else None
         meaningful_body = _strip_signature_delimiter(m.get("body") or "")
         if _MEANINGFUL_BODY_RE.search(meaningful_body):
             result.append(m)
