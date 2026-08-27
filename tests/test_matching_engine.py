@@ -6,6 +6,7 @@ attaches to, and now resolves that once per email/thread across every org
 involved rather than once per org.
 """
 import json
+from datetime import datetime
 
 import app as appmod
 from models import db, Case, Communication, CommunicationContact, OrgContact, InboundEmail
@@ -213,3 +214,38 @@ class TestApplyInboundMatch:
 
         assert len(created) == 1
         assert created[0].email_received_at == inbound.received_at
+
+    def test_split_thread_messages_each_get_their_own_email_received_at(self, app, monkeypatch):
+        """A backlog thread split into several per-message Communications
+        (_extract_thread_messages) must NOT all share the one webhook-
+        arrival timestamp -- each message's own parsed "Sent:" time (sent_at)
+        becomes that specific Communication's email_received_at."""
+        mk_contact("m1@orgr.gr", "ORGR")
+        mk_contact("m2@orgr.gr", "ORGR")
+        first_sent_at = datetime(2026, 1, 10, 9, 30)
+        second_sent_at = datetime(2026, 1, 12, 14, 45)
+        monkeypatch.setattr(appmod, "_extract_thread_messages", lambda body_text: [
+            {"from_name": "M One", "from_email": "m1@orgr.gr", "subject": "Backlog thread",
+             "sent_date": first_sent_at.date().isoformat(), "sent_at": first_sent_at,
+             "body": "First historical message with real content here.", "addrs": {"m1@orgr.gr"}},
+            {"from_name": "M Two", "from_email": "m2@orgr.gr", "subject": "RE: Backlog thread",
+             "sent_date": second_sent_at.date().isoformat(), "sent_at": second_sent_at,
+             "body": "Second historical message with real content here too.", "addrs": {"m2@orgr.gr"}},
+        ])
+        inbound = InboundEmail(from_email="staff@internal.gr", to_email="logger@parser.data.gov.gr",
+                                subject="Fwd: Backlog thread", body_text="whatever, monkeypatched")
+        db.session.add(inbound)
+        db.session.flush()
+
+        match = appmod._match_inbound_email(
+            from_field="Forwarder <staff@internal.gr>", to_field="logger@parser.data.gov.gr",
+            cc_field="", subject="Fwd: Backlog thread", body_text="whatever, monkeypatched",
+        )
+        created = appmod._apply_inbound_match(inbound, match)
+        db.session.commit()
+
+        assert len(created) == 2
+        by_subject = {c.subject: c.email_received_at for c in created}
+        assert by_subject["Backlog thread"] == first_sent_at
+        assert by_subject["RE: Backlog thread"] == second_sent_at
+        assert first_sent_at != second_sent_at != inbound.received_at

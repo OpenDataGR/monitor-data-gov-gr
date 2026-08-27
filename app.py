@@ -4733,12 +4733,18 @@ _QUOTED_SENT_DATE_FORMATS = [
 
 
 def _parse_quoted_sent_date(raw):
+    """Returns the full parsed datetime (every format in
+    _QUOTED_SENT_DATE_FORMATS includes a time), not just the date -- callers
+    that only need contact_date convert with .date().isoformat() themselves;
+    the time component also becomes a per-split-message Communication's own
+    email_received_at (see _extract_thread_messages), instead of every
+    message in a split thread sharing the one webhook-arrival timestamp."""
     if not raw:
         return None
     cleaned = re.sub(r"\s+", " ", raw).strip()
     for fmt in _QUOTED_SENT_DATE_FORMATS:
         try:
-            return datetime.strptime(cleaned, fmt).date().isoformat()
+            return datetime.strptime(cleaned, fmt)
         except ValueError:
             continue
     return None
@@ -4780,8 +4786,12 @@ def _extract_quoted_thread_info(body: str):
     if from_matches:
         subj_match = _QUOTE_SUBJECT_RE.search(body, from_matches[0].start())
         sent_match = _QUOTE_SENT_RE.search(body, from_matches[0].start())
-        subject_at_top   = subj_match.group(1).strip() if subj_match else None
-        sent_date_at_top = _parse_quoted_sent_date(sent_match.group(1)) if sent_match else None
+        subject_at_top = subj_match.group(1).strip() if subj_match else None
+        # This caller only ever wants a plain date (feeds Communication.
+        # contact_date / Case.opened_at, both date-only) -- the time is
+        # only kept where it's actually used, see _extract_thread_messages.
+        _sent_dt = _parse_quoted_sent_date(sent_match.group(1)) if sent_match else None
+        sent_date_at_top = _sent_dt.date().isoformat() if _sent_dt else None
 
     return {"addrs": addrs, "subject": subject_at_top, "sent_date": sent_date_at_top, "named_from": named_from}
 
@@ -4826,12 +4836,14 @@ def _extract_thread_messages(body: str):
         addrs = {a.lower() for a in _EMAIL_RE.findall(body[m.start():header_end])}
 
         name, email = parseaddr(m.group(1))
+        sent_dt = _parse_quoted_sent_date(sent_match.group(1)) if sent_match else None
         messages.append({
             "from_name": name.strip() or None,
             "from_email": (email or "").lower() or None,
             "addrs": addrs,
             "subject": subj_match.group(1).strip() if subj_match else None,
-            "sent_date": _parse_quoted_sent_date(sent_match.group(1)) if sent_match else None,
+            "sent_date": sent_dt.date().isoformat() if sent_dt else None,  # Communication.contact_date is date-only
+            "sent_at": sent_dt,  # full datetime, incl. time -- this message's own Communication.email_received_at
             "body": body[header_end:block_end].strip(),
         })
     return messages
@@ -5227,6 +5239,7 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
                         "contacts": org_contacts, "case": shared["case"] if shared else None,
                         "reason": shared["reason"] if shared else None,
                         "created": created_now, "subject": msg_subject, "contact_date": msg.get("sent_date"),
+                        "sent_at": msg.get("sent_at"),
                         "body": msg.get("body") or "", "is_thread_message": True,
                         "direction": _detect_email_direction(msg.get("from_email") or "", None, False, excluded_addrs, excluded_domains),
                     })
@@ -5328,7 +5341,8 @@ def _resolved_contact_date(inbound: "InboundEmail") -> str:
 
 
 def _create_email_communication(inbound: "InboundEmail", case: "Case", contacts, comm_status: str, contact_date: str = None,
-                                 direction: str = None, subject: str = None, notes_body: str = None) -> "Communication":
+                                 direction: str = None, subject: str = None, notes_body: str = None,
+                                 sent_at: "datetime" = None) -> "Communication":
     """contacts: every registered OrgContact this entry should credit (all
     from the same org as `case`, per _match_inbound_email's own grouping) --
     possibly more than one when several people from that org were on the
@@ -5339,7 +5353,15 @@ def _create_email_communication(inbound: "InboundEmail", case: "Case", contacts,
     not given -- _match_inbound_email's per-thread-message groups pass
     that specific message's own subject/body instead, so each message in a
     split thread gets its own accurately-dated, accurately-worded entry
-    rather than every message in the thread sharing one blob.
+    rather than every message in the thread sharing one blob. sent_at is
+    the same idea for email_received_at: a per-thread-message group passes
+    that specific message's own parsed "Sent:" timestamp (see
+    _extract_thread_messages), so a 5-message backlog thread shows 5
+    different times instead of all 5 sharing the one webhook-arrival
+    timestamp; falls back to inbound.received_at (the actual email this
+    Communication came from, not a quoted one inside it) when there's no
+    per-message timestamp to use -- the normal case for a single, unsplit
+    email.
 
     org_name/org_title come from `contacts[0]` (every contact passed in is
     already grouped under the same org, per _match_inbound_email's own
@@ -5363,7 +5385,7 @@ def _create_email_communication(inbound: "InboundEmail", case: "Case", contacts,
         notes=_auto_captured_notes(notes_body if notes_body is not None else (inbound.body_text or "")),
         source="email",
         direction=direction,  # see _detect_email_direction -- None (left unset) when there's no named sender to check
-        email_received_at=inbound.received_at,
+        email_received_at=sent_at or inbound.received_at,
     )
     db.session.add(comm)
     db.session.flush()  # need comm.id before linking contacts below
@@ -5602,7 +5624,7 @@ def _apply_inbound_match(inbound: "InboundEmail", match, *, replace_pending_unma
         comm = _create_email_communication(
             inbound, group["case"], group["contacts"], comm_status,
             contact_date=group.get("contact_date"), direction=group.get("direction", match.get("direction")),
-            subject=group.get("subject"), notes_body=group.get("body"),
+            subject=group.get("subject"), notes_body=group.get("body"), sent_at=group.get("sent_at"),
         )
         existing.append(comm)
         created_comms.append(comm)
