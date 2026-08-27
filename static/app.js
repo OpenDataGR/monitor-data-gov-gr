@@ -2342,9 +2342,15 @@ function _initGeoDatasetsMap() {
   _geoDatasetsMap = L.map('geoDatasetsMap', { attributionControl: true, scrollWheelZoom: true })
     .setView([38.8, 23.7], 6);  // roughly centered on Greece
   _geoDatasetsMap.attributionControl.setPrefix(false);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19, subdomains: 'abcd',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  // CARTO's free basemaps.cartocdn.com tiles started showing an "API key
+  // required" watermark once usage crossed their (fairly low) anonymous
+  // threshold -- plain OpenStreetMap tiles need no key or account at all.
+  // Same light basemap either way; [data-bs-theme="dark"]'s own
+  // .leaflet-tile-pane filter (invert/hue-rotate) still turns this into
+  // the dark-mode map, unaffected by which light basemap it's inverting.
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, subdomains: 'abc',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(_geoDatasetsMap);
 }
 
@@ -10706,9 +10712,15 @@ function _initLiveMap() {
   _liveMap = L.map('liveVisitorsMap', { attributionControl: true, scrollWheelZoom: true })
     .setView([30, 15], 2);
   _liveMap.attributionControl.setPrefix(false);  // drops Leaflet's own logo/link from the attribution
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19, subdomains: 'abcd',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  // CARTO's free basemaps.cartocdn.com tiles started showing an "API key
+  // required" watermark once usage crossed their (fairly low) anonymous
+  // threshold -- plain OpenStreetMap tiles need no key or account at all.
+  // Same light basemap either way; [data-bs-theme="dark"]'s own
+  // .leaflet-tile-pane filter (invert/hue-rotate) still turns this into
+  // the dark-mode map, unaffected by which light basemap it's inverting.
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, subdomains: 'abc',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(_liveMap);
 
   // Leaflet measures its container once at init, but this runs very early
