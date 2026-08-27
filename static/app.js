@@ -5358,7 +5358,10 @@ function _commsListRowHtml(c, { showOrg = false, showCaseBadge = false, reveal =
   const statusLabel = _commsStatusLabels();
   return `
     <div class="comms-case-item${reveal ? ' just-revealed' : ''}" onclick="openCommModal(${c.id})" title="${esc(c.subject)}">
-      <span class="text-muted small mono flex-shrink-0" style="width:60px">${esc(c.contact_date)}</span>
+      <div class="text-nowrap flex-shrink-0" style="width:60px">
+        <div class="text-muted small mono">${esc(c.contact_date)}</div>
+        ${_commsEntryTimeHtml(c)}
+      </div>
       <div class="flex-grow-1" style="min-width:0">
         ${showOrg ? `<div class="fw-semibold small text-truncate">${esc(c.org_title)}</div>` : ''}
         <div class="text-truncate" style="font-size:${showOrg ? '.74rem' : '.8rem'}${showOrg ? ';color:var(--bs-secondary-color)' : ''}">${esc(c.subject)}${showCaseBadge ? ' ' + caseBadgeHtml(c) : ''}${autoEmailBadge(c)}</div>
@@ -5849,6 +5852,16 @@ function _renderCommsOrgDetailHeader(orgTitle) {
     `<div class="text-muted small mt-1">${g ? g.count : 0} ${(g && g.count === 1) ? t('comms.entry') : t('comms.entries')}</div>`;
 }
 
+// Communication.contact_date only stores a plain date (no time, models.py)
+// -- the small time shown under it is created_at (when the entry was
+// actually logged), same 'Z'-suffix-then-toLocaleTimeString approach the
+// traffic analytics table already uses for a naive-UTC timestamp.
+function _commsEntryTimeHtml(c) {
+  if (!c.created_at) return '';
+  const time = new Date(c.created_at + 'Z').toLocaleTimeString(_lang === 'el' ? 'el-GR' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+  return `<div class="text-muted" style="font-size:.68rem">${time}</div>`;
+}
+
 // Detail-panel-only row: flex, not a fixed-width table, so it degrades
 // gracefully at whatever width the panel actually has instead of assuming
 // full card width. The panel's own header already names the case's subject
@@ -5864,7 +5877,10 @@ function _commsDetailRowHtml(c) {
   // wrapping this replaced.
   return `
     <div class="d-flex align-items-center gap-3 py-3 border-top" style="font-size:.83rem">
-      <div class="text-muted small mono text-nowrap" style="width:64px;flex-shrink:0">${esc(c.contact_date)}</div>
+      <div class="text-nowrap" style="width:64px;flex-shrink:0">
+        <div class="text-muted small mono">${esc(c.contact_date)}</div>
+        ${_commsEntryTimeHtml(c)}
+      </div>
       <div class="d-flex align-items-center gap-1" style="width:130px;flex-shrink:0;min-width:0">
         <i class="bi bi-person text-muted flex-shrink-0" style="font-size:.8em"></i>
         ${_commsContactNameHtml(c)}
