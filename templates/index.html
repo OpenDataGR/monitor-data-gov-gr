@@ -130,6 +130,13 @@
     .filter-summary-panel { background: #f8f9fa; border: 1px solid rgba(0,0,0,.06); }
 
     /* ── Dark theme ───────────────────────────────────────────────────── */
+    /* Thinner, bluer-gray hairlines than Bootstrap's own dark-mode default
+       (a flatter mid-gray) -- matches the approved Direction B/C mockups'
+       own #263248/#1e2733 borders. One variable override cascades this to
+       every Bootstrap component that already reads --bs-border-color
+       (cards, tables, inputs, dropdowns, nav-tabs, ...) instead of hand-
+       overriding each one's own border individually. */
+    [data-bs-theme="dark"] { --bs-border-color: #263248; --bs-border-color-translucent: rgba(255,255,255,.1); }
     [data-bs-theme="dark"] body { background: #15181c; }
     [data-bs-theme="dark"] .dashboard-sidebar { background: #1e2226; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
     [data-bs-theme="dark"] .dashboard-sidebar .nav-link { color: #adb5bd; }
@@ -138,7 +145,17 @@
     [data-bs-theme="dark"] .sidebar-divider { background: rgba(255,255,255,.1); }
     [data-bs-theme="dark"] .sidebar-toggle-btn { color: #adb5bd; }
     [data-bs-theme="dark"] .sidebar-toggle-btn:hover { background: rgba(255,255,255,.06); }
-    [data-bs-theme="dark"] .card, [data-bs-theme="dark"] .stat-card { box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+    /* Bootstrap's own dark .card background (--bs-body-bg's stock dark
+       gray, never overridden) read visibly lighter/grayer than the page's
+       own custom near-black body background above -- every card looked
+       like a distinct gray box floating on a black page instead of a flat
+       panel flush with it, the opposite of the mockups' flat, hairline-
+       separated look. Flush to the same near-black, no elevation shadow
+       (that's what a *thin line*, not a shadow, is for) -- .stat-card is
+       a different, genuinely interactive tile (its own hover lift-and-
+       shadow, Traffic tab) and keeps its shadow. */
+    [data-bs-theme="dark"] .card { background-color: #15181c; border-color: #263248; box-shadow: none; }
+    [data-bs-theme="dark"] .stat-card { box-shadow: 0 2px 8px rgba(0,0,0,.4); }
     [data-bs-theme="dark"] .table th { color: #adb5bd; }
     [data-bs-theme="dark"] .spinner-overlay { background: rgba(15,17,20,.75); }
     [data-bs-theme="dark"] .back-to-top-btn:hover { background: #1a73d6; }
