@@ -28,7 +28,7 @@
   <style>
     #pmEditContactType option.type-spacer { min-height: 1px; height: 1px; padding: 0; margin: 4px 0; border-top: 1px solid #dee2e6; }
     body { background: #f0f2f5; }
-    .stat-card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); transition: transform .2s, background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease; }
+    .stat-card { border-radius: 12px; transition: transform .2s, background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease; }
     .stat-card:hover { transform: translateY(-2px); }
     .stat-value { font-size: 2rem; font-weight: 700; line-height: 1.1; }
     /* Header stats strip -- a slim second row inside the header's own navy
@@ -54,7 +54,16 @@
       .gov-stats { gap: .3rem .9rem; }
       .gov-stat { border-left: none; padding: 0; }
     }
-    .card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    /* Flat panels separated by a thin visible line, not an elevated card
+       with a soft shadow -- same "line, not shadow" language the dark
+       theme below uses, for one consistent look across both themes.
+       .stat-card (Traffic tab's tiles) is a different, genuinely
+       interactive component with its own hover lift-and-shadow effect, so
+       it keeps a border-less, shadowed look -- the .card.stat-card rule
+       right after this one (higher specificity, wins regardless of source
+       order) re-asserts that on top of this plain .card default. */
+    .card { border: 1px solid rgba(0,0,0,.12); border-radius: 12px; box-shadow: none; }
+    .card.stat-card { border: none; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
     /* ── Sidebar navigation ──────────────────────────────────────────── */
     .dashboard-sidebar {
       width: 220px; flex-shrink: 0; background: #fff; border-radius: 12px;
@@ -130,13 +139,18 @@
     .filter-summary-panel { background: #f8f9fa; border: 1px solid rgba(0,0,0,.06); }
 
     /* ── Dark theme ───────────────────────────────────────────────────── */
-    /* Thinner, bluer-gray hairlines than Bootstrap's own dark-mode default
-       (a flatter mid-gray) -- matches the approved Direction B/C mockups'
-       own #263248/#1e2733 borders. One variable override cascades this to
-       every Bootstrap component that already reads --bs-border-color
-       (cards, tables, inputs, dropdowns, nav-tabs, ...) instead of hand-
-       overriding each one's own border individually. */
-    [data-bs-theme="dark"] { --bs-border-color: #263248; --bs-border-color-translucent: rgba(255,255,255,.1); }
+    /* Thin hairlines, bright enough to actually read against the near-
+       black background below -- the mockups' own literal #263248 turned
+       out too close in luminance to #15181c to be visible in practice
+       (fine in an isolated mockup swatch, not once it's an actual 1px
+       line on a real page). A translucent white reads reliably regardless
+       of exactly how dark the surface behind it is, the same reasoning
+       every other hairline in this theme already uses (.sidebar-divider,
+       etc.). One variable override cascades this to every Bootstrap
+       component that already reads --bs-border-color (cards, tables,
+       inputs, dropdowns, nav-tabs, ...) instead of hand-overriding each
+       one's own border individually. */
+    [data-bs-theme="dark"] { --bs-border-color: rgba(255,255,255,.18); --bs-border-color-translucent: rgba(255,255,255,.16); }
     [data-bs-theme="dark"] body { background: #15181c; }
     [data-bs-theme="dark"] .dashboard-sidebar { background: #1e2226; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
     [data-bs-theme="dark"] .dashboard-sidebar .nav-link { color: #adb5bd; }
@@ -154,7 +168,7 @@
        (that's what a *thin line*, not a shadow, is for) -- .stat-card is
        a different, genuinely interactive tile (its own hover lift-and-
        shadow, Traffic tab) and keeps its shadow. */
-    [data-bs-theme="dark"] .card { background-color: #15181c; border-color: #263248; box-shadow: none; }
+    [data-bs-theme="dark"] .card { background-color: #15181c; border-color: rgba(255,255,255,.18); box-shadow: none; }
     [data-bs-theme="dark"] .stat-card { box-shadow: 0 2px 8px rgba(0,0,0,.4); }
     [data-bs-theme="dark"] .table th { color: #adb5bd; }
     [data-bs-theme="dark"] .spinner-overlay { background: rgba(15,17,20,.75); }
