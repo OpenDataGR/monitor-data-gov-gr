@@ -4849,6 +4849,56 @@ def _extract_thread_messages(body: str):
     return messages
 
 
+# One-time-per-deploy repair, not gated by column existence like the
+# email_received_at migration above (near the top of this file) -- this
+# needs to re-run once against rows THAT migration's own backfill already
+# touched, since it predates the fix below (_create_email_communication's
+# sent_at param) and so stamped every message of a split thread with the
+# one shared InboundEmail.received_at, same as the bug this whole thing is
+# fixing. Must live down here, not in that earlier block, since it needs
+# _extract_thread_messages -- not yet defined at that point in the module.
+# Bounded to inbound emails with more than one linked Communication (a
+# genuine split) and cheap enough to just run on every startup rather than
+# tracking whether it's already run -- a no-op once every row already
+# matches its re-derived value.
+if _is_main_process():
+    with app.app_context():
+        _split_inbound_ids = [
+            row[0] for row in
+            db.session.query(InboundEmailCommunication.inbound_email_id)
+                      .group_by(InboundEmailCommunication.inbound_email_id)
+                      .having(db.func.count(InboundEmailCommunication.communication_id) > 1)
+                      .all()
+        ]
+        for _inbound_id in _split_inbound_ids:
+            _inbound = InboundEmail.query.get(_inbound_id)
+            if not _inbound or not _inbound.body_text:
+                continue
+            _msgs = _extract_thread_messages(_inbound.body_text)
+            if not _msgs:
+                continue
+            # Keyed by (subject, date) rather than subject alone -- two
+            # messages in the same thread can share a subject (e.g. two
+            # plain "RE:" replies with no other subject drift), so subject
+            # alone risks matching the wrong message's time onto a
+            # Communication that happens to share its subject but not its
+            # date.
+            _by_key = {}
+            for _m in _msgs:
+                if _m.get("sent_at"):
+                    _by_key.setdefault((_m["subject"], _m["sent_at"].date().isoformat()), _m["sent_at"])
+            if not _by_key:
+                continue
+            for _link in InboundEmailCommunication.query.filter_by(inbound_email_id=_inbound_id).all():
+                _comm = _link.communication
+                if not _comm:
+                    continue
+                _sent_at = _by_key.get((_comm.subject, _comm.contact_date))
+                if _sent_at and _comm.email_received_at != _sent_at:
+                    _comm.email_received_at = _sent_at
+        db.session.commit()
+
+
 def _load_excluded_matchers():
     """Admin-managed addresses/domains that should never count as "the
     contact" -- staff forwarding a backlog thread appear as the forwarder and
