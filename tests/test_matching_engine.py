@@ -192,3 +192,24 @@ class TestApplyInboundMatch:
         assert len(created) == 2
         assert len({c.case_id for c in created}) == 1
         assert sorted(c.status for c in created) == ["Initial Contact", "Intermediate Contact"]
+
+    def test_communication_gets_email_received_at_from_inbound(self, app):
+        """email_received_at (the row's own display time under its date, see
+        _commsEntryTimeHtml in app.js) must come from the actual email's
+        InboundEmail.received_at, not just default to created_at (when the
+        row happened to be inserted -- close, but not the same moment)."""
+        mk_contact("k1@orgp.gr", "ORGP")
+        inbound = InboundEmail(from_email="k1@orgp.gr", from_name="K One", to_email="logger@parser.data.gov.gr",
+                                subject="Timestamp test", body_text="Body text here.")
+        db.session.add(inbound)
+        db.session.flush()
+
+        match = appmod._match_inbound_email(
+            from_field="K One <k1@orgp.gr>", to_field="logger@parser.data.gov.gr",
+            cc_field="", subject="Timestamp test", body_text="Body text here.",
+        )
+        created = appmod._apply_inbound_match(inbound, match)
+        db.session.commit()
+
+        assert len(created) == 1
+        assert created[0].email_received_at == inbound.received_at

@@ -465,6 +465,13 @@ class Communication(db.Model):
     medium         = db.Column(db.String(50))
     source         = db.Column(db.String(20))  # None = logged manually; "email" = auto-captured from an inbound email
     direction      = db.Column(db.String(10))  # "Inbound" | "Outbound" -- who this specific entry was from, independent of status. Nullable: pre-existing rows are left unset rather than guessed.
+    # The actual email-received timestamp (InboundEmail.received_at) for a
+    # source="email" row -- created_at is when THIS Communication got
+    # inserted, which for backfilled/older rows can differ from when the
+    # email itself actually arrived. Only ever set for auto-captured rows;
+    # a manual entry has no InboundEmail to pull this from, so the UI falls
+    # back to created_at there.
+    email_received_at = db.Column(db.DateTime)
 
     def to_dict(self):
         linked_contacts = [link.org_contact.to_dict() for link in self.contact_links if link.org_contact]
@@ -474,6 +481,7 @@ class Communication(db.Model):
             "case_status":  self.case.status if self.case else None,
             "case_is_stale": self.case.is_stale if self.case else False,
             "created_at":   self.created_at.isoformat(),
+            "email_received_at": self.email_received_at.isoformat() if self.email_received_at else None,
             "contact_date": self.contact_date,
             "org_name":     self.org_name,
             "org_title":    self.org_title or self.org_name,

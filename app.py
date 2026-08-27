@@ -321,6 +321,18 @@ if _is_main_process():
         if 'direction' not in _comm_cols:
             db.session.execute(text('ALTER TABLE communications ADD COLUMN direction VARCHAR(10)'))
             db.session.commit()
+        if 'email_received_at' not in _comm_cols:
+            db.session.execute(text('ALTER TABLE communications ADD COLUMN email_received_at TIMESTAMP'))
+            db.session.commit()
+            # Backfill every already-auto-captured row from its InboundEmail's
+            # own received_at -- these predate this column, so without this
+            # they'd show created_at (when the row happened to be inserted,
+            # not when the email actually arrived) until someone re-saved them.
+            for _c in Communication.query.filter_by(source="email", email_received_at=None).all():
+                _link = InboundEmailCommunication.query.filter_by(communication_id=_c.id).first()
+                if _link and _link.inbound_email:
+                    _c.email_received_at = _link.inbound_email.received_at
+            db.session.commit()
         if 'case_id' not in _comm_cols:
             db.session.execute(text('ALTER TABLE communications ADD COLUMN case_id INTEGER'))
             db.session.commit()
@@ -5351,6 +5363,7 @@ def _create_email_communication(inbound: "InboundEmail", case: "Case", contacts,
         notes=_auto_captured_notes(notes_body if notes_body is not None else (inbound.body_text or "")),
         source="email",
         direction=direction,  # see _detect_email_direction -- None (left unset) when there's no named sender to check
+        email_received_at=inbound.received_at,
     )
     db.session.add(comm)
     db.session.flush()  # need comm.id before linking contacts below

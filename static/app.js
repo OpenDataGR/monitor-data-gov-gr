@@ -5853,12 +5853,17 @@ function _renderCommsOrgDetailHeader(orgTitle) {
 }
 
 // Communication.contact_date only stores a plain date (no time, models.py)
-// -- the small time shown under it is created_at (when the entry was
-// actually logged), same 'Z'-suffix-then-toLocaleTimeString approach the
-// traffic analytics table already uses for a naive-UTC timestamp.
+// -- the small time shown under it prefers email_received_at (the actual
+// email-arrival timestamp, only ever set on an auto-captured row) over
+// created_at (when this row happened to be inserted -- accurate for a
+// manual entry, but not necessarily for an auto-captured one, especially
+// an older backfilled row). Same 'Z'-suffix-then-toLocaleTimeString
+// approach the traffic analytics table already uses for a naive-UTC
+// timestamp.
 function _commsEntryTimeHtml(c) {
-  if (!c.created_at) return '';
-  const time = new Date(c.created_at + 'Z').toLocaleTimeString(_lang === 'el' ? 'el-GR' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+  const iso = c.email_received_at || c.created_at;
+  if (!iso) return '';
+  const time = new Date(iso + 'Z').toLocaleTimeString(_lang === 'el' ? 'el-GR' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
   return `<div class="text-muted" style="font-size:.68rem">${time}</div>`;
 }
 
