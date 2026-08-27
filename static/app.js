@@ -2337,21 +2337,26 @@ async function _pollDatasetGrowth(attempts = 0) {
 let _geoDatasetsMap = null;
 let _geoDatasetsMarkers = [];
 
+// CARTO's basemaps.cartocdn.com tiles started requiring this (as ?key=,
+// free at https://carto.com/basemaps/apikey, 5M requests/month) and
+// watermarking unauthenticated requests as of August 2026 -- window.__
+// CARTO_API_KEY__ is injected server-side from config.CARTO_API_KEY
+// (empty string, and so the same watermark, until that's actually set).
+function _cartoTileLayer() {
+  const key = window.__CARTO_API_KEY__ || '';
+  const url = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png' + (key ? '?key=' + encodeURIComponent(key) : '');
+  return L.tileLayer(url, {
+    maxZoom: 19, subdomains: 'abcd',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  });
+}
+
 function _initGeoDatasetsMap() {
   if (_geoDatasetsMap || typeof L === 'undefined') return;
   _geoDatasetsMap = L.map('geoDatasetsMap', { attributionControl: true, scrollWheelZoom: true })
     .setView([38.8, 23.7], 6);  // roughly centered on Greece
   _geoDatasetsMap.attributionControl.setPrefix(false);
-  // CARTO's free basemaps.cartocdn.com tiles started showing an "API key
-  // required" watermark once usage crossed their (fairly low) anonymous
-  // threshold -- plain OpenStreetMap tiles need no key or account at all.
-  // Same light basemap either way; [data-bs-theme="dark"]'s own
-  // .leaflet-tile-pane filter (invert/hue-rotate) still turns this into
-  // the dark-mode map, unaffected by which light basemap it's inverting.
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, subdomains: 'abc',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(_geoDatasetsMap);
+  _cartoTileLayer().addTo(_geoDatasetsMap);
 }
 
 function _renderGeoDatasetsMap(locations) {
@@ -10712,16 +10717,7 @@ function _initLiveMap() {
   _liveMap = L.map('liveVisitorsMap', { attributionControl: true, scrollWheelZoom: true })
     .setView([30, 15], 2);
   _liveMap.attributionControl.setPrefix(false);  // drops Leaflet's own logo/link from the attribution
-  // CARTO's free basemaps.cartocdn.com tiles started showing an "API key
-  // required" watermark once usage crossed their (fairly low) anonymous
-  // threshold -- plain OpenStreetMap tiles need no key or account at all.
-  // Same light basemap either way; [data-bs-theme="dark"]'s own
-  // .leaflet-tile-pane filter (invert/hue-rotate) still turns this into
-  // the dark-mode map, unaffected by which light basemap it's inverting.
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, subdomains: 'abc',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  }).addTo(_liveMap);
+  _cartoTileLayer().addTo(_liveMap);
 
   // Leaflet measures its container once at init, but this runs very early
   // (straight from DOMContentLoaded) -- web fonts loading, the stat cards

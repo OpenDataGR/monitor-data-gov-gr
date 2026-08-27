@@ -11,6 +11,11 @@ MATOMO_TOKEN   = os.environ.get("MATOMO_TOKEN", "")
 FLASK_SECRET_KEY    = os.environ.get("FLASK_SECRET_KEY", "").strip()
 DATABASE_URL        = os.environ.get("DATABASE_URL", "").strip()
 
+# Free at https://carto.com/basemaps/apikey (5M tile requests/month, no
+# card required) -- CARTO's basemaps.cartocdn.com tiles started requiring
+# this and watermarking unauthenticated requests as of August 2026.
+CARTO_API_KEY = os.environ.get("CARTO_API_KEY", "").strip()
+
 # Used to build absolute links (invite/reset emails) from contexts with no
 # incoming request to infer the host from, e.g. create_admin.py.
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://monitor.data.gov.gr").strip().rstrip("/")

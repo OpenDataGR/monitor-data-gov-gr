@@ -1875,7 +1875,8 @@ def index():
                            user_name=session.get("user_name"),
                            is_admin=session.get("is_admin", False),
                            is_superadmin=session.get("is_superadmin", False),
-                           allowed_tabs=_effective_allowed_tabs(user))
+                           allowed_tabs=_effective_allowed_tabs(user),
+                           carto_api_key=config.CARTO_API_KEY)
 
 
 @app.route("/api/health/current")
