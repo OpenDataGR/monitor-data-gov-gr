@@ -250,6 +250,41 @@ class TestApplyInboundMatch:
         assert by_subject["RE: Backlog thread"] == second_sent_at
         assert first_sent_at != second_sent_at != inbound.received_at
 
+    def test_initial_contact_is_the_chronologically_oldest_message(self, app, monkeypatch):
+        """_extract_thread_messages returns messages newest-quoted-first
+        (an email client pastes the most recent message at the TOP of the
+        body) -- Initial Contact must go to whoever actually reached out
+        FIRST, not to whichever message happens to be processed first."""
+        mk_contact("m1@orgr.gr", "ORGR")
+        older = datetime(2026, 1, 5, 9, 0)
+        newer = datetime(2026, 1, 10, 9, 0)
+        # Deliberately newest-first, matching real _extract_thread_messages
+        # ordering -- this is the exact shape that reproduced the bug.
+        monkeypatch.setattr(appmod, "_extract_thread_messages", lambda body_text: [
+            {"from_name": "M One", "from_email": "m1@orgr.gr", "subject": "RE: Backlog thread",
+             "sent_date": newer.date().isoformat(), "sent_at": newer,
+             "body": "Newer reply, quoted at the top of the body.", "addrs": {"m1@orgr.gr"}},
+            {"from_name": "M One", "from_email": "m1@orgr.gr", "subject": "Backlog thread",
+             "sent_date": older.date().isoformat(), "sent_at": older,
+             "body": "Original older message, quoted further down.", "addrs": {"m1@orgr.gr"}},
+        ])
+        inbound = InboundEmail(from_email="staff@internal.gr", to_email="logger@parser.data.gov.gr",
+                                subject="Fwd: Backlog thread", body_text="whatever, monkeypatched")
+        db.session.add(inbound)
+        db.session.flush()
+
+        match = appmod._match_inbound_email(
+            from_field="Forwarder <staff@internal.gr>", to_field="logger@parser.data.gov.gr",
+            cc_field="", subject="Fwd: Backlog thread", body_text="whatever, monkeypatched",
+        )
+        created = appmod._apply_inbound_match(inbound, match)
+        db.session.commit()
+
+        assert len(created) == 2
+        by_subject = {c.subject: c.status for c in created}
+        assert by_subject["Backlog thread"] == "Initial Contact"          # the OLDER message
+        assert by_subject["RE: Backlog thread"] == "Intermediate Contact"  # the NEWER one
+
 
 class TestAutoCapturedNotesHasNoBoilerplatePrefix:
     """_auto_captured_notes used to prepend "Auto-captured from inbound

@@ -5396,18 +5396,33 @@ def _match_inbound_email(from_field: str, to_field: str, cc_field: str, subject:
             # below for every individual message's own per-org groups.
             _thread_date_fallback = (_extract_quoted_thread_info(body_text) or {}).get("sent_date")
             shared = _resolve_case_for_contacts(all_contacts, subject, contact_date=_thread_date_fallback) if all_contacts else None
+            # The Initial Contact entry must be whoever first reached out,
+            # i.e. the chronologically OLDEST message -- NOT whichever
+            # message happens to be processed first, which follows
+            # thread_msgs' own newest-quoted-first nesting order (email
+            # clients paste the most recent message at the TOP of the body,
+            # older ones further down), the exact opposite of chronological.
+            def _msg_sort_key(entry):
+                msg = entry[0]
+                if msg.get("sent_at"):
+                    return msg["sent_at"].isoformat()
+                if msg.get("sent_date"):
+                    return msg["sent_date"] + "T00:00:00"
+                return "9999-12-31T23:59:59"  # undated -- never wins "oldest" over a dated message
+            _oldest_msg = min(msg_infos, key=_msg_sort_key)[0] if msg_infos else None
             _case_opened = False
             for msg, msg_subject, m_contacts in msg_infos:
                 msg_groups_by_org = {}
                 for c in m_contacts:
                     msg_groups_by_org.setdefault(c.org_code, []).append(c)
                 for org_contacts in msg_groups_by_org.values():
-                    # Only the very first group across the whole thread opens
-                    # the case as its Initial Contact entry -- every other
-                    # group (same message's other orgs, or any later message)
-                    # is a follow-up on that same, already-open case.
-                    created_now = bool(shared and shared["created"] and not _case_opened)
-                    _case_opened = _case_opened or bool(shared and shared["created"])
+                    # Only the very first group belonging to the oldest
+                    # message opens the case as its Initial Contact entry --
+                    # every other group (that message's other orgs, or any
+                    # other message) is a follow-up on that same,
+                    # already-open case.
+                    created_now = bool(shared and shared["created"] and not _case_opened and msg is _oldest_msg)
+                    _case_opened = _case_opened or created_now
                     per_message_groups.append({
                         "contacts": org_contacts, "case": shared["case"] if shared else None,
                         "reason": shared["reason"] if shared else None,
