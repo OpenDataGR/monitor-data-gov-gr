@@ -4902,13 +4902,13 @@ def _extract_thread_messages(body: str):
     return messages
 
 
-# One-time-per-deploy repair, not gated by column existence like the
-# email_received_at migration above (near the top of this file) -- this
-# needs to re-run once against rows THAT migration's own backfill already
-# touched, since it predates the fix below (_create_email_communication's
-# sent_at param) and so stamped every message of a split thread with the
-# one shared InboundEmail.received_at, same as the bug this whole thing is
-# fixing. Must live down here, not in that earlier block, since it needs
+# Re-run-every-deploy repair (not gated by column existence like the
+# email_received_at migration above, near the top of this file) -- re-
+# derives each split message's email_received_at AND contact_date from a
+# fresh _extract_thread_messages call, so any parser improvement (e.g. the
+# Greek Στάλθηκε:/μμ/πμ fallback in _parse_quoted_sent_date) automatically
+# repairs already-ingested rows on next deploy, not just future emails.
+# Must live down here, not in that earlier block, since it needs
 # _extract_thread_messages -- not yet defined at that point in the module.
 # Bounded to inbound emails with more than one linked Communication (a
 # genuine split) and cheap enough to just run on every startup rather than
@@ -4954,9 +4954,21 @@ if _is_main_process():
                 continue
             for _link, _msg in zip(_links, _msgs):
                 _comm = _link.communication
+                if not _comm:
+                    continue
                 _sent_at = _msg.get("sent_at")
-                if _comm and _sent_at and _comm.email_received_at != _sent_at:
+                if _sent_at and _comm.email_received_at != _sent_at:
                     _comm.email_received_at = _sent_at
+                # contact_date (Communication.contact_date, the date shown
+                # in the main dashboard's Comms tab) was derived from this
+                # same per-message parse at creation time -- a header this
+                # parser couldn't read back then (e.g. before the Greek
+                # Στάλθηκε:/μμ/πμ fallback existed) fell all the way back to
+                # the INBOUND EMAIL's own webhook-arrival date instead of
+                # this message's real date, same bug as email_received_at.
+                _sent_date = _msg.get("sent_date")
+                if _sent_date and _comm.contact_date != _sent_date:
+                    _comm.contact_date = _sent_date
         db.session.commit()
 
 
