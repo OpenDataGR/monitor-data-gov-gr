@@ -288,20 +288,25 @@
     .flat-tile-strip { grid-template-columns: repeat(2, 1fr); }
     @media (min-width: 1200px) { .flat-tile-strip { grid-template-columns: repeat(5, 1fr); } }
     @media (min-width: 992px) { .flat-grid-2 { grid-template-columns: repeat(2, 1fr); } }
-    /* Flat view-mode/period toggles (Comms' Cases/Timeline/By Org/All,
-       Traffic's 7/30/90-day period, HVD/DCAT/GeoDCAT's/Contacts' By-Org
-       toggles, Organizations' data.gov.gr/All Public Sector) -- same idea
-       as the rest of the flat redesign: plain text + a thin divider line
-       between options instead of Bootstrap's filled/outlined joined-
-       segment look. Applied alongside .btn-group (kept for its flex
-       layout/ARIA role), overriding only the visual shell; the JS toggle
-       functions still just swap each button between .btn-primary/
-       .btn-outline-primary, completely unchanged -- only what those two
-       classes render AS, inside this wrapper, changes here. */
-    .tab-toggle-group .btn { background: transparent !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; color: var(--bs-secondary-color, #667085); font-weight: 500; }
-    .tab-toggle-group .btn:not(:first-child) { border-left: 1px solid var(--bs-border-color) !important; }
+    /* View-mode/period toggles (Comms' Cases/Timeline/By Org/All, Traffic's
+       7/30/90-day period, HVD/DCAT/GeoDCAT's/Contacts' By-Org toggles,
+       Organizations' data.gov.gr/All Public Sector) -- a segmented pill
+       switcher (rounded shell, each option its own softly-rounded segment,
+       the active one filled solid) instead of Bootstrap's filled/outlined
+       joined-segment look. Applied alongside .btn-group (kept for its flex
+       layout/ARIA role); the JS toggle functions still just swap each
+       button between .btn-primary/.btn-outline-primary, completely
+       unchanged -- only what those two classes render AS, inside this
+       wrapper, changes here. Light values are this app's own choice (the
+       reference only specified dark); dark values are the exact colors
+       given, EXCEPT the shell border, which the existing dark-theme
+       hairline note two sections up already found too close in luminance
+       to the page background to read -- reused --bs-border-color here too. */
+    .tab-toggle-group { display: flex; gap: 2px; background: #eef1f5; border: 1px solid rgba(0,0,0,.08); border-radius: 8px; padding: 3px; }
+    [data-bs-theme="dark"] .tab-toggle-group { background: #1c232f; border-color: var(--bs-border-color); }
+    .tab-toggle-group .btn { background: transparent !important; border: none !important; border-radius: 6px !important; box-shadow: none !important; color: var(--bs-secondary-color, #667085); font-weight: 500; }
     .tab-toggle-group .btn:hover { color: var(--bs-primary); }
-    .tab-toggle-group .btn.btn-primary { color: var(--bs-primary); font-weight: 700; }
+    .tab-toggle-group .btn.btn-primary { background: var(--bs-primary) !important; color: #fff; font-weight: 600; }
     /* Detail-panel pills -- solid saturated fill + white/tinted text taken
        directly from the approved Direction B mockup, not Bootstrap's badge
        palette (which read flatter/lower-contrast for this specific panel).
