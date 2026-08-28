@@ -288,6 +288,20 @@
     .flat-tile-strip { grid-template-columns: repeat(2, 1fr); }
     @media (min-width: 1200px) { .flat-tile-strip { grid-template-columns: repeat(5, 1fr); } }
     @media (min-width: 992px) { .flat-grid-2 { grid-template-columns: repeat(2, 1fr); } }
+    /* Flat view-mode/period toggles (Comms' Cases/Timeline/By Org/All,
+       Traffic's 7/30/90-day period, HVD/DCAT/GeoDCAT's/Contacts' By-Org
+       toggles, Organizations' data.gov.gr/All Public Sector) -- same idea
+       as the rest of the flat redesign: plain text + a thin divider line
+       between options instead of Bootstrap's filled/outlined joined-
+       segment look. Applied alongside .btn-group (kept for its flex
+       layout/ARIA role), overriding only the visual shell; the JS toggle
+       functions still just swap each button between .btn-primary/
+       .btn-outline-primary, completely unchanged -- only what those two
+       classes render AS, inside this wrapper, changes here. */
+    .tab-toggle-group .btn { background: transparent !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; color: var(--bs-secondary-color, #667085); font-weight: 500; }
+    .tab-toggle-group .btn:not(:first-child) { border-left: 1px solid var(--bs-border-color) !important; }
+    .tab-toggle-group .btn:hover { color: var(--bs-primary); }
+    .tab-toggle-group .btn.btn-primary { color: var(--bs-primary); font-weight: 700; }
     /* Detail-panel pills -- solid saturated fill + white/tinted text taken
        directly from the approved Direction B mockup, not Bootstrap's badge
        palette (which read flatter/lower-contrast for this specific panel).
@@ -874,7 +888,7 @@
       <!-- Period selector -->
       <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
         <span class="text-muted small fw-semibold me-1" data-i18n="traffic.period">Period:</span>
-        <div class="btn-group btn-group-sm" role="group">
+        <div class="btn-group btn-group-sm tab-toggle-group" role="group">
           <button id="trafficBtn7"  class="btn btn-outline-primary" onclick="setTrafficPeriod(7)"><span data-i18n="traffic.last7">Last 7 days</span></button>
           <button id="trafficBtn30" class="btn btn-primary"         onclick="setTrafficPeriod(30)"><span data-i18n="traffic.last30">Last 30 days</span></button>
           <button id="trafficBtn90" class="btn btn-outline-primary" onclick="setTrafficPeriod(90)"><span data-i18n="traffic.last90">Last 90 days</span></button>
@@ -995,7 +1009,7 @@
                 <button id="hvdCancelBtn" class="btn btn-outline-danger btn-sm d-none" onclick="cancelHvdCheck()">
                   <i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">Cancel</span>
                 </button>
-                <div class="btn-group btn-group-sm d-none" id="hvdViewToggle" role="group">
+                <div class="btn-group btn-group-sm tab-toggle-group d-none" id="hvdViewToggle" role="group">
                   <button id="hvdViewFlatBtn" type="button" class="btn btn-outline-primary" onclick="setHvdView('flat')" data-i18n="quality.view_flat">All</button>
                   <button id="hvdViewGroupedBtn" type="button" class="btn btn-primary" onclick="setHvdView('grouped')" data-i18n="quality.view_grouped">By Organization</button>
                 </div>
@@ -1044,7 +1058,7 @@
                 <button id="dcatCancelBtn" class="btn btn-outline-danger btn-sm d-none" onclick="cancelDcatCheck()">
                   <i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">Cancel</span>
                 </button>
-                <div class="btn-group btn-group-sm d-none" id="dcatViewToggle" role="group">
+                <div class="btn-group btn-group-sm tab-toggle-group d-none" id="dcatViewToggle" role="group">
                   <button id="dcatViewFlatBtn" type="button" class="btn btn-outline-primary" onclick="setDcatView('flat')" data-i18n="quality.view_flat">All</button>
                   <button id="dcatViewGroupedBtn" type="button" class="btn btn-primary" onclick="setDcatView('grouped')" data-i18n="quality.view_grouped">By Organization</button>
                 </div>
@@ -1093,7 +1107,7 @@
                 <button id="geodcatCancelBtn" class="btn btn-outline-danger btn-sm d-none" onclick="cancelGeoDcatCheck()">
                   <i class="bi bi-x-circle me-1"></i><span data-i18n="quality.hvd_cancel">Cancel</span>
                 </button>
-                <div class="btn-group btn-group-sm d-none" id="geodcatViewToggle" role="group">
+                <div class="btn-group btn-group-sm tab-toggle-group d-none" id="geodcatViewToggle" role="group">
                   <button id="geodcatViewFlatBtn" type="button" class="btn btn-outline-primary" onclick="setGeoDcatView('flat')" data-i18n="quality.view_flat">All</button>
                   <button id="geodcatViewGroupedBtn" type="button" class="btn btn-primary" onclick="setGeoDcatView('grouped')" data-i18n="quality.view_grouped">By Organization</button>
                 </div>
@@ -1251,7 +1265,7 @@
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
               <div class="d-flex align-items-center gap-2 flex-wrap">
                 <h6 class="fw-semibold mb-0"><i class="bi bi-building me-2 text-primary"></i><span data-i18n="orgs.title">Organizations &amp; Dataset Counts</span></h6>
-                <div class="btn-group btn-group-sm" role="group">
+                <div class="btn-group btn-group-sm tab-toggle-group" role="group">
                   <button id="orgsViewPortalBtn" type="button" class="btn btn-primary" onclick="setOrgsView('portal')" data-i18n="orgs.portal">data.gov.gr</button>
                   <button id="orgsViewAllBtn" type="button" class="btn btn-outline-primary" onclick="setOrgsView('all')" data-i18n="orgs.all">All Public Sector</button>
                 </div>
@@ -1280,7 +1294,7 @@
       <div class="card p-0">
         <div class="d-flex align-items-center flex-wrap gap-3 p-3">
           <h6 class="fw-semibold mb-0"><i class="bi bi-envelope me-2 text-primary"></i><span data-i18n="comms.title">Communications Log</span></h6>
-          <div class="btn-group btn-group-sm" role="group">
+          <div class="btn-group btn-group-sm tab-toggle-group" role="group">
             <button id="commsViewCasesBtn" type="button" class="btn btn-primary" onclick="setCommsView('cases')" data-i18n="comms.view_cases">Cases</button>
             <button id="commsViewTimelineBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('timeline')" data-i18n="comms.view_timeline">Timeline</button>
             <button id="commsViewGroupedBtn" type="button" class="btn btn-outline-primary" onclick="setCommsView('grouped')" data-i18n="comms.view_by_org">By Organization</button>
@@ -1399,11 +1413,11 @@
                   <span data-i18n="contacts.title">Contacts</span>
                   <span class="text-muted fw-normal small ms-2" id="contactsCount"></span>
                 </h6>
-                <div class="btn-group btn-group-sm" role="group">
+                <div class="btn-group btn-group-sm tab-toggle-group" role="group">
                   <button id="contactsScopePortalBtn" type="button" class="btn btn-primary" onclick="setContactsScope('portal')" data-i18n="contacts.scope_portal">Portal Members</button>
                   <button id="contactsScopeFileBtn" type="button" class="btn btn-outline-primary" onclick="setContactsScope('file')" data-i18n="contacts.scope_file">File Contacts</button>
                 </div>
-                <div class="btn-group btn-group-sm" role="group" id="contactsLayoutToggle">
+                <div class="btn-group btn-group-sm tab-toggle-group" role="group" id="contactsLayoutToggle">
                   <button id="contactsViewFlatBtn" type="button" class="btn btn-primary" onclick="setContactsView('flat')" data-i18n="contacts.view_all">All</button>
                   <button id="contactsViewGroupedBtn" type="button" class="btn btn-outline-primary" onclick="setContactsView('grouped')" data-i18n="contacts.view_by_org">By Organization</button>
                 </div>
