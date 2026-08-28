@@ -5999,8 +5999,8 @@ function _renderCommsDetailHeader(cs, caseId) {
     `<span class="comms-case-pill ${isClosed ? 'closed' : 'open'}">${caseStatusLabel(cs.status)}</span>` +
     (cs.is_stale ? `<span class="comms-case-pill no-answer"><i class="bi bi-x-lg"></i>${t('comms.case_stale')}</span>` : '') +
     (cs.has_auto_entry ? `<span class="comms-case-pill auto"><i class="bi bi-lightning-charge-fill"></i>${t('inbound.auto_badge')}</span>` : '');
-  headerText.innerHTML = `<div class="fw-bold fs-5">${esc(cs.org_title)}</div>` +
-    `<div class="text-muted">${esc(cs.subject)}</div>` +
+  headerText.innerHTML = `<div class="fw-bold fs-5">${esc(cs.subject)}</div>` +
+    `<div class="text-muted">${esc(cs.org_title)}</div>` +
     `<div class="text-muted small mt-1">${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
     (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : '')) + `</div>`;
 }
