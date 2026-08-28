@@ -24,3 +24,8 @@ pyshacl>=0.29.0
 rdflib>=7.0.0
 webauthn==3.0.0
 pytest>=8.0.0
+# Pure-Python IANA tz database for zoneinfo -- Windows dev machines and some
+# minimal Linux images have no system tzdata, which makes ZoneInfo() raise
+# ZoneInfoNotFoundError; pip-installing this makes it work everywhere
+# regardless of the host OS's own tzdata.
+tzdata>=2024.1

@@ -3,6 +3,7 @@ import sys
 import re
 import json
 import unicodedata
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
@@ -4785,11 +4786,33 @@ def _parse_greek_quoted_sent_date(cleaned):
         return None
 
 
+_ATHENS_TZ = ZoneInfo("Europe/Athens")
+
+
+def _athens_local_to_naive_utc(dt):
+    """A quoted "Sent:"/"Στάλθηκε:" header's date/time is written in the
+    SENDER's own mail client's local timezone (Athens for every real-world
+    sender this app has ever seen), not UTC -- but every other naive
+    datetime in this app that represents a precise moment (created_at,
+    InboundEmail.received_at, Communication.email_received_at, etc.) is
+    naive-UTC by convention, and the frontend always converts by appending
+    'Z' before parsing. Only for callers that need a real timestamp
+    (email_received_at/sent_at) -- Communication.contact_date is a plain
+    calendar date with no timezone concept of its own (models.py), so
+    callers that only need .date() should use _parse_quoted_sent_date's
+    return value directly, UNconverted, or a late-night local time would
+    silently roll back to the previous UTC calendar day."""
+    return dt.replace(tzinfo=_ATHENS_TZ).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+
+
 def _parse_quoted_sent_date(raw):
-    """Returns the full parsed datetime (every format in
-    _QUOTED_SENT_DATE_FORMATS includes a time), not just the date -- callers
-    that only need contact_date convert with .date().isoformat() themselves;
-    the time component also becomes a per-split-message Communication's own
+    """Returns the full parsed datetime, in the sender's own local (Athens)
+    wall-clock time exactly as written in the quoted header -- NOT UTC (see
+    _athens_local_to_naive_utc, which callers needing a real timestamp
+    should apply themselves). Every format in _QUOTED_SENT_DATE_FORMATS
+    includes a time), not just the date -- callers that only need
+    contact_date convert with .date().isoformat() themselves; the time
+    component also becomes a per-split-message Communication's own
     email_received_at (see _extract_thread_messages), instead of every
     message in a split thread sharing the one webhook-arrival timestamp."""
     if not raw:
@@ -4895,8 +4918,12 @@ def _extract_thread_messages(body: str):
             "from_email": (email or "").lower() or None,
             "addrs": addrs,
             "subject": subj_match.group(1).strip() if subj_match else None,
-            "sent_date": sent_dt.date().isoformat() if sent_dt else None,  # Communication.contact_date is date-only
-            "sent_at": sent_dt,  # full datetime, incl. time -- this message's own Communication.email_received_at
+            "sent_date": sent_dt.date().isoformat() if sent_dt else None,  # Communication.contact_date is date-only,
+                                                                            # kept in local (Athens) calendar terms
+            "sent_at": _athens_local_to_naive_utc(sent_dt) if sent_dt else None,  # full datetime, incl. time,
+                                                                                   # converted to naive UTC -- this
+                                                                                   # message's own Communication.
+                                                                                   # email_received_at
             "body": body[header_end:block_end].strip(),
         })
     return messages
@@ -4914,62 +4941,85 @@ def _extract_thread_messages(body: str):
 # genuine split) and cheap enough to just run on every startup rather than
 # tracking whether it's already run -- a no-op once every row already
 # matches its re-derived value.
+def _norm_for_repair_match(text):
+    # Local, minimal copy of _normalize_for_dedup (defined much further
+    # down the module, after this import-time block already needs to have
+    # run) -- collapses whitespace/case/quote-markers so a fresh re-parse
+    # compares equal to what got stored even after a mail client's own
+    # light reformatting.
+    text = re.sub(r"^>+\s?", "", text or "", flags=re.MULTILINE)
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _repair_split_thread_communications():
+    """Body of the re-run-every-deploy repair -- pulled into its own
+    function (called once by the _is_main_process() block below) purely so
+    it has something a test can invoke directly against a seeded DB rather
+    than only being exercisable by importing the whole app module."""
+    _split_inbound_ids = [
+        row[0] for row in
+        db.session.query(InboundEmailCommunication.inbound_email_id)
+                  .group_by(InboundEmailCommunication.inbound_email_id)
+                  .having(db.func.count(InboundEmailCommunication.communication_id) > 1)
+                  .all()
+    ]
+    for _inbound_id in _split_inbound_ids:
+        _inbound = InboundEmail.query.get(_inbound_id)
+        if not _inbound or not _inbound.body_text:
+            continue
+        _msgs = _extract_thread_messages(_inbound.body_text)
+        if not _msgs:
+            continue
+        _links = (InboundEmailCommunication.query
+                  .filter_by(inbound_email_id=_inbound_id)
+                  .order_by(InboundEmailCommunication.id).all())
+        # Matched by CONTENT, not position -- an earlier version of this
+        # repair zipped existing links against a FRESH, UNFILTERED
+        # _extract_thread_messages call by position, trusting that equal
+        # counts meant equal alignment. But the ORIGINAL creation loop
+        # (_apply_inbound_match) only ever created a Communication for a
+        # message with both a meaningful body AND at least one matched
+        # org contact -- a strictly smaller, filtered set. Once a thread
+        # grows new replies (more raw blocks, e.g. an empty "Fwd:"
+        # header with nothing else), the two counts can coincidentally
+        # end up equal again while no longer being the SAME messages in
+        # the SAME order, silently stamping one Communication with a
+        # completely unrelated message's date/time. Communication.notes
+        # is exactly the source message's own body[:2000]
+        # (_auto_captured_notes), so matching each existing row back to
+        # whichever freshly-parsed message has the same body content is
+        # immune to the thread having grown or reordered since.
+        _by_body = {}
+        for _msg in _msgs:
+            _key = _norm_for_repair_match((_msg.get("body") or "")[:2000])
+            if _key:
+                _by_body.setdefault(_key, _msg)
+        for _link in _links:
+            _comm = _link.communication
+            if not _comm:
+                continue
+            _msg = _by_body.get(_norm_for_repair_match(_comm.notes or ""))
+            if not _msg:
+                continue
+            _sent_at = _msg.get("sent_at")
+            if _sent_at and _comm.email_received_at != _sent_at:
+                _comm.email_received_at = _sent_at
+            # contact_date (Communication.contact_date, the date shown
+            # in the main dashboard's Comms tab) was derived from this
+            # same per-message parse at creation time -- a header this
+            # parser couldn't read back then (e.g. before the Greek
+            # Στάλθηκε:/μμ/πμ fallback existed) fell all the way back to
+            # the INBOUND EMAIL's own webhook-arrival date instead of
+            # this message's real date, same bug as email_received_at.
+            _sent_date = _msg.get("sent_date")
+            if _sent_date and _comm.contact_date != _sent_date:
+                _comm.contact_date = _sent_date
+    db.session.commit()
+
+
 if _is_main_process():
     with app.app_context():
-        _split_inbound_ids = [
-            row[0] for row in
-            db.session.query(InboundEmailCommunication.inbound_email_id)
-                      .group_by(InboundEmailCommunication.inbound_email_id)
-                      .having(db.func.count(InboundEmailCommunication.communication_id) > 1)
-                      .all()
-        ]
-        for _inbound_id in _split_inbound_ids:
-            _inbound = InboundEmail.query.get(_inbound_id)
-            if not _inbound or not _inbound.body_text:
-                continue
-            _msgs = _extract_thread_messages(_inbound.body_text)
-            if not _msgs:
-                continue
-            # Matched by POSITION, not by (subject, date) -- an earlier
-            # version of this repair keyed on that pair and still left some
-            # rows sharing a timestamp, because two messages in the same
-            # same-day back-and-forth can share both an unprefixed subject
-            # AND a date, which collapses them onto the same key. Position
-            # is reliable here instead: _apply_inbound_match's own creation
-            # loop iterates _extract_thread_messages' return list in order
-            # and inserts one InboundEmailCommunication per (message, org)
-            # pair in that same order, so ordering the existing links by id
-            # (creation order) and zipping them against a fresh call to the
-            # same extraction function reproduces the original pairing --
-            # PROVIDED every message produced exactly one Communication.
-            # A message naming contacts from more than one org produces
-            # more than one, which would silently misalign a straight zip,
-            # so skip entirely (leaving those rows as they were) rather
-            # than risk stamping a confidently-wrong time on top of the
-            # merely-imprecise one already there.
-            _links = (InboundEmailCommunication.query
-                      .filter_by(inbound_email_id=_inbound_id)
-                      .order_by(InboundEmailCommunication.id).all())
-            if len(_links) != len(_msgs):
-                continue
-            for _link, _msg in zip(_links, _msgs):
-                _comm = _link.communication
-                if not _comm:
-                    continue
-                _sent_at = _msg.get("sent_at")
-                if _sent_at and _comm.email_received_at != _sent_at:
-                    _comm.email_received_at = _sent_at
-                # contact_date (Communication.contact_date, the date shown
-                # in the main dashboard's Comms tab) was derived from this
-                # same per-message parse at creation time -- a header this
-                # parser couldn't read back then (e.g. before the Greek
-                # Στάλθηκε:/μμ/πμ fallback existed) fell all the way back to
-                # the INBOUND EMAIL's own webhook-arrival date instead of
-                # this message's real date, same bug as email_received_at.
-                _sent_date = _msg.get("sent_date")
-                if _sent_date and _comm.contact_date != _sent_date:
-                    _comm.contact_date = _sent_date
-        db.session.commit()
+        _repair_split_thread_communications()
 
 
 def _load_excluded_matchers():
