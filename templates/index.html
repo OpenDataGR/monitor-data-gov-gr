@@ -304,9 +304,20 @@
        to the page background to read -- reused --bs-border-color here too. */
     .tab-toggle-group { display: flex; gap: 2px; background: #eef1f5; border: 1px solid rgba(0,0,0,.08); border-radius: 8px; padding: 3px; }
     [data-bs-theme="dark"] .tab-toggle-group { background: #1c232f; border-color: var(--bs-border-color); }
+    /* font-weight stays IDENTICAL between the active/inactive states below
+       -- a bolder active label measures wider than the same text at a
+       lighter weight, so switching weight on click shifted every segment
+       after it (and the shell's own width, in a narrow column), reading as
+       a "jump". Only background/color change now, which doesn't reflow
+       anything. Bootstrap's default .btn:focus box-shadow ring is also
+       suppressed here -- it renders in the button's own (still blue)
+       focus-ring color, which would fight this now-grayish palette and
+       read as an extra flash on every click. */
     .tab-toggle-group .btn { background: transparent !important; border: none !important; border-radius: 6px !important; box-shadow: none !important; color: var(--bs-secondary-color, #667085); font-weight: 500; }
     .tab-toggle-group .btn:hover { color: var(--bs-primary); }
-    .tab-toggle-group .btn.btn-primary { background: var(--bs-primary) !important; color: #fff; font-weight: 600; }
+    .tab-toggle-group .btn:focus { box-shadow: none !important; }
+    .tab-toggle-group .btn.btn-primary { background: #d7dce3 !important; color: #1c232f; }
+    [data-bs-theme="dark"] .tab-toggle-group .btn.btn-primary { background: #3a4454 !important; color: #e8ecf1; }
     /* Detail-panel pills -- solid saturated fill + white/tinted text taken
        directly from the approved Direction B mockup, not Bootstrap's badge
        palette (which read flatter/lower-contrast for this specific panel).
