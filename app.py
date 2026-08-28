@@ -4748,6 +4748,42 @@ _QUOTED_SENT_DATE_FORMATS = [
     "%d/%m/%Y %H:%M",
 ]
 
+# strptime's %A/%B/%p are locale-dependent (C locale = English names only),
+# so a Greek-language client's "Στάλθηκε: Τρίτη, 4 Αυγούστου 2026 12:07 μμ"
+# can never match any %-format above -- Greek month names, and "day month"
+# order (not "month day"), not just different weekday/AM-PM words. Handled
+# as a separate regex fallback below instead of via strptime.
+_GREEK_MONTHS = {
+    "ιανουαρίου": 1, "φεβρουαρίου": 2, "μαρτίου": 3, "απριλίου": 4,
+    "μαΐου": 5, "μαιου": 5, "ιουνίου": 6, "ιουλίου": 7, "αυγούστου": 8,
+    "σεπτεμβρίου": 9, "οκτωβρίου": 10, "νοεμβρίου": 11, "δεκεμβρίου": 12,
+}
+_GREEK_QUOTED_DATE_RE = re.compile(
+    r"(\d{1,2})\s+([Α-Ωα-ωΆΈΉΊΌΎΏάέήίόύώϊϋΐΰ]+)\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(π\.?μ\.?|μ\.?μ\.?)?",
+    re.IGNORECASE,
+)
+
+
+def _parse_greek_quoted_sent_date(cleaned):
+    m = _GREEK_QUOTED_DATE_RE.search(cleaned)
+    if not m:
+        return None
+    day, month_name, year, hour, minute, meridiem = m.groups()
+    month = _GREEK_MONTHS.get(month_name.lower())
+    if not month:
+        return None
+    hour = int(hour)
+    if meridiem:
+        meridiem = meridiem.lower().replace(".", "")
+        if meridiem == "μμ" and hour != 12:
+            hour += 12
+        elif meridiem == "πμ" and hour == 12:
+            hour = 0
+    try:
+        return datetime(int(year), month, int(day), hour, int(minute))
+    except ValueError:
+        return None
+
 
 def _parse_quoted_sent_date(raw):
     """Returns the full parsed datetime (every format in
@@ -4764,7 +4800,7 @@ def _parse_quoted_sent_date(raw):
             return datetime.strptime(cleaned, fmt)
         except ValueError:
             continue
-    return None
+    return _parse_greek_quoted_sent_date(cleaned)
 
 
 def _extract_quoted_thread_info(body: str):
