@@ -1576,17 +1576,25 @@
           <div class="col-12 d-none" id="commCaseInfo">
             <div class="d-flex align-items-center gap-2 p-2 rounded-3 bg-light border flex-wrap">
               <span class="badge" id="commCaseStatusBadge"></span>
-              <span class="small text-muted" id="commCaseInfoText"></span>
-              <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 ms-auto d-none" id="commCaseFollowupBtn" onclick="_addFollowupFromModal()">
-                <i class="bi bi-plus-lg me-1"></i><span data-i18n="comms.case_add_followup">Add Follow-up</span>
-              </button>
-              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 d-none" id="commCaseEditOrgsBtn" onclick="openCaseOrgEditModal()" data-i18n-title="comms.case_edit_orgs" title="Edit organizations">
-                <i class="bi bi-building-gear"></i>
-              </button>
-              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 d-none" id="commCaseMergeBtn" onclick="openCaseMergeModal()" data-i18n-title="comms.case_merge" title="Merge into another case">
-                <i class="bi bi-signpost-split"></i>
-              </button>
-              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="commCaseToggleBtn" onclick="_toggleCaseFromModal()"></button>
+              <span class="small text-muted text-truncate" id="commCaseInfoText"></span>
+              <div class="d-flex gap-1 ms-auto">
+                <!-- Same shape as the Cases-view detail panel's own header
+                     (#commsDetailToolsWrap) -- one kebab for the two
+                     superadmin-only tools, Close/Reopen and Follow-up stay
+                     as their own always-visible buttons since everyone (not
+                     just superadmins) can use them. -->
+                <div class="dropdown d-none" id="commCaseToolsWrap">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="dropdown" aria-expanded="false" data-i18n-title="comms.case_tools" title="Case tools"><i class="bi bi-three-dots"></i></button>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault();openCaseOrgEditModal()"><i class="bi bi-building-gear me-2"></i><span data-i18n="comms.case_edit_orgs">Edit organizations</span></a></li>
+                    <li><a class="dropdown-item" href="#" onclick="event.preventDefault();openCaseMergeModal()"><i class="bi bi-signpost-split me-2"></i><span data-i18n="comms.case_merge">Merge into another case</span></a></li>
+                  </ul>
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="commCaseToggleBtn" onclick="_toggleCaseFromModal()"></button>
+                <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 d-none" id="commCaseFollowupBtn" onclick="_addFollowupFromModal()">
+                  <i class="bi bi-plus-lg me-1"></i><span data-i18n="comms.case_add_followup">Add Follow-up</span>
+                </button>
+              </div>
             </div>
           </div>
           <div class="col-md-6">

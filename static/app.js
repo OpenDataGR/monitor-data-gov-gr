@@ -6307,11 +6307,10 @@ function _renderCommCaseInfo(cs, isEdit = false) {
   show('commCaseInfoText').textContent = `${t('comms.case_col')} #${cs.id} · ${t('comms.case_opened')} ${(cs.opened_at || '').slice(0, 10)}` +
     (isClosed ? ` · ${t('comms.case_closed_on')} ${(cs.closed_at || '').slice(0, 10)}` : (cs.deadline ? ` · ${t('comm_modal.deadline')}: ${cs.deadline}` : ''));
   show('commCaseFollowupBtn').classList.toggle('d-none', !isEdit);
-  show('commCaseEditOrgsBtn').classList.toggle('d-none', !IS_SUPERADMIN);
-  show('commCaseMergeBtn').classList.toggle('d-none', !IS_SUPERADMIN);
+  show('commCaseToolsWrap').classList.toggle('d-none', !IS_SUPERADMIN);
   const btn = show('commCaseToggleBtn');
   btn.textContent = isClosed ? t('comms.case_reopen') : t('comms.case_close');
-  btn.className = 'btn btn-sm py-0 px-2 ms-auto ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
+  btn.className = 'btn btn-sm py-0 px-2 ' + (isClosed ? 'btn-outline-success' : 'btn-outline-secondary');
 }
 
 async function _toggleCaseFromModal() {
