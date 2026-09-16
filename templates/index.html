@@ -596,6 +596,11 @@
             <i class="bi bi-building"></i><span class="sidebar-label" data-i18n="tab.organizations">Organizations</span>
           </button>
         </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-org-analytics" id="orgAnalyticsTabBtn" data-i18n-title="tab.org_analytics" title="Organization Analytics">
+            <i class="bi bi-graph-up-arrow"></i><span class="sidebar-label" data-i18n="tab.org_analytics">Organization Analytics</span>
+          </button>
+        </li>
         <li class="sidebar-divider"></li>
         <li class="nav-item">
           <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-health" id="healthTabBtn" data-i18n-title="tab.health" title="Health">
@@ -1297,6 +1302,86 @@
             </div>
             <div id="orgsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Organization Analytics -->
+    <div class="tab-pane fade" id="tab-org-analytics">
+      <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+        <h4 class="mb-0" data-i18n="org_analytics.title">Organization Analytics</h4>
+        <div class="position-relative" style="min-width:280px">
+          <input type="text" class="form-control form-control-sm" id="orgAnalyticsSearch"
+                 placeholder="Search organizations…" data-i18n-ph="org_analytics.search_ph" autocomplete="off"
+                 oninput="_orgAnalyticsSearch(this.value)" onfocus="_orgAnalyticsSearch(this.value)"
+                 onblur="setTimeout(()=>document.getElementById('orgAnalyticsDropdown').classList.add('d-none'),150)">
+          <ul class="list-group shadow-sm position-absolute w-100 d-none"
+              id="orgAnalyticsDropdown" style="z-index:1060;max-height:260px;overflow-y:auto;top:100%"></ul>
+        </div>
+      </div>
+
+      <p class="text-muted small" id="orgAnalyticsHint" data-i18n="org_analytics.pick_hint">
+        Pick an organization above to see its scorecard, or browse the peer-group leaderboard below.
+      </p>
+
+      <div id="orgAnalyticsScorecard" class="d-none mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0" id="orgAnalyticsScorecardTitle"></h5>
+          <span class="badge bg-secondary" id="orgAnalyticsScorecardCategory"></span>
+        </div>
+        <div id="orgAnalyticsNoSnapshot" class="alert alert-info small d-none" data-i18n="org_analytics.no_snapshot">
+          No analytics snapshot yet for this organization — it will appear after the next daily rollup.
+        </div>
+        <div id="orgAnalyticsCards" class="row g-2 mb-3"></div>
+        <div class="row g-3">
+          <div class="col-lg-6">
+            <h6 class="fw-semibold" data-i18n="org_analytics.comparison_title">Compared to peers and portal</h6>
+            <div style="height:240px"><canvas id="orgAnalyticsComparisonChart"></canvas></div>
+          </div>
+          <div class="col-lg-6">
+            <h6 class="fw-semibold" data-i18n="org_analytics.trend_title">Trend over time</h6>
+            <div id="orgAnalyticsTrendEmpty" class="text-muted small py-4 text-center d-none" data-i18n="org_analytics.trend_empty">Not enough history yet to show a trend.</div>
+            <div style="height:240px"><canvas id="orgAnalyticsTrendChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <h5 class="mt-2 mb-2" data-i18n="org_analytics.leaderboard_title">Peer-group leaderboard</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th data-i18n="org_analytics.col_category">Category</th>
+              <th data-i18n="org_analytics.col_org_count">Organizations</th>
+              <th data-i18n="org_analytics.col_datasets_avg">Avg. datasets</th>
+              <th data-i18n="org_analytics.col_hvd_avg">Avg. HVD pass rate</th>
+              <th data-i18n="org_analytics.col_dcat_avg">Avg. DCAT-AP pass rate</th>
+              <th data-i18n="org_analytics.col_geodcat_avg">Avg. GeoDCAT-AP pass rate</th>
+            </tr>
+          </thead>
+          <tbody id="orgAnalyticsCategoriesTable">
+            <tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="orgAnalyticsAdminSection" class="d-none mt-4">
+        <h5 class="mb-1" data-i18n="org_analytics.admin_title">Organization classifications</h5>
+        <p class="text-muted small" data-i18n="org_analytics.admin_hint">
+          Superadmin only. The category below is guessed from each org's name automatically; override it if the guess is wrong.
+        </p>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th data-i18n="org_analytics.col_org">Organization</th>
+                <th data-i18n="org_analytics.col_heuristic">Heuristic guess</th>
+                <th data-i18n="org_analytics.col_effective">Effective category</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="orgAnalyticsClassificationsTable"></tbody>
+          </table>
         </div>
       </div>
     </div>

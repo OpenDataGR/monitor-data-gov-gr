@@ -316,6 +316,45 @@ const TRANSLATIONS = {
     'org_detail.datasets': 'datasets published',
     'org_detail.member_since': 'Member since',
     'org_detail.view': 'View on data.gov.gr',
+    'org_detail.quality_title': 'Data Quality',
+    'org_detail.quality_none': 'No quality-check data yet for this organization.',
+    'org_detail.view_full_analytics': 'View full analytics',
+    'org_analytics.title': 'Organization Analytics',
+    'org_analytics.search_ph': 'Search organizations…',
+    'org_analytics.pick_hint': 'Pick an organization above to see its scorecard, or browse the peer-group leaderboard below.',
+    'org_analytics.no_snapshot': 'No analytics snapshot yet for this organization — it will appear after the next daily rollup.',
+    'org_analytics.leaderboard_title': 'Peer-group leaderboard',
+    'org_analytics.col_category': 'Category',
+    'org_analytics.col_org_count': 'Organizations',
+    'org_analytics.col_datasets_avg': 'Avg. datasets',
+    'org_analytics.col_hvd_avg': 'Avg. HVD pass rate',
+    'org_analytics.col_dcat_avg': 'Avg. DCAT-AP pass rate',
+    'org_analytics.col_geodcat_avg': 'Avg. GeoDCAT-AP pass rate',
+    'org_analytics.card_datasets': 'Datasets',
+    'org_analytics.card_hvd': 'HVD Compliance',
+    'org_analytics.card_dcat': 'DCAT-AP Compliance',
+    'org_analytics.card_geodcat': 'GeoDCAT-AP Compliance',
+    'org_analytics.vs_portal': 'vs. portal avg',
+    'org_analytics.vs_peer': 'vs. peer avg',
+    'org_analytics.percentile_suffix': 'th percentile',
+    'org_analytics.comparison_title': 'Compared to peers and portal',
+    'org_analytics.trend_title': 'Trend over time',
+    'org_analytics.trend_empty': 'Not enough history yet to show a trend.',
+    'org_analytics.no_checked_datasets': 'No datasets checked yet',
+    'org_analytics.category_ministry': 'Ministry',
+    'org_analytics.category_municipality': 'Municipality',
+    'org_analytics.category_region': 'Region',
+    'org_analytics.category_decentralized_admin': 'Decentralized Administration',
+    'org_analytics.category_university': 'University',
+    'org_analytics.category_other': 'Other',
+    'org_analytics.admin_title': 'Organization classifications',
+    'org_analytics.admin_hint': "Superadmin only. The category below is guessed from each org's name automatically; override it if the guess is wrong.",
+    'org_analytics.col_org': 'Organization',
+    'org_analytics.col_heuristic': 'Heuristic guess',
+    'org_analytics.col_effective': 'Effective category',
+    'org_analytics.override_btn': 'Override',
+    'org_analytics.clear_override_btn': 'Clear override',
+    'org_analytics.overridden_badge': 'Overridden',
     'comms.title': 'Communications Log',
     'comms.view_all': 'All',
     'comms.view_by_org': 'By Organization',
@@ -915,6 +954,45 @@ const TRANSLATIONS = {
     'org_detail.datasets': 'σύνολα δεδομένων',
     'org_detail.member_since': 'Μέλος από',
     'org_detail.view': 'Προβολή στο data.gov.gr',
+    'org_detail.quality_title': 'Ποιότητα Δεδομένων',
+    'org_detail.quality_none': 'Δεν υπάρχουν ακόμα δεδομένα ελέγχου ποιότητας για αυτόν τον οργανισμό.',
+    'org_detail.view_full_analytics': 'Προβολή πλήρων αναλυτικών',
+    'org_analytics.title': 'Αναλυτικά Οργανισμών',
+    'org_analytics.search_ph': 'Αναζήτηση οργανισμών…',
+    'org_analytics.pick_hint': 'Επιλέξτε έναν οργανισμό παραπάνω για να δείτε την κάρτα επιδόσεών του, ή περιηγηθείτε στον παρακάτω πίνακα κατάταξης ομάδων ομοτίμων.',
+    'org_analytics.no_snapshot': 'Δεν υπάρχει ακόμα στιγμιότυπο αναλυτικών για αυτόν τον οργανισμό — θα εμφανιστεί μετά την επόμενη ημερήσια ενημέρωση.',
+    'org_analytics.leaderboard_title': 'Πίνακας κατάταξης ομάδων ομοτίμων',
+    'org_analytics.col_category': 'Κατηγορία',
+    'org_analytics.col_org_count': 'Οργανισμοί',
+    'org_analytics.col_datasets_avg': 'Μ.Ο. συνόλων δεδομένων',
+    'org_analytics.col_hvd_avg': 'Μ.Ο. συμμόρφωσης HVD',
+    'org_analytics.col_dcat_avg': 'Μ.Ο. συμμόρφωσης DCAT-AP',
+    'org_analytics.col_geodcat_avg': 'Μ.Ο. συμμόρφωσης GeoDCAT-AP',
+    'org_analytics.card_datasets': 'Σύνολα Δεδομένων',
+    'org_analytics.card_hvd': 'Συμμόρφωση HVD',
+    'org_analytics.card_dcat': 'Συμμόρφωση DCAT-AP',
+    'org_analytics.card_geodcat': 'Συμμόρφωση GeoDCAT-AP',
+    'org_analytics.vs_portal': 'έναντι μ.ο. πύλης',
+    'org_analytics.vs_peer': 'έναντι μ.ο. ομοτίμων',
+    'org_analytics.percentile_suffix': 'ο εκατοστημόριο',
+    'org_analytics.comparison_title': 'Σύγκριση με ομοτίμους και πύλη',
+    'org_analytics.trend_title': 'Τάση στον χρόνο',
+    'org_analytics.trend_empty': 'Δεν υπάρχει ακόμα αρκετό ιστορικό για τάση.',
+    'org_analytics.no_checked_datasets': 'Δεν έχουν ελεγχθεί ακόμα σύνολα δεδομένων',
+    'org_analytics.category_ministry': 'Υπουργείο',
+    'org_analytics.category_municipality': 'Δήμος',
+    'org_analytics.category_region': 'Περιφέρεια',
+    'org_analytics.category_decentralized_admin': 'Αποκεντρωμένη Διοίκηση',
+    'org_analytics.category_university': 'Πανεπιστήμιο',
+    'org_analytics.category_other': 'Άλλο',
+    'org_analytics.admin_title': 'Κατηγοριοποιήσεις οργανισμών',
+    'org_analytics.admin_hint': 'Μόνο για υπερδιαχειριστές. Η παρακάτω κατηγορία εικάζεται αυτόματα από το όνομα κάθε οργανισμού· παρακάμψτε την αν η εικασία είναι λανθασμένη.',
+    'org_analytics.col_org': 'Οργανισμός',
+    'org_analytics.col_heuristic': 'Αυτόματη εικασία',
+    'org_analytics.col_effective': 'Ενεργή κατηγορία',
+    'org_analytics.override_btn': 'Παράκαμψη',
+    'org_analytics.clear_override_btn': 'Καθαρισμός παράκαμψης',
+    'org_analytics.overridden_badge': 'Παρακαμφθέν',
     'comms.title': 'Αρχείο Επικοινωνιών',
     'comms.view_all': 'Όλες',
     'comms.view_by_org': 'Ανά Οργανισμό',
@@ -4453,6 +4531,265 @@ function renderOrgsTable(orgs) {
       </tbody>
     </table>`;
 }
+
+// ── Organization Analytics tab ───────────────────────────────────────────────
+const ORG_ANALYTICS_CATEGORIES = ['ministry', 'municipality', 'region', 'decentralized_admin', 'university', 'other'];
+function _orgAnalyticsCategoryLabel(cat) {
+  return t('org_analytics.category_' + (ORG_ANALYTICS_CATEGORIES.includes(cat) ? cat : 'other'));
+}
+function _orgAnalyticsPct(rate) { return rate == null ? null : Math.round(rate * 100); }
+
+let _orgAnalyticsLoaded = false;
+let _orgAnalyticsComparisonChart = null;
+let _orgAnalyticsTrendChart = null;
+
+function _orgAnalyticsSearch(q) { _orgSearchDropdown(q, 'orgAnalyticsDropdown', '_orgAnalyticsSelect'); }
+
+function _orgAnalyticsSelect(code, label) {
+  document.getElementById('orgAnalyticsSearch').value = label;
+  document.getElementById('orgAnalyticsDropdown').classList.add('d-none');
+  loadOrgAnalyticsScorecard(code);
+}
+
+// Entry point from the org detail panel's "View full analytics" link
+// (renderOrgPanel) -- switches tabs, closes the panel, and preloads the org.
+function openOrgAnalyticsFor(orgSlug, orgTitle) {
+  if (!_activateTabByKey('org-analytics')) return;
+  if (typeof _orgPanel !== 'undefined' && _orgPanel) _orgPanel.hide();
+  document.getElementById('orgAnalyticsSearch').value = orgTitle || orgSlug;
+  loadOrgAnalyticsScorecard(orgSlug);
+}
+
+function _orgAnalyticsDeltaHtml(mineRate, otherRate, label) {
+  if (mineRate == null || otherRate == null) return '';
+  const diff = Math.round((mineRate - otherRate) * 100);
+  const cls  = diff > 0 ? 'text-success' : diff < 0 ? 'text-danger' : 'text-muted';
+  const sign = diff > 0 ? '+' : '';
+  return `<span class="${cls} fw-semibold">${sign}${diff}pp</span> <span class="text-muted">${label}</span>`;
+}
+
+function _orgAnalyticsCardHtml(icon, colorKey, valueText, label, deltaParts) {
+  const iconBg = CARD_BORDER_COLOR[colorKey] || '#6c757d';
+  const deltas = deltaParts.filter(Boolean).join(' &middot; ');
+  return `
+    <div class="col-6 col-lg-3">
+      <div class="rounded-3 p-3 h-100" style="border:1px solid rgba(0,0,0,.06)">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width:28px;height:28px;background:${iconBg}">
+            <i class="bi ${icon}" style="font-size:.78rem;color:#fff"></i>
+          </div>
+          <div class="text-muted text-uppercase" style="font-size:.68rem;letter-spacing:.05em">${label}</div>
+        </div>
+        <div class="fw-bold fs-4 lh-1">${valueText}</div>
+        ${deltas ? `<div class="small mt-1">${deltas}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+async function loadOrgAnalyticsScorecard(orgSlug) {
+  const wrap   = document.getElementById('orgAnalyticsScorecard');
+  const hint   = document.getElementById('orgAnalyticsHint');
+  const noSnap = document.getElementById('orgAnalyticsNoSnapshot');
+  wrap.classList.remove('d-none');
+  hint.classList.add('d-none');
+  noSnap.classList.add('d-none');
+  document.getElementById('orgAnalyticsCards').innerHTML = '';
+
+  try {
+    const [scorecard, peer, trend] = await Promise.all([
+      fetch(API_BASE + `api/org-analytics/${encodeURIComponent(orgSlug)}/scorecard`).then(r => r.json()),
+      fetch(API_BASE + `api/org-analytics/${encodeURIComponent(orgSlug)}/peer-comparison`).then(r => r.json()),
+      fetch(API_BASE + `api/org-analytics/${encodeURIComponent(orgSlug)}/trend`).then(r => r.json()),
+    ]);
+
+    if (scorecard.error) {
+      noSnap.classList.remove('d-none');
+      if (_orgAnalyticsComparisonChart) { _orgAnalyticsComparisonChart.destroy(); _orgAnalyticsComparisonChart = null; }
+      if (_orgAnalyticsTrendChart)      { _orgAnalyticsTrendChart.destroy();      _orgAnalyticsTrendChart = null; }
+      return;
+    }
+
+    const snap = scorecard.snapshot;
+    document.getElementById('orgAnalyticsScorecardTitle').textContent    = snap.org_title;
+    document.getElementById('orgAnalyticsScorecardCategory').textContent = _orgAnalyticsCategoryLabel(snap.org_category);
+
+    const cards = [
+      _orgAnalyticsCardHtml('bi-database', 'text-primary', fmt(snap.dataset_count), t('org_analytics.card_datasets'), [
+        scorecard.portal_avg.dataset_count != null
+          ? `<span class="text-muted">${t('org_analytics.vs_portal')}: ${Math.round(scorecard.portal_avg.dataset_count)}</span>` : '',
+      ]),
+      ...['hvd', 'dcat', 'geodcat'].map(k => {
+        const s = snap[k];
+        const pct = _orgAnalyticsPct(s.pass_rate);
+        return _orgAnalyticsCardHtml('bi-shield-check', 'text-info', pct == null ? '—' : `${pct}%`, t('org_analytics.card_' + k), [
+          pct == null ? `<span class="text-muted">${t('org_analytics.no_checked_datasets')}</span>` : '',
+          _orgAnalyticsDeltaHtml(s.pass_rate, scorecard.portal_avg[k + '_pass_rate'], t('org_analytics.vs_portal')),
+          _orgAnalyticsDeltaHtml(s.pass_rate, peer.peer_avg[k + '_pass_rate'], t('org_analytics.vs_peer')),
+        ]);
+      }),
+    ];
+    document.getElementById('orgAnalyticsCards').innerHTML = cards.join('');
+
+    _renderOrgAnalyticsComparisonChart(snap, scorecard.portal_avg, peer.peer_avg);
+    _renderOrgAnalyticsTrendChart(trend.trend || []);
+  } catch (e) {
+    noSnap.classList.remove('d-none');
+  }
+}
+
+function _renderOrgAnalyticsComparisonChart(snap, portalAvg, peerAvg) {
+  const ctx = document.getElementById('orgAnalyticsComparisonChart').getContext('2d');
+  if (_orgAnalyticsComparisonChart) _orgAnalyticsComparisonChart.destroy();
+
+  const labels = [t('org_analytics.card_hvd'), t('org_analytics.card_dcat'), t('org_analytics.card_geodcat')];
+  const mineData   = ['hvd', 'dcat', 'geodcat'].map(k => _orgAnalyticsPct(snap[k].pass_rate));
+  const peerData   = ['hvd', 'dcat', 'geodcat'].map(k => _orgAnalyticsPct(peerAvg[k + '_pass_rate']));
+  const portalData = ['hvd', 'dcat', 'geodcat'].map(k => _orgAnalyticsPct(portalAvg[k + '_pass_rate']));
+
+  _orgAnalyticsComparisonChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: snap.org_title, data: mineData, backgroundColor: '#0057b8' },
+        { label: t('org_analytics.vs_peer'),   data: peerData,   backgroundColor: '#ffc107' },
+        { label: t('org_analytics.vs_portal'), data: portalData, backgroundColor: '#6c757d' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { color: _chartTextColor() } } },
+      scales: {
+        x: { grid: { color: _chartGridColor() }, ticks: { color: _chartTextColor() } },
+        y: { min: 0, max: 100, grid: { color: _chartGridColor() }, ticks: { color: _chartTextColor(), callback: v => v + '%' } },
+      },
+    },
+  });
+}
+
+function _renderOrgAnalyticsTrendChart(rows) {
+  const canvas = document.getElementById('orgAnalyticsTrendChart');
+  const empty  = document.getElementById('orgAnalyticsTrendEmpty');
+  if (_orgAnalyticsTrendChart) { _orgAnalyticsTrendChart.destroy(); _orgAnalyticsTrendChart = null; }
+  if (rows.length < 2) {
+    empty.classList.remove('d-none');
+    canvas.classList.add('d-none');
+    return;
+  }
+  empty.classList.add('d-none');
+  canvas.classList.remove('d-none');
+  const ctx = canvas.getContext('2d');
+  const mk = (key, color) => ({
+    label: t('org_analytics.card_' + key),
+    data: rows.filter(r => r[key].pass_rate != null).map(r => ({
+      x: new Date(/[Zz]$/.test(r.computed_at) ? r.computed_at : r.computed_at + 'Z'),
+      y: _orgAnalyticsPct(r[key].pass_rate),
+    })),
+    borderColor: color, backgroundColor: color, fill: false, tension: 0.3, pointRadius: 2, pointHoverRadius: 4,
+  });
+  _orgAnalyticsTrendChart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets: [mk('hvd', '#0057b8'), mk('dcat', '#ffc107'), mk('geodcat', '#198754')] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { color: _chartTextColor() } } },
+      scales: {
+        x: {
+          type: 'time', time: { unit: 'day', tooltipFormat: 'dd/MM/yyyy', displayFormats: { day: 'dd/MM' } },
+          grid: { color: _chartGridColor() }, ticks: { color: _chartTextColor() },
+        },
+        y: { min: 0, max: 100, grid: { color: _chartGridColor() }, ticks: { color: _chartTextColor(), callback: v => v + '%' } },
+      },
+    },
+  });
+}
+
+async function loadOrgAnalyticsCategories() {
+  const tbody = document.getElementById('orgAnalyticsCategoriesTable');
+  try {
+    const data = await fetch(API_BASE + 'api/org-analytics/categories').then(r => r.json());
+    const cats = data.categories || [];
+    if (!cats.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">${t('org_analytics.no_snapshot')}</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = cats.map(c => `
+      <tr>
+        <td class="fw-semibold">${_orgAnalyticsCategoryLabel(c.category)}</td>
+        <td>${fmt(c.org_count)}</td>
+        <td>${c.dataset_count_avg != null ? Math.round(c.dataset_count_avg) : '—'}</td>
+        <td>${c.hvd_pass_rate_avg != null ? _orgAnalyticsPct(c.hvd_pass_rate_avg) + '%' : '—'}</td>
+        <td>${c.dcat_pass_rate_avg != null ? _orgAnalyticsPct(c.dcat_pass_rate_avg) + '%' : '—'}</td>
+        <td>${c.geodcat_pass_rate_avg != null ? _orgAnalyticsPct(c.geodcat_pass_rate_avg) + '%' : '—'}</td>
+      </tr>`).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">${t('error')}</td></tr>`;
+  }
+}
+
+async function loadOrgAnalyticsClassifications() {
+  if (!IS_SUPERADMIN) return;
+  document.getElementById('orgAnalyticsAdminSection').classList.remove('d-none');
+  const tbody = document.getElementById('orgAnalyticsClassificationsTable');
+  tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</td></tr>`;
+  try {
+    const rows = await fetch(API_BASE + 'api/org-analytics/classifications').then(r => r.json());
+    if (!Array.isArray(rows) || !rows.length) {
+      tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">—</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${esc(r.org_title || r.org_slug)}</td>
+        <td class="text-muted small">${_orgAnalyticsCategoryLabel(r.heuristic_category)}</td>
+        <td>
+          <select class="form-select form-select-sm d-inline-block w-auto" onchange="_orgAnalyticsSetOverride('${esc(r.org_slug)}', this.value)">
+            ${ORG_ANALYTICS_CATEGORIES.map(c => `<option value="${c}" ${c === r.category ? 'selected' : ''}>${_orgAnalyticsCategoryLabel(c)}</option>`).join('')}
+          </select>
+          ${r.is_override ? `<span class="badge bg-warning text-dark ms-1">${t('org_analytics.overridden_badge')}</span>` : ''}
+        </td>
+        <td>${r.is_override ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="_orgAnalyticsClearOverride('${esc(r.org_slug)}')">${t('org_analytics.clear_override_btn')}</button>` : ''}</td>
+      </tr>`).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-3">${t('error')}</td></tr>`;
+  }
+}
+
+async function _orgAnalyticsSetOverride(orgSlug, category) {
+  try {
+    const resp = await fetch(API_BASE + `api/org-analytics/classifications/${encodeURIComponent(orgSlug)}/override`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category }),
+    });
+    if (!resp.ok) throw new Error();
+    loadOrgAnalyticsClassifications();
+  } catch (e) {
+    alert(t('error'));
+  }
+}
+
+async function _orgAnalyticsClearOverride(orgSlug) {
+  try {
+    const resp = await fetch(API_BASE + `api/org-analytics/classifications/${encodeURIComponent(orgSlug)}/override`, { method: 'DELETE' });
+    if (!resp.ok) throw new Error();
+    loadOrgAnalyticsClassifications();
+  } catch (e) {
+    alert(t('error'));
+  }
+}
+
+document.getElementById('orgAnalyticsTabBtn').addEventListener('click', () => {
+  // Typeahead data may not be warm yet if this is the first org-related tab
+  // visited this session (loadOrgs()/_publicOrgs are otherwise only loaded
+  // on-demand by the Organizations/Contacts tabs) -- the shared lightweight
+  // loader is a no-op once either list is already populated.
+  if (typeof _loadOrgSearchData === 'function') _loadOrgSearchData();
+  if (!_orgAnalyticsLoaded) {
+    _orgAnalyticsLoaded = true;
+    loadOrgAnalyticsCategories();
+    if (IS_SUPERADMIN) loadOrgAnalyticsClassifications();
+  }
+});
 
 // ── All Public Sector view (hrms.gov.gr) ────────────────────────────────────
 
@@ -8461,6 +8798,26 @@ function renderOrgPanel(data) {
     : `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-envelope me-1 text-primary"></i>Communications</h6>
        <p class="text-muted small">No communications recorded.</p>`;
 
+  // quality_summary is only present at all when the viewer has "quality"
+  // access (see organization_detail() in app.py) -- unlike comms_summary
+  // above, this section is omitted outright rather than shown empty, so a
+  // restricted viewer isn't shown a section implying data exists that was
+  // actually just withheld.
+  const qs = data.quality_summary;
+  const qualityHtml = qs ? `
+    <h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-shield-check me-1 text-primary"></i>${t('org_detail.quality_title')}</h6>
+    ${qs.snapshot ? `
+      <div class="d-flex flex-wrap gap-3 mb-1">
+        ${['hvd', 'dcat', 'geodcat'].filter(k => qs.snapshot[k].checked).map(k => `
+          <div>
+            <div class="text-muted text-uppercase" style="font-size:.68rem">${t('org_analytics.card_' + k)}</div>
+            <div class="fw-semibold">${_orgAnalyticsPct(qs.snapshot[k].pass_rate)}%</div>
+          </div>`).join('')}
+      </div>
+      <a href="#" class="small" onclick="openOrgAnalyticsFor('${esc(org.name)}','${esc(org.title)}');return false;">${t('org_detail.view_full_analytics')} <i class="bi bi-arrow-right"></i></a>
+    ` : `<p class="text-muted small">${t('org_detail.quality_none')}</p>`}`
+    : '';
+
   // Clicking through to a member's own panel needs the same "contacts" access
   // that panel's own data (/api/portal-user) is gated behind -- without this
   // check an orgs/datasets-only user could click a row here and just get an
@@ -8507,6 +8864,7 @@ function renderOrgPanel(data) {
     ${descHtml}
     ${datasetsHtml}
     ${commsHtml}
+    ${qualityHtml}
     ${membersHtml}`;
 }
 
