@@ -347,14 +347,6 @@ const TRANSLATIONS = {
     'org_analytics.category_decentralized_admin': 'Decentralized Administration',
     'org_analytics.category_university': 'University',
     'org_analytics.category_other': 'Other',
-    'org_analytics.admin_title': 'Organization classifications',
-    'org_analytics.admin_hint': "Superadmin only. The category below is guessed from each org's name automatically; override it if the guess is wrong.",
-    'org_analytics.col_org': 'Organization',
-    'org_analytics.col_heuristic': 'Heuristic guess',
-    'org_analytics.col_effective': 'Effective category',
-    'org_analytics.override_btn': 'Override',
-    'org_analytics.clear_override_btn': 'Clear override',
-    'org_analytics.overridden_badge': 'Overridden',
     'comms.title': 'Communications Log',
     'comms.view_all': 'All',
     'comms.view_by_org': 'By Organization',
@@ -985,14 +977,6 @@ const TRANSLATIONS = {
     'org_analytics.category_decentralized_admin': 'Αποκεντρωμένη Διοίκηση',
     'org_analytics.category_university': 'Πανεπιστήμιο',
     'org_analytics.category_other': 'Άλλο',
-    'org_analytics.admin_title': 'Κατηγοριοποιήσεις οργανισμών',
-    'org_analytics.admin_hint': 'Μόνο για υπερδιαχειριστές. Η παρακάτω κατηγορία εικάζεται αυτόματα από το όνομα κάθε οργανισμού· παρακάμψτε την αν η εικασία είναι λανθασμένη.',
-    'org_analytics.col_org': 'Οργανισμός',
-    'org_analytics.col_heuristic': 'Αυτόματη εικασία',
-    'org_analytics.col_effective': 'Ενεργή κατηγορία',
-    'org_analytics.override_btn': 'Παράκαμψη',
-    'org_analytics.clear_override_btn': 'Καθαρισμός παράκαμψης',
-    'org_analytics.overridden_badge': 'Παρακαμφθέν',
     'comms.title': 'Αρχείο Επικοινωνιών',
     'comms.view_all': 'Όλες',
     'comms.view_by_org': 'Ανά Οργανισμό',
@@ -4727,56 +4711,11 @@ async function loadOrgAnalyticsCategories() {
   }
 }
 
-async function loadOrgAnalyticsClassifications() {
-  if (!IS_SUPERADMIN) return;
-  document.getElementById('orgAnalyticsAdminSection').classList.remove('d-none');
-  const tbody = document.getElementById('orgAnalyticsClassificationsTable');
-  tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</td></tr>`;
-  try {
-    const rows = await fetch(API_BASE + 'api/org-analytics/classifications').then(r => r.json());
-    if (!Array.isArray(rows) || !rows.length) {
-      tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">—</td></tr>`;
-      return;
-    }
-    tbody.innerHTML = rows.map(r => `
-      <tr>
-        <td>${esc(r.org_title || r.org_slug)}</td>
-        <td class="text-muted small">${_orgAnalyticsCategoryLabel(r.heuristic_category)}</td>
-        <td>
-          <select class="form-select form-select-sm d-inline-block w-auto" onchange="_orgAnalyticsSetOverride('${esc(r.org_slug)}', this.value)">
-            ${ORG_ANALYTICS_CATEGORIES.map(c => `<option value="${c}" ${c === r.category ? 'selected' : ''}>${_orgAnalyticsCategoryLabel(c)}</option>`).join('')}
-          </select>
-          ${r.is_override ? `<span class="badge bg-warning text-dark ms-1">${t('org_analytics.overridden_badge')}</span>` : ''}
-        </td>
-        <td>${r.is_override ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="_orgAnalyticsClearOverride('${esc(r.org_slug)}')">${t('org_analytics.clear_override_btn')}</button>` : ''}</td>
-      </tr>`).join('');
-  } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-3">${t('error')}</td></tr>`;
-  }
-}
-
-async function _orgAnalyticsSetOverride(orgSlug, category) {
-  try {
-    const resp = await fetch(API_BASE + `api/org-analytics/classifications/${encodeURIComponent(orgSlug)}/override`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category }),
-    });
-    if (!resp.ok) throw new Error();
-    loadOrgAnalyticsClassifications();
-  } catch (e) {
-    alert(t('error'));
-  }
-}
-
-async function _orgAnalyticsClearOverride(orgSlug) {
-  try {
-    const resp = await fetch(API_BASE + `api/org-analytics/classifications/${encodeURIComponent(orgSlug)}/override`, { method: 'DELETE' });
-    if (!resp.ok) throw new Error();
-    loadOrgAnalyticsClassifications();
-  } catch (e) {
-    alert(t('error'));
-  }
-}
+// Classification override management (heuristic-vs-effective category,
+// per-org override/clear) lives in the standalone admin panel
+// (admin_users.html's own "Org Classifications" panel), not here -- it's a
+// superadmin-only maintenance tool, same reasoning as Mail Parser config
+// and Contacts to Review living there instead of in the main dashboard.
 
 document.getElementById('orgAnalyticsTabBtn').addEventListener('click', () => {
   // Typeahead data may not be warm yet if this is the first org-related tab
@@ -4787,7 +4726,6 @@ document.getElementById('orgAnalyticsTabBtn').addEventListener('click', () => {
   if (!_orgAnalyticsLoaded) {
     _orgAnalyticsLoaded = true;
     loadOrgAnalyticsCategories();
-    if (IS_SUPERADMIN) loadOrgAnalyticsClassifications();
   }
 });
 

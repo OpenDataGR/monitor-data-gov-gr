@@ -172,6 +172,9 @@
           <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-contact-review" type="button" onclick="loadUnmatchedContacts()">
             <i class="bi bi-person-lines-fill me-2"></i><span class="sidebar-label" data-i18n="admin.nav_contact_review">Contacts to Review</span>
           </button>
+          <button class="nav-link text-start" data-bs-toggle="pill" data-bs-target="#panel-org-classifications" type="button" onclick="loadOrgClassifications()">
+            <i class="bi bi-graph-up-arrow me-2"></i><span class="sidebar-label" data-i18n="admin.nav_org_classifications">Org Classifications</span>
+          </button>
           {% endif %}
         </div>
       </nav>
@@ -404,6 +407,30 @@
               </div>
               <p class="text-muted small mb-3" data-i18n="admin.contact_review_desc">Everyone a processed email named who isn't a registered contact yet -- approve as a new contact, merge into an existing one, or drop the flag. Resolving one automatically finishes attaching whatever case/communication it unblocks.</p>
               <div id="unmatchedContactsTable"><div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
+            </div>
+          </div>
+
+          <!-- Org Classifications section -->
+          <div class="tab-pane fade" id="panel-org-classifications">
+            <div class="card p-4">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <h6 class="fw-semibold mb-0"><i class="bi bi-graph-up-arrow me-2"></i><span data-i18n="admin.org_classifications_title">Organization Classifications</span></h6>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadOrgClassifications()"><i class="bi bi-arrow-clockwise"></i></button>
+              </div>
+              <p class="text-muted small mb-3" data-i18n="admin.org_classifications_desc">Peer-group category used by Organization Analytics benchmarking (ministry, municipality, region, etc.), guessed automatically from each org's name. Override it if the guess is wrong.</p>
+              <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                  <thead>
+                    <tr>
+                      <th data-i18n="admin.org_class_col_org">Organization</th>
+                      <th data-i18n="admin.org_class_col_heuristic">Heuristic guess</th>
+                      <th data-i18n="admin.org_class_col_effective">Effective category</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="orgClassificationsTable"><tr><td colspan="4" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div></td></tr></tbody>
+                </table>
+              </div>
             </div>
           </div>
           {% endif %}
@@ -800,6 +827,15 @@
         'admin.review_merge_required': 'Search for and pick an existing contact to merge into.',
         'admin.review_resolve': 'Resolve', 'admin.review_col_participant': 'Participant',
         'admin.review_col_email_subject': 'Email subject', 'admin.review_col_org_guess': 'Guessed org',
+        'admin.nav_org_classifications': 'Org Classifications',
+        'admin.org_classifications_title': 'Organization Classifications',
+        'admin.org_classifications_desc': "Peer-group category used by Organization Analytics benchmarking (ministry, municipality, region, etc.), guessed automatically from each org's name. Override it if the guess is wrong.",
+        'admin.org_class_col_org': 'Organization', 'admin.org_class_col_heuristic': 'Heuristic guess',
+        'admin.org_class_col_effective': 'Effective category', 'admin.org_class_overridden_badge': 'Overridden',
+        'admin.org_class_clear_override': 'Clear override',
+        'admin.org_class_category_ministry': 'Ministry', 'admin.org_class_category_municipality': 'Municipality',
+        'admin.org_class_category_region': 'Region', 'admin.org_class_category_decentralized_admin': 'Decentralized Administration',
+        'admin.org_class_category_university': 'University', 'admin.org_class_category_other': 'Other',
         'admin.invite_title': 'Invite a new user', 'admin.email': 'Email', 'admin.name': 'Name',
         'admin.admin_checkbox': 'Admin', 'admin.invite': 'Invite',
         'admin.compose': 'Compose', 'admin.compose_desc': 'Send an announcement to some or all dashboard users.',
@@ -943,6 +979,15 @@
         'admin.review_merge_required': 'Αναζητήστε και επιλέξτε μια υπάρχουσα επαφή για συγχώνευση.',
         'admin.review_resolve': 'Επίλυση', 'admin.review_col_participant': 'Συμμετέχων',
         'admin.review_col_email_subject': 'Θέμα email', 'admin.review_col_org_guess': 'Εικαζόμενος φορέας',
+        'admin.nav_org_classifications': 'Κατηγοριοποιήσεις Οργανισμών',
+        'admin.org_classifications_title': 'Κατηγοριοποιήσεις Οργανισμών',
+        'admin.org_classifications_desc': 'Κατηγορία ομάδας ομοτίμων που χρησιμοποιείται στη συγκριτική αξιολόγηση των Αναλυτικών Οργανισμών (υπουργείο, δήμος, περιφέρεια κ.λπ.), η οποία εικάζεται αυτόματα από το όνομα κάθε οργανισμού. Παρακάμψτε την αν η εικασία είναι λανθασμένη.',
+        'admin.org_class_col_org': 'Οργανισμός', 'admin.org_class_col_heuristic': 'Αυτόματη εικασία',
+        'admin.org_class_col_effective': 'Ενεργή κατηγορία', 'admin.org_class_overridden_badge': 'Παρακαμφθέν',
+        'admin.org_class_clear_override': 'Καθαρισμός παράκαμψης',
+        'admin.org_class_category_ministry': 'Υπουργείο', 'admin.org_class_category_municipality': 'Δήμος',
+        'admin.org_class_category_region': 'Περιφέρεια', 'admin.org_class_category_decentralized_admin': 'Αποκεντρωμένη Διοίκηση',
+        'admin.org_class_category_university': 'Πανεπιστήμιο', 'admin.org_class_category_other': 'Άλλο',
         'admin.invite_title': 'Πρόσκληση νέου χρήστη', 'admin.email': 'Email', 'admin.name': 'Όνομα',
         'admin.admin_checkbox': 'Διαχειριστής', 'admin.invite': 'Πρόσκληση',
         'admin.compose': 'Σύνταξη', 'admin.compose_desc': 'Στείλτε μια ανακοίνωση σε μερικούς ή όλους τους χρήστες του dashboard.',
@@ -2121,6 +2166,56 @@
       const resp = await fetch(`../api/unmatched-contacts/${unmatchedId}/drop`, { method: 'POST' });
       if (!resp.ok) { const d = await resp.json(); alert(d.error || t('admin.failed')); return; }
       await loadUnmatchedContacts();
+    }
+
+    // ── Org Classifications (peer-group category for Organization Analytics) ──
+    const ORG_CLASS_CATEGORIES = ['ministry', 'municipality', 'region', 'decentralized_admin', 'university', 'other'];
+    function _orgClassCategoryLabel(cat) {
+      return t('admin.org_class_category_' + (ORG_CLASS_CATEGORIES.includes(cat) ? cat : 'other'));
+    }
+
+    async function loadOrgClassifications() {
+      const tbody = document.getElementById('orgClassificationsTable');
+      if (!tbody) return;
+      tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm"></div></td></tr>`;
+      try {
+        const resp = await fetch('../api/org-analytics/classifications');
+        const rows = await resp.json();
+        if (!resp.ok) throw new Error((rows && rows.error) || t('admin.failed'));
+        if (!Array.isArray(rows) || !rows.length) {
+          tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">—</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = rows.map(r => `
+          <tr>
+            <td class="small">${esc(r.org_title || r.org_slug)}</td>
+            <td class="small text-muted">${_orgClassCategoryLabel(r.heuristic_category)}</td>
+            <td>
+              <select class="form-select form-select-sm d-inline-block w-auto" onchange="_orgClassSetOverride('${esc(r.org_slug)}', this.value)">
+                ${ORG_CLASS_CATEGORIES.map(c => `<option value="${c}" ${c === r.category ? 'selected' : ''}>${_orgClassCategoryLabel(c)}</option>`).join('')}
+              </select>
+              ${r.is_override ? `<span class="badge bg-warning text-dark ms-1">${t('admin.org_class_overridden_badge')}</span>` : ''}
+            </td>
+            <td>${r.is_override ? `<button type="button" class="btn btn-outline-secondary btn-sm" onclick="_orgClassClearOverride('${esc(r.org_slug)}')">${t('admin.org_class_clear_override')}</button>` : ''}</td>
+          </tr>`).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-3">${t('admin.failed_to_load').replace('{err}', esc(e.message))}</td></tr>`;
+      }
+    }
+
+    async function _orgClassSetOverride(orgSlug, category) {
+      const resp = await fetch(`../api/org-analytics/classifications/${encodeURIComponent(orgSlug)}/override`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category }),
+      });
+      if (!resp.ok) { const d = await resp.json(); alert(d.error || t('admin.failed')); return; }
+      loadOrgClassifications();
+    }
+
+    async function _orgClassClearOverride(orgSlug) {
+      const resp = await fetch(`../api/org-analytics/classifications/${encodeURIComponent(orgSlug)}/override`, { method: 'DELETE' });
+      if (!resp.ok) { const d = await resp.json(); alert(d.error || t('admin.failed')); return; }
+      loadOrgClassifications();
     }
 
     let _contactReviewModal = null;
