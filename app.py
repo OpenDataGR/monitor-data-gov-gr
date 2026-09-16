@@ -489,7 +489,7 @@ if config.EMAIL_INBOUND_SECRET:
 # Dashboard sidebar tabs, in the order they appear. "overview" is the landing
 # tab and is always included so a restricted user is never left with nothing.
 ALL_TABS = ["overview", "comms", "contacts", "orgs", "health", "traffic", "datasets", "stats",
-            "geo-insights", "temporal-insights", "quality"]
+            "geo-insights", "temporal-insights", "quality", "org-analytics"]
 
 
 # API path prefixes -> the sidebar tab(s) whose UI legitimately calls them,
@@ -553,6 +553,7 @@ _TAB_ROUTE_RULES = [
     ("/api/matomo/",               ("traffic",)),
     ("/api/stats/",                ("stats",)),
     ("/api/quality/",              ("quality",)),
+    ("/api/org-analytics/",        ("org-analytics",)),
 ]
 
 
@@ -1734,6 +1735,87 @@ def _do_classify_orgs() -> None:
         db.session.commit()
 
 
+_ORG_SNAPSHOT_INTERVAL = 24 * 3600  # daily, same cadence as the SHACL checks it rolls up
+
+
+def _rollup_check_by_org(dataset_cache_model) -> dict:
+    """{org_slug: {"checked": n, "conforms": n}} from a per-dataset quality-
+    check cache table's currently-cached results, grouped by org_slug.
+    Skips rows with no org_slug yet (not backfilled -- see _do_run_check)
+    and rows that have never had a successful check result (result_json is
+    None until the first success, per each *DatasetCheckCache model's own
+    docstring)."""
+    counts: dict = {}
+    rows = (dataset_cache_model.query
+            .filter(dataset_cache_model.org_slug.isnot(None))
+            .all())
+    for row in rows:
+        cached = row.result()
+        if not cached or not isinstance(cached, dict):
+            continue
+        result = cached.get("result")
+        if not result:
+            continue
+        c = counts.setdefault(row.org_slug, {"checked": 0, "conforms": 0})
+        c["checked"] += 1
+        if result.get("conforms"):
+            c["conforms"] += 1
+    return counts
+
+
+def _do_build_org_snapshots() -> None:
+    """Insert one OrgSnapshot row per org for "now", rolling up the current
+    per-dataset quality-check cache rows (grouped by org_slug, see
+    _rollup_check_by_org) plus the current OrgsCache dataset counts and
+    OrgClassification categories. Called once at startup and daily
+    thereafter (_ORG_SNAPSHOT_INTERVAL) -- reads whatever's currently
+    cached rather than waiting on the independently-scheduled, hours-long
+    SHACL checks to finish; each snapshot's three pass rates can therefore
+    be somewhat out of sync with each other, same latency characteristic
+    every other daily aggregate in this loop already has."""
+    orgs = _orgs_cache.get("data") or []
+    if not orgs:
+        return
+    with app.app_context():
+        categories = {row.org_slug: row.category for row in OrgClassification.query.all()}
+        hvd_counts     = _rollup_check_by_org(HvdDatasetCheckCache)
+        dcat_counts    = _rollup_check_by_org(DcatApDatasetCheckCache)
+        geodcat_counts = _rollup_check_by_org(GeoDcatDatasetCheckCache)
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        for o in orgs:
+            slug = o.get("name")
+            if not slug:
+                continue
+            hvd     = hvd_counts.get(slug, {"checked": 0, "conforms": 0})
+            dcat    = dcat_counts.get(slug, {"checked": 0, "conforms": 0})
+            geodcat = geodcat_counts.get(slug, {"checked": 0, "conforms": 0})
+            db.session.add(OrgSnapshot(
+                computed_at=now, org_slug=slug, org_title=o.get("title") or slug,
+                org_category=categories.get(slug), dataset_count=o.get("package_count", 0),
+                hvd_checked=hvd["checked"], hvd_conforms=hvd["conforms"],
+                hvd_pass_rate=(hvd["conforms"] / hvd["checked"]) if hvd["checked"] else None,
+                dcat_checked=dcat["checked"], dcat_conforms=dcat["conforms"],
+                dcat_pass_rate=(dcat["conforms"] / dcat["checked"]) if dcat["checked"] else None,
+                geodcat_checked=geodcat["checked"], geodcat_conforms=geodcat["conforms"],
+                geodcat_pass_rate=(geodcat["conforms"] / geodcat["checked"]) if geodcat["checked"] else None,
+            ))
+        db.session.commit()
+
+
+def _latest_org_snapshots() -> list:
+    """Every OrgSnapshot row from the most recent completed batch -- all
+    orgs from one _do_build_org_snapshots() run share the same computed_at,
+    so grouping by the max timestamp (rather than each org's own latest row
+    independently) avoids mixing rows from a run that crashed partway
+    through with a more recent complete one."""
+    with app.app_context():
+        latest_ts = db.session.query(db.func.max(OrgSnapshot.computed_at)).scalar()
+        if not latest_ts:
+            return []
+        return OrgSnapshot.query.filter_by(computed_at=latest_ts).all()
+
+
 def _background_loop():
     # Run immediately on startup, then repeat every interval
     try:
@@ -1757,6 +1839,10 @@ def _background_loop():
         _do_fetch_portal_members()
     except Exception as exc:
         print(f"[portal-members] initial error: {exc}")
+    try:
+        _do_build_org_snapshots()
+    except Exception as exc:
+        print(f"[org-snapshots] initial error: {exc}")
 
     last_orgs_refresh           = time.time()
     last_dataset_growth_refresh = time.time()
@@ -1766,6 +1852,7 @@ def _background_loop():
     last_geodcat_check_refresh  = time.time()
     last_mqa_refresh            = time.time()
     last_pm_refresh             = time.time()
+    last_org_snapshot_refresh   = time.time()
     while True:
         time.sleep(config.CHECK_INTERVAL_SECONDS)
         try:
@@ -1847,6 +1934,12 @@ def _background_loop():
             except Exception as exc:
                 print(f"[portal-members] refresh error: {exc}")
             last_pm_refresh = time.time()
+        if time.time() - last_org_snapshot_refresh >= _ORG_SNAPSHOT_INTERVAL:
+            try:
+                _do_build_org_snapshots()
+            except Exception as exc:
+                print(f"[org-snapshots] refresh error: {exc}")
+            last_org_snapshot_refresh = time.time()
 
 
 _singleton_lock_file = None  # kept open for the process lifetime; closing it releases the lock
@@ -4000,6 +4093,7 @@ def organization_detail(org_name):
     _allowed_tabs = _session_allowed_tabs()
     _has_contacts_access = _allowed_tabs is None or "contacts" in _allowed_tabs
     _has_comms_access = _allowed_tabs is None or "comms" in _allowed_tabs
+    _has_quality_access = _allowed_tabs is None or "quality" in _allowed_tabs
 
     try:
         r = requests.get(
@@ -4140,7 +4234,169 @@ def organization_detail(org_name):
         except Exception:
             result["comms_summary"] = {"total": 0, "by_status": {}, "latest_date": None}
 
+    # Data-quality summary for this org (org-analytics) -- gated on "quality"
+    # access the same way comms_summary above is gated on "comms", since
+    # this route is reachable from several tabs that don't imply quality
+    # access (see _TAB_ROUTE_RULES's own gating of /api/quality/).
+    if _has_quality_access:
+        try:
+            cls_row = OrgClassification.query.get(org_name)
+            latest = next((s for s in _latest_org_snapshots() if s.org_slug == org_name), None)
+            result["quality_summary"] = {
+                "category": cls_row.category if cls_row else None,
+                "snapshot": latest.to_dict() if latest else None,
+            }
+        except Exception:
+            result["quality_summary"] = {"category": None, "snapshot": None}
+
     return jsonify(result)
+
+
+@app.route("/api/org-analytics/categories")
+def org_analytics_categories():
+    latest = _latest_org_snapshots()
+    by_cat: dict = {}
+    for s in latest:
+        by_cat.setdefault(s.org_category or "other", []).append(s)
+
+    def _avg(rows, attr):
+        vals = [getattr(r, attr) for r in rows if getattr(r, attr) is not None]
+        return sum(vals) / len(vals) if vals else None
+
+    categories = [
+        {
+            "category":              cat,
+            "org_count":             len(rows),
+            "dataset_count_avg":     _avg(rows, "dataset_count"),
+            "hvd_pass_rate_avg":     _avg(rows, "hvd_pass_rate"),
+            "dcat_pass_rate_avg":    _avg(rows, "dcat_pass_rate"),
+            "geodcat_pass_rate_avg": _avg(rows, "geodcat_pass_rate"),
+        }
+        for cat, rows in sorted(by_cat.items())
+    ]
+    return jsonify({
+        "categories":  categories,
+        "computed_at": latest[0].computed_at.isoformat() if latest else None,
+    })
+
+
+@app.route("/api/org-analytics/<org_slug>/scorecard")
+def org_analytics_scorecard(org_slug):
+    latest = _latest_org_snapshots()
+    mine = next((s for s in latest if s.org_slug == org_slug), None)
+    if not mine:
+        return jsonify({"error": "No analytics snapshot yet for this organization"}), 404
+
+    def _avg(rates):
+        vals = [r for r in rates if r is not None]
+        return sum(vals) / len(vals) if vals else None
+
+    def _percentile(rates, mine_rate):
+        if mine_rate is None:
+            return None
+        vals = sorted(r for r in rates if r is not None)
+        if not vals:
+            return None
+        below_or_equal = sum(1 for v in vals if v <= mine_rate)
+        return round(100 * below_or_equal / len(vals), 1)
+
+    hvd_rates     = [s.hvd_pass_rate for s in latest]
+    dcat_rates    = [s.dcat_pass_rate for s in latest]
+    geodcat_rates = [s.geodcat_pass_rate for s in latest]
+    dataset_counts = [s.dataset_count for s in latest]
+
+    return jsonify({
+        "snapshot": mine.to_dict(),
+        "portal_avg": {
+            "dataset_count":  _avg(dataset_counts),
+            "hvd_pass_rate":  _avg(hvd_rates),
+            "dcat_pass_rate": _avg(dcat_rates),
+            "geodcat_pass_rate": _avg(geodcat_rates),
+        },
+        "percentile": {
+            "dataset_count":  _percentile(dataset_counts, mine.dataset_count),
+            "hvd_pass_rate":  _percentile(hvd_rates, mine.hvd_pass_rate),
+            "dcat_pass_rate": _percentile(dcat_rates, mine.dcat_pass_rate),
+            "geodcat_pass_rate": _percentile(geodcat_rates, mine.geodcat_pass_rate),
+        },
+    })
+
+
+@app.route("/api/org-analytics/<org_slug>/peer-comparison")
+def org_analytics_peer_comparison(org_slug):
+    latest = _latest_org_snapshots()
+    mine = next((s for s in latest if s.org_slug == org_slug), None)
+    if not mine:
+        return jsonify({"error": "No analytics snapshot yet for this organization"}), 404
+    peers = [s for s in latest if s.org_slug != org_slug and s.org_category == mine.org_category]
+
+    def _avg(attr):
+        vals = [getattr(s, attr) for s in peers if getattr(s, attr) is not None]
+        return sum(vals) / len(vals) if vals else None
+
+    return jsonify({
+        "category":  mine.org_category,
+        "peer_count": len(peers),
+        "mine":      mine.to_dict(),
+        "peer_avg": {
+            "dataset_count":  _avg("dataset_count"),
+            "hvd_pass_rate":  _avg("hvd_pass_rate"),
+            "dcat_pass_rate": _avg("dcat_pass_rate"),
+            "geodcat_pass_rate": _avg("geodcat_pass_rate"),
+        },
+    })
+
+
+@app.route("/api/org-analytics/<org_slug>/trend")
+def org_analytics_trend(org_slug):
+    rows = (OrgSnapshot.query.filter_by(org_slug=org_slug)
+            .order_by(OrgSnapshot.computed_at).all())
+    return jsonify({"trend": [r.to_dict() for r in rows]})
+
+
+@app.route("/api/org-analytics/classifications")
+def org_analytics_classifications():
+    err = _require_superadmin()
+    if err:
+        return err
+    rows = OrgClassification.query.order_by(OrgClassification.org_title).all()
+    return jsonify([r.to_dict() for r in rows])
+
+
+@app.route("/api/org-analytics/classifications/<org_slug>/override", methods=["POST"])
+def org_analytics_set_override(org_slug):
+    err = _require_superadmin()
+    if err:
+        return err
+    body = freq.get_json(silent=True) or {}
+    category = body.get("category")
+    if category not in ORG_CATEGORIES:
+        return jsonify({"error": f"category must be one of {', '.join(ORG_CATEGORIES)}"}), 400
+    row = OrgClassification.query.get(org_slug)
+    if not row:
+        return jsonify({"error": "Unknown organization"}), 404
+    row.category               = category
+    row.is_override            = True
+    row.overridden_by_user_id  = session.get("user_id")
+    row.overridden_at          = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.session.commit()
+    return jsonify(row.to_dict())
+
+
+@app.route("/api/org-analytics/classifications/<org_slug>/override", methods=["DELETE"])
+def org_analytics_clear_override(org_slug):
+    err = _require_superadmin()
+    if err:
+        return err
+    row = OrgClassification.query.get(org_slug)
+    if not row:
+        return jsonify({"error": "Unknown organization"}), 404
+    row.category               = row.heuristic_category or "other"
+    row.is_override            = False
+    row.overridden_by_user_id  = None
+    row.overridden_at          = None
+    db.session.commit()
+    return jsonify(row.to_dict())
 
 
 VALID_STATUSES   = {"Initial Contact", "Intermediate Contact", "Positive Response", "Negative Response", "No Response"}
