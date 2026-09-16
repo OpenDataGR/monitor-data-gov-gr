@@ -371,11 +371,22 @@ Key decisions/shape:
   `comms_summary` is gated on `"comms"` access.
 - **Frontend**: a new sidebar tab (`#tab-org-analytics`) — org picker
   (reuses `org_search.js`'s shared typeahead), scorecard cards, a Chart.js
-  grouped-bar comparison chart and per-check trend line chart, a
-  peer-group leaderboard table, and a superadmin-only classification
-  override table. The existing org detail panel (`openOrgPanel`/
-  `renderOrgPanel`) gained a compact "Data Quality" section reading
-  `quality_summary`, linking into the new tab via `openOrgAnalyticsFor()`.
+  grouped-bar comparison chart and per-check trend line chart, and a
+  peer-group leaderboard table. The existing org detail panel
+  (`openOrgPanel`/`renderOrgPanel`) gained a compact "Data Quality" section
+  reading `quality_summary`, linking into the new tab via
+  `openOrgAnalyticsFor()`.
+- **The classification override table lives in the standalone admin panel
+  (`admin_users.html`'s "Org Classifications" panel), not the main
+  dashboard** — it was first built inline on the Organization Analytics
+  tab, gated only by hiding it client-side from non-superadmins, but that
+  doesn't match this app's convention (superadmin maintenance tooling —
+  Mail Parser config, Contacts to Review — lives in `admin_users.html`, not
+  the main dashboard) and was moved there the same session. Since that page
+  is standalone (loads neither `app.js` nor its `TRANSLATIONS`), the
+  category labels/column headers are duplicated into `admin_users.html`'s
+  own i18n dict under an `admin.org_class_*` prefix rather than reusing
+  `app.js`'s `org_analytics.*` keys.
 - **`admin_users.html`'s `TAB_DEFS` list is hardcoded, not driven by the
   server's `ALL_TABS`** — easy to miss when adding a new tab. Missing an
   entry there means a superadmin can never actually grant a tab-restricted
