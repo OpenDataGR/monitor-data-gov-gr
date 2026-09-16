@@ -137,6 +137,13 @@ class HvdDatasetCheckCache(db.Model):
     metadata_modified = db.Column(db.String(64))
     result_json       = db.Column(db.Text)  # last successful _hvd_check_one() result; None if never succeeded
     checked_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    # CKAN org slug (matches OrgsCache's "name" field), kept in sync with the
+    # dataset's *current* org on every check run -- not just re-derived when
+    # the dataset itself gets re-checked -- so org-level rollups (app._do_
+    # build_org_snapshots) stay accurate across org renames/transfers without
+    # needing a full re-check. Nullable: rows written before this column
+    # existed backfill on the next scheduled check run for their check type.
+    org_slug          = db.Column(db.String(200), index=True)
 
     def result(self):
         return json.loads(self.result_json) if self.result_json else None
@@ -184,6 +191,7 @@ class DcatApDatasetCheckCache(db.Model):
     metadata_modified = db.Column(db.String(64))
     result_json       = db.Column(db.Text)
     checked_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    org_slug          = db.Column(db.String(200), index=True)  # see HvdDatasetCheckCache.org_slug
 
     def result(self):
         return json.loads(self.result_json) if self.result_json else None
@@ -228,6 +236,7 @@ class GeoDcatDatasetCheckCache(db.Model):
     metadata_modified = db.Column(db.String(64))
     result_json       = db.Column(db.Text)
     checked_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    org_slug          = db.Column(db.String(200), index=True)  # see HvdDatasetCheckCache.org_slug
 
     def result(self):
         return json.loads(self.result_json) if self.result_json else None
@@ -246,6 +255,85 @@ class MqaCache(db.Model):
 
     def data(self):
         return json.loads(self.data_json)
+
+
+ORG_CATEGORIES = ("ministry", "municipality", "region", "decentralized_admin", "university", "other")
+
+
+class OrgClassification(db.Model):
+    """One row per CKAN org (keyed by its CKAN slug, matching OrgsCache's
+    "name" field), classifying it into a peer group for org-analytics
+    comparisons (see app._classify_org / app._do_classify_orgs). heuristic_
+    category is kept separate from the effective category so re-running the
+    keyword classifier never clobbers a manual superadmin override -- it's
+    only informational once is_override is set, shown side-by-side in the
+    admin UI as "heuristic says X, overridden to Y"."""
+    __tablename__ = "org_classifications"
+
+    org_slug              = db.Column(db.String(200), primary_key=True)
+    org_title             = db.Column(db.String(300))  # denormalized, for the admin override UI
+    category              = db.Column(db.String(30), nullable=False)  # effective category, one of ORG_CATEGORIES
+    heuristic_category     = db.Column(db.String(30))  # what _classify_org currently computes, independent of any override
+    is_override            = db.Column(db.Boolean, nullable=False, default=False)
+    overridden_by_user_id  = db.Column(db.Integer)  # plain column, no FK -- same reasoning as MassEmailLog.sent_by_user_id
+    overridden_at          = db.Column(db.DateTime)
+    classified_at          = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def to_dict(self):
+        return {
+            "org_slug":          self.org_slug,
+            "org_title":         self.org_title or self.org_slug,
+            "category":          self.category,
+            "heuristic_category": self.heuristic_category,
+            "is_override":       self.is_override,
+            "overridden_at":     self.overridden_at.isoformat() if self.overridden_at else None,
+            "classified_at":     self.classified_at.isoformat() if self.classified_at else None,
+        }
+
+
+class OrgSnapshot(db.Model):
+    """Append-only time series, one row per org per background-loop run (see
+    app._do_build_org_snapshots) -- mirrors PortalSnapshot's shape rather
+    than a singleton cache, since the whole point is a queryable history for
+    per-org trend charts. org_category is denormalized from OrgClassification
+    at snapshot time so past history isn't silently rewritten if an org's
+    classification changes later. A check's *_checked count can be 0 (org has
+    no datasets of that check's scope yet, e.g. no geospatial datasets) --
+    the corresponding *_pass_rate is left null rather than a misleading 0."""
+    __tablename__ = "org_snapshots"
+
+    id             = db.Column(db.Integer, primary_key=True)
+    computed_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+    org_slug       = db.Column(db.String(200), nullable=False, index=True)
+    org_title      = db.Column(db.String(300))
+    org_category   = db.Column(db.String(30))
+    dataset_count  = db.Column(db.Integer, nullable=False, default=0)
+
+    hvd_checked    = db.Column(db.Integer, nullable=False, default=0)
+    hvd_conforms   = db.Column(db.Integer, nullable=False, default=0)
+    hvd_pass_rate  = db.Column(db.Float)
+
+    dcat_checked   = db.Column(db.Integer, nullable=False, default=0)
+    dcat_conforms  = db.Column(db.Integer, nullable=False, default=0)
+    dcat_pass_rate = db.Column(db.Float)
+
+    geodcat_checked    = db.Column(db.Integer, nullable=False, default=0)
+    geodcat_conforms   = db.Column(db.Integer, nullable=False, default=0)
+    geodcat_pass_rate  = db.Column(db.Float)
+
+    __table_args__ = (db.Index("ix_org_snapshots_org_slug_computed_at", "org_slug", "computed_at"),)
+
+    def to_dict(self):
+        return {
+            "computed_at":   self.computed_at.isoformat() if self.computed_at else None,
+            "org_slug":      self.org_slug,
+            "org_title":     self.org_title or self.org_slug,
+            "org_category":  self.org_category,
+            "dataset_count": self.dataset_count,
+            "hvd":     {"checked": self.hvd_checked, "conforms": self.hvd_conforms, "pass_rate": self.hvd_pass_rate},
+            "dcat":    {"checked": self.dcat_checked, "conforms": self.dcat_conforms, "pass_rate": self.dcat_pass_rate},
+            "geodcat": {"checked": self.geodcat_checked, "conforms": self.geodcat_conforms, "pass_rate": self.geodcat_pass_rate},
+        }
 
 
 class User(db.Model):

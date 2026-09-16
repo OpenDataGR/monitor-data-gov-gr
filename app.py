@@ -34,7 +34,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, InboundEmailCommunication, UnmatchedEmailContact, ExcludedEmailAddress, InboundListenAddress, ApiToken
+from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, OrgClassification, OrgSnapshot, ORG_CATEGORIES, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, InboundEmailCommunication, UnmatchedEmailContact, ExcludedEmailAddress, InboundListenAddress, ApiToken
 import rdflib
 import pyshacl
 import config
@@ -462,6 +462,17 @@ if _is_main_process():
         db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_communications_org_name ON communications (org_name)'))
         db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_cases_org_name ON cases (org_name)'))
         db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_cases_status ON cases (status)'))
+        db.session.commit()
+        # org_slug added to the 3 per-dataset quality-check caches for
+        # org-analytics rollups (app._do_build_org_snapshots) -- see
+        # HvdDatasetCheckCache.org_slug's comment. Backfilled by _do_run_check
+        # on each check type's next scheduled run, not here.
+        for _tbl in ('hvd_dataset_check_cache', 'dcat_ap_dataset_check_cache', 'geodcat_dataset_check_cache'):
+            _cols = [c['name'] for c in _insp.get_columns(_tbl)]
+            if 'org_slug' not in _cols:
+                db.session.execute(text(f'ALTER TABLE {_tbl} ADD COLUMN org_slug VARCHAR(200)'))
+                db.session.commit()
+            db.session.execute(text(f'CREATE INDEX IF NOT EXISTS ix_{_tbl}_org_slug ON {_tbl} (org_slug)'))
         db.session.commit()
 
 
@@ -1655,6 +1666,74 @@ def _do_refresh_orgs() -> None:
     _save_orgs_cache(_orgs_cache["data"])
 
 
+# Ordered keyword rules over _norm_org_text(title) -- Greek public-sector org
+# names follow fairly consistent naming conventions, so a keyword match on
+# the CKAN org title gets most orgs right for peer-group analytics without
+# depending on HRMS exposing an explicit type field (unconfirmed either
+# way). Misclassifications are expected at the edges (a subordinate body
+# whose own name doesn't contain any of these words, region vs.
+# decentralized-administration overlap) -- OrgClassification.is_override is
+# the safety valve for those, not this list. Order matters: "αποκεντρωμενη
+# διοικηση" must be checked before a bare "περιφερεια" test, since some
+# decentralized-administration titles also mention περιφερειες they cover.
+_ORG_CATEGORY_KEYWORDS = [
+    ("decentralized_admin", ("αποκεντρωμενη διοικηση",)),
+    ("ministry",            ("υπουργειο",)),
+    ("municipality",        ("δημος", "δημου")),
+    ("region",              ("περιφερεια",)),
+    ("university",          ("πανεπιστημιο", "πολυτεχνειο")),
+]
+
+
+def _classify_org(org_title: str) -> str:
+    """Best-effort peer-group category from an org's title alone -- see
+    _ORG_CATEGORY_KEYWORDS's comment above. Returns "other" when nothing
+    matches (e.g. a legal entity, a general secretariat with no keyword of
+    its own, etc.)."""
+    norm = _norm_org_text(org_title)
+    for category, keywords in _ORG_CATEGORY_KEYWORDS:
+        if any(kw in norm for kw in keywords):
+            return category
+    return "other"
+
+
+def _do_classify_orgs() -> None:
+    """Upsert OrgClassification for every org currently in _orgs_cache.
+    Called once at startup and on the same cadence as _do_refresh_orgs
+    (right after it, since it reads _orgs_cache) so classification tracks
+    whatever CKAN orgs actually exist. A manually overridden row
+    (is_override=True) keeps its effective category untouched -- only
+    heuristic_category is refreshed, so the admin override UI can still show
+    "heuristic now says X" alongside the override without silently
+    reapplying it."""
+    orgs = _orgs_cache.get("data") or []
+    if not orgs:
+        return
+    with app.app_context():
+        existing = {row.org_slug: row for row in OrgClassification.query.all()}
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        for o in orgs:
+            slug = o.get("name")
+            if not slug:
+                continue
+            title = o.get("title") or slug
+            heuristic = _classify_org(title)
+            row = existing.get(slug)
+            if not row:
+                row = OrgClassification(
+                    org_slug=slug, org_title=title, category=heuristic,
+                    heuristic_category=heuristic, is_override=False,
+                )
+                db.session.add(row)
+            else:
+                row.org_title = title
+                row.heuristic_category = heuristic
+                if not row.is_override:
+                    row.category = heuristic
+            row.classified_at = now
+        db.session.commit()
+
+
 def _background_loop():
     # Run immediately on startup, then repeat every interval
     try:
@@ -1665,6 +1744,10 @@ def _background_loop():
         _do_refresh_orgs()
     except Exception as exc:
         print(f"[orgs] initial error: {exc}")
+    try:
+        _do_classify_orgs()
+    except Exception as exc:
+        print(f"[org-classify] initial error: {exc}")
     if not _load_mqa_cache():
         try:
             _do_refresh_mqa()
@@ -1694,6 +1777,10 @@ def _background_loop():
                 _do_refresh_orgs()
             except Exception as exc:
                 print(f"[orgs] refresh error: {exc}")
+            try:
+                _do_classify_orgs()
+            except Exception as exc:
+                print(f"[org-classify] refresh error: {exc}")
             last_orgs_refresh = time.time()
         if time.time() - last_dataset_growth_refresh >= _DATASET_GROWTH_REFRESH_INTERVAL:
             try:
@@ -2880,13 +2967,14 @@ def _hvd_check_one(name: str) -> dict:
 
 
 def _list_hvd_datasets() -> list:
-    """[{"name":..., "metadata_modified":..., "org_title":...}, ...] for every
-    currently HVD-tagged dataset -- one bulk paginated call, used both to know
-    what to check and to detect which ones actually changed since the last
-    check. org_title comes from CKAN's own organization record, NOT from the
-    dataset's dct:publisher RDF field -- that field is free text set by each
-    data owner and is often wrong (e.g. a contact person's name instead of
-    the organization), so it's unusable for grouping."""
+    """[{"name":..., "metadata_modified":..., "org_title":..., "org_slug":...}, ...]
+    for every currently HVD-tagged dataset -- one bulk paginated call, used
+    both to know what to check and to detect which ones actually changed
+    since the last check. org_title/org_slug come from CKAN's own
+    organization record, NOT from the dataset's dct:publisher RDF field --
+    that field is free text set by each data owner and is often wrong (e.g.
+    a contact person's name instead of the organization), so it's unusable
+    for grouping."""
     items = []
     start, batch = 0, 100
     while True:
@@ -2906,7 +2994,8 @@ def _list_hvd_datasets() -> list:
             {
                 "name":             p["name"],
                 "metadata_modified": p.get("metadata_modified"),
-                "org_title":        (p.get("organization_card") or {}).get("title") or "",
+                "org_title":        (p.get("organization") or {}).get("title") or "",
+                "org_slug":         (p.get("organization") or {}).get("name") or "",
             }
             for p in results if p.get("name")
         )
@@ -2927,6 +3016,7 @@ def _list_hvd_datasets() -> list:
 # datasets, so they don't need either of these).
 def _hvd_augment_row(result: dict, d: dict) -> None:
     result["org_title"] = d.get("org_title", "")
+    result["org_slug"] = d.get("org_slug", "")
     result["publisher_mismatch"] = _publisher_mismatch(result.get("publisher_name", ""), result["org_title"])
 
 
@@ -3138,8 +3228,8 @@ def _dcat_check_one(name: str) -> dict:
 
 
 def _list_all_datasets() -> list:
-    """[{"name":..., "metadata_modified":..., "org_title":...}, ...] for
-    every dataset on the portal -- same paginated package_search as
+    """[{"name":..., "metadata_modified":..., "org_title":..., "org_slug":...}, ...]
+    for every dataset on the portal -- same paginated package_search as
     _list_hvd_datasets, just without the hvd_category filter."""
     items = []
     start, batch = 0, 100
@@ -3160,7 +3250,8 @@ def _list_all_datasets() -> list:
             {
                 "name":              p["name"],
                 "metadata_modified": p.get("metadata_modified"),
-                "org_title":         (p.get("organization_card") or {}).get("title") or "",
+                "org_title":         (p.get("organization") or {}).get("title") or "",
+                "org_slug":          (p.get("organization") or {}).get("name") or "",
             }
             for p in results if p.get("name")
         )
@@ -3278,7 +3369,8 @@ def _list_geo_datasets() -> list:
             {
                 "name":              p["name"],
                 "metadata_modified": p.get("metadata_modified"),
-                "org_title":         (p.get("organization_card") or {}).get("title") or "",
+                "org_title":         (p.get("organization") or {}).get("title") or "",
+                "org_slug":          (p.get("organization") or {}).get("name") or "",
             }
             for p in results if p.get("name")
         )
@@ -3308,6 +3400,7 @@ def _do_run_geodcat_check() -> None: _do_run_check("geodcat")
 # existed before.
 def _default_augment_row(result: dict, d: dict) -> None:
     result["org_title"] = d.get("org_title", "")
+    result["org_slug"] = d.get("org_slug", "")
 
 
 def _nonconforming_finalize_datasets(checked: list) -> list:
@@ -3473,9 +3566,21 @@ def _do_run_check(check_type: str) -> None:
     try:
         datasets = cfg["list_datasets"]()
         _set_check_status(check_type, total=len(datasets))
+        slug_by_name = {d["name"]: d.get("org_slug") for d in datasets}
 
         with app.app_context():
             cached_rows = {row.name: row for row in cfg["dataset_cache_model"].query.all()}
+            # Keep org_slug in sync with each dataset's *current* org for
+            # every already-cached row -- including ones about to be reused
+            # as-is this run -- so org-level rollups (_do_build_org_
+            # snapshots) reflect an org rename/transfer without requiring a
+            # full re-check. list_datasets() already returns org info for
+            # every dataset on every run at zero extra CKAN-call cost.
+            for _name, _row in cached_rows.items():
+                _slug = slug_by_name.get(_name)
+                if _slug and _row.org_slug != _slug:
+                    _row.org_slug = _slug
+            db.session.commit()
 
         # A dataset is reused as-is only if we have a previously *successful*
         # result, from the current check version, AND CKAN's metadata_modified
@@ -3540,6 +3645,7 @@ def _do_run_check(check_type: str) -> None:
                         row = dataset_cache_model(name=name)
                         db.session.add(row)
                     row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    row.org_slug = slug_by_name.get(name) or row.org_slug
                     if result is not None:
                         # Only overwrite on success -- a transient fetch
                         # failure shouldn't erase a known-good cached result;
