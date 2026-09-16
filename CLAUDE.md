@@ -303,3 +303,86 @@ behind a mode switch.
   Don't reintroduce a blanket pill-button rule; see
   `feedback_no_pill_shaped_buttons` in local memory for the fuller history
   if this comes up again.
+
+## Organization Analytics (Phases 0–2 shipped 2026-09-16; Phase 3 open)
+
+Per-org performance analytics: dataset count + HVD/DCAT-AP/GeoDCAT-AP pass
+rates for a given org, benchmarked against its peer-group category average,
+the portal-wide average/percentile, and its own history over time. A 4th
+benchmark — "datasets published vs. datasets that could/should be
+published" (a coverage/plurality ratio) — was deliberately deferred by the
+user pending their own definition of what "should be published" means; the
+schema leaves room for it (a future nullable column) but nothing computes
+it yet. This was greenfield: no `Organization` model, no per-org quality
+rollup, and no org-categorization concept existed anywhere before this.
+
+Key decisions/shape:
+- **No dedicated `Organization` model.** Orgs are still live CKAN data
+  (`OrgsCache`). Peer-group categorization instead lives in a new
+  `OrgClassification` table (models.py), keyed by CKAN org slug.
+  `app._classify_org()` guesses a category (`ministry` / `municipality` /
+  `region` / `decentralized_admin` / `university` / `other`) from the org's
+  Greek-language title via ordered keyword matching — **not** from an HRMS
+  type field, because `public_orgs()` (app.py) has only ever extracted
+  `code`+`preferredLabel` from HRMS's response and the actual shape of that
+  payload (whether it exposes a usable type/category field) was never
+  confirmed (network-blocked from the dev sandbox at the time). If revisiting
+  this, check the live HRMS payload first — it may simplify or replace the
+  heuristic. `heuristic_category` is stored separately from the effective
+  `category` so re-running the classifier (`app._do_classify_orgs()`, on the
+  same cadence as `_do_refresh_orgs()`, i.e. every 30 min + once at startup)
+  never clobbers a superadmin's manual override (`is_override`); only
+  `heuristic_category` gets refreshed on an overridden row.
+- **Real bug fixed along the way**: `_list_hvd_datasets`/`_list_all_datasets`/
+  `_list_geo_datasets` (app.py) had been reading a nonexistent
+  `organization_card` key from `package_search` results (every other call
+  site uses `organization`) — so `org_title` (and HVD's
+  `publisher_mismatch`, which depends on it) was silently empty on every
+  quality-check result before this. Fixed to read `organization`, which
+  also now yields `org_slug` (the CKAN org's `name`/slug, not just its
+  title).
+- **Per-dataset quality-check rows now carry `org_slug`**: a nullable,
+  indexed column added to `HvdDatasetCheckCache`/`DcatApDatasetCheckCache`/
+  `GeoDcatDatasetCheckCache`. `_do_run_check()` backfills it for **every**
+  dataset in the current run's list each time it runs — including
+  cache-reused rows, not just newly re-checked ones — since
+  `list_datasets()` already returns org info at zero extra CKAN-call cost.
+  This matters: the old cache-hit path never touched a dataset's DB row at
+  all when reusing it as-is, so without this an org rename/transfer would
+  never be reflected without a full re-check.
+- **`OrgSnapshot`** (models.py) is an append-only time series — one row per
+  org per background-loop run, mirroring `PortalSnapshot`'s shape rather
+  than a singleton cache, since the point is a queryable trend history.
+  Built daily by `app._do_build_org_snapshots()` (rolls up the 3 quality
+  caches grouped by `org_slug`, joined with `OrgsCache` dataset counts and
+  `OrgClassification` categories) — wired into `_background_loop()` at
+  startup + every `_ORG_SNAPSHOT_INTERVAL` (24h). `app._latest_org_snapshots()`
+  returns every row sharing the most recent `computed_at` (one full batch),
+  not each org's own latest row independently — avoids mixing a crashed
+  partial run with a later complete one.
+- **Routes**: `/api/org-analytics/categories` (peer-group leaderboard),
+  `/<org_slug>/scorecard` (snapshot + portal avg + percentile),
+  `/<org_slug>/peer-comparison` (vs. same-category orgs), `/<org_slug>/trend`
+  (full history), plus superadmin-gated `/classifications` (list) and
+  `POST`/`DELETE .../classifications/<org_slug>/override`. All gated behind
+  a new `"org-analytics"` tab (`ALL_TABS`, `_TAB_ROUTE_RULES` in app.py).
+  `organization_detail()` also gained a `quality_summary` block (category +
+  latest snapshot), gated on `"quality"` tab access the same way
+  `comms_summary` is gated on `"comms"` access.
+- **Frontend**: a new sidebar tab (`#tab-org-analytics`) — org picker
+  (reuses `org_search.js`'s shared typeahead), scorecard cards, a Chart.js
+  grouped-bar comparison chart and per-check trend line chart, a
+  peer-group leaderboard table, and a superadmin-only classification
+  override table. The existing org detail panel (`openOrgPanel`/
+  `renderOrgPanel`) gained a compact "Data Quality" section reading
+  `quality_summary`, linking into the new tab via `openOrgAnalyticsFor()`.
+- **`admin_users.html`'s `TAB_DEFS` list is hardcoded, not driven by the
+  server's `ALL_TABS`** — easy to miss when adding a new tab. Missing an
+  entry there means a superadmin can never actually grant a tab-restricted
+  user access to it, even though the tab itself works fine for
+  unrestricted users. Added an entry for `org-analytics` here; check this
+  list too whenever a future tab is added.
+
+Still open: the coverage/plurality benchmark (deferred, needs the user's
+own definition of "expected" datasets per org first), and confirming the
+live HRMS payload shape (see above).
