@@ -72,6 +72,11 @@
       <button type="button" id="passkeyLoginBtn" class="btn btn-outline-secondary w-100 mt-2" style="display:none" onclick="_submitPasskeyLogin()">
         <i class="bi bi-fingerprint me-1"></i>Sign in with a passkey
       </button>
+      {% if keycloak_enabled %}
+      <a href="{{ url_for('login_keycloak', next=next) }}" class="btn btn-outline-primary w-100 mt-2">
+        <i class="bi bi-person-badge me-1"></i>Sign in with data.gov.gr
+      </a>
+      {% endif %}
       <div id="passkeyLoginError" class="text-danger small mt-2 text-center d-none"></div>
       <div class="text-center mt-3">
         <a href="{{ url_for('forgot_password') }}" class="small text-decoration-none">Forgot your password?</a>

@@ -38,6 +38,7 @@ from models import db, HealthCheck, PortalSnapshot, Communication, Communication
 import rdflib
 import pyshacl
 import config
+import keycloak_auth
 import api_docs_data
 from webauthn import (
     generate_registration_options, verify_registration_response,
@@ -434,6 +435,10 @@ if _is_main_process():
         if 'is_superadmin' not in _user_cols:
             db.session.execute(text('ALTER TABLE users ADD COLUMN is_superadmin BOOLEAN NOT NULL DEFAULT FALSE'))
             db.session.commit()
+        if 'ckan_sub' not in _user_cols:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN ckan_sub VARCHAR(80)'))
+            db.session.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ix_users_ckan_sub ON users (ckan_sub)'))
+            db.session.commit()
         _inbound_cols = [c['name'] for c in _insp.get_columns('inbound_emails')]
         if 'candidate_contact_ids' not in _inbound_cols:
             db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN candidate_contact_ids TEXT'))
@@ -480,7 +485,8 @@ if _is_main_process():
 
 PASSWORD_LINK_VALID_HOURS = 24
 _PUBLIC_PATHS = ("/login", "/logout", "/forgot-password", "/set-password", "/robots.txt",
-                  "/webauthn/login/begin", "/webauthn/login/complete")
+                  "/webauthn/login/begin", "/webauthn/login/complete",
+                  "/login/keycloak", "/auth/callback", "/health")
 # The inbound-webhook path carries its own secret segment (see EMAIL_INBOUND_SECRET),
 # so it's only public -- i.e. reachable at all -- once that secret is configured.
 if config.EMAIL_INBOUND_SECRET:
@@ -1028,9 +1034,85 @@ def set_password():
     return render_template("set_password.html", valid=valid, error=error, token=token_str)
 
 
+@app.context_processor
+def _inject_keycloak_enabled():
+    return {"keycloak_enabled": keycloak_auth.enabled()}
+
+
+def _safe_next(url):
+    """Only same-site relative paths: ``next`` is user-controlled, so an absolute
+    or protocol-relative URL would make the login an open redirect."""
+    url = url or ""
+    return url if url.startswith("/") and not url.startswith("//") and "\\" not in url else ""
+
+
+@app.route("/login/keycloak")
+@limiter.limit("10 per minute")
+def login_keycloak():
+    if not keycloak_auth.enabled():
+        return redirect(url_for("login"))
+    try:
+        return redirect(keycloak_auth.start(session, _safe_next(freq.args.get("next"))))
+    except keycloak_auth.KeycloakError as exc:
+        return render_template("login.html", error=str(exc), next="")
+
+
+def _keycloak_user_for(ident):
+    """The CRM User for a verified Keycloak identity, linking or creating one.
+    Existing users keep their roles untouched; a new user is a superadmin when
+    CKAN says sysadmin, otherwise tab-restricted to the overview until a
+    superadmin grants more (allowed_tabs NULL would mean *unrestricted*)."""
+    user = User.query.filter_by(ckan_sub=ident.sub).first()
+    if user:
+        return user
+    user = User.query.filter_by(email=ident.email).first()
+    if user:
+        if not ident.email_verified:
+            raise keycloak_auth.KeycloakError(
+                "Your email address is not verified in the login server, so it cannot be linked to the existing account.")
+        user.ckan_sub = ident.sub
+        return user
+    user = User(email=ident.email, name=ident.name or ident.username, ckan_sub=ident.sub,
+                is_admin=ident.sysadmin, is_superadmin=ident.sysadmin,
+                allowed_tabs=None if ident.sysadmin else "overview")
+    db.session.add(user)
+    db.session.flush()  # a new row has no id until flushed; the session needs it
+    return user
+
+
+@app.route("/auth/callback")
+@limiter.limit("20 per minute")
+def keycloak_callback():
+    if not keycloak_auth.enabled():
+        return redirect(url_for("login"))
+    try:
+        ident = keycloak_auth.finish(session, freq.args)
+        user = _keycloak_user_for(ident)
+    except keycloak_auth.KeycloakError as exc:
+        db.session.rollback()
+        return render_template("login.html", error=str(exc), next="")
+    _regenerate_session_id()
+    session.permanent      = True
+    session["user_id"]    = user.id
+    session["user_name"]  = user.name or user.email
+    session["user_email"] = user.email
+    session["is_admin"]   = user.is_admin
+    session["is_superadmin"] = user.is_superadmin
+    session["allowed_tabs"] = user.allowed_tabs
+    session["kc_id_token"] = ident.id_token
+    user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.session.commit()
+    return redirect(_safe_next(ident.next_url) or url_for("index"))
+
+
 @app.route("/logout")
 def logout():
+    id_token = session.get("kc_id_token", "")
     session.clear()
+    if id_token and keycloak_auth.enabled():
+        end_url = keycloak_auth.logout_url(id_token)
+        if end_url:
+            return redirect(end_url)
     return redirect(url_for("login"))
 
 
@@ -2043,6 +2125,18 @@ def changelog():
 
 
 _BUILD_SHA = _git_sha()
+
+
+@app.route("/health")
+def health():
+    """Unauthenticated liveness + DB check for the deploy smoke test: systemd's
+    is-active only proves gunicorn didn't crash, not that the app answers."""
+    try:
+        db.session.execute(text("SELECT 1"))
+    except Exception:
+        db.session.rollback()
+        return jsonify({"status": "error"}), 503
+    return jsonify({"status": "ok"})
 
 
 @app.route("/")

@@ -87,11 +87,43 @@ don't let it go stale.
   Actions minutes).
 - A `test` job runs `pytest tests/` first; `deploy` has `needs: test`, so
   a failing test blocks the deploy from ever reaching prod.
+- The `test` job runs in its own scratch `git worktree` of the pushed commit
+  (not the live dir after a `git pull`, which would let the still-running
+  old code serve new templates for the whole test run), git/pip go through
+  one `flock`, deploys are serialized by a `concurrency` group, and a
+  `/health` smoke test follows the restart (pattern from loader.data.gov.gr).
+  `pytest -n 2` was deliberately NOT adopted: xdist workers failed to start on
+  the dev machine (non-ASCII OneDrive path) so it was never verified;
+  `conftest.py` is already per-worker-DB safe if you try it on the VM.
 - No staging environment — pushing to `main` deploys straight to
   production. A request landing during a deploy's brief gunicorn restart
   can surface as a transient frontend error (stray spinner, a JSON.parse
   failure) — not necessarily a real bug; check `gh run list` for timing
   correlation before chasing it as one.
+
+## Login with the data.gov.gr Keycloak (shipped 2026-10-21)
+
+`keycloak_auth.py` (OIDC authorization-code + PKCE, ported from
+loader.data.gov.gr's `oidc_login.py`/`ckan_access.py`); routes
+`/login/keycloak` + `/auth/callback` in app.py; a "Sign in with data.gov.gr"
+button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
+`KEYCLOAK_CLIENT_SECRET` and `CKAN_SYSADMIN_API_TOKEN` are all set** (see
+`config.py`); email/password and passkeys are untouched alongside it.
+- Keycloak only says who the person is. Access is decided by CKAN: only a
+  CKAN **sysadmin** or an **org admin** (`organization_list_for_user`
+  with `permission=admin`) gets in; fails closed if CKAN is unreachable.
+  The CKAN user is `user_<Keycloak sub>`, never matched by name.
+- New CRM user: sysadmin -> `is_admin`+`is_superadmin`; org admin ->
+  `allowed_tabs="overview"` (NULL would mean *unrestricted*), a superadmin
+  grants more. Existing user with the same email is **linked** (`User.ckan_sub`)
+  and keeps their roles untouched -- but only if Keycloak says
+  `email_verified`. Roles are not re-derived from CKAN on later logins.
+- The one-time state/nonce/verifier live in the Flask session (`kc_tx`);
+  logout also ends the Keycloak session when the login came from it.
+- Needs a Keycloak confidential client (standard flow only, redirect URI
+  `<PUBLIC_BASE_URL>/auth/callback`) -- not registered yet at time of writing,
+  so the flow is tested against a faked Keycloak (`tests/test_keycloak_login.py`),
+  never yet against the real one.
 
 ## Conventions
 

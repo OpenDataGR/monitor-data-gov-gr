@@ -29,3 +29,4 @@ pytest>=8.0.0
 # ZoneInfoNotFoundError; pip-installing this makes it work everywhere
 # regardless of the host OS's own tzdata.
 tzdata>=2024.1
+PyJWT[crypto]>=2.8.0

@@ -20,7 +20,17 @@ CARTO_API_KEY = os.environ.get("CARTO_API_KEY", "").strip()
 # incoming request to infer the host from, e.g. create_admin.py.
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://monitor.data.gov.gr").strip().rstrip("/")
 
-SMTP_SERVER         = os.environ.get("SMTP_SERVER", "smtp.sendgrid.net").strip()
+# Login with the data.gov.gr Keycloak (see keycloak_auth.py). Off unless all four
+# of issuer/client id/client secret/CKAN sysadmin token are set. The sysadmin
+# token is a CKAN sysadmin's API token, used only to ask CKAN whether the person
+# who just signed in is a sysadmin or an organization admin.
+KEYCLOAK_ISSUER        = os.environ.get("KEYCLOAK_ISSUER", "").strip().rstrip("/")
+KEYCLOAK_CLIENT_ID     = os.environ.get("KEYCLOAK_CLIENT_ID", "").strip()
+KEYCLOAK_CLIENT_SECRET = os.environ.get("KEYCLOAK_CLIENT_SECRET", "").strip()
+KEYCLOAK_REDIRECT_URI  = os.environ.get("KEYCLOAK_REDIRECT_URI", "").strip()  # default: PUBLIC_BASE_URL + /auth/callback
+CKAN_SYSADMIN_API_TOKEN = os.environ.get("CKAN_SYSADMIN_API_TOKEN", "").strip()
+
+SMTP_SERVER         =os.environ.get("SMTP_SERVER", "smtp.sendgrid.net").strip()
 SMTP_PORT           = int(os.environ.get("SMTP_PORT", "587") or 587)
 SMTP_USERNAME       = os.environ.get("SMTP_USERNAME", "").strip()
 SMTP_PASSWORD       = os.environ.get("SMTP_PASSWORD", "").strip()

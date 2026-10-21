@@ -349,6 +349,7 @@ class User(db.Model):
     last_login_at = db.Column(db.DateTime)
     last_active_at = db.Column(db.DateTime)  # updated (throttled) on any authenticated request
     allowed_tabs  = db.Column(db.Text)  # comma-separated tab keys; NULL/empty = unrestricted (all tabs)
+    ckan_sub      = db.Column(db.String(80), unique=True, index=True)  # Keycloak subject, set on first Keycloak login
 
     reset_tokens = db.relationship(
         "PasswordResetToken", backref="user", cascade="all, delete-orphan",
