@@ -165,7 +165,7 @@ CKAN_SYSADMIN_API_TOKEN=<the sysadmin's CKAN API token>
 detail in `journalctl -u monitor-data-gov-gr | grep "keycloak login"`. "Invalid redirect_uri" on Keycloak's
 page -> the redirect URI doesn't match exactly. "You have no account in CKAN yet" -> that person never signed
 in to data.gov.gr. "not an administrator of any organization" -> they are an editor/member.
-Not yet exercised against the real Keycloak (tests use a faked one).
+Verified working against the real Keycloak in production (2026-10-21); the automated tests use a faked one.
 
 ## nginx config changes are NOT part of the automated deploy
 

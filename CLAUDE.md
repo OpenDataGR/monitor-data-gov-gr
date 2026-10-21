@@ -120,10 +120,10 @@ button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
   `email_verified`. Roles are not re-derived from CKAN on later logins.
 - The one-time state/nonce/verifier live in the Flask session (`kc_tx`);
   logout also ends the Keycloak session when the login came from it.
-- Needs a Keycloak confidential client (standard flow only, redirect URI
-  `<PUBLIC_BASE_URL>/auth/callback`) -- not registered yet at time of writing,
-  so the flow is tested against a faked Keycloak (`tests/test_keycloak_login.py`),
-  never yet against the real one.
+- Keycloak client `monitor-data-gov-gr` (realm `data`, confidential, standard
+  flow only, redirect URI `<PUBLIC_BASE_URL>/auth/callback`) is registered and
+  the login was verified working end to end in production on 2026-10-21.
+  Automated tests use a faked Keycloak/CKAN (`tests/test_keycloak_login.py`).
 
 ## Conventions
 
