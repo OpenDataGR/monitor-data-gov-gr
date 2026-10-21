@@ -126,6 +126,47 @@ immediately before every restart attempt, so a lockout from an earlier
 failed deploy can never silently persist into later ones -- every deploy
 now gets a genuine fresh attempt regardless of what happened before it.
 
+## Login with the data.gov.gr Keycloak
+
+`keycloak_auth.py` (routes `/login/keycloak`, `/auth/callback` in `app.py`): OpenID Connect
+authorization-code flow with PKCE, same design as loader.data.gov.gr's. It is **off until all of
+`KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` and `CKAN_SYSADMIN_API_TOKEN` are set**;
+until then the login page shows no button and email/password + passkeys work as before.
+
+**Who is let in.** Keycloak only says who the person is. CKAN decides: a CKAN sysadmin, or an
+administrator of at least one organization (`organization_list_for_user`, `permission=admin`; the CKAN user
+is `user_<Keycloak sub>`). It fails closed when CKAN can't be asked. A new sysadmin becomes a CRM
+superadmin; a new org admin gets only the Overview tab until a superadmin grants more; an existing CRM user
+with the same *verified* email is linked and keeps their roles.
+
+**In Keycloak** (realm `data`, `https://auth.data.gov.gr`, admin console -> Clients -> Create client):
+- OpenID Connect, client ID `monitor-data-gov-gr`, **Client authentication On** (confidential),
+  **Standard flow only** (Direct access grants off).
+- Valid redirect URI exactly `https://monitor.data.gov.gr/auth/callback`; valid post-logout redirect URI
+  `https://monitor.data.gov.gr/*`; web origin `https://monitor.data.gov.gr`.
+- Copy the secret from the Credentials tab. The `email` and `profile` scopes must be assigned (default);
+  no roles/groups/mappers are needed. For linking existing users, Keycloak must send `email_verified: true`.
+
+**CKAN token:** as a CKAN sysadmin on data.gov.gr, profile -> API Tokens -> create one (shown only once).
+
+**On the VM**, add to `monitor-data-gov-gr/.env` and restart both services:
+
+```
+KEYCLOAK_ISSUER=https://auth.data.gov.gr/realms/data
+KEYCLOAK_CLIENT_ID=monitor-data-gov-gr
+KEYCLOAK_CLIENT_SECRET=<the client's secret>
+CKAN_SYSADMIN_API_TOKEN=<the sysadmin's CKAN API token>
+# optional: KEYCLOAK_REDIRECT_URI (default: PUBLIC_BASE_URL + /auth/callback)
+```
+
+`PUBLIC_BASE_URL` must be the public address (behind the gateway a request looks like plain `http`).
+
+**Troubleshooting:** no button -> one of the four vars is unset. Errors are shown on the login page; more
+detail in `journalctl -u monitor-data-gov-gr | grep "keycloak login"`. "Invalid redirect_uri" on Keycloak's
+page -> the redirect URI doesn't match exactly. "You have no account in CKAN yet" -> that person never signed
+in to data.gov.gr. "not an administrator of any organization" -> they are an editor/member.
+Not yet exercised against the real Keycloak (tests use a faked one).
+
 ## nginx config changes are NOT part of the automated deploy
 
 `deploy.yml`'s `git pull` updates everything Python/template/static, but
