@@ -3,45 +3,81 @@ name: Deploy to Azure VM
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+
+# Pattern borrowed from loader.data.gov.gr's deploy.yml:
+#   * tests run in their own scratch checkout of the pushed commit, NOT in the live
+#     directory after a `git pull` -- otherwise the running server (old code, already in
+#     memory) serves the new templates straight off disk for the whole test run, and a
+#     template needing something the old code lacks 500s until the restart;
+#   * everything that touches the shared clone's worktree list or the shared virtualenv
+#     (`git`, `pip install`) goes through one lock, `flock`;
+#   * deploys take turns (the `concurrency` group) -- a newer waiting deploy replaces an
+#     older waiting one, which is fine since a deploy always pulls the latest main.
 
 jobs:
   test:
     runs-on: self-hosted
-
+    env:
+      LIVE_DIR: /home/localadmin/monitor-data-gov-gr
+      CI_DIR: ${{ format('{0}/ci/monitor-{1}-{2}', '/home/localadmin', github.run_id, github.run_attempt) }}
+      LOCK: /home/localadmin/ci/.shared.lock
     steps:
-      - name: Pull latest code
+      - name: Check out this commit in its own scratch directory
         run: |
-          cd /home/localadmin/monitor-data-gov-gr
-          git pull
+          mkdir -p "$HOME/ci"
+          cd "$LIVE_DIR"
+          flock "$LOCK" bash -c '
+            git fetch origin main
+            git worktree prune
+            if [ -d "$CI_DIR" ]; then git worktree remove --force "$CI_DIR"; fi
+            git worktree add --detach "$CI_DIR" "${{ github.sha }}"
+          '
+          git -C "$CI_DIR" log --oneline -1
 
       - name: Install dependencies
         run: |
-          cd /home/localadmin/monitor-data-gov-gr
-          source venv/bin/activate
-          pip install -r requirements.txt
+          source "$LIVE_DIR/venv/bin/activate"
+          flock "$LOCK" pip install -r "$CI_DIR/requirements.txt"
 
       - name: Run tests
         run: |
-          cd /home/localadmin/monitor-data-gov-gr
-          source venv/bin/activate
-          python -m pytest tests/ -v
+          source "$LIVE_DIR/venv/bin/activate"
+          cd "$CI_DIR"
+          # Guard: the tests must exercise THIS checkout, not the live code (a copy of
+          # app.py elsewhere on sys.path would give a false green).
+          where=$(python -c "import importlib.util, os; print(os.path.dirname(os.path.abspath(importlib.util.find_spec('app').origin)))")
+          test "$where" = "$CI_DIR" || { echo "::error::tests would import $where, not $CI_DIR"; exit 1; }
+          python -m pytest tests -q
+
+      - name: Remove this run's scratch checkout
+        if: always()
+        run: |
+          cd "$LIVE_DIR"
+          flock "$LOCK" bash -c 'git worktree remove --force "$CI_DIR" || true; git worktree prune'
 
   deploy:
     needs: test
     runs-on: self-hosted
-
+    concurrency:
+      group: monitor-deploy
+      cancel-in-progress: false
+    env:
+      LIVE_DIR: /home/localadmin/monitor-data-gov-gr
+      LOCK: /home/localadmin/ci/.shared.lock
     steps:
       - name: Pull latest code
         run: |
-          cd /home/localadmin/monitor-data-gov-gr
-          git pull
+          cd "$LIVE_DIR"
+          mkdir -p "$HOME/ci"
+          flock "$LOCK" git pull
           date -u '+%Y-%m-%d %H:%M UTC' > build_date.txt
 
       - name: Install dependencies
         run: |
-          cd /home/localadmin/monitor-data-gov-gr
+          cd "$LIVE_DIR"
           source venv/bin/activate
-          pip install -r requirements.txt
+          flock "$LOCK" pip install -r requirements.txt
 
       - name: Reload service
         run: |
@@ -61,3 +97,9 @@ jobs:
           sleep 15
           systemctl is-active --quiet monitor-data-gov-gr && echo "Web service restarted OK" || (journalctl -u monitor-data-gov-gr -n 30 --no-pager; exit 1)
           systemctl is-active --quiet monitor-data-gov-gr-worker && echo "Worker service restarted OK" || (journalctl -u monitor-data-gov-gr-worker -n 30 --no-pager; exit 1)
+
+      - name: Smoke test
+        run: |
+          # "is-active" only proves the process didn't crash -- hit the real route.
+          set -e
+          curl -sf http://127.0.0.1:5000/health
