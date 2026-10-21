@@ -1498,6 +1498,24 @@ function _applyTabRestrictions() {
 }
 _applyTabRestrictions();
 
+// An org-scoped user (a CKAN org admin who signed in through Keycloak) sees only
+// their own organizations' stats. The server refuses everything else regardless
+// (see _org_scope_route_ok in app.py); this just hides the controls and panels
+// whose data the server won't give them, so nothing looks broken or empty.
+const ORG_SCOPED = !!window.__ORG_SCOPED__;
+function _applyOrgScopedUi() {
+  if (!ORG_SCOPED) return;
+  const hide = el => { if (el) el.classList.add('d-none'); };
+  // Quality: running/clearing portal-wide checks is admin-only; MQA is portal-wide.
+  ['hvdCheckBtn', 'dcatCheckBtn', 'geodcatCheckBtn'].forEach(id => hide(document.getElementById(id)));
+  hide(document.getElementById('mqaSubTabBtn')?.closest('li'));
+  // Traffic: only the "top dataset pages" card (filtered to their own datasets) is theirs.
+  hide(document.querySelector('#tab-traffic .flat-tile-strip'));
+  ['trafficChart', 'trafficTopSearches', 'trafficTopApi', 'trafficTopDownloads']
+    .forEach(id => hide(document.getElementById(id)?.closest('.p-4')));
+}
+_applyOrgScopedUi();
+
 // ── Deep-linkable tabs — a URL like #contacts opens directly to that tab ────
 function _tabKeyFromHash(hash) {
   return (hash || '').replace(/^#/, '');
@@ -2578,6 +2596,18 @@ async function loadTrafficTab() {
   show('trafficError').classList.add('d-none');
   if (!_trafficCustomRange) _fillTrafficDatesForPeriod(_trafficPeriod);
   const qs = _trafficRangeQuery();
+
+  if (ORG_SCOPED) {
+    // Portal-wide summary/trend/searches/API/downloads aren't theirs to see.
+    try {
+      const rows = await fetch(API_BASE + 'api/matomo/top-datasets?' + qs + '&limit=20').then(r => r.json());
+      if (Array.isArray(rows)) renderTrafficTopDatasets(rows);
+      else show('trafficTopDatasets').innerHTML = `<p class="text-muted small">${esc(rows.error || t('traffic.failed'))}</p>`;
+    } catch (e) {
+      show('trafficTopDatasets').innerHTML = `<p class="text-muted small">${t('traffic.failed')}</p>`;
+    }
+    return;
+  }
 
   const [summary, history, topDatasets, topSearches, topApi, topDownloads] = await Promise.allSettled([
     fetch(API_BASE + 'api/matomo/summary?' + qs).then(r => r.json()),
@@ -3820,7 +3850,7 @@ async function _loadDcatTab() {
     show('dcatCheckResults').innerHTML = _qualityHintHtml('bi-patch-question', 'quality.dcat_hint');
   }
   _loadGeoDcatTab();
-  _loadMqaTab();
+  if (!ORG_SCOPED) _loadMqaTab();
 }
 
 // ── GeoDCAT-AP compliance check (geospatial extension SHACL) ────────────────
@@ -4726,6 +4756,13 @@ document.getElementById('orgAnalyticsTabBtn').addEventListener('click', () => {
   if (!_orgAnalyticsLoaded) {
     _orgAnalyticsLoaded = true;
     loadOrgAnalyticsCategories();
+    if (ORG_SCOPED) {
+      // Their own organization(s) only -- open the first one straight away.
+      fetch(API_BASE + 'api/organizations').then(r => r.json()).then(j => {
+        const own = (j && Array.isArray(j.data)) ? j.data : [];
+        if (own.length) _orgAnalyticsSelect(own[0].name, own[0].title || own[0].name);
+      }).catch(() => {});
+    }
   }
 });
 
@@ -11287,7 +11324,13 @@ document.addEventListener('DOMContentLoaded', () => {
       openInboundAttachModal(_deepLinkInboundId);
     }
   }
-  loadOverview();
+  if (ORG_SCOPED) {
+    // No Overview / Live Visitors for an org-scoped user (portal-wide data) --
+    // land on their own organization analytics instead.
+    if (!_activateTabByKey(_tabKeyFromHash(location.hash))) _activateTabByKey('org-analytics');
+  } else {
+    loadOverview();
+  }
   // Same "only while that tab is actually visible" gate as the Comms poll
   // below -- these used to keep firing (and the live-visitors one shipping a
   // 13KB+ payload every 20s) no matter which tab was open, competing for the
@@ -11295,7 +11338,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(() => {
     if (_isTabActive('tab-overview') && document.visibilityState === 'visible') loadOverview();
   }, 60_000);  // auto-refresh overview every 60 s
-  loadLiveVisitors();
+  if (!ORG_SCOPED) loadLiveVisitors();
   setInterval(() => {
     if (_isTabActive('tab-overview') && document.visibilityState === 'visible') loadLiveVisitors();
   }, 20_000);  // faster cadence — this widget is meant to feel live

@@ -439,6 +439,12 @@ if _is_main_process():
             db.session.execute(text('ALTER TABLE users ADD COLUMN ckan_sub VARCHAR(80)'))
             db.session.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ix_users_ckan_sub ON users (ckan_sub)'))
             db.session.commit()
+        if 'org_scoped' not in _user_cols:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN org_scoped BOOLEAN NOT NULL DEFAULT FALSE'))
+            db.session.commit()
+        if 'ckan_orgs' not in _user_cols:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN ckan_orgs TEXT'))
+            db.session.commit()
         _inbound_cols = [c['name'] for c in _insp.get_columns('inbound_emails')]
         if 'candidate_contact_ids' not in _inbound_cols:
             db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN candidate_contact_ids TEXT'))
@@ -599,6 +605,78 @@ def _session_allowed_tabs():
     if session.get("is_admin") or not session.get("allowed_tabs"):
         return None
     return _parse_allowed_tabs(session["allowed_tabs"])
+
+
+# ── Org-scoped users (CKAN org admins who signed in through Keycloak) ──────────
+# Such a user sees the stats of their own organizations and NOTHING else. That is
+# enforced here, server-side, as a deny-by-default allowlist of API routes (below)
+# plus per-route filtering of what an allowed route returns -- not by hiding tabs,
+# and independently of allowed_tabs (a superadmin granting such a user an extra
+# tab can't widen it).
+_ORG_SCOPED_TABS = "overview,org-analytics,datasets,quality,traffic"
+_SLUG_RE = re.compile(r"^[A-Za-z0-9_.\-]+$")
+
+# (HTTP methods, path regex). Anything else is refused for an org-scoped user.
+_ORG_SCOPE_ALLOWED = [
+    (("GET",), re.compile(r"^/$")),
+    (("GET", "POST"), re.compile(r"^/api/account/")),  # own name/password/passkeys
+    (("GET", "POST"), re.compile(r"^/api/tokens(/\d+/revoke)?$")),  # own API tokens (same scope)
+    (("GET",), re.compile(r"^/api/org-analytics/(categories|[^/]+/(scorecard|peer-comparison|trend))$")),
+    (("GET",), re.compile(r"^/api/datasets/search$")),
+    (("GET",), re.compile(r"^/api/datasets/formats$")),
+    (("GET",), re.compile(r"^/api/datasets/(?!geo-locations$|formats$|search$)[^/]+$")),
+    (("GET",), re.compile(r"^/api/quality/[a-z]+-check(/export)?$")),
+    (("GET",), re.compile(r"^/api/organizations(/[^/]+)?$")),
+    (("GET",), re.compile(r"^/api/matomo/(top-datasets|dataset-stats|dataset-analytics)$")),
+]
+
+
+def _parse_ckan_orgs(raw):
+    try:
+        slugs = json.loads(raw) if raw else []
+    except (TypeError, ValueError):
+        return []
+    return [s for s in slugs if isinstance(s, str) and _SLUG_RE.match(s)]
+
+
+def _user_org_scope(user):
+    """None = not org-scoped; otherwise the list of CKAN org slugs (possibly empty
+    -- which means they see nothing)."""
+    if not user or not user.org_scoped:
+        return None
+    return _parse_ckan_orgs(user.ckan_orgs)
+
+
+def _session_org_scope():
+    """The org slugs the current request is limited to, or None when unrestricted.
+    Cached in the session at login like is_admin/allowed_tabs; a session that
+    predates the cache is resolved from the DB (fails closed: a scoped user is
+    never treated as unrestricted because a key is missing)."""
+    if "org_scope" in session:
+        return session["org_scope"]
+    scope = _user_org_scope(User.query.get(session.get("user_id")))
+    session["org_scope"] = scope
+    return scope
+
+
+def _org_in_scope(slug):
+    scope = _session_org_scope()
+    return scope is None or slug in scope
+
+
+def _org_scope_route_ok(path, method):
+    if _session_org_scope() is None:
+        return True
+    return any(method in methods and rx.match(path) for methods, rx in _ORG_SCOPE_ALLOWED)
+
+
+def _scope_fq():
+    """Solr fq clause limiting a CKAN package_search to the scoped orgs, or None
+    when unrestricted. An empty scope matches nothing."""
+    scope = _session_org_scope()
+    if scope is None:
+        return None
+    return "organization:(" + " OR ".join(f'"{s}"' for s in scope) + ")" if scope else "-*:*"
 
 
 def _send_password_link(user: "User", kind: str = "invite") -> str:
@@ -829,9 +907,10 @@ def require_login():
         session["is_admin"]     = token_user.is_admin
         session["is_superadmin"] = token_user.is_superadmin
         session["allowed_tabs"] = token_user.allowed_tabs
+        session["org_scope"]    = _user_org_scope(token_user)
         g.api_token_auth = True
         _touch_last_active(token_user.id)
-        if not _tab_route_check(freq.path, _session_allowed_tabs()):
+        if not _tab_route_check(freq.path, _session_allowed_tabs()) or not _org_scope_route_ok(freq.path, freq.method):
             return jsonify({"error": "Forbidden"}), 403
         # No csrf.protect() here on purpose -- CSRF protection exists to stop
         # a malicious page from silently riding the browser's own cookie
@@ -859,7 +938,7 @@ def require_login():
             return redirect(url_for("login", next=freq.script_root + freq.path))
         session["_last_seen"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         _touch_last_active(user_id)
-        if not _tab_route_check(freq.path, _session_allowed_tabs()):
+        if not _tab_route_check(freq.path, _session_allowed_tabs()) or not _org_scope_route_ok(freq.path, freq.method):
             return jsonify({"error": "Forbidden"}), 403
         return
     if freq.path.startswith("/api/"):
@@ -907,6 +986,7 @@ def login():
             session["is_admin"]   = user.is_admin
             session["is_superadmin"] = user.is_superadmin
             session["allowed_tabs"] = user.allowed_tabs
+            session["org_scope"]    = _user_org_scope(user)
             user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.session.commit()
             return redirect(freq.form.get("next") or url_for("index"))
@@ -980,6 +1060,7 @@ def webauthn_login_complete():
     session["is_admin"]   = user.is_admin
     session["is_superadmin"] = user.is_superadmin
     session["allowed_tabs"] = user.allowed_tabs
+    session["org_scope"]    = _user_org_scope(user)
     user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.session.commit()
     return jsonify({"ok": True, "redirect": freq.args.get("next") or url_for("index")})
@@ -1030,6 +1111,7 @@ def set_password():
                 session["is_admin"]   = user.is_admin
                 session["is_superadmin"] = user.is_superadmin
                 session["allowed_tabs"] = user.allowed_tabs
+                session["org_scope"]    = _user_org_scope(user)
                 return redirect(url_for("index"))
     return render_template("set_password.html", valid=valid, error=error, token=token_str)
 
@@ -1060,22 +1142,24 @@ def login_keycloak():
 def _keycloak_user_for(ident):
     """The CRM User for a verified Keycloak identity, linking or creating one.
     Existing users keep their roles untouched; a new user is a superadmin when
-    CKAN says sysadmin, otherwise tab-restricted to the overview until a
-    superadmin grants more (allowed_tabs NULL would mean *unrestricted*)."""
+    CKAN says sysadmin, otherwise an org-scoped user who sees only the stats of
+    their own CKAN organizations (see _org_scope_route_ok). Every login refreshes
+    ckan_orgs from CKAN, so org membership changes apply at the next sign-in."""
     user = User.query.filter_by(ckan_sub=ident.sub).first()
-    if user:
-        return user
-    user = User.query.filter_by(email=ident.email).first()
-    if user:
-        if not ident.email_verified:
-            raise keycloak_auth.KeycloakError(
-                "Your email address is not verified in the login server, so it cannot be linked to the existing account.")
-        user.ckan_sub = ident.sub
-        return user
-    user = User(email=ident.email, name=ident.name or ident.username, ckan_sub=ident.sub,
-                is_admin=ident.sysadmin, is_superadmin=ident.sysadmin,
-                allowed_tabs=None if ident.sysadmin else "overview")
-    db.session.add(user)
+    if not user:
+        user = User.query.filter_by(email=ident.email).first()
+        if user:
+            if not ident.email_verified:
+                raise keycloak_auth.KeycloakError(
+                    "Your email address is not verified in the login server, so it cannot be linked to the existing account.")
+            user.ckan_sub = ident.sub
+    if not user:
+        user = User(email=ident.email, name=ident.name or ident.username, ckan_sub=ident.sub,
+                    is_admin=ident.sysadmin, is_superadmin=ident.sysadmin,
+                    org_scoped=not ident.sysadmin,
+                    allowed_tabs=None if ident.sysadmin else _ORG_SCOPED_TABS)
+        db.session.add(user)
+    user.ckan_orgs = json.dumps(list(ident.organizations))
     db.session.flush()  # a new row has no id until flushed; the session needs it
     return user
 
@@ -1099,6 +1183,7 @@ def keycloak_callback():
     session["is_admin"]   = user.is_admin
     session["is_superadmin"] = user.is_superadmin
     session["allowed_tabs"] = user.allowed_tabs
+    session["org_scope"]    = _user_org_scope(user)
     session["kc_id_token"] = ident.id_token
     user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.session.commit()
@@ -2139,6 +2224,17 @@ def health():
     return jsonify({"status": "ok"})
 
 
+def _index_allowed_tabs(user):
+    """The sidebar's tab list. An org-scoped user's backend allowlist already
+    refuses every portal-wide overview route, so Overview is dropped from their
+    sidebar too (the UI should match what the server will actually answer)."""
+    tabs = _effective_allowed_tabs(user)
+    if _session_org_scope() is not None:
+        allowed = {"org-analytics", "datasets", "quality", "traffic"}
+        return [t for t in (tabs or _ORG_SCOPED_TABS.split(",")) if t in allowed]
+    return tabs
+
+
 @app.route("/")
 def index():
     user = User.query.get(session.get("user_id"))
@@ -2150,7 +2246,8 @@ def index():
                            user_name=session.get("user_name"),
                            is_admin=session.get("is_admin", False),
                            is_superadmin=session.get("is_superadmin", False),
-                           allowed_tabs=_effective_allowed_tabs(user),
+                           allowed_tabs=_index_allowed_tabs(user),
+                           org_scoped=_session_org_scope() is not None,
                            carto_api_key=config.CARTO_API_KEY)
 
 
@@ -2548,6 +2645,16 @@ def datasets_search():
     # scoped to "every other active filter, including the other rows'
     # selections, but not its own split" — see below.
     shared_fq_parts = []
+    scope_fq = _scope_fq()
+    if scope_fq is not None:
+        # Org-scoped user: only their own orgs, whatever `org` asks for.
+        if org and not _org_in_scope(org):
+            return jsonify({"error": "Forbidden"}), 403
+        # fmt/ds_type are interpolated inside quotes below; a quote in either could
+        # break out of its clause and OR the scope away.
+        if any('"' in v or "\\" in v for v in (fmt, ds_type)):
+            return jsonify({"error": "Invalid filter"}), 400
+        shared_fq_parts.append(scope_fq)
     if org:
         shared_fq_parts.append(f"organization:{org}")
     if fmt:
@@ -2685,12 +2792,16 @@ _dataset_formats_cache = _SharedCache("dataset_formats", {"data": None, "ts": 0}
 @app.route("/api/datasets/formats")
 def dataset_formats():
     now = time.time()
-    if _dataset_formats_cache["data"] is not None and now - _dataset_formats_cache["ts"] < 3600:
+    scope_fq = _scope_fq()
+    if scope_fq is None and _dataset_formats_cache["data"] is not None and now - _dataset_formats_cache["ts"] < 3600:
         return jsonify(_dataset_formats_cache["data"])
     try:
+        params = {"rows": 0, "facet": "true", "facet.field": '["res_format"]', "facet.limit": 100}
+        if scope_fq is not None:
+            params["fq"] = scope_fq  # org-scoped: only their own orgs' formats, never the shared portal-wide cache
         r = requests.get(
             f"{config.API_BASE}/package_search",
-            params={"rows": 0, "facet": "true", "facet.field": '["res_format"]', "facet.limit": 100},
+            params=params,
             headers=_api_headers(),
             timeout=config.REQUEST_TIMEOUT,
         )
@@ -2703,8 +2814,9 @@ def dataset_formats():
             [{"name": i["name"], "count": i["count"]} for i in items if i.get("name") and i.get("count")],
             key=lambda x: -x["count"],
         )
-        _dataset_formats_cache["data"] = formats
-        _dataset_formats_cache["ts"] = now
+        if scope_fq is None:
+            _dataset_formats_cache["data"] = formats
+            _dataset_formats_cache["ts"] = now
         return jsonify(formats)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
@@ -2726,6 +2838,8 @@ def dataset_detail(name):
         if not data.get("success"):
             return jsonify({"error": data.get("error", {}).get("message", "CKAN error")}), 502
         p = data["result"]
+        if not _org_in_scope((p.get("organization") or {}).get("name") or ""):
+            return jsonify({"error": "Dataset not found"}), 404
         ds_type = p.get("type") or "dataset"
         resources = [{
             "name":          res.get("name") or res.get("format") or "Resource",
@@ -3735,6 +3849,36 @@ def _load_check_result(check_type: str):
         return row.data() if row else None
 
 
+def _load_check_result_for_user(check_type: str):
+    """_load_check_result, narrowed to the current user's organizations when they
+    are org-scoped (datasets filtered by org_slug, summary recomputed from only
+    those organizations' own rows). A dataset row without an org_slug is dropped
+    -- it can't be shown to anyone who is scoped."""
+    result = _load_check_result(check_type)
+    scope = _session_org_scope()
+    if scope is None or not result:
+        return result
+    cfg = _QUALITY_CHECKS[check_type]
+    datasets = [d for d in (result.get("datasets") or []) if d.get("org_slug") in scope]
+    model = cfg["dataset_cache_model"]
+    rows = model.query.filter(model.org_slug.in_(scope)).all() if scope else []
+    checked_rows = []
+    for row in rows:
+        cached = row.result() if row.result_json else None
+        if isinstance(cached, dict) and cached.get("_cache_version") == cfg["check_version"] and isinstance(cached.get("result"), dict):
+            checked_rows.append(cached["result"])
+    summary = {
+        "total":             len(rows),
+        "checked":           len(checked_rows),
+        "failed_to_fetch":   len(rows) - len(checked_rows),
+        "reused_from_cache": 0,
+        "conforms":          sum(1 for r in checked_rows if r.get("conforms")),
+    }
+    for key, predicate in cfg["summary_flag_fields"]:
+        summary[key] = sum(1 for r in datasets if predicate(r))
+    return {**result, "summary": summary, "datasets": datasets}
+
+
 def _save_check_cache(check_type: str, result: dict) -> None:
     with app.app_context():
         model = _QUALITY_CHECKS[check_type]["cache_model"]
@@ -3908,7 +4052,7 @@ def get_check(check_type):
         "running":    status["running"],
         "started_at": status["started_at"],
         "error":      status["error"],
-        "result":     _load_check_result(check_type),
+        "result":     _load_check_result_for_user(check_type),
         "total":      status["total"],
         "completed":  status["completed"],
         "cancelling": status["cancel_requested"],
@@ -3924,7 +4068,7 @@ def check_export(check_type):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
 
-    result = _load_check_result(check_type)
+    result = _load_check_result_for_user(check_type)
     if not result:
         return jsonify({"error": f"No {cfg['export_no_results_label']} check results to export yet."}), 404
 
@@ -4154,8 +4298,10 @@ def organizations():
         _orgs_cache["enriching"] = True
         threading.Thread(target=_do_refresh_orgs, daemon=True).start()
 
+    scope = _session_org_scope()
+    orgs = _orgs_cache["data"] if scope is None else [o for o in (_orgs_cache["data"] or []) if o.get("name") in scope]
     return jsonify({
-        "data":      _orgs_cache["data"],
+        "data":      orgs,
         "fetched_at": _orgs_cache["fetched_at"],
         "enriching":  _orgs_cache["enriching"],
     })
@@ -4175,6 +4321,8 @@ def _norm_org_text(s):
 
 @app.route("/api/organizations/<org_name>")
 def organization_detail(org_name):
+    if not _org_in_scope(org_name):
+        return jsonify({"error": "Forbidden"}), 403
     headers = {"User-Agent": "DataGovGR-Dashboard/1.0"}
     result = {}
 
@@ -4376,6 +4524,8 @@ def org_analytics_categories():
 
 @app.route("/api/org-analytics/<org_slug>/scorecard")
 def org_analytics_scorecard(org_slug):
+    if not _org_in_scope(org_slug):
+        return jsonify({"error": "Forbidden"}), 403
     latest = _latest_org_snapshots()
     mine = next((s for s in latest if s.org_slug == org_slug), None)
     if not mine:
@@ -4418,6 +4568,8 @@ def org_analytics_scorecard(org_slug):
 
 @app.route("/api/org-analytics/<org_slug>/peer-comparison")
 def org_analytics_peer_comparison(org_slug):
+    if not _org_in_scope(org_slug):
+        return jsonify({"error": "Forbidden"}), 403
     latest = _latest_org_snapshots()
     mine = next((s for s in latest if s.org_slug == org_slug), None)
     if not mine:
@@ -4443,6 +4595,8 @@ def org_analytics_peer_comparison(org_slug):
 
 @app.route("/api/org-analytics/<org_slug>/trend")
 def org_analytics_trend(org_slug):
+    if not _org_in_scope(org_slug):
+        return jsonify({"error": "Forbidden"}), 403
     rows = (OrgSnapshot.query.filter_by(org_slug=org_slug)
             .order_by(OrgSnapshot.computed_at).all())
     return jsonify({"trend": [r.to_dict() for r in rows]})
@@ -8867,6 +9021,45 @@ def _matomo_flat_pages(method: str, days: int, extra: dict, start: str = None, e
     return []
 
 
+def _dataset_org_slug(name):
+    """The CKAN org slug a dataset belongs to, or None when it can't be told
+    (unknown dataset or CKAN unreachable -- callers treat that as 'not yours')."""
+    try:
+        r = requests.get(f"{config.API_BASE}/package_show", params={"id": name},
+                         headers=_api_headers(), timeout=config.REQUEST_TIMEOUT)
+        data = r.json()
+        if r.status_code == 200 and data.get("success"):
+            return (data["result"].get("organization") or {}).get("name") or None
+    except Exception:
+        pass
+    return None
+
+
+_scope_dataset_names_cache = {}  # tuple(scope) -> (fetched_at, set of dataset names)
+
+
+def _scope_dataset_names(scope):
+    """Names of every dataset in the given orgs (CKAN package_search, paged),
+    cached for 10 minutes per scope."""
+    key = tuple(sorted(scope))
+    hit = _scope_dataset_names_cache.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    names, start = set(), 0
+    while scope:
+        r = requests.get(f"{config.API_BASE}/package_search",
+                         params={"fq": _scope_fq(), "fl": "name", "rows": 1000, "start": start},
+                         headers=_api_headers(), timeout=config.REQUEST_TIMEOUT)
+        r.raise_for_status()
+        page = r.json()["result"]["results"]
+        names.update(p["name"] for p in page if p.get("name"))
+        if len(page) < 1000:
+            break
+        start += 1000
+    _scope_dataset_names_cache[key] = (time.time(), names)
+    return names
+
+
 @app.route("/api/matomo/top-datasets")
 def matomo_top_datasets():
     if not config.MATOMO_TOKEN:
@@ -8874,6 +9067,8 @@ def matomo_top_datasets():
     limit = min(int(freq.args.get("limit", 20)), 100)
     days, start, end = _matomo_resolve_range()
     try:
+        scope = _session_org_scope()
+        own_names = _scope_dataset_names(scope) if scope is not None else None
         pages = _matomo_flat_pages("Actions.getPageUrls", days,
                                    {"flat": 1, "filter_limit": 300}, start=start, end=end)
         result = []
@@ -8887,6 +9082,8 @@ def matomo_top_datasets():
             if not m:
                 continue
             slug = m.group(1)
+            if own_names is not None and slug not in own_names:
+                continue
             result.append({
                 "slug":            slug,
                 "label":           label,
@@ -9010,6 +9207,8 @@ def matomo_dataset_stats():
     name = (freq.args.get("name") or "").strip()
     if not name:
         return jsonify({"error": "name is required"}), 400
+    if _session_org_scope() is not None and not _org_in_scope(_dataset_org_slug(name)):
+        return jsonify({"error": "Forbidden"}), 403
     resource_urls = set(freq.args.getlist("resource_url"))
     # A pageUrl segment is unique per dataset, so Matomo never has it
     # pre-archived -- every request forces an on-demand computation that
@@ -9081,6 +9280,8 @@ def matomo_dataset_analytics():
     name = (freq.args.get("name") or "").strip()
     if not name:
         return jsonify({"error": "name is required"}), 400
+    if _session_org_scope() is not None and not _org_in_scope(_dataset_org_slug(name)):
+        return jsonify({"error": "Forbidden"}), 403
     resource_urls = set(freq.args.getlist("resource_url"))
     start, end = _matomo_date_range(30)
     page_url = f"{config.PORTAL_BASE}/dataset/{name}"

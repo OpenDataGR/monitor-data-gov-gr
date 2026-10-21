@@ -350,6 +350,11 @@ class User(db.Model):
     last_active_at = db.Column(db.DateTime)  # updated (throttled) on any authenticated request
     allowed_tabs  = db.Column(db.Text)  # comma-separated tab keys; NULL/empty = unrestricted (all tabs)
     ckan_sub      = db.Column(db.String(80), unique=True, index=True)  # Keycloak subject, set on first Keycloak login
+    # An org admin who signed in through Keycloak: sees ONLY the stats of the CKAN
+    # organizations in ckan_orgs (JSON list of org slugs, refreshed from CKAN at every
+    # Keycloak login) and nothing else -- enforced server-side, see _org_scope_route_ok.
+    org_scoped    = db.Column(db.Boolean, nullable=False, default=False)
+    ckan_orgs     = db.Column(db.Text)
 
     reset_tokens = db.relationship(
         "PasswordResetToken", backref="user", cascade="all, delete-orphan",
@@ -368,6 +373,8 @@ class User(db.Model):
             "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
             "last_active_at": self.last_active_at.isoformat() if self.last_active_at else None,
             "allowed_tabs":  self.allowed_tabs.split(",") if self.allowed_tabs else None,
+            "org_scoped":    bool(self.org_scoped),
+            "ckan_orgs":     json.loads(self.ckan_orgs) if self.ckan_orgs else [],
         }
 
 

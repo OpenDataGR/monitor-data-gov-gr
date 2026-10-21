@@ -125,6 +125,44 @@ button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
   the login was verified working end to end in production on 2026-10-21.
   Automated tests use a faked Keycloak/CKAN (`tests/test_keycloak_login.py`).
 
+## Org-scoped users: org admins see only their own organizations (shipped 2026-10-21)
+
+A CKAN org admin who signs in through Keycloak becomes an **org-scoped** user
+(`User.org_scoped`, `User.ckan_orgs` = JSON list of CKAN org slugs, refreshed from
+CKAN at every Keycloak login). They see Org Analytics, Datasets, Quality and
+Traffic -- for their own orgs only -- and nothing else (no Overview, Comms,
+Contacts, Orgs, Health, Stats, Geo/Temporal Insights, MQA, admin panel).
+- **Enforced server-side, deny-by-default**: `require_login` calls
+  `_org_scope_route_ok`, a method+regex allowlist (`_ORG_SCOPE_ALLOWED`); any
+  route not on it is a 403 for a scoped user, *independent of `allowed_tabs`*
+  (a superadmin granting extra tabs doesn't widen it). **A new `/api/...` route
+  is therefore invisible to scoped users until it is added to that list** --
+  and if you add it, it must filter by `_session_org_scope()` itself.
+- Per-route filtering: org-analytics (slug must be in scope; peer/portal
+  benchmarks are averages and percentile only, never another org's name),
+  `datasets/search` (scope injected as `fq`; `format`/`type` containing `"` are
+  refused because they are interpolated in quotes and could OR the scope away),
+  `datasets/<name>` (404 if another org's), `datasets/formats`,
+  `organizations` list/detail, quality results + Excel export
+  (`_load_check_result_for_user`: datasets filtered by `org_slug`, summary
+  recomputed from the org's own cache rows; a row with no `org_slug` is never shown),
+  Matomo `top-datasets` (own datasets only) and `dataset-stats`/`dataset-analytics`
+  (dataset's CKAN org looked up first). Portal-wide Matomo summary/searches/API
+  calls/downloads are not available to them.
+- The scope is cached in the session as `session["org_scope"]` by **every** place
+  that fills the session from a user (password login, passkey, set-password,
+  Keycloak callback, and API-token auth -- a scoped user's token is scoped too).
+  A session missing the key is resolved from the DB (fails closed). A CKAN
+  membership change applies at the user's next Keycloak sign-in.
+- Only users **created** by the Keycloak login are scoped (non-sysadmin). An
+  existing CRM user linked by email keeps their roles and is *not* scoped; there
+  is no admin-panel toggle for `org_scoped` yet. The "top dataset pages" list
+  only covers datasets that are in Matomo's portal-wide top-300 pages.
+- Frontend: `window.__ORG_SCOPED__` (`ORG_SCOPED` in app.js) skips Overview/Live
+  Visitors/MQA loading, hides the check-run buttons and the portal-wide traffic
+  panels, and opens Org Analytics on the user's first org. Tests:
+  `tests/test_org_scope.py`.
+
 ## Conventions
 
 - i18n: every user-facing string needs both an `en` and `el` entry, kept

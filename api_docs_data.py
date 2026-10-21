@@ -11,6 +11,13 @@ undocumented into its own category instead of dropping it.
 Each category is `{"id", "title", "desc"}`. Each route is
 `{"methods": [...], "path", "desc", "admin": bool|str, "limit": str, "params": str}`
 -- only "methods"/"path"/"desc" are required, the rest are optional tags.
+
+Org-scoped users (CKAN org admins who signed in through Keycloak) can call ONLY
+the data routes under /api/org-analytics/, /api/datasets/ (search, formats, detail),
+/api/organizations, GET /api/quality/*-check[/export], and /api/matomo/
+(top-datasets, dataset-stats, dataset-analytics), plus their own /api/account/ and
+/api/tokens. Every other route answers 403 for them, and those routes only
+return data for the user's own organizations (see _org_scope_route_ok in app.py).
 """
 
 CATEGORIES = [

@@ -2126,6 +2126,7 @@
   window.__GIT_SHA_SUFFIX__ = {{ ((' · ' + git_sha) if git_sha else '')|tojson }};
   window.__ALLOWED_TABS__ = {{ allowed_tabs|tojson }};
   window.__IS_SUPERADMIN__ = {{ is_superadmin|tojson }};
+  window.__ORG_SCOPED__ = {{ org_scoped|tojson }};
   window.__CARTO_API_KEY__ = {{ carto_api_key|tojson }};
 </script>
 <script src="{{ url_for('static', filename='webauthn.js') }}?v={{ build_date }}" defer></script>

@@ -1,6 +1,7 @@
 """Login with the data.gov.gr Keycloak: the full authorization-code round trip
 against a faked Keycloak (self-signed RSA key, so the ID token's signature,
 issuer, audience and nonce are really verified) and a faked CKAN."""
+import json
 import time
 from urllib.parse import parse_qs, urlparse
 
@@ -91,7 +92,8 @@ def test_org_admin_is_created_tab_restricted(app, kc):
     assert r.status_code == 302 and not r.headers["Location"].endswith("/login")
     u = User.query.filter_by(email="maria@example.gr").one()
     assert u.ckan_sub == "abc" and not u.is_superadmin and not u.is_admin
-    assert u.allowed_tabs == "overview" and u.password_hash is None
+    assert u.org_scoped and json.loads(u.ckan_orgs) == ["some-org"] and u.password_hash is None
+    assert u.allowed_tabs == "overview,org-analytics,datasets,quality,traffic"
     with c.session_transaction() as s:
         assert s["user_id"] == u.id
 
