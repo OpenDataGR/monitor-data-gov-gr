@@ -305,6 +305,9 @@ const TRANSLATIONS = {
     'quality.mqa_cmp_fetch': 'Fetch EU violations',
     'quality.mqa_cmp_refetch': 'Refresh EU violations',
     'quality.mqa_cmp_fetching': 'Fetching…',
+    'quality.mqa_cmp_eta': 'a full pull takes about 5 minutes',
+    'quality.mqa_cmp_retrying': 'Slow or failed request, retrying:',
+    'quality.mqa_cmp_attempt': 'attempt',
     'quality.mqa_cmp_fetched': 'EU data fetched',
     'quality.mqa_cmp_no_property': '(no property)',
     'quality.mqa_cmp_partial': 'Partial: some pages of the data.europa.eu list could not be fetched, so these counts cover only the rows retrieved. Refresh to try again.',
@@ -964,6 +967,9 @@ const TRANSLATIONS = {
     'quality.mqa_cmp_fetch': 'Ανάκτηση παραβιάσεων ΕΕ',
     'quality.mqa_cmp_refetch': 'Ανανέωση παραβιάσεων ΕΕ',
     'quality.mqa_cmp_fetching': 'Ανάκτηση…',
+    'quality.mqa_cmp_eta': 'μια πλήρης ανάκτηση διαρκεί περίπου 5 λεπτά',
+    'quality.mqa_cmp_retrying': 'Αργό ή αποτυχημένο αίτημα, νέα προσπάθεια:',
+    'quality.mqa_cmp_attempt': 'προσπάθεια',
     'quality.mqa_cmp_fetched': 'Δεδομένα ΕΕ ανακτήθηκαν',
     'quality.mqa_cmp_no_property': '(χωρίς ιδιότητα)',
     'quality.mqa_cmp_partial': 'Μερική: ορισμένες σελίδες της λίστας του data.europa.eu δεν ανακτήθηκαν, άρα οι αριθμοί καλύπτουν μόνο τις γραμμές που ελήφθησαν. Πατήστε ανανέωση για νέα προσπάθεια.',
@@ -4422,8 +4428,12 @@ async function _loadMqaComparison() {
   const btn = d.can_refresh
     ? `<button class="btn btn-outline-primary btn-sm" onclick="refreshMqaViolations()" ${st.running ? 'disabled' : ''}>
          <i class="bi bi-cloud-download me-1"></i>${esc(t(d.eu ? 'quality.mqa_cmp_refetch' : 'quality.mqa_cmp_fetch'))}</button>` : '';
+  const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   const progress = st.running
-    ? `<span class="text-muted small ms-2"><span class="spinner-border spinner-border-sm me-1"></span>${esc(t('quality.mqa_cmp_fetching'))} ${fmt(st.fetched || 0)} / ${fmt(st.total || 0)}</span>`
+    ? `<div class="text-muted small mt-2"><span class="spinner-border spinner-border-sm me-1"></span>${esc(t('quality.mqa_cmp_fetching'))}
+         ${fmt(st.fetched || 0)} / ${fmt(st.total || 0)} &middot; ${mmss(st.elapsed || 0)}
+         <span class="ms-1">(${esc(t('quality.mqa_cmp_eta'))})</span>
+         ${st.retrying ? `<div class="text-warning mt-1">${esc(t('quality.mqa_cmp_retrying'))} ${esc(st.retrying)} &middot; ${esc(t('quality.mqa_cmp_attempt'))} ${st.attempt || 1}</div>` : ''}</div>`
     : (st.error ? `<span class="text-danger small ms-2">${esc(st.error)}</span>` : '');
   if (st.running) _mqaCompareTimer = setTimeout(_loadMqaComparison, 4000);
   if (!d.eu) {

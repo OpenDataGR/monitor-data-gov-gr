@@ -69,20 +69,22 @@ def test_fetch_pages_through_the_whole_list_and_stores_a_summary(app, monkeypatc
     seen = []
 
     def fake_get(url, params=None, **kw):
-        seen.append(params["offset"])
-        assert url.endswith("/catalogues/data-gov-gr/violations") and params["limit"] == 2
+        seen.append((params["limit"], params["offset"]))
+        assert url.endswith("/catalogues/data-gov-gr/violations")
+        if params["limit"] == 1:  # the cheap up-front request that learns the total
+            return _Resp({"success": True, "result": {"count": 3, "results": pages[0][:1]}})
         return _Resp({"success": True, "result": {"count": 3, "results": pages[params["offset"]]}})
 
     monkeypatch.setattr(appmod.requests, "get", fake_get)
     assert appmod._fetch_mqa_violation_summary() is True
-    assert seen == [0, 2]
+    assert seen == [(1, 0), (2, 0), (2, 2)]
     row = MqaViolationSummary.query.one()
     assert row.total_violations == 3 and row.data()["datasets_with_violations"] == 3
     st = appmod._mqa_viol_get()
-    assert st["running"] is False and st["error"] is None and st["fetched"] == 3
+    assert st["running"] is False and st["error"] is None and st["fetched"] == 3 and st["total"] == 3
 
 
-def test_a_failed_page_is_retried_then_the_error_is_reported(app, monkeypatch):
+def test_a_failed_request_is_retried_then_the_error_is_reported(app, monkeypatch):
     monkeypatch.setattr(appmod.time, "sleep", lambda s: None)
     calls = {"n": 0}
 
@@ -93,7 +95,7 @@ def test_a_failed_page_is_retried_then_the_error_is_reported(app, monkeypatch):
         return _Resp({"success": True, "result": {"count": 1, "results": [_row(FORMAT, "d1")]}})
 
     monkeypatch.setattr(appmod.requests, "get", flaky)
-    assert appmod._fetch_mqa_violation_summary() is True and calls["n"] == 2
+    assert appmod._fetch_mqa_violation_summary() is True and calls["n"] == 3  # preflight (retried once) + the page
 
     def down(url, params=None, **kw):
         raise RuntimeError("data.europa.eu down")
@@ -105,12 +107,16 @@ def test_a_failed_page_is_retried_then_the_error_is_reported(app, monkeypatch):
     assert MqaViolationSummary.query.count() == 1  # the failure didn't add or remove a summary
 
 
-def test_only_one_fetch_runs_at_a_time_and_a_crashed_one_does_not_block_forever(app, monkeypatch):
+def test_only_one_fetch_runs_at_a_time_and_a_dead_one_does_not_block_forever(app, monkeypatch):
     monkeypatch.setattr(appmod.requests, "get", lambda *a, **k: pytest.fail("must not fetch while one is running"))
     appmod._mqa_viol_set(running=True, started_at=appmod.time.time())
     assert appmod._fetch_mqa_violation_summary() is False
-    appmod._mqa_viol_set(running=True, started_at=appmod.time.time() - appmod._MQA_VIOLATIONS_STALE_AFTER - 1)
-    assert appmod._mqa_viol_running() is False  # a stale "running" flag is a crashed fetch
+    # A fetch killed mid-pull (e.g. a deploy restarted the process) leaves running=True behind; its
+    # heartbeat stops, so it is treated as dead soon after instead of blocking the button for half an hour.
+    st = appmod._mqa_viol_get()
+    st["heartbeat"] = appmod.time.time() - appmod._MQA_VIOLATIONS_HEARTBEAT_STALE - 1
+    appmod._mqa_viol_status["status"] = st
+    assert appmod._mqa_viol_running() is False
 
 
 def test_only_the_latest_few_summaries_are_kept(app, monkeypatch):
@@ -244,3 +250,48 @@ def test_a_complete_pull_is_marked_complete(app, monkeypatch):
     appmod._fetch_mqa_violation_summary()
     data = MqaViolationSummary.query.one().data()
     assert data["complete"] is True and data["rows_seen"] == 1 and data["skipped_pages"] == 0
+
+
+# ── progress the page can show ────────────────────────────────────────────────────
+
+def test_the_total_is_known_before_the_first_big_page_arrives(app, monkeypatch):
+    """The page used to say "0 / 0" until the first 5000-row page landed, which looked like a hang."""
+    monkeypatch.setattr(appmod, "_MQA_VIOLATIONS_PAGE", 2)
+    seen_totals = []
+
+    def fake_get(url, params=None, **kw):
+        if params["limit"] != 1:
+            seen_totals.append(appmod._mqa_viol_get()["total"])  # what the page would show while this page loads
+        return _Resp({"success": True, "result": {"count": 3, "results": [_row(FORMAT, "d1")]}})
+
+    monkeypatch.setattr(appmod.requests, "get", fake_get)
+    appmod._fetch_mqa_violation_summary()
+    assert seen_totals and set(seen_totals) == {3}
+
+
+def test_a_slow_or_failing_request_shows_up_in_the_status_while_it_is_retried(app, monkeypatch):
+    monkeypatch.setattr(appmod, "_MQA_VIOLATIONS_PAGE", 2)
+    monkeypatch.setattr(appmod.time, "sleep", lambda s: None)
+    snapshots, state = [], {"page_tries": 0}
+
+    def fake_get(url, params=None, **kw):
+        if params["limit"] == 1:
+            return _Resp({"success": True, "result": {"count": 1, "results": [_row(FORMAT, "d1")]}})
+        state["page_tries"] += 1
+        if state["page_tries"] == 1:
+            raise RuntimeError("Read timed out")
+        snapshots.append(appmod._mqa_viol_get())  # during the successful retry
+        return _Resp({"success": True, "result": {"count": 1, "results": [_row(FORMAT, "d1")]}})
+
+    monkeypatch.setattr(appmod.requests, "get", fake_get)
+    appmod._fetch_mqa_violation_summary()
+    assert snapshots[0]["attempt"] == 2  # the page shows which attempt this is
+    assert appmod._mqa_viol_get()["retrying"] is None  # and the warning is gone once it works
+
+
+def test_the_status_the_page_polls_carries_elapsed_time(app):
+    appmod._mqa_viol_set(running=True, started_at=appmod.time.time() - 125, fetched=5000, total=158700)
+    st = _admin_client(app).get("/api/quality/mqa/comparison").get_json()["status"]
+    assert st["running"] is True and 124 <= st["elapsed"] <= 130 and st["total"] == 158700
+    appmod._mqa_viol_set(running=False)
+    assert _admin_client(app, is_admin=False).get("/api/quality/mqa/comparison").get_json()["status"]["elapsed"] == 0

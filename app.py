@@ -4316,9 +4316,13 @@ def get_mqa():
 _MQA_VIOLATIONS_PAGE = 5000
 _MQA_VIOLATIONS_TIMEOUT = 240
 _MQA_VIOLATIONS_ATTEMPTS = 4
-_MQA_VIOLATIONS_STALE_AFTER = 1800  # a "running" flag older than this is a crashed fetch, not a live one
+# The fetch stamps a heartbeat on every page/attempt. A "running" flag whose heartbeat is older than this is
+# a fetch that died (e.g. a deploy restarted the process mid-pull), not a live one -- longest legitimate gap is
+# one request timeout plus a retry sleep.
+_MQA_VIOLATIONS_HEARTBEAT_STALE = 330
 _mqa_viol_status = _SharedCache("mqa_violations", {
-    "status": {"running": False, "started_at": None, "fetched": 0, "total": 0, "error": None}})
+    "status": {"running": False, "started_at": None, "heartbeat": None, "fetched": 0, "total": 0,
+               "attempt": 0, "retrying": None, "error": None}})
 _mqa_viol_lock = threading.Lock()
 
 
@@ -4329,12 +4333,13 @@ def _mqa_viol_get() -> dict:
 def _mqa_viol_set(**kw) -> None:
     st = _mqa_viol_get()
     st.update(kw)
+    st["heartbeat"] = time.time()
     _mqa_viol_status["status"] = st
 
 
 def _mqa_viol_running(st=None) -> bool:
     st = st or _mqa_viol_get()
-    return bool(st.get("running") and st.get("started_at") and time.time() - st["started_at"] < _MQA_VIOLATIONS_STALE_AFTER)
+    return bool(st.get("running") and st.get("heartbeat") and time.time() - st["heartbeat"] < _MQA_VIOLATIONS_HEARTBEAT_STALE)
 
 
 def _aggregate_eu_violations(rows, agg: dict) -> None:
@@ -4372,28 +4377,49 @@ def _fetch_mqa_violation_summary() -> bool:
     with _mqa_viol_lock:
         if _mqa_viol_running():
             return False
-        _mqa_viol_set(running=True, started_at=time.time(), fetched=0, total=0, error=None)
+        _mqa_viol_set(running=True, started_at=time.time(), fetched=0, total=0, attempt=0, retrying=None, error=None)
     try:
         url = f"https://data.europa.eu/api/mqa/cache/catalogues/{_MQA_CATALOGUE_ID}/violations"
+        headers = {"User-Agent": "DataGovGR-Dashboard/1.0"}
         agg = {"properties": {}, "per_dataset": {}}
-        offset, total, rows_seen, skipped, last_error = 0, None, 0, 0, None
-        while total is None or offset < total:
+        # One cheap request first: it gives the total (so the page can show "0 / 158,700" at once instead of
+        # "0 / 0" until the first big page lands) and fails fast if data.europa.eu can't be reached at all.
+        last_error = None
+        total = None
+        for attempt in range(_MQA_VIOLATIONS_ATTEMPTS):
+            try:
+                _mqa_viol_set(attempt=attempt + 1)
+                r = requests.get(url, params={"limit": 1, "offset": 0}, headers=headers, timeout=60)
+                r.raise_for_status()
+                total = r.json()["result"]["count"]
+                _mqa_viol_set(total=total, retrying=None)
+                break
+            except Exception as exc:
+                last_error = exc
+                _mqa_viol_set(retrying=str(exc)[:160])
+                if attempt < _MQA_VIOLATIONS_ATTEMPTS - 1:
+                    time.sleep(5 * (attempt + 1))
+        if total is None:
+            raise last_error
+        offset, rows_seen, skipped = 0, 0, 0
+        while offset < total:
             rows = None
             for attempt in range(_MQA_VIOLATIONS_ATTEMPTS):
                 try:
+                    _mqa_viol_set(attempt=attempt + 1)
                     r = requests.get(url, params={"limit": _MQA_VIOLATIONS_PAGE, "offset": offset},
-                                     headers={"User-Agent": "DataGovGR-Dashboard/1.0"}, timeout=_MQA_VIOLATIONS_TIMEOUT)
+                                     headers=headers, timeout=_MQA_VIOLATIONS_TIMEOUT)
                     r.raise_for_status()
                     body = r.json()["result"]
                     rows, total = body["results"], body["count"]
+                    _mqa_viol_set(retrying=None)
                     break
                 except Exception as exc:
                     last_error = exc
+                    _mqa_viol_set(retrying=str(exc)[:160])
                     if attempt < _MQA_VIOLATIONS_ATTEMPTS - 1:
                         time.sleep(10 * (attempt + 1))
             if rows is None:
-                if total is None:
-                    raise last_error  # not even the first page: nothing to report
                 skipped += 1          # this page won't come: carry on with the rest, mark the result partial
                 offset += _MQA_VIOLATIONS_PAGE
                 continue
@@ -4415,10 +4441,10 @@ def _fetch_mqa_violation_summary() -> bool:
             for old in MqaViolationSummary.query.order_by(MqaViolationSummary.id.desc()).offset(5).all():
                 db.session.delete(old)
             db.session.commit()
-        _mqa_viol_set(running=False)
+        _mqa_viol_set(running=False, retrying=None)
         return True
     except Exception as exc:
-        _mqa_viol_set(running=False, error=str(exc)[:300])
+        _mqa_viol_set(running=False, retrying=None, error=str(exc)[:300])
         return False
 
 
@@ -4448,6 +4474,14 @@ def _our_dcat_violations():
             "total": summary.get("total"), "finished_at": result.get("finished_at"), "partial": result.get("partial")}
 
 
+def _mqa_viol_status_for_ui() -> dict:
+    st = _mqa_viol_get()
+    running = _mqa_viol_running(st)
+    st["running"] = running
+    st["elapsed"] = int(time.time() - st["started_at"]) if running and st.get("started_at") else 0
+    return st
+
+
 @app.route("/api/quality/mqa/comparison")
 def get_mqa_comparison():
     latest = MqaViolationSummary.query.order_by(MqaViolationSummary.id.desc()).first()
@@ -4475,7 +4509,7 @@ def get_mqa_comparison():
             "rows_seen": eu_summary.get("rows_seen", eu_summary["total"])},
         "ours": None if not ours else {k: v for k, v in ours.items() if k != "properties"},
         "rows": rows,
-        "status": _mqa_viol_get() | {"running": _mqa_viol_running()},
+        "status": _mqa_viol_status_for_ui(),
         "can_refresh": bool(session.get("is_admin")),
     })
 
