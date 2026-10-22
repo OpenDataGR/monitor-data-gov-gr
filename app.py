@@ -3383,13 +3383,21 @@ _DCAT_SHAPES_GRAPH.parse(
     data=(Path(__file__).parent / "shacl" / "dcat-ap.shapes.ttl").read_text(encoding="utf-8"), format="turtle")
 _DCAT_SHAPES_GRAPH.parse(
     data=(Path(__file__).parent / "shacl" / "dcat-ap-mdr-vocabularies.shapes.ttl").read_text(encoding="utf-8"), format="turtle")
+# SEMIC's DCAT-AP shapes name each node shape after the class it describes (dcat:Dataset, dcat:Distribution, ...)
+# and get their target from the DCAT ontology's own `a rdfs:Class` (SHACL's implicit class target). That
+# ontology isn't vendored, so as shipped NONE of the shapes had a target and the whole check validated nothing:
+# it reported every dataset as conforming -- even one with no title -- while data.europa.eu, running the same
+# rules, flagged ~158k violations (found by comparing the two on the MQA tab, 2026-10-22). State the targets.
+for _shape in (_DCAT_NS.Catalog, _DCAT_NS.CatalogRecord, _DCAT_NS.Dataset, _DCAT_NS.Distribution):
+    _DCAT_SHAPES_GRAPH.add((_shape, _SH_NS.targetClass, _shape))
 
 _DCAT_CHECK_REFRESH_INTERVAL = 24 * 3600
 _DCAT_CHECK_CONCURRENCY = 5   # same conservative pool as the HVD check -- gentle on data.gov.gr, not maximizing throughput
 _DCAT_CHECK_TIMEOUT = 30
 # Bump whenever _dcat_check_one()'s result schema/logic changes -- see
 # _HVD_CHECK_VERSION's comment, same reasoning.
-_DCAT_CHECK_VERSION = 2  # bumped: vocabulary augmentation now dereferences vcard:hasEmail/dct:format
+_DCAT_CHECK_VERSION = 3  # bumped: the shapes had no targets, so every cached result said "conforms" -- all must be re-checked.
+                          # (v2: vocabulary augmentation now dereferences vcard:hasEmail/dct:format
                           # and follows one more hop to each concept's own skos:ConceptScheme,
                           # instead of merging whole fetched documents in (which caused false
                           # positives on unrelated sibling vocabulary entries -- see

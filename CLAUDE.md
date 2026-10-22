@@ -129,6 +129,22 @@ button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
   the login was verified working end to end in production on 2026-10-21.
   Automated tests use a faked Keycloak/CKAN (`tests/test_keycloak_login.py`).
 
+## The DCAT-AP check validated nothing until 2026-10-22 (found via the MQA comparison)
+
+The vendored SEMIC `dcat-ap.shapes.ttl` / `dcat-ap-mdr-vocabularies.shapes.ttl` name each node shape after its
+class (`dcat:Dataset`, ...) and get their target from the DCAT ontology's `a rdfs:Class` (SHACL implicit class
+target) -- the ontology isn't vendored, so **no shape had a target**: every dataset "conformed", even one with no
+title, while data.europa.eu (same rules) flagged 158,700 violations on 21,966 datasets. Found because the MQA
+tab's comparison showed ours = 0. Fix: `_DCAT_SHAPES_GRAPH` now states `sh:targetClass` for
+Catalog/CatalogRecord/Dataset/Distribution, and `_DCAT_CHECK_VERSION` was bumped to 3 so every cached
+"conforms" result is recomputed (a full re-run, ~22.9k RDF fetches). The HVD and GeoDCAT-AP shapes already had
+explicit targets and were fine. `tests/test_dcat_shapes_targets.py` holds the control that was missing (an empty
+dataset must be flagged; a literal `dct:format` and a non-decimal `dcat:byteSize` must be flagged) and asserts
+every shape set has targets -- **when re-vendoring shapes, a check that can never fail is worse than none**.
+Expect the DCAT-AP tab and org-analytics DCAT pass rates to drop sharply after the re-run: that is the truth,
+not a regression. The EU's top issues are dct:format as a literal (IRI expected) and dcat:byteSize not
+xsd:decimal -- likely fixable once at the portal's DCAT export.
+
 ## Detail views are modals, not slide-overs (2026-10-22)
 
 The organization, organization-contacts, dataset and dataset-analytics detail views were 440px
