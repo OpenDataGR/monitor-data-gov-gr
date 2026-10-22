@@ -613,7 +613,7 @@ def _session_allowed_tabs():
 # plus per-route filtering of what an allowed route returns -- not by hiding tabs,
 # and independently of allowed_tabs (a superadmin granting such a user an extra
 # tab can't widen it).
-_ORG_SCOPED_TABS = "overview,org-analytics,datasets,quality,traffic"
+_ORG_SCOPED_TABS = "overview,orgs,org-analytics,datasets,quality,traffic"
 _SLUG_RE = re.compile(r"^[A-Za-z0-9_.\-]+$")
 
 # (HTTP methods, path regex). Anything else is refused for an org-scoped user.
@@ -2230,8 +2230,9 @@ def _index_allowed_tabs(user):
     sidebar too (the UI should match what the server will actually answer)."""
     tabs = _effective_allowed_tabs(user)
     if _session_org_scope() is not None:
-        allowed = {"org-analytics", "datasets", "quality", "traffic"}
-        return [t for t in (tabs or _ORG_SCOPED_TABS.split(",")) if t in allowed]
+        # Fixed set, not the stored allowed_tabs: an org-scoped user created before a
+        # tab was added to _ORG_SCOPED_TABS must get it too.
+        return [t for t in _ORG_SCOPED_TABS.split(",") if t != "overview"]
     return tabs
 
 
@@ -9060,6 +9061,39 @@ def _scope_dataset_names(scope):
     return names
 
 
+_DATASET_PAGE_RE = re.compile(r"/dataset/([^/?#\s]+)(/[^?#\s]*)?(?:[?#].*)?$", re.IGNORECASE)
+_dataset_page_visits_cache = {}  # (days, start, end) -> (fetched_at, {slug: {"visits", "unique_visitors", "label"}})
+
+
+def _matomo_dataset_page_visits(days, start, end):
+    """Visits per dataset page ({slug: {...}}) over the WHOLE portal's page list,
+    not just Matomo's top 300 -- an organization's datasets rarely rank that high,
+    so filtering the top 300 by org left a scoped user with an empty list. Only the
+    dataset's own page counts (not its resource/download sub-pages, which would
+    count the same visit again). Compact result cached 10 minutes per range."""
+    key = (days, start, end)
+    hit = _dataset_page_visits_cache.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    pages = _matomo_flat_pages("Actions.getPageUrls", days, {"flat": 1, "filter_limit": 100000}, start=start, end=end)
+    out = {}
+    for page in pages:
+        label = page.get("label", "")
+        if not label or "dataset" not in label.lower():
+            continue
+        path = "/" + "/".join(p.strip().lstrip("/") for p in label.split(" > "))
+        m = _DATASET_PAGE_RE.search(path)
+        if not m or (m.group(2) or "/") != "/":
+            continue  # not the dataset's own page (e.g. a resource sub-page)
+        row = out.setdefault(m.group(1), {"visits": 0, "unique_visitors": 0, "label": label})
+        row["visits"] += page.get("nb_visits", 0) or 0
+        row["unique_visitors"] += page.get("nb_uniq_visitors", 0) or 0
+    if len(_dataset_page_visits_cache) > 40:
+        _dataset_page_visits_cache.clear()
+    _dataset_page_visits_cache[key] = (time.time(), out)
+    return out
+
+
 @app.route("/api/matomo/top-datasets")
 def matomo_top_datasets():
     if not config.MATOMO_TOKEN:
@@ -9068,28 +9102,32 @@ def matomo_top_datasets():
     days, start, end = _matomo_resolve_range()
     try:
         scope = _session_org_scope()
-        own_names = _scope_dataset_names(scope) if scope is not None else None
-        pages = _matomo_flat_pages("Actions.getPageUrls", days,
-                                   {"flat": 1, "filter_limit": 300}, start=start, end=end)
         result = []
-        for page in pages:
-            label = page.get("label", "")
-            if not label or "dataset" not in label.lower():
-                continue
-            # flat=1 uses ' > ' as path separator; reconstruct the URL path
-            path = "/" + "/".join(p.strip().lstrip("/") for p in label.split(" > "))
-            m = re.search(r"/dataset/([^/?#\s]+)", path, re.IGNORECASE)
-            if not m:
-                continue
-            slug = m.group(1)
-            if own_names is not None and slug not in own_names:
-                continue
-            result.append({
-                "slug":            slug,
-                "label":           label,
-                "visits":          page.get("nb_visits", 0),
-                "unique_visitors": page.get("nb_uniq_visitors", 0),
-            })
+        if scope is not None:
+            # Org-scoped: every one of THEIR datasets that had visits, from the full page list.
+            own_names = _scope_dataset_names(scope)
+            for slug, row in _matomo_dataset_page_visits(days, start, end).items():
+                if slug in own_names:
+                    result.append({"slug": slug, "label": row["label"], "visits": row["visits"],
+                                   "unique_visitors": row["unique_visitors"]})
+        else:
+            pages = _matomo_flat_pages("Actions.getPageUrls", days,
+                                       {"flat": 1, "filter_limit": 300}, start=start, end=end)
+            for page in pages:
+                label = page.get("label", "")
+                if not label or "dataset" not in label.lower():
+                    continue
+                # flat=1 uses ' > ' as path separator; reconstruct the URL path
+                path = "/" + "/".join(p.strip().lstrip("/") for p in label.split(" > "))
+                m = re.search(r"/dataset/([^/?#\s]+)", path, re.IGNORECASE)
+                if not m:
+                    continue
+                result.append({
+                    "slug":            m.group(1),
+                    "label":           label,
+                    "visits":          page.get("nb_visits", 0),
+                    "unique_visitors": page.get("nb_uniq_visitors", 0),
+                })
         result.sort(key=lambda x: x["visits"], reverse=True)
         top = result[:limit]
         # Matomo only knows the URL slug — look up the real (Greek) title from

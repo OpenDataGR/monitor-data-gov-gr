@@ -509,16 +509,18 @@
       <button class="btn btn-outline-light btn-sm d-md-none" id="sidebarMobileToggle" onclick="toggleMobileSidebar()" data-i18n-title="nav.menu" title="Menu">
         <i class="bi bi-list"></i>
       </button>
-      <span class="navbar-brand fw-bold fs-5 mb-0" style="cursor:pointer"
-            onclick="bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target=\'#tab-overview\']')).show()">
+      <span class="navbar-brand fw-bold fs-5 mb-0"{% if not org_scoped %} style="cursor:pointer"
+            onclick="bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target=\'#tab-overview\']')).show()"{% endif %}>
         <i class="bi bi-database-check me-2"></i>data.gov.gr Monitor
       </span>
     </div>
     <div class="d-flex align-items-center flex-wrap justify-content-end gap-2 gap-md-3 row-gap-2">
+      {% if not org_scoped %}
       <span class="text-white-50 small d-none d-md-inline"><span data-i18n="nav.last_check">Last check:</span> <span id="lastChecked">—</span></span>
       <button class="btn btn-outline-light btn-sm px-2 px-sm-3" onclick="triggerCheck()" data-i18n-title="nav.check_now" title="Check Now">
         <i class="bi bi-arrow-clockwise me-sm-1"></i><span class="d-none d-sm-inline" data-i18n="nav.check_now">Check Now</span>
       </button>
+      {% endif %}
       {% include "_header_controls.html" %}
     </div>
   </div>
@@ -526,6 +528,7 @@
        content -- always visible, no extra page height. The gradient itself
        doesn't change between light/dark theme, so these colors are fixed,
        not theme tokens. -->
+  {% if not org_scoped %}
   <div class="container-fluid px-4 justify-content-start mt-2">
     <div class="gov-stats">
       <div class="gov-stat">
@@ -551,6 +554,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 </nav>
 
 <div class="container-fluid px-4">

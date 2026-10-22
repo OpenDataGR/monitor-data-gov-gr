@@ -93,7 +93,7 @@ def test_org_admin_is_created_tab_restricted(app, kc):
     u = User.query.filter_by(email="maria@example.gr").one()
     assert u.ckan_sub == "abc" and not u.is_superadmin and not u.is_admin
     assert u.org_scoped and json.loads(u.ckan_orgs) == ["some-org"] and u.password_hash is None
-    assert u.allowed_tabs == "overview,org-analytics,datasets,quality,traffic"
+    assert u.allowed_tabs == "overview,orgs,org-analytics,datasets,quality,traffic"
     with c.session_transaction() as s:
         assert s["user_id"] == u.id
 

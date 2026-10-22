@@ -128,9 +128,11 @@ button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
 
 A CKAN org admin who signs in through Keycloak becomes an **org-scoped** user
 (`User.org_scoped`, `User.ckan_orgs` = JSON list of CKAN org slugs, refreshed from
-CKAN at every Keycloak login). They see Org Analytics, Datasets, Quality and
-Traffic -- for their own orgs only -- and nothing else (no Overview, Comms,
-Contacts, Orgs, Health, Stats, Geo/Temporal Insights, MQA, admin panel).
+CKAN at every Keycloak login). They see Organizations, Org Analytics, Datasets,
+Quality and Traffic -- for their own orgs only -- and nothing else (no Overview,
+Comms, Contacts, Health, Stats, Geo/Temporal Insights, MQA, admin panel; the
+header's portal-wide totals and "Check Now" are not rendered for them). The sidebar
+tab list for them is the fixed `_ORG_SCOPED_TABS`, not the stored `allowed_tabs`.
 - **Enforced server-side, deny-by-default**: `require_login` calls
   `_org_scope_route_ok`, a method+regex allowlist (`_ORG_SCOPE_ALLOWED`); any
   route not on it is a 403 for a scoped user, *independent of `allowed_tabs`*
@@ -145,8 +147,9 @@ Contacts, Orgs, Health, Stats, Geo/Temporal Insights, MQA, admin panel).
   `organizations` list/detail, quality results + Excel export
   (`_load_check_result_for_user`: datasets filtered by `org_slug`, summary
   recomputed from the org's own cache rows; a row with no `org_slug` is never shown),
-  Matomo `top-datasets` (own datasets only) and `dataset-stats`/`dataset-analytics`
-  (dataset's CKAN org looked up first). Portal-wide Matomo summary/searches/API
+  Matomo `top-datasets` (their datasets' own pages, from the WHOLE portal page list
+  via `_matomo_dataset_page_visits` -- filtering the top-300 left them with an empty
+  list) and `dataset-stats`/`dataset-analytics` (dataset's CKAN org looked up first). Portal-wide Matomo summary/searches/API
   calls/downloads are not available to them.
 - The scope is cached in the session as `session["org_scope"]` by **every** place
   that fills the session from a user (password login, passkey, set-password,
@@ -155,8 +158,8 @@ Contacts, Orgs, Health, Stats, Geo/Temporal Insights, MQA, admin panel).
   membership change applies at the user's next Keycloak sign-in.
 - Only users **created** by the Keycloak login are scoped (non-sysadmin). An
   existing CRM user linked by email keeps their roles and is *not* scoped; there
-  is no admin-panel toggle for `org_scoped` yet. The "top dataset pages" list
-  only covers datasets that are in Matomo's portal-wide top-300 pages.
+  is no admin-panel toggle for `org_scoped` yet. Their Organizations tab never
+  reads/writes the browser-wide `orgs_cache_v2` localStorage list.
 - Frontend: `window.__ORG_SCOPED__` (`ORG_SCOPED` in app.js) skips Overview/Live
   Visitors/MQA loading, hides the check-run buttons and the portal-wide traffic
   panels, and opens Org Analytics on the user's first org. Tests:

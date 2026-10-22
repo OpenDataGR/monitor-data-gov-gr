@@ -31,9 +31,9 @@ function _ns(s) {
 function _orgSearchDropdown(q, dropdownId, selectFn) {
   const dd = document.getElementById(dropdownId);
   const nq = _ns((q || '').trim());
-  const ckanPool = _orgsData.length ? _orgsData : (() => {
+  const ckanPool = _orgsData.length ? _orgsData : (window.__ORG_SCOPED__ ? [] : (() => {
     try { const c = JSON.parse(localStorage.getItem(_ORGS_CACHE_KEY) || 'null'); return (c && c.data) || []; } catch (_) { return []; }
-  })();
+  })());
   const ckanMatches = nq
     ? ckanPool.filter(o => _ns(o.title).includes(nq) || _ns(o.name).includes(nq)).slice(0, 20)
     : ckanPool.slice(0, 20);
@@ -105,7 +105,7 @@ async function _loadOrgSearchData() {
       if (Array.isArray(json.data)) _orgsData = json.data;
     } catch (_) { /* search still works with whichever list did load */ }
   }
-  if (!_publicOrgs.length) {
+  if (!_publicOrgs.length && !window.__ORG_SCOPED__) {
     try {
       const data = await fetch('../api/public-orgs').then(r => r.json());
       if (Array.isArray(data)) _publicOrgs = data;

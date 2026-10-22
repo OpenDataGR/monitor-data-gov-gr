@@ -233,7 +233,7 @@ def test_index_hides_overview_and_flags_the_user(app, ckan):
     _login(c, _scoped())
     html = c.get("/").get_data(as_text=True)
     assert "window.__ORG_SCOPED__ = true;" in html
-    assert 'window.__ALLOWED_TABS__ = ["org-analytics", "datasets", "quality", "traffic"];' in html
+    assert 'window.__ALLOWED_TABS__ = ["orgs", "org-analytics", "datasets", "quality", "traffic"];' in html
 
 
 def test_extra_tabs_granted_by_a_superadmin_do_not_widen_the_scope(app, ckan):
@@ -281,3 +281,51 @@ def test_existing_user_linked_by_email_keeps_roles_and_is_not_scoped(app):
     db.session.commit()
     assert not u.org_scoped and u.allowed_tabs == "overview,comms" and json.loads(u.ckan_orgs) == [MINE]
     assert appmod._user_org_scope(u) is None
+
+
+def test_header_has_no_portal_wide_widgets_for_a_scoped_user(app, ckan):
+    markers = ('id="statDatasets"', 'id="statUptime"', "triggerCheck()", 'id="lastChecked"')
+    c = app.test_client()
+    _login(c, _scoped())
+    scoped_html = c.get("/").get_data(as_text=True)
+    assert not any(m in scoped_html for m in markers)
+    c2 = app.test_client()
+    _login(c2, _admin())
+    admin_html = c2.get("/").get_data(as_text=True)
+    assert all(m in admin_html for m in markers)
+
+
+def test_orgs_tab_is_offered_even_to_a_scoped_user_created_before_it_existed(app, ckan):
+    u = _scoped()
+    u.allowed_tabs = "overview,org-analytics,datasets,quality,traffic"  # the old stored value
+    db.session.commit()
+    c = app.test_client()
+    _login(c, u)
+    assert '"orgs"' in c.get("/").get_data(as_text=True).split("window.__ALLOWED_TABS__ = ")[1].split(";")[0]
+    assert c.get("/api/organizations").status_code == 200
+
+
+def test_top_datasets_for_a_scoped_user_reads_the_full_page_list(app, ckan, monkeypatch):
+    """Their datasets rarely rank in the portal's top 300 pages -- the scoped path must ask for
+    the whole list, count a dataset's own page only (not its resource sub-pages), and never
+    show another org's dataset."""
+    monkeypatch.setattr(config, "MATOMO_TOKEN", "tok")
+    appmod._dataset_page_visits_cache.clear()
+    monkeypatch.setattr(appmod, "_scope_dataset_names", lambda scope: {"mine-a", "mine-b"})
+    asked = {}
+
+    def fake_pages(method, days, extra, start=None, end=None):
+        asked.update(extra)
+        return [
+            {"label": "dataset > mine-a", "nb_visits": 5, "nb_uniq_visitors": 4},
+            {"label": "dataset > mine-a > resource > r1", "nb_visits": 50, "nb_uniq_visitors": 40},  # sub-page: not counted
+            {"label": "dataset > mine-b", "nb_visits": 1, "nb_uniq_visitors": 1},
+            {"label": "dataset > theirs", "nb_visits": 999, "nb_uniq_visitors": 500},
+        ]
+
+    monkeypatch.setattr(appmod, "_matomo_flat_pages", fake_pages)
+    c = app.test_client()
+    _login(c, _scoped())
+    rows = c.get("/api/matomo/top-datasets?limit=100").get_json()
+    assert asked["filter_limit"] > 300
+    assert [(r["slug"], r["visits"]) for r in rows] == [("mine-a", 5), ("mine-b", 1)]

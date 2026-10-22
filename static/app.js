@@ -180,6 +180,7 @@ const TRANSLATIONS = {
     'traffic.api_calls': 'API Calls',
     'traffic.visits_chart': 'Visits Over Time',
     'traffic.top_datasets': 'Top Dataset Pages',
+    'traffic.org_total': 'Visits to your datasets in this period:',
     'traffic.top_queries': 'Top Search Queries',
     'traffic.top_api': 'Top API Calls',
     'traffic.top_downloads': 'Top Downloads',
@@ -810,6 +811,7 @@ const TRANSLATIONS = {
     'traffic.api_calls': 'Κλήσεις API',
     'traffic.visits_chart': 'Εξέλιξη Επισκέψεων',
     'traffic.top_datasets': 'Κορυφαίες Σελίδες Δεδομένων',
+    'traffic.org_total': 'Επισκέψεις στα σύνολα δεδομένων σας στην περίοδο:',
     'traffic.top_queries': 'Κορυφαίες Αναζητήσεις',
     'traffic.top_api': 'Κορυφαίες Κλήσεις API',
     'traffic.top_downloads': 'Κορυφαίες Λήψεις',
@@ -1513,6 +1515,12 @@ function _applyOrgScopedUi() {
   hide(document.querySelector('#tab-traffic .flat-tile-strip'));
   ['trafficChart', 'trafficTopSearches', 'trafficTopApi', 'trafficTopDownloads']
     .forEach(id => hide(document.getElementById(id)?.closest('.p-4')));
+  const trafficGrid = document.querySelector('#tab-traffic .flat-grid-2');
+  if (trafficGrid) trafficGrid.style.gridTemplateColumns = '1fr';  // one column: the other cells are gone
+  // Organizations: only their own orgs -- no "All Public Sector" (portal-wide HRMS list)
+  // and no Refresh (a POST that re-fetches every org).
+  hide(document.getElementById('orgsViewPortalBtn')?.closest('.btn-group'));
+  hide(document.getElementById('orgsRefreshBtn'));
 }
 _applyOrgScopedUi();
 
@@ -2600,8 +2608,13 @@ async function loadTrafficTab() {
   if (ORG_SCOPED) {
     // Portal-wide summary/trend/searches/API/downloads aren't theirs to see.
     try {
-      const rows = await fetch(API_BASE + 'api/matomo/top-datasets?' + qs + '&limit=20').then(r => r.json());
-      if (Array.isArray(rows)) renderTrafficTopDatasets(rows);
+      const rows = await fetch(API_BASE + 'api/matomo/top-datasets?' + qs + '&limit=100').then(r => r.json());
+      if (Array.isArray(rows)) {
+        renderTrafficTopDatasets(rows);
+        const total = rows.reduce((n, d) => n + (d.visits || 0), 0);
+        show('trafficTopDatasets').insertAdjacentHTML('afterbegin',
+          `<p class="small mb-2"><span class="text-muted">${t('traffic.org_total')}</span> <strong>${fmt(total)}</strong></p>`);
+      }
       else show('trafficTopDatasets').innerHTML = `<p class="text-muted small">${esc(rows.error || t('traffic.failed'))}</p>`;
     } catch (e) {
       show('trafficTopDatasets').innerHTML = `<p class="text-muted small">${t('traffic.failed')}</p>`;
@@ -4379,9 +4392,11 @@ const _ORGS_STALE_MS   = 30 * 60 * 1000;
 const _ORGS_EXPIRE_MS  = 2  * 60 * 60 * 1000;
 
 function _orgsSaveCache(data, fetched_at) {
+  if (ORG_SCOPED) return;  // a scoped user's list must not land in (or come from) the browser-wide cache
   try { localStorage.setItem(_ORGS_CACHE_KEY, JSON.stringify({ data, fetched_at, ts: Date.now() })); } catch (_) {}
 }
 function _orgsReadCache() {
+  if (ORG_SCOPED) return null;
   try {
     const c = JSON.parse(localStorage.getItem(_ORGS_CACHE_KEY) || 'null');
     if (!c || !Array.isArray(c.data) || Date.now() - c.ts > _ORGS_EXPIRE_MS) return null;
@@ -4408,7 +4423,7 @@ async function loadOrgs(force = false) {
       // contacts weren't stored under an org_code loadContactSummary can resolve) --
       // warm it in the background the same way the Comms tab already does, instead of
       // leaving badges wrong until the user happens to open the Contacts tab first.
-      if (!_portalMembersCache) loadContactsTab();
+      if (!_portalMembersCache && !ORG_SCOPED) loadContactsTab();
       // Silently refresh in background if stale
       if (Date.now() - cached.ts > _ORGS_STALE_MS) _loadOrgsBackground();
       return;
@@ -4440,7 +4455,7 @@ async function loadOrgs(force = false) {
     renderOrgsTable(_orgsData);
     if (json.enriching) _pollUntilEnriched();
     _loadPublicOrgsForPortal();
-    if (!_portalMembersCache) loadContactsTab();
+    if (!_portalMembersCache && !ORG_SCOPED) loadContactsTab();
   } catch (e) {
     el.innerHTML = `<div class="alert alert-danger mb-0">${t('error')} ${e.message}</div>`;
   } finally {
@@ -4524,7 +4539,7 @@ function renderOrgsTable(orgs) {
         ${th('title', t('orgs.col_org'))}
         ${th('package_count', t('orgs.col_datasets'), 'text-end')}
         ${th('last_updated', t('orgs.col_updated'), 'text-end')}
-        <th class="text-center" style="width:80px">${t('orgs.col_contacts')}</th>
+        ${ORG_SCOPED ? '' : `<th class="text-center" style="width:80px">${t('orgs.col_contacts')}</th>`}
       </tr></thead>
       <tbody>
         ${sorted.map((o, i) => `
@@ -4540,7 +4555,7 @@ function renderOrgsTable(orgs) {
             </td>
             <td class="text-end fw-bold">${fmt(o.package_count)}</td>
             <td class="text-end text-muted small" title="${o.last_updated ?? ''}">${relativeDate(o.last_updated)}</td>
-            <td class="text-center">${_portalContactCell(o.name, o.title)}</td>
+            ${ORG_SCOPED ? '' : `<td class="text-center">${_portalContactCell(o.name, o.title)}</td>`}
           </tr>`).join('')}
       </tbody>
     </table>`;
@@ -4798,6 +4813,7 @@ function _buildCkanLookup() {
 }
 
 async function _loadPublicOrgsForPortal() {
+  if (ORG_SCOPED) return;  // HRMS public-sector list + contact counts aren't theirs
   if (!_publicOrgs.length) {
     try {
       const data = await fetch(API_BASE + 'api/public-orgs').then(r => r.json());
@@ -5222,7 +5238,7 @@ function autoEmailBadge(c) {
 document.getElementById('commsTabBtn').addEventListener('click', () => {
   if (!_commsLoaded) {
     _commsLoaded = true;
-    if (!_portalMembersCache) loadContactsTab();
+    if (!_portalMembersCache && !ORG_SCOPED) loadContactsTab();
     if (!_orgsData.length) {
       // Warm the portal-orgs cache so the "add communication" org search has
       // more than just HRMS matches, even if the user never opened the Orgs tab.
