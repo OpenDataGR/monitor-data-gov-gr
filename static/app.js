@@ -290,6 +290,11 @@ const TRANSLATIONS = {
     'quality.mqa_interoperability': 'Interoperability',
     'quality.mqa_reusability': 'Reusability',
     'quality.mqa_contextuality': 'Contextuality',
+    'quality.mqa_metrics': 'metrics',
+    'quality.mqa_datasets': 'datasets',
+    'quality.mqa_distributions': 'distributions',
+    'quality.mqa_services': 'data services',
+    'quality.mqa_v2_note': 'The overall score is data.europa.eu\'s own. They no longer publish per-dimension scores, so each bar is the weighted coverage of that dimension\'s metrics (weight × coverage), computed here from their published metric coverage.',
     'orgs.title': 'Organizations & Dataset Counts',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'All Public Sector',
@@ -921,6 +926,11 @@ const TRANSLATIONS = {
     'quality.mqa_interoperability': 'Διαλειτουργικότητα',
     'quality.mqa_reusability': 'Επαναχρησιμοποίηση',
     'quality.mqa_contextuality': 'Συμφραζόμενα',
+    'quality.mqa_metrics': 'μετρικές',
+    'quality.mqa_datasets': 'σύνολα δεδομένων',
+    'quality.mqa_distributions': 'διανομές',
+    'quality.mqa_services': 'υπηρεσίες δεδομένων',
+    'quality.mqa_v2_note': 'Η συνολική βαθμολογία είναι του data.europa.eu. Δεν δημοσιεύουν πλέον βαθμολογίες ανά διάσταση, οπότε κάθε μπάρα είναι η σταθμισμένη κάλυψη των μετρικών της διάστασης (βάρος × κάλυψη), υπολογισμένη εδώ από τη δημοσιευμένη κάλυψη μετρικών.',
     'orgs.title': 'Οργανισμοί & Αριθμός Συνόλων Δεδομένων',
     'orgs.portal': 'data.gov.gr',
     'orgs.all': 'Όλος ο Δημόσιος Τομέας',
@@ -4279,6 +4289,7 @@ function _renderMqa(cached) {
     return;
   }
   const data = cached.data;
+  if (data.dimensions) { _renderMqaV2(cached); return; }
   const maxTotal = MQA_DIMENSIONS.reduce((sum, d) => sum + (data[d.key]?.score?.max || 0), 0);
   const overallPct = maxTotal ? Math.round((data.score / maxTotal) * 100) : 0;
   show('mqaLastUpdated').textContent = cached.fetched_at
@@ -4306,6 +4317,38 @@ function _renderMqa(cached) {
       <div class="text-muted small">${overallPct}% &mdash; data.gov.gr</div>
     </div>
     ${rows}`;
+}
+
+// data.europa.eu's MQA v2: the official overall score + counts, and per-dimension
+// weighted metric coverage that the server computes from their per-metric coverage
+// (see _normalize_mqa in app.py) -- they no longer publish dimension scores themselves.
+function _renderMqaV2(cached) {
+  const data = cached.data;
+  show('mqaLastUpdated').textContent = cached.fetched_at
+    ? t('quality.hvd_last_run') + ' ' + relativeDate(cached.fetched_at) : '';
+  const pct = data.max_score ? Math.round((data.score / data.max_score) * 100) : 0;
+  const rows = MQA_DIMENSIONS.filter(d => data.dimensions[d.key]).map(d => {
+    const dim = data.dimensions[d.key];
+    return `
+      <div class="mb-3">
+        <div class="d-flex justify-content-between small mb-1">
+          <span class="fw-semibold">${esc(t(d.label))}</span>
+          <span class="text-muted">${dim.percentage}% <span class="ms-1">(${fmt(dim.metrics)} ${esc(t('quality.mqa_metrics'))})</span></span>
+        </div>
+        <div class="progress" style="height:8px">
+          <div class="progress-bar" role="progressbar" style="width:${dim.percentage}%;background-color:${_mqaBarColor(dim.percentage)}"></div>
+        </div>
+      </div>`;
+  }).join('');
+  const c = data.counts || {};
+  show('mqaContent').innerHTML = `
+    <div class="text-center mb-4">
+      <div class="display-5 fw-bold">${(+data.score).toFixed(2)} <span class="fs-5 text-muted">/ ${data.max_score}</span></div>
+      <div class="text-muted small">${pct}% &mdash; data.gov.gr${data.date ? ' &middot; ' + esc(data.date) : ''}</div>
+      <div class="text-muted small mt-1">${fmt(c.datasets || 0)} ${esc(t('quality.mqa_datasets'))} &middot; ${fmt(c.distributions || 0)} ${esc(t('quality.mqa_distributions'))} &middot; ${fmt(c.dataServices || 0)} ${esc(t('quality.mqa_services'))}</div>
+    </div>
+    ${rows}
+    <p class="text-muted small mt-3 mb-0">${esc(t('quality.mqa_v2_note'))}</p>`;
 }
 
 async function _loadMqaTab() {

@@ -4203,10 +4203,43 @@ def _save_mqa_cache(result: dict) -> None:
         db.session.commit()
 
 
+def _normalize_mqa(data):
+    """data.europa.eu's MQA API (metricsVersion 2.x) no longer publishes per-dimension
+    scores -- only an overall {value, max}, entity counts, and per-metric coverage with
+    each metric's weight and dimension. Reshape that into what the page renders: the
+    official overall score, plus per-dimension *weighted metric coverage* computed here
+    (sum of weight x coverage over that dimension's metrics, across datasets/distributions/
+    data services). Idempotent, so it also repairs a row cached in the raw v2 shape."""
+    if not isinstance(data, dict) or "dimensions" in data or not isinstance(data.get("score"), dict):
+        return data
+    dims = {}
+    for entity, metrics in ((data.get("coverage") or {}).get("value") or {}).items():
+        for m in metrics or []:
+            cov, weight, dim = m.get("coverage"), m.get("weight"), m.get("dimension")
+            if cov is None or not weight or not dim or not m.get("evaluated"):
+                continue
+            d = dims.setdefault(dim, {"points": 0.0, "max": 0.0, "metrics": 0})
+            d["points"] += weight * cov / 100
+            d["max"] += weight
+            d["metrics"] += 1
+    for d in dims.values():
+        d["percentage"] = round(100 * d["points"] / d["max"]) if d["max"] else 0
+        d["points"], d["max"] = round(d["points"], 2), round(d["max"], 2)
+    return {
+        "score": data["score"].get("value"), "max_score": data["score"].get("max"),
+        "date": data["score"].get("date"),
+        "counts": (data.get("counts") or {}).get("value") or {},
+        "dimensions": dims,
+    }
+
+
 def _load_mqa_cache():
     with app.app_context():
         row = MqaCache.query.get(1)
-        return row.data() if row else None
+        cached = row.data() if row else None
+        if cached and "data" in cached:
+            cached["data"] = _normalize_mqa(cached["data"])
+        return cached
 
 
 def _do_refresh_mqa() -> dict:
@@ -4220,7 +4253,7 @@ def _do_refresh_mqa() -> dict:
         results = ((data or {}).get("result") or {}).get("results") or []
         if not results:
             raise ValueError("data.europa.eu returned no MQA results for this catalogue")
-        result = {"data": results[0], "fetched_at": datetime.now(timezone.utc).isoformat()}
+        result = {"data": _normalize_mqa(results[0]), "fetched_at": datetime.now(timezone.utc).isoformat()}
         _save_mqa_cache(result)
         return result
 
