@@ -7918,7 +7918,7 @@ async function loadContactSummary() {
 let _orgPanel = null;
 
 function openOrgPanel(name) {
-  if (!_orgPanel) _orgPanel = new bootstrap.Offcanvas(document.getElementById('orgDetailPanel'));
+  if (!_orgPanel) _orgPanel = new bootstrap.Modal(document.getElementById('orgDetailPanel'));
   _bringOverlayToFront(document.getElementById('orgDetailPanel'));
   document.getElementById('orgDetailTitle').textContent = t('loading');
   document.getElementById('orgDetailIdLink').classList.add('d-none');
@@ -8943,7 +8943,7 @@ function renderOrgPanel(data) {
   orgIdLink.classList.remove('d-none');
 
   const imgHtml = org.image_url
-    ? `<img src="${org.image_url}" class="d-block mb-3" style="max-height:72px;max-width:180px;object-fit:contain" onerror="this.remove()">`
+    ? `<img src="${org.image_url}" class="d-block" style="max-height:90px;max-width:200px;object-fit:contain" onerror="this.remove()">`
     : '';
 
   const descHtml = org.description
@@ -9056,20 +9056,28 @@ function renderOrgPanel(data) {
       : `<p class="text-muted small">${t('userPanel.no_members')}</p>`
     }`;
 
+  // Two columns in the wide modal (stacking on small screens): who they are and what they publish on the
+  // left; how they're doing (quality, communications) and who belongs to them on the right.
   document.getElementById('orgDetailBody').innerHTML = `
-    ${imgHtml}
-    <div class="d-flex align-items-start gap-3 mb-3">
-      <div>
-        <div class="fs-2 fw-bold text-primary lh-1">${fmt(org.package_count)}</div>
-        <div class="text-muted small">${t('org_detail.datasets')}</div>
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <div class="d-flex align-items-center gap-4 flex-wrap mb-3">
+          ${imgHtml}
+          <div>
+            <div class="display-5 fw-bold text-primary lh-1">${fmt(org.package_count)}</div>
+            <div class="text-muted small">${t('org_detail.datasets')}</div>
+          </div>
+          ${createdHtml}
+        </div>
+        ${descHtml}
+        ${datasetsHtml}
       </div>
-      ${createdHtml}
-    </div>
-    ${descHtml}
-    ${datasetsHtml}
-    ${commsHtml}
-    ${qualityHtml}
-    ${membersHtml}`;
+      <div class="col-lg-5">
+        ${qualityHtml}
+        ${commsHtml}
+        ${membersHtml}
+      </div>
+    </div>`;
 }
 
 // ── Manual trigger ───────────────────────────────────────────────────────────
