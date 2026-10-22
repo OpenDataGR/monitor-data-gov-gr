@@ -291,6 +291,34 @@ class OrgClassification(db.Model):
         }
 
 
+class MqaSnapshot(db.Model):
+    """Append-only history of data.europa.eu's MQA score for the catalogue, one row per
+    distinct published score (see app._record_mqa_snapshot) -- MqaCache keeps only the
+    latest value, so without this there is nothing to compare a new score against.
+    Overall score and max are data.europa.eu's own; dimensions_json holds this app's
+    weighted metric coverage per dimension (app._normalize_mqa), not an official score."""
+    __tablename__ = "mqa_snapshots"
+
+    id              = db.Column(db.Integer, primary_key=True)
+    recorded_at     = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+    score_date      = db.Column(db.String(16))   # the date data.europa.eu stamped on the score
+    score           = db.Column(db.Float)
+    max_score       = db.Column(db.Float)
+    counts_json     = db.Column(db.Text)
+    dimensions_json = db.Column(db.Text)
+
+    def to_dict(self):
+        return {
+            "recorded_at": self.recorded_at.isoformat() if self.recorded_at else None,
+            "score_date":  self.score_date,
+            "score":       self.score,
+            "max_score":   self.max_score,
+            "percentage":  round(100 * self.score / self.max_score, 1) if self.score is not None and self.max_score else None,
+            "counts":      json.loads(self.counts_json) if self.counts_json else {},
+            "dimensions":  json.loads(self.dimensions_json) if self.dimensions_json else {},
+        }
+
+
 class OrgSnapshot(db.Model):
     """Append-only time series, one row per org per background-loop run (see
     app._do_build_org_snapshots) -- mirrors PortalSnapshot's shape rather

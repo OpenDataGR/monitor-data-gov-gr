@@ -72,7 +72,7 @@ def _admin():
 @pytest.mark.parametrize("path", [
     "/api/communications", "/api/cases", "/api/contacts", "/api/portal-members", "/api/public-orgs",
     "/api/stats/latest", "/api/stats/live", "/api/health/summary", "/api/matomo/summary",
-    "/api/matomo/top-searches", "/api/matomo/live", "/api/quality/mqa", "/api/datasets/geo-locations",
+    "/api/matomo/top-searches", "/api/matomo/live", "/api/quality/mqa", "/api/quality/mqa/history", "/api/datasets/geo-locations",
     "/api/org-analytics/classifications", "/api/users", "/admin/users", "/api-docs",
 ])
 def test_everything_outside_the_allowlist_is_refused(app, ckan, path):

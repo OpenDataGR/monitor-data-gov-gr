@@ -34,7 +34,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, OrgClassification, OrgSnapshot, ORG_CATEGORIES, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, InboundEmailCommunication, UnmatchedEmailContact, ExcludedEmailAddress, InboundListenAddress, ApiToken
+from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, MqaSnapshot, OrgClassification, OrgSnapshot, ORG_CATEGORIES, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, InboundEmailCommunication, UnmatchedEmailContact, ExcludedEmailAddress, InboundListenAddress, ApiToken
 import rdflib
 import pyshacl
 import config
@@ -4233,6 +4233,23 @@ def _normalize_mqa(data):
     }
 
 
+def _record_mqa_snapshot(data) -> None:
+    """Append this MQA reading to the history -- unless it's the same published score
+    (same date and value) as the last one, since we re-fetch daily but data.europa.eu
+    recomputes far less often."""
+    if not isinstance(data, dict) or data.get("score") is None:
+        return
+    with app.app_context():
+        last = MqaSnapshot.query.order_by(MqaSnapshot.id.desc()).first()
+        if last and last.score_date == data.get("date") and last.score == data["score"]:
+            return
+        db.session.add(MqaSnapshot(
+            score_date=data.get("date"), score=data["score"], max_score=data.get("max_score"),
+            counts_json=json.dumps(data.get("counts") or {}), dimensions_json=json.dumps(data.get("dimensions") or {}),
+        ))
+        db.session.commit()
+
+
 def _load_mqa_cache():
     with app.app_context():
         row = MqaCache.query.get(1)
@@ -4255,6 +4272,7 @@ def _do_refresh_mqa() -> dict:
             raise ValueError("data.europa.eu returned no MQA results for this catalogue")
         result = {"data": _normalize_mqa(results[0]), "fetched_at": datetime.now(timezone.utc).isoformat()}
         _save_mqa_cache(result)
+        _record_mqa_snapshot(result["data"])
         return result
 
 
@@ -4262,6 +4280,18 @@ def _do_refresh_mqa() -> dict:
 def get_mqa():
     cached = _load_mqa_cache()
     return jsonify({"result": cached})
+
+
+@app.route("/api/quality/mqa/history")
+def get_mqa_history():
+    if not MqaSnapshot.query.first():
+        # History starts the first time anyone asks after this shipped, from whatever is
+        # already cached, instead of waiting for the next daily refresh.
+        cached = _load_mqa_cache()
+        if cached:
+            _record_mqa_snapshot(cached.get("data"))
+    rows = MqaSnapshot.query.order_by(MqaSnapshot.id).limit(1000).all()
+    return jsonify({"history": [r.to_dict() for r in rows]})
 
 
 @app.route("/api/quality/mqa/refresh", methods=["POST"])

@@ -291,6 +291,10 @@ const TRANSLATIONS = {
     'quality.mqa_reusability': 'Reusability',
     'quality.mqa_contextuality': 'Contextuality',
     'quality.mqa_metrics': 'metrics',
+    'quality.mqa_history': 'History',
+    'quality.mqa_history_start': 'History starts with this score — the trend appears as data.europa.eu publishes new ones.',
+    'quality.mqa_col_date': 'Date',
+    'quality.mqa_col_score': 'Score',
     'quality.mqa_datasets': 'datasets',
     'quality.mqa_distributions': 'distributions',
     'quality.mqa_services': 'data services',
@@ -927,6 +931,10 @@ const TRANSLATIONS = {
     'quality.mqa_reusability': 'Επαναχρησιμοποίηση',
     'quality.mqa_contextuality': 'Συμφραζόμενα',
     'quality.mqa_metrics': 'μετρικές',
+    'quality.mqa_history': 'Ιστορικό',
+    'quality.mqa_history_start': 'Το ιστορικό ξεκινά από αυτή τη βαθμολογία — η τάση εμφανίζεται καθώς το data.europa.eu δημοσιεύει νέες.',
+    'quality.mqa_col_date': 'Ημερομηνία',
+    'quality.mqa_col_score': 'Βαθμολογία',
     'quality.mqa_datasets': 'σύνολα δεδομένων',
     'quality.mqa_distributions': 'διανομές',
     'quality.mqa_services': 'υπηρεσίες δεδομένων',
@@ -4348,7 +4356,55 @@ function _renderMqaV2(cached) {
       <div class="text-muted small mt-1">${fmt(c.datasets || 0)} ${esc(t('quality.mqa_datasets'))} &middot; ${fmt(c.distributions || 0)} ${esc(t('quality.mqa_distributions'))} &middot; ${fmt(c.dataServices || 0)} ${esc(t('quality.mqa_services'))}</div>
     </div>
     ${rows}
-    <p class="text-muted small mt-3 mb-0">${esc(t('quality.mqa_v2_note'))}</p>`;
+    <p class="text-muted small mt-3 mb-3">${esc(t('quality.mqa_v2_note'))}</p>
+    <h6 class="fw-semibold mt-4 mb-2">${esc(t('quality.mqa_history'))}</h6>
+    <div id="mqaHistory"></div>`;
+  _loadMqaHistory();
+}
+
+let _mqaHistoryChart = null;
+async function _loadMqaHistory() {
+  const el = document.getElementById('mqaHistory');
+  if (!el) return;
+  if (_mqaHistoryChart) { _mqaHistoryChart.destroy(); _mqaHistoryChart = null; }
+  let rows = [];
+  try {
+    rows = (await fetch(API_BASE + 'api/quality/mqa/history').then(r => r.json())).history || [];
+  } catch (_) { /* history is a nicety -- the score above still shows */ }
+  const table = `
+    <div class="table-responsive mt-3">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>${esc(t('quality.mqa_col_date'))}</th><th class="text-end">${esc(t('quality.mqa_col_score'))}</th>
+          <th class="text-end">${esc(t('quality.mqa_datasets'))}</th></tr></thead>
+        <tbody>${[...rows].reverse().slice(0, 12).map(r => `
+          <tr><td>${esc(r.score_date || '')}</td>
+              <td class="text-end">${r.score != null ? (+r.score).toFixed(2) : '—'} / ${r.max_score ?? '—'} (${r.percentage ?? '—'}%)</td>
+              <td class="text-end">${fmt((r.counts || {}).datasets || 0)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  if (rows.length < 2) {
+    el.innerHTML = `<p class="text-muted small mb-0">${esc(t('quality.mqa_history_start'))}</p>${rows.length ? table : ''}`;
+    return;
+  }
+  el.innerHTML = `<div style="height:220px"><canvas id="mqaHistoryChart"></canvas></div>${table}`;
+  _mqaHistoryChart = new Chart(document.getElementById('mqaHistoryChart').getContext('2d'), {
+    type: 'line',
+    data: { datasets: [{
+      label: t('quality.mqa_col_score') + ' %',
+      data: rows.filter(r => r.percentage != null).map(r => ({ x: new Date(r.score_date), y: r.percentage })),
+      borderColor: '#0057b8', backgroundColor: '#0057b8', fill: false, tension: 0.3, pointRadius: 3, pointHoverRadius: 5,
+    }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { type: 'time', time: { unit: 'day', tooltipFormat: 'dd/MM/yyyy', displayFormats: { day: 'dd/MM' } },
+             grid: { color: _chartGridColor() }, ticks: { color: _chartTextColor() } },
+        y: { min: 0, max: 100, grid: { color: _chartGridColor() }, ticks: { color: _chartTextColor(), callback: v => v + '%' } },
+      },
+    },
+  });
 }
 
 async function _loadMqaTab() {

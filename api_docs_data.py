@@ -167,6 +167,8 @@ ROUTES = {
          "desc": "Deletes cached results for a check type. Blocked while a run is in progress."},
         {"methods": ["GET"], "path": "/api/quality/mqa",
          "desc": "Cached EU data.europa.eu Metadata Quality Assessment score for the catalogue."},
+        {"methods": ["GET"], "path": "/api/quality/mqa/history",
+         "desc": "Dated history of the MQA score (one row per distinct published score): overall score/max, entity counts and per-dimension weighted metric coverage. Seeds itself from the cached score on first call."},
         {"methods": ["POST"], "path": "/api/quality/mqa/refresh", "admin": True,
          "desc": "Force-refreshes the MQA score from data.europa.eu."},
         {"methods": ["GET"], "path": "/api/debug/portal",

@@ -45,3 +45,42 @@ def test_a_raw_v2_row_already_in_the_cache_is_repaired_on_read(app):
     db.session.commit()
     cached = appmod._load_mqa_cache()
     assert cached["data"]["dimensions"]["findability"]["percentage"] == 75
+
+
+# ── history ────────────────────────────────────────────────────────────────────
+
+def _admin_client(app):
+    from models import User
+    u = User(email="a@example.gr", is_admin=True, is_superadmin=True)
+    db.session.add(u)
+    db.session.commit()
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update({"user_id": u.id, "is_admin": True, "is_superadmin": True, "allowed_tabs": None, "org_scope": None})
+    return c
+
+
+def test_a_snapshot_is_recorded_once_per_distinct_published_score(app):
+    from models import MqaSnapshot
+    data = appmod._normalize_mqa(V2)
+    appmod._record_mqa_snapshot(data)
+    appmod._record_mqa_snapshot(data)  # the daily re-fetch of the same published score
+    assert MqaSnapshot.query.count() == 1
+    newer = dict(data, score=5.7, date="2026-10-25")
+    appmod._record_mqa_snapshot(newer)
+    rows = MqaSnapshot.query.order_by(MqaSnapshot.id).all()
+    assert [r.score_date for r in rows] == ["2026-10-18", "2026-10-25"]
+    assert rows[1].to_dict()["percentage"] == 76.0 and rows[1].to_dict()["counts"]["datasets"] == 10
+
+
+def test_history_route_seeds_itself_from_the_cached_score(app):
+    db.session.add(MqaCache(id=1, data_json=json.dumps({"data": V2, "fetched_at": "2026-10-22T08:39:00+00:00"})))
+    db.session.commit()
+    c = _admin_client(app)
+    hist = c.get("/api/quality/mqa/history").get_json()["history"]
+    assert len(hist) == 1 and hist[0]["score"] == 5.85 and hist[0]["dimensions"]["findability"]["percentage"] == 75
+    assert len(c.get("/api/quality/mqa/history").get_json()["history"]) == 1  # asking again doesn't add a row
+
+
+def test_history_is_empty_when_nothing_was_ever_fetched(app):
+    assert _admin_client(app).get("/api/quality/mqa/history").get_json() == {"history": []}
