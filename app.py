@@ -3268,6 +3268,30 @@ def _hvd_check_one(name: str) -> dict:
         return {"name": name, "error": str(exc)}
 
 
+def _org_title_by_slug() -> dict:
+    """{org slug: title} from the orgs cache (filled from CKAN's organization_list if it is
+    still cold) -- the quality checks' dataset listers need it because a package_search
+    restricted with `fl` returns the organization as a bare slug, not an object."""
+    if not _orgs_cache.get("data"):
+        try:
+            _fetch_orgs_quick()
+        except Exception:
+            pass
+    return {o["name"]: o.get("title") or o["name"] for o in (_orgs_cache.get("data") or []) if o.get("name")}
+
+
+def _package_org(p: dict, titles: dict):
+    """(org slug, org title) of a package_search result, whichever shape CKAN used: the full
+    `organization` object, or -- when the query restricts fields with `fl` -- just the
+    organization's slug as a string (which is what crashed the checks with "'str' object has
+    no attribute 'get'")."""
+    org = p.get("organization")
+    if isinstance(org, dict):
+        return org.get("name") or "", org.get("title") or ""
+    slug = org if isinstance(org, str) else ""
+    return slug, titles.get(slug, slug)
+
+
 def _list_hvd_datasets() -> list:
     """[{"name":..., "metadata_modified":..., "org_title":..., "org_slug":...}, ...]
     for every currently HVD-tagged dataset -- one bulk paginated call, used
@@ -3278,6 +3302,7 @@ def _list_hvd_datasets() -> list:
     a contact person's name instead of the organization), so it's unusable
     for grouping."""
     items = []
+    titles = _org_title_by_slug()
     start, batch = 0, 100
     while True:
         r = requests.get(
@@ -3292,15 +3317,12 @@ def _list_hvd_datasets() -> list:
         results = data["result"]["results"]
         if not results:
             break
-        items.extend(
-            {
-                "name":             p["name"],
-                "metadata_modified": p.get("metadata_modified"),
-                "org_title":        (p.get("organization") or {}).get("title") or "",
-                "org_slug":         (p.get("organization") or {}).get("name") or "",
-            }
-            for p in results if p.get("name")
-        )
+        for p in results:
+            if not p.get("name"):
+                continue
+            slug, title = _package_org(p, titles)
+            items.append({"name": p["name"], "metadata_modified": p.get("metadata_modified"),
+                          "org_title": title, "org_slug": slug})
         start += batch
         if start >= data["result"]["count"]:
             break
@@ -3534,6 +3556,7 @@ def _list_all_datasets() -> list:
     for every dataset on the portal -- same paginated package_search as
     _list_hvd_datasets, just without the hvd_category filter."""
     items = []
+    titles = _org_title_by_slug()
     start, batch = 0, 100
     while True:
         r = requests.get(
@@ -3548,15 +3571,12 @@ def _list_all_datasets() -> list:
         results = data["result"]["results"]
         if not results:
             break
-        items.extend(
-            {
-                "name":              p["name"],
-                "metadata_modified": p.get("metadata_modified"),
-                "org_title":         (p.get("organization") or {}).get("title") or "",
-                "org_slug":          (p.get("organization") or {}).get("name") or "",
-            }
-            for p in results if p.get("name")
-        )
+        for p in results:
+            if not p.get("name"):
+                continue
+            slug, title = _package_org(p, titles)
+            items.append({"name": p["name"], "metadata_modified": p.get("metadata_modified"),
+                          "org_title": title, "org_slug": slug})
         start += batch
         if start >= data["result"]["count"]:
             break
@@ -3652,6 +3672,7 @@ def _list_geo_datasets() -> list:
     single package, expressed as a Solr fq so we don't have to paginate the
     entire catalog just to filter it down here."""
     items = []
+    titles = _org_title_by_slug()
     start, batch = 0, 100
     while True:
         r = requests.get(
@@ -3667,15 +3688,12 @@ def _list_geo_datasets() -> list:
         results = data["result"]["results"]
         if not results:
             break
-        items.extend(
-            {
-                "name":              p["name"],
-                "metadata_modified": p.get("metadata_modified"),
-                "org_title":         (p.get("organization") or {}).get("title") or "",
-                "org_slug":          (p.get("organization") or {}).get("name") or "",
-            }
-            for p in results if p.get("name")
-        )
+        for p in results:
+            if not p.get("name"):
+                continue
+            slug, title = _package_org(p, titles)
+            items.append({"name": p["name"], "metadata_modified": p.get("metadata_modified"),
+                          "org_title": title, "org_slug": slug})
         start += batch
         if start >= data["result"]["count"]:
             break

@@ -405,14 +405,17 @@ Key decisions/shape:
   same cadence as `_do_refresh_orgs()`, i.e. every 30 min + once at startup)
   never clobbers a superadmin's manual override (`is_override`); only
   `heuristic_category` gets refreshed on an overridden row.
-- **Real bug fixed along the way**: `_list_hvd_datasets`/`_list_all_datasets`/
-  `_list_geo_datasets` (app.py) had been reading a nonexistent
-  `organization_card` key from `package_search` results (every other call
-  site uses `organization`) — so `org_title` (and HVD's
-  `publisher_mismatch`, which depends on it) was silently empty on every
-  quality-check result before this. Fixed to read `organization`, which
-  also now yields `org_slug` (the CKAN org's `name`/slug, not just its
-  title).
+- **Org info on `package_search` results (two bugs, the second found 2026-10-22)**:
+  `_list_hvd_datasets`/`_list_all_datasets`/`_list_geo_datasets` first read a nonexistent
+  `organization_card` key (so `org_title`, and HVD's `publisher_mismatch`, was silently
+  empty). Phase 0 "fixed" it to read `organization` as an object -- but those queries
+  restrict fields with `fl`, and then CKAN returns `organization` as a bare **slug string**,
+  so every check run crashed with `'str' object has no attribute 'get'` (invisible for a
+  month because the checks only run when stale, and it left every org-analytics pass rate
+  empty). Now `_package_org()` handles both shapes, resolving the title from the orgs
+  cache via `_org_title_by_slug()`; `tests/test_quality_listers.py`. Lesson: a mocked
+  response can't tell you a field's shape -- the dev sandbox couldn't reach CKAN, so this
+  was never seen against the real API until it failed in production.
 - **Per-dataset quality-check rows now carry `org_slug`**: a nullable,
   indexed column added to `HvdDatasetCheckCache`/`DcatApDatasetCheckCache`/
   `GeoDcatDatasetCheckCache`. `_do_run_check()` backfills it for **every**
