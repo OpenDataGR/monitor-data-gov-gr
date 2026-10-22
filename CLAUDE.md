@@ -129,6 +129,18 @@ button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
   the login was verified working end to end in production on 2026-10-21.
   Automated tests use a faked Keycloak/CKAN (`tests/test_keycloak_login.py`).
 
+## Detail views are modals, not slide-overs (2026-10-22)
+
+The organization, organization-contacts, dataset and dataset-analytics detail views were 440px
+`offcanvas-end` slide-overs; they are now Bootstrap **modals** (`modal-xl`/`modal-lg`, centered, scrollable),
+like the user panel always was. Organization, dataset and dataset-analytics use a two-column body
+(`row g-4` > `col-lg-7` + `col-lg-5`; the right column's first heading gets its top margin removed by a CSS
+rule in index.html). Same element ids as before, so the loaders/renderers are unchanged. Open/close with
+`new bootstrap.Modal(...)` -- constructing an Offcanvas on a `.modal` fails quietly, so
+`tests/test_org_detail_modal.py` guards markup vs. script (there is no browser test). Stacking one over
+another (org -> dataset -> analytics) is handled by `_bringOverlayToFront`/the `show.bs.modal` listener.
+**New detail views should be modals too** (consistency was an explicit request); never reintroduce an offcanvas.
+
 ## MQA tab: history + EU-vs-our DCAT-AP comparison (shipped 2026-10-22)
 
 data.europa.eu moved its MQA API to metricsVersion 2.x: an overall score (`{value, max}`, ~5.85/7.5), entity

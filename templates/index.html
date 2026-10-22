@@ -88,6 +88,7 @@
     /* Org detail modal: the first heading in each column sits at the top (the sections carry mt-4 for when
        they were stacked in one column). */
     #orgDetailBody .col-lg-5 > :first-child { margin-top: 0 !important; }
+    #datasetDetailBody .col-lg-5 > :first-child, #datasetAnalyticsBody .col-lg-5 > :first-child { margin-top: 0 !important; }
     .dashboard-sidebar .nav-link { text-align: left; }
     .dashboard-sidebar .sidebar-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .dashboard-sidebar .nav-link:hover { background: rgba(0,0,0,.04); }
@@ -1907,17 +1908,21 @@
   </div>
 </div>
 
-<!-- Org contacts offcanvas -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="orgContactsPanel" style="width:440px;max-width:95vw">
-  <div class="offcanvas-header border-bottom">
-    <div>
-      <h5 class="offcanvas-title fw-bold mb-0" id="orgContactsTitle" data-i18n="contacts.panel_title">Contacts</h5>
-      <div class="text-muted small" id="orgContactsSubtitle"></div>
+<!-- Org contacts modal (was a 440px slide-over; every detail view is now a modal, like the user panel) -->
+<div class="modal fade" tabindex="-1" id="orgContactsPanel" aria-labelledby="orgContactsTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header border-bottom">
+        <div>
+          <h5 class="modal-title fw-bold mb-0" id="orgContactsTitle" data-i18n="contacts.panel_title">Contacts</h5>
+          <div class="text-muted small" id="orgContactsSubtitle"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="orgContactsBody">
+        <div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>
+      </div>
     </div>
-    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
-  </div>
-  <div class="offcanvas-body" id="orgContactsBody">
-    <div class="text-center py-5 text-muted"><div class="spinner-border text-primary"></div></div>
   </div>
 </div>
 
@@ -1963,34 +1968,42 @@
   </div>
 </div>
 
-<!-- Dataset detail offcanvas -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="datasetDetailPanel" style="width:440px;max-width:95vw">
-  <div class="offcanvas-header border-bottom align-items-start">
-    <div>
-      <h5 class="offcanvas-title fw-bold mb-1" id="datasetDetailTitle" data-i18n="catalog.panel_title">Dataset</h5>
-      <div class="text-muted small font-monospace d-none" id="datasetDetailIdLink"></div>
-    </div>
-    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
-  </div>
-  <div class="offcanvas-body" id="datasetDetailBody">
-    <div class="text-center py-5 text-muted">
-      <div class="spinner-border text-primary"></div>
+<!-- Dataset detail modal (two columns, see renderDatasetPanel) -->
+<div class="modal fade" tabindex="-1" id="datasetDetailPanel" aria-labelledby="datasetDetailTitle" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header border-bottom align-items-start">
+        <div>
+          <h5 class="modal-title fw-bold mb-1" id="datasetDetailTitle" data-i18n="catalog.panel_title">Dataset</h5>
+          <div class="text-muted small font-monospace d-none" id="datasetDetailIdLink"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="datasetDetailBody">
+        <div class="text-center py-5 text-muted">
+          <div class="spinner-border text-primary"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- Dataset analytics offcanvas -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="datasetAnalyticsPanel" style="width:440px;max-width:95vw">
-  <div class="offcanvas-header border-bottom align-items-start">
-    <div>
-      <h5 class="offcanvas-title fw-bold mb-1" data-i18n="catalog.analytics_title">Dataset Analytics</h5>
-      <div class="text-muted small" id="datasetAnalyticsSubtitle"></div>
-    </div>
-    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
-  </div>
-  <div class="offcanvas-body" id="datasetAnalyticsBody">
-    <div class="text-center py-5 text-muted">
-      <div class="spinner-border text-primary"></div>
+<!-- Dataset analytics modal (chart left, countries/referrers right) -->
+<div class="modal fade" tabindex="-1" id="datasetAnalyticsPanel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header border-bottom align-items-start">
+        <div>
+          <h5 class="modal-title fw-bold mb-1" data-i18n="catalog.analytics_title">Dataset Analytics</h5>
+          <div class="text-muted small" id="datasetAnalyticsSubtitle"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="datasetAnalyticsBody">
+        <div class="text-center py-5 text-muted">
+          <div class="spinner-border text-primary"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

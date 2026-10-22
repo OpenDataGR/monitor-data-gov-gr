@@ -7655,7 +7655,7 @@ function openContactsPanel(orgCode, orgLabel, ckanName = null) {
   _panelOrgCode  = orgCode;
   _panelOrgLabel = orgLabel;
   _panelCkanName = ckanName;
-  if (!_contactsPanel) _contactsPanel = new bootstrap.Offcanvas(document.getElementById('orgContactsPanel'));
+  if (!_contactsPanel) _contactsPanel = new bootstrap.Modal(document.getElementById('orgContactsPanel'));
   _bringOverlayToFront(document.getElementById('orgContactsPanel'));
   show('orgContactsTitle').textContent    = t('contacts.panel_title');
   show('orgContactsSubtitle').textContent = orgLabel;
@@ -7938,7 +7938,7 @@ function openOrgPanel(name) {
 let _datasetPanel = null;
 
 function openDatasetPanel(name) {
-  if (!_datasetPanel) _datasetPanel = new bootstrap.Offcanvas(document.getElementById('datasetDetailPanel'));
+  if (!_datasetPanel) _datasetPanel = new bootstrap.Modal(document.getElementById('datasetDetailPanel'));
   _bringOverlayToFront(document.getElementById('datasetDetailPanel'));
   show('datasetDetailTitle').textContent = t('loading');
   document.getElementById('datasetDetailIdLink').classList.add('d-none');
@@ -7972,7 +7972,7 @@ function renderDatasetPanel(d) {
         ? `<div class="list-group list-group-flush">
             ${d.endpoints.map(url => `
               <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center gap-2">
-                <span class="small text-truncate" style="max-width:260px" title="${esc(url)}">
+                <span class="small text-truncate" style="max-width:360px" title="${esc(url)}">
                   ${esc(url)}
                   ${d.service_format ? `<span class="badge bg-secondary ms-1" style="font-size:.65rem">${esc(d.service_format)}</span>` : ''}
                 </span>
@@ -7984,7 +7984,7 @@ function renderDatasetPanel(d) {
         ? `<div class="list-group list-group-flush">
             ${d.resources.map(r => `
               <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-center gap-2">
-                <span class="small text-truncate" style="max-width:260px" title="${esc(r.name)}">
+                <span class="small text-truncate" style="max-width:360px" title="${esc(r.name)}">
                   ${esc(r.name)}
                   ${r.format ? `<span class="badge bg-secondary ms-1" style="font-size:.65rem">${esc(r.format)}</span>` : ''}
                 </span>
@@ -7993,7 +7993,10 @@ function renderDatasetPanel(d) {
           </div>`
         : `<p class="text-muted small">${t('catalog.no_resources')}</p>`);
 
+  // Two columns in the wide modal: what it is (left) and what is in it (right).
   show('datasetDetailBody').innerHTML = `
+    <div class="row g-4">
+    <div class="col-lg-7">
     <div class="mb-3 d-flex align-items-center gap-2 flex-wrap">
       <a href="#" onclick="openOrgPanel('${esc(d.org_name)}');return false;"
          class="badge bg-light text-dark border text-decoration-none d-inline-block">
@@ -8021,12 +8024,16 @@ function renderDatasetPanel(d) {
       <div class="col-6"><strong>${t('catalog.col_modified')}</strong><br>${fmtDate(d.metadata_modified)}</div>
       ${d.license_title ? `<div class="col-12 mt-1"><strong>${t('catalog.license')}</strong><br>${esc(d.license_title)}</div>` : ''}
     </div>
+    </div>
+    <div class="col-lg-5">
     <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.tags')}</h6>
     <div class="mb-3">${tagsHtml}</div>
     <h6 class="fw-semibold small text-uppercase text-muted mb-2">${isService ? t('catalog.endpoints') : t('catalog.resources')} (${isService ? (d.endpoints || []).length : (d.resources ? d.resources.length : 0)})</h6>
     ${resourcesHtml}
     <h6 class="fw-semibold small text-uppercase text-muted mb-2 mt-4">${t('catalog.related')}</h6>
-    <div id="datasetRelated"><div class="text-center py-2 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>`;
+    <div id="datasetRelated"><div class="text-center py-2 text-muted"><div class="spinner-border spinner-border-sm"></div></div></div>
+    </div>
+    </div>`;
   _loadRelatedDatasets(d.name, d.org_name);
   _loadDatasetStats(d.name, d.title, d.resources || []);
 }
@@ -8060,7 +8067,7 @@ let _datasetAnalyticsPanel = null;
 let _datasetAnalyticsChart = null;
 
 function openDatasetAnalyticsPanel(name, title, resources) {
-  if (!_datasetAnalyticsPanel) _datasetAnalyticsPanel = new bootstrap.Offcanvas(document.getElementById('datasetAnalyticsPanel'));
+  if (!_datasetAnalyticsPanel) _datasetAnalyticsPanel = new bootstrap.Modal(document.getElementById('datasetAnalyticsPanel'));
   _bringOverlayToFront(document.getElementById('datasetAnalyticsPanel'));
   document.getElementById('datasetAnalyticsSubtitle').textContent = title || '';
   document.getElementById('datasetAnalyticsBody').innerHTML =
@@ -8093,10 +8100,23 @@ function renderDatasetAnalytics(data, resourceNameByUrl) {
   resourceNameByUrl = resourceNameByUrl || new Map();
   const hasSeries = (data.time_series || []).some(pt => pt.visits || pt.unique_visitors);
   body.innerHTML = `
+    <div class="row g-4">
+    <div class="col-lg-7">
     <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.analytics_over_time')}</h6>
     ${hasSeries
-      ? `<div style="position:relative;height:220px" class="mb-4"><canvas id="datasetAnalyticsChart"></canvas></div>`
+      ? `<div style="position:relative;height:300px" class="mb-4"><canvas id="datasetAnalyticsChart"></canvas></div>`
       : `<p class="text-muted small mb-4">${t('catalog.analytics_no_data')}</p>`}
+    <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.analytics_downloads')}</h6>
+    ${(data.downloads || []).length
+      ? `<div class="list-group list-group-flush">${data.downloads.map(dl => `
+          <div class="list-group-item px-0 py-1 d-flex align-items-center gap-2 small">
+            <i class="bi bi-file-earmark-arrow-down text-muted" style="width:20px"></i>
+            <span class="flex-grow-1 text-truncate" title="${esc(resourceNameByUrl.get(dl.url) || dl.url)}">${esc(resourceNameByUrl.get(dl.url) || dl.url)}</span>
+            <span class="text-muted mono">${fmt(dl.downloads)}</span>
+          </div>`).join('')}</div>`
+      : `<p class="text-muted small mb-0">${t('catalog.analytics_no_data')}</p>`}
+    </div>
+    <div class="col-lg-5">
     <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.analytics_countries')}</h6>
     ${(data.countries || []).length
       ? `<div class="list-group list-group-flush mb-4">${data.countries.map(c => `
@@ -8114,16 +8134,9 @@ function renderDatasetAnalytics(data, resourceNameByUrl) {
             <span class="flex-grow-1">${esc(r.type)}</span>
             <span class="text-muted mono">${fmt(r.visits)}</span>
           </div>`).join('')}</div>`
-      : `<p class="text-muted small mb-4">${t('catalog.analytics_no_data')}</p>`}
-    <h6 class="fw-semibold small text-uppercase text-muted mb-2">${t('catalog.analytics_downloads')}</h6>
-    ${(data.downloads || []).length
-      ? `<div class="list-group list-group-flush">${data.downloads.map(dl => `
-          <div class="list-group-item px-0 py-1 d-flex align-items-center gap-2 small">
-            <i class="bi bi-file-earmark-arrow-down text-muted" style="width:20px"></i>
-            <span class="flex-grow-1 text-truncate" title="${esc(resourceNameByUrl.get(dl.url) || dl.url)}">${esc(resourceNameByUrl.get(dl.url) || dl.url)}</span>
-            <span class="text-muted mono">${fmt(dl.downloads)}</span>
-          </div>`).join('')}</div>`
-      : `<p class="text-muted small mb-0">${t('catalog.analytics_no_data')}</p>`}`;
+      : `<p class="text-muted small mb-0">${t('catalog.analytics_no_data')}</p>`}
+    </div>
+    </div>`;
 
   if (!hasSeries) return;
   const ctx = document.getElementById('datasetAnalyticsChart').getContext('2d');
