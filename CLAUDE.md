@@ -421,6 +421,14 @@ Key decisions/shape:
   cache via `_org_title_by_slug()`; `tests/test_quality_listers.py`. Lesson: a mocked
   response can't tell you a field's shape -- the dev sandbox couldn't reach CKAN, so this
   was never seen against the real API until it failed in production.
+  A **second** bug sat behind it (found the same day): `_do_run_check` committed the
+  org_slug backfill and then kept using the now-expired cached ORM rows after the
+  backfill's `app.app_context()` had closed -> "Instance <...CheckCache> is not bound to a
+  Session". It now copies what it needs into plain tuples (`cached_snap`) inside the
+  session. `_do_run_check` swallows every exception into the check's `error` status, so a
+  test must assert `_get_check_status(...)["error"] is None` -- the older backfill test
+  only looked at a side effect and passed while the run crashed
+  (`tests/test_quality_run_end_to_end.py` covers it, incl. in a plain thread like prod).
 - **Per-dataset quality-check rows now carry `org_slug`**: a nullable,
   indexed column added to `HvdDatasetCheckCache`/`DcatApDatasetCheckCache`/
   `GeoDcatDatasetCheckCache`. `_do_run_check()` backfills it for **every**

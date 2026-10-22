@@ -3931,6 +3931,11 @@ def _do_run_check(check_type: str) -> None:
                 if _slug and _row.org_slug != _slug:
                     _row.org_slug = _slug
             db.session.commit()
+            # Plain copies of what the loop below needs, taken while the session is still
+            # open: the commit above expires every cached ORM row, and once this app context
+            # closes they are detached, so touching them later raises "Instance <...> is not
+            # bound to a Session" and fails the whole run.
+            cached_snap = {name: (row.result_json, row.metadata_modified) for name, row in cached_rows.items()}
 
         # A dataset is reused as-is only if we have a previously *successful*
         # result, from the current check version, AND CKAN's metadata_modified
@@ -3939,10 +3944,10 @@ def _do_run_check(check_type: str) -> None:
         # it's re-fetched and re-validated for real.
         to_fetch, rows = [], []
         for d in datasets:
-            row = cached_rows.get(d["name"])
-            cached = row.result() if (row and row.result_json) else None
+            result_json, cached_mtime = cached_snap.get(d["name"], (None, None))
+            cached = json.loads(result_json) if result_json else None
             if (cached and isinstance(cached, dict) and cached.get("_cache_version") == cfg["check_version"]
-                    and row.metadata_modified == d["metadata_modified"]):
+                    and cached_mtime == d["metadata_modified"]):
                 cached_result = cached["result"]
                 cfg["augment_row"](cached_result, d)
                 rows.append(cached_result)
