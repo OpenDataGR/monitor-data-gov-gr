@@ -113,9 +113,8 @@ button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
   CKAN **sysadmin** or an **org admin** (`organization_list_for_user`
   with `permission=admin`) gets in; fails closed if CKAN is unreachable.
   The CKAN user is `user_<Keycloak sub>`, never matched by name.
-- New CRM user: sysadmin -> `is_admin`+`is_superadmin`; org admin ->
-  `allowed_tabs="overview"` (NULL would mean *unrestricted*), a superadmin
-  grants more. Existing user with the same email is **linked** (`User.ckan_sub`)
+- New CRM user: sysadmin -> `is_admin`+`is_superadmin`; org admin -> an
+  org-scoped user (see "Org-scoped users" below). Existing user with the same email is **linked** (`User.ckan_sub`)
   and keeps their roles untouched -- but only if Keycloak says
   `email_verified`. Roles are not re-derived from CKAN on later logins.
 - The one-time state/nonce/verifier live in the Flask session (`kc_tx`);
