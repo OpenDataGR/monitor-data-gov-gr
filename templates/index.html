@@ -80,8 +80,11 @@
     }
     .dashboard-sidebar .nav-link {
       display: flex; align-items: center; gap: .65rem; color: #6c757d; font-weight: 500;
-      border: none; border-radius: 8px; padding: .55rem .7rem; white-space: nowrap; overflow: hidden;
+      border: none; border-radius: 8px; padding: .55rem .7rem; overflow: hidden;
     }
+    /* A label longer than the 220px sidebar (the Greek ones, e.g. "Αναλυτικά Οργανισμών") wraps onto a
+       second line inside its pill instead of running past the edge; min-width:0 lets the flex item shrink. */
+    .dashboard-sidebar .sidebar-label { min-width: 0; line-height: 1.2; overflow-wrap: anywhere; }
     .dashboard-sidebar .nav-link:hover { background: rgba(0,0,0,.04); }
     .dashboard-sidebar .nav-link.active { color: #0057b8; background: rgba(0,87,184,.08); }
     .dashboard-sidebar .nav-link i { font-size: 1.05rem; width: 1.4rem; text-align: center; flex-shrink: 0; }
