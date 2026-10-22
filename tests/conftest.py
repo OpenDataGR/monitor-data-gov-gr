@@ -45,16 +45,29 @@ def _throwaway_databases_do_not_wait_for_the_disk(dbapi_connection, _record):
         cursor.close()
 
 
-@pytest.fixture(autouse=True)
-def _isolated_db():
-    """Wipes and recreates every table before each test, so tests never see
-    each other's data despite sharing one on-disk test database file (a
-    real file, not :memory:, since SQLite's :memory: databases don't
-    reliably share state across the connections Flask-SQLAlchemy's pool
-    may open)."""
+@pytest.fixture(scope="session", autouse=True)
+def _schema():
+    """Builds the schema once per test run. Dropping and recreating all ~32 tables for
+    every test cost ~1.4s each -- almost the whole suite's runtime -- while emptying them
+    (below) costs ~0.03s."""
     with appmod.app.app_context():
         db.drop_all()
         db.create_all()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _isolated_db(_schema):
+    """Empties every table before each test, so tests never see each other's data
+    despite sharing one on-disk test database file (a real file, not :memory:, since
+    SQLite's :memory: databases don't reliably share state across the connections
+    Flask-SQLAlchemy's pool may open). Row ids restart from 1 each time (SQLite reuses
+    rowids in an emptied table), which a few tests rely on."""
+    with appmod.app.app_context():
+        db.session.rollback()  # a previous test may have left a failed transaction open
+        for table in reversed(db.metadata.sorted_tables):
+            db.session.execute(table.delete())
+        db.session.commit()
         yield
         db.session.remove()
 

@@ -60,8 +60,13 @@ don't let it go stale.
   a real test here instead of a throwaway script.
 - `tests/conftest.py` sets `DATABASE_URL` to an isolated temp file
   **before** `import app` (the only way to actually isolate it, per the
-  import-time engine binding above), and wipes/recreates all tables
-  between tests via an autouse fixture.
+  import-time engine binding above). The schema is built **once per run**
+  (session fixture) and every table is emptied (`DELETE`) before each test --
+  dropping/recreating ~32 tables per test used to cost ~1.4s each and was almost
+  the whole suite's runtime (the suite went from ~3.5 min to ~10s). Row ids still
+  restart at 1 per test (SQLite reuses rowids in an emptied table); the sqlite
+  PRAGMAs in conftest (`synchronous=OFF`, `journal_mode=MEMORY`) apply to the
+  test process only.
 - **Never point a verification script at the real `instance/dashboard.db`.**
   Always use an isolated DB (either the test suite's own fixture, or a
   fresh temp file with `DATABASE_URL` set before importing `app`).
