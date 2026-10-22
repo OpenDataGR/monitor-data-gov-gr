@@ -129,6 +129,33 @@ button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
   the login was verified working end to end in production on 2026-10-21.
   Automated tests use a faked Keycloak/CKAN (`tests/test_keycloak_login.py`).
 
+## MQA tab: history + EU-vs-our DCAT-AP comparison (shipped 2026-10-22)
+
+data.europa.eu moved its MQA API to metricsVersion 2.x: an overall score (`{value, max}`, ~5.85/7.5), entity
+counts, and per-metric coverage (weight + dimension) -- **no per-dimension scores any more**, which made the
+page show "NaN / 0". `_normalize_mqa()` (app.py) reshapes it (idempotent; also repairs an already-cached raw row
+on read): the official overall score, plus per-dimension *weighted metric coverage* computed here and labelled
+as such on the page. `MqaSnapshot` keeps a dated history (one row per distinct published score;
+`/api/quality/mqa/history`, chart on the tab). Their history API only goes back to Sep 2026 under v2.
+- **Violations comparison**: their `GET .../catalogues/data-gov-gr/violations` lists every DCAT-AP SHACL
+  violation (~158.7k rows, ~70 MB). `_fetch_mqa_violation_summary()` pulls it in a background thread (on a
+  newly published score, or the admin button) and keeps only per-property counts + a count per dataset
+  (`MqaViolationSummary`, latest 5 kept); `/api/quality/mqa/comparison` lines it up with
+  `_our_dcat_violations()` (our DCAT-AP check, violations only, grouped by property IRI).
+- **Their API paging is slow and erratic at depth** (found by running it for real, not from the mocked tests):
+  `offset` works, `page`/`skip`/`start` are ignored, a 20k-row page deep in the list timed out at 180 s and
+  discarded the whole pull. So: 5000-row pages, 240 s timeout, 4 attempts, and a page that still fails is
+  skipped and the summary marked `complete: false` (the page shows a "partial" note). A full real pull took
+  ~5.5 min. Row count can exceed `count` slightly (the list shifts while paging).
+- **Real result (2026-10-22)**: 158,700 violations on 21,966 datasets, all severity Violation: `dct:format`
+  not an IRI (82,556), `dcat:byteSize` not xsd:decimal (74,203), applicableLegislation (1,890), then a long tail
+  (identifier 80, language 21, mediaType 17). Note the score's own `counts.datasets` (5,391 on 2026-10-18, up from
+  3,780 in Sep) is far below the ~22k datasets the violation list references -- they are computed at different
+  stages, so don't present "N of counts.datasets" anywhere. An early 5,000-row sample suggested a very
+  different split (54/38/8%) because rows are grouped by dataset -- only trust the full pull.
+- Dataset-level comparison is NOT done: their `reference` is a data.europa.eu uuid and ours is the CKAN `name`;
+  whether the uuid equals the CKAN package id was never verified (would need one read of the live portal).
+
 ## Org-scoped users: org admins see only their own organizations (shipped 2026-10-21)
 
 A CKAN org admin who signs in through Keycloak becomes an **org-scoped** user

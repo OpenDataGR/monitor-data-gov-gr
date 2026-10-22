@@ -291,6 +291,25 @@ const TRANSLATIONS = {
     'quality.mqa_reusability': 'Reusability',
     'quality.mqa_contextuality': 'Contextuality',
     'quality.mqa_metrics': 'metrics',
+    'quality.mqa_cmp_title': 'data.europa.eu findings vs our DCAT-AP check',
+    'quality.mqa_cmp_intro': 'data.europa.eu validates the metadata it harvests from us against DCAT-AP. Their violations, grouped by property, next to what our own DCAT-AP check finds.',
+    'quality.mqa_cmp_eu': 'data.europa.eu',
+    'quality.mqa_cmp_ours': 'Our check',
+    'quality.mqa_cmp_property': 'Property',
+    'quality.mqa_cmp_violations': 'Violations',
+    'quality.mqa_cmp_datasets': 'Datasets',
+    'quality.mqa_cmp_of': 'of',
+    'quality.mqa_cmp_with_violations': 'with at least one violation',
+    'quality.mqa_cmp_checked': 'checked',
+    'quality.mqa_cmp_none': 'The data.europa.eu violations have not been fetched yet.',
+    'quality.mqa_cmp_fetch': 'Fetch EU violations',
+    'quality.mqa_cmp_refetch': 'Refresh EU violations',
+    'quality.mqa_cmp_fetching': 'Fetching…',
+    'quality.mqa_cmp_fetched': 'EU data fetched',
+    'quality.mqa_cmp_no_property': '(no property)',
+    'quality.mqa_cmp_partial': 'Partial: some pages of the data.europa.eu list could not be fetched, so these counts cover only the rows retrieved. Refresh to try again.',
+    'quality.mqa_cmp_run_ours': 'Our DCAT-AP check has not produced results yet — run it from the DCAT-AP tab to compare.',
+    'quality.mqa_cmp_scope': 'The two sides are not measured the same way: data.europa.eu validates the metadata it harvests from us and counts every occurrence it finds, while our check validates each dataset\'s own DCAT export. Compare which properties dominate rather than the raw totals.',
     'quality.mqa_history': 'History',
     'quality.mqa_history_start': 'History starts with this score — the trend appears as data.europa.eu publishes new ones.',
     'quality.mqa_col_date': 'Date',
@@ -931,6 +950,25 @@ const TRANSLATIONS = {
     'quality.mqa_reusability': 'Επαναχρησιμοποίηση',
     'quality.mqa_contextuality': 'Συμφραζόμενα',
     'quality.mqa_metrics': 'μετρικές',
+    'quality.mqa_cmp_title': 'Ευρήματα data.europa.eu vs ο δικός μας έλεγχος DCAT-AP',
+    'quality.mqa_cmp_intro': 'Το data.europa.eu επικυρώνει τα μεταδεδομένα που συλλέγει από εμάς με το DCAT-AP. Οι παραβιάσεις τους, ανά ιδιότητα, δίπλα σε όσα βρίσκει ο δικός μας έλεγχος DCAT-AP.',
+    'quality.mqa_cmp_eu': 'data.europa.eu',
+    'quality.mqa_cmp_ours': 'Ο έλεγχός μας',
+    'quality.mqa_cmp_property': 'Ιδιότητα',
+    'quality.mqa_cmp_violations': 'Παραβιάσεις',
+    'quality.mqa_cmp_datasets': 'Σύνολα δεδομένων',
+    'quality.mqa_cmp_of': 'από',
+    'quality.mqa_cmp_with_violations': 'με τουλάχιστον μία παραβίαση',
+    'quality.mqa_cmp_checked': 'ελέγχθηκαν',
+    'quality.mqa_cmp_none': 'Οι παραβιάσεις του data.europa.eu δεν έχουν ανακτηθεί ακόμα.',
+    'quality.mqa_cmp_fetch': 'Ανάκτηση παραβιάσεων ΕΕ',
+    'quality.mqa_cmp_refetch': 'Ανανέωση παραβιάσεων ΕΕ',
+    'quality.mqa_cmp_fetching': 'Ανάκτηση…',
+    'quality.mqa_cmp_fetched': 'Δεδομένα ΕΕ ανακτήθηκαν',
+    'quality.mqa_cmp_no_property': '(χωρίς ιδιότητα)',
+    'quality.mqa_cmp_partial': 'Μερική: ορισμένες σελίδες της λίστας του data.europa.eu δεν ανακτήθηκαν, άρα οι αριθμοί καλύπτουν μόνο τις γραμμές που ελήφθησαν. Πατήστε ανανέωση για νέα προσπάθεια.',
+    'quality.mqa_cmp_run_ours': 'Ο έλεγχος DCAT-AP δεν έχει αποτελέσματα ακόμα — εκτελέστε τον από την καρτέλα DCAT-AP για σύγκριση.',
+    'quality.mqa_cmp_scope': 'Οι δύο πλευρές δεν μετρούν με τον ίδιο τρόπο: το data.europa.eu επικυρώνει τα μεταδεδομένα που συλλέγει από εμάς και μετρά κάθε εμφάνιση που βρίσκει, ενώ ο δικός μας έλεγχος επικυρώνει το DCAT export κάθε συνόλου. Συγκρίνετε ποιες ιδιότητες κυριαρχούν και όχι τα ακατέργαστα σύνολα.',
     'quality.mqa_history': 'Ιστορικό',
     'quality.mqa_history_start': 'Το ιστορικό ξεκινά από αυτή τη βαθμολογία — η τάση εμφανίζεται καθώς το data.europa.eu δημοσιεύει νέες.',
     'quality.mqa_col_date': 'Ημερομηνία',
@@ -4358,8 +4396,84 @@ function _renderMqaV2(cached) {
     ${rows}
     <p class="text-muted small mt-3 mb-3">${esc(t('quality.mqa_v2_note'))}</p>
     <h6 class="fw-semibold mt-4 mb-2">${esc(t('quality.mqa_history'))}</h6>
-    <div id="mqaHistory"></div>`;
+    <div id="mqaHistory"></div>
+    <h6 class="fw-semibold mt-5 mb-1">${esc(t('quality.mqa_cmp_title'))}</h6>
+    <p class="text-muted small mb-2">${esc(t('quality.mqa_cmp_intro'))}</p>
+    <div id="mqaCompare"></div>`;
   _loadMqaHistory();
+  _loadMqaComparison();
+}
+
+// data.europa.eu's DCAT-AP violations (fetched in the background and boiled down to counts) next
+// to what our own DCAT-AP check finds, grouped by property.
+let _mqaCompareTimer = null;
+function _mqaShortProperty(path) {
+  return path ? path.split(/[\/#]/).pop() : t('quality.mqa_cmp_no_property');
+}
+async function _loadMqaComparison() {
+  clearTimeout(_mqaCompareTimer);
+  const el = document.getElementById('mqaCompare');
+  if (!el) return;
+  let d;
+  try {
+    d = await fetch(API_BASE + 'api/quality/mqa/comparison').then(r => r.json());
+  } catch (_) { el.innerHTML = ''; return; }
+  const st = d.status || {};
+  const btn = d.can_refresh
+    ? `<button class="btn btn-outline-primary btn-sm" onclick="refreshMqaViolations()" ${st.running ? 'disabled' : ''}>
+         <i class="bi bi-cloud-download me-1"></i>${esc(t(d.eu ? 'quality.mqa_cmp_refetch' : 'quality.mqa_cmp_fetch'))}</button>` : '';
+  const progress = st.running
+    ? `<span class="text-muted small ms-2"><span class="spinner-border spinner-border-sm me-1"></span>${esc(t('quality.mqa_cmp_fetching'))} ${fmt(st.fetched || 0)} / ${fmt(st.total || 0)}</span>`
+    : (st.error ? `<span class="text-danger small ms-2">${esc(st.error)}</span>` : '');
+  if (st.running) _mqaCompareTimer = setTimeout(_loadMqaComparison, 4000);
+  if (!d.eu) {
+    el.innerHTML = `<p class="text-muted small">${esc(t('quality.mqa_cmp_none'))}</p>${btn}${progress}`;
+    return;
+  }
+  const eu = d.eu, ours = d.ours;
+  const kpi = (label, big, sub) => `<div class="col-6 col-lg-3"><div class="rounded-3 p-3 h-100" style="border:1px solid rgba(0,0,0,.08)">
+      <div class="text-muted text-uppercase" style="font-size:.68rem;letter-spacing:.05em">${esc(label)}</div>
+      <div class="fw-bold fs-4 lh-1 mt-1">${big}</div><div class="text-muted small mt-1">${sub}</div></div></div>`;
+  const kpis = `<div class="row g-2 mb-3">
+    ${kpi(t('quality.mqa_cmp_eu') + ' · ' + t('quality.mqa_cmp_violations'), fmt(eu.violations), esc(eu.score_date || ''))}
+    ${kpi(t('quality.mqa_cmp_eu') + ' · ' + t('quality.mqa_cmp_datasets'), fmt(eu.datasets_with_violations),
+          esc(t('quality.mqa_cmp_with_violations')))}
+    ${ours ? kpi(t('quality.mqa_cmp_ours') + ' · ' + t('quality.mqa_cmp_violations'), fmt(ours.violations), esc(relativeDate(ours.finished_at))) : ''}
+    ${ours ? kpi(t('quality.mqa_cmp_ours') + ' · ' + t('quality.mqa_cmp_datasets'), fmt(ours.datasets_with_violations),
+          `${esc(t('quality.mqa_cmp_of'))} ${fmt(ours.checked || 0)} ${esc(t('quality.mqa_cmp_checked'))}`) : ''}
+  </div>`;
+  const body = d.rows.slice(0, 25).map(r => `
+    <tr>
+      <td title="${esc(r.path)}"><span class="fw-semibold">${esc(_mqaShortProperty(r.path))}</span>
+        <div class="text-muted" style="font-size:.7rem">${esc(Object.keys(r.eu_constraints || {}).join(', '))}</div></td>
+      <td class="text-end">${fmt(r.eu_violations)}</td><td class="text-end">${fmt(r.eu_datasets)}</td>
+      <td class="text-end">${ours ? fmt(r.our_violations) : '—'}</td><td class="text-end">${ours ? fmt(r.our_datasets) : '—'}</td>
+    </tr>`).join('');
+  el.innerHTML = `
+    ${kpis}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-2">
+        <thead><tr>
+          <th>${esc(t('quality.mqa_cmp_property'))}</th>
+          <th class="text-end">${esc(t('quality.mqa_cmp_eu'))}<div class="fw-normal text-muted" style="font-size:.7rem">${esc(t('quality.mqa_cmp_violations'))}</div></th>
+          <th class="text-end">${esc(t('quality.mqa_cmp_eu'))}<div class="fw-normal text-muted" style="font-size:.7rem">${esc(t('quality.mqa_cmp_datasets'))}</div></th>
+          <th class="text-end">${esc(t('quality.mqa_cmp_ours'))}<div class="fw-normal text-muted" style="font-size:.7rem">${esc(t('quality.mqa_cmp_violations'))}</div></th>
+          <th class="text-end">${esc(t('quality.mqa_cmp_ours'))}<div class="fw-normal text-muted" style="font-size:.7rem">${esc(t('quality.mqa_cmp_datasets'))}</div></th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+    ${eu.complete === false ? `<p class="text-warning small mb-2">${esc(t('quality.mqa_cmp_partial'))} (${fmt(eu.rows_seen)} / ${fmt(eu.violations)})</p>` : ''}
+    ${ours ? '' : `<p class="text-warning small mb-2">${esc(t('quality.mqa_cmp_run_ours'))}</p>`}
+    <p class="text-muted small mb-2">${esc(t('quality.mqa_cmp_scope'))}</p>
+    <div class="d-flex align-items-center flex-wrap gap-1"><span class="text-muted small me-2">${esc(t('quality.mqa_cmp_fetched'))} ${esc(relativeDate(eu.fetched_at))}</span>${btn}${progress}</div>`;
+}
+
+async function refreshMqaViolations() {
+  try {
+    await fetch(API_BASE + 'api/quality/mqa/violations/refresh', { method: 'POST' });
+  } catch (_) { /* the status poll below shows whatever happened */ }
+  _loadMqaComparison();
 }
 
 let _mqaHistoryChart = null;

@@ -34,7 +34,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, MqaSnapshot, OrgClassification, OrgSnapshot, ORG_CATEGORIES, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, InboundEmailCommunication, UnmatchedEmailContact, ExcludedEmailAddress, InboundListenAddress, ApiToken
+from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, MqaSnapshot, MqaViolationSummary, OrgClassification, OrgSnapshot, ORG_CATEGORIES, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, InboundEmailCommunication, UnmatchedEmailContact, ExcludedEmailAddress, InboundListenAddress, ApiToken
 import rdflib
 import pyshacl
 import config
@@ -4256,21 +4256,22 @@ def _normalize_mqa(data):
     }
 
 
-def _record_mqa_snapshot(data) -> None:
+def _record_mqa_snapshot(data) -> bool:
     """Append this MQA reading to the history -- unless it's the same published score
     (same date and value) as the last one, since we re-fetch daily but data.europa.eu
     recomputes far less often."""
     if not isinstance(data, dict) or data.get("score") is None:
-        return
+        return False
     with app.app_context():
         last = MqaSnapshot.query.order_by(MqaSnapshot.id.desc()).first()
         if last and last.score_date == data.get("date") and last.score == data["score"]:
-            return
+            return False
         db.session.add(MqaSnapshot(
             score_date=data.get("date"), score=data["score"], max_score=data.get("max_score"),
             counts_json=json.dumps(data.get("counts") or {}), dimensions_json=json.dumps(data.get("dimensions") or {}),
         ))
         db.session.commit()
+        return True
 
 
 def _load_mqa_cache():
@@ -4295,7 +4296,9 @@ def _do_refresh_mqa() -> dict:
             raise ValueError("data.europa.eu returned no MQA results for this catalogue")
         result = {"data": _normalize_mqa(results[0]), "fetched_at": datetime.now(timezone.utc).isoformat()}
         _save_mqa_cache(result)
-        _record_mqa_snapshot(result["data"])
+        if _record_mqa_snapshot(result["data"]):
+            # A newly published score: refresh their violation list too (slow -- background).
+            threading.Thread(target=_fetch_mqa_violation_summary, daemon=True).start()
         return result
 
 
@@ -4303,6 +4306,190 @@ def _do_refresh_mqa() -> dict:
 def get_mqa():
     cached = _load_mqa_cache()
     return jsonify({"result": cached})
+
+
+# ── data.europa.eu's DCAT-AP violations vs our own DCAT-AP check ─────────────────
+# Their endpoint pages by `offset`, and a deep offset is slow and erratic (measured: ~1 s at the start of
+# the list, 8-25 s for even a 1000-row page past offset 80k, and one 20k-row page deep in exceeded 180 s).
+# So: modest pages, a long timeout, several retries -- and a page that still fails is skipped and the
+# result is marked partial, rather than throwing away everything fetched so far.
+_MQA_VIOLATIONS_PAGE = 5000
+_MQA_VIOLATIONS_TIMEOUT = 240
+_MQA_VIOLATIONS_ATTEMPTS = 4
+_MQA_VIOLATIONS_STALE_AFTER = 1800  # a "running" flag older than this is a crashed fetch, not a live one
+_mqa_viol_status = _SharedCache("mqa_violations", {
+    "status": {"running": False, "started_at": None, "fetched": 0, "total": 0, "error": None}})
+_mqa_viol_lock = threading.Lock()
+
+
+def _mqa_viol_get() -> dict:
+    return dict(_mqa_viol_status["status"])
+
+
+def _mqa_viol_set(**kw) -> None:
+    st = _mqa_viol_get()
+    st.update(kw)
+    _mqa_viol_status["status"] = st
+
+
+def _mqa_viol_running(st=None) -> bool:
+    st = st or _mqa_viol_get()
+    return bool(st.get("running") and st.get("started_at") and time.time() - st["started_at"] < _MQA_VIOLATIONS_STALE_AFTER)
+
+
+def _aggregate_eu_violations(rows, agg: dict) -> None:
+    """Folds one page of their violation rows into agg: per-property violation/dataset/severity/
+    constraint counts, and a violation count per dataset (keyed by their dataset id)."""
+    for r in rows:
+        path = r.get("resultPath") or ""
+        prop = agg["properties"].setdefault(path, {"violations": 0, "datasets": set(), "severities": {}, "constraints": {}})
+        prop["violations"] += 1
+        ref = (r.get("reference") or "").rsplit("/", 1)[-1]
+        if ref:
+            prop["datasets"].add(ref)
+            agg["per_dataset"][ref] = agg["per_dataset"].get(ref, 0) + 1
+        sev = (r.get("resultSeverity") or "").rsplit("#", 1)[-1] or "Unknown"
+        prop["severities"][sev] = prop["severities"].get(sev, 0) + 1
+        constraint = (r.get("resultMessage") or "").split(" : ", 1)[0].strip()[:80] or "Unknown"
+        prop["constraints"][constraint] = prop["constraints"].get(constraint, 0) + 1
+
+
+def _finish_eu_violation_summary(agg: dict, total: int, rows_seen=None, skipped_pages=0) -> dict:
+    props = [{"path": path, "violations": p["violations"], "datasets": len(p["datasets"]),
+              "severities": p["severities"], "constraints": p["constraints"]}
+             for path, p in agg["properties"].items()]
+    props.sort(key=lambda p: -p["violations"])
+    return {"total": total, "rows_seen": total if rows_seen is None else rows_seen,
+            "complete": not skipped_pages, "skipped_pages": skipped_pages,
+            "datasets_with_violations": len(agg["per_dataset"]),
+            "properties": props, "per_dataset": agg["per_dataset"]}
+
+
+def _fetch_mqa_violation_summary() -> bool:
+    """Pulls data.europa.eu's full DCAT-AP violation list for our catalogue (paged), aggregates it
+    as it goes, and stores the summary. Runs in a background thread; progress/errors live in the
+    shared status so every worker can show them. Returns whether a summary was stored."""
+    with _mqa_viol_lock:
+        if _mqa_viol_running():
+            return False
+        _mqa_viol_set(running=True, started_at=time.time(), fetched=0, total=0, error=None)
+    try:
+        url = f"https://data.europa.eu/api/mqa/cache/catalogues/{_MQA_CATALOGUE_ID}/violations"
+        agg = {"properties": {}, "per_dataset": {}}
+        offset, total, rows_seen, skipped, last_error = 0, None, 0, 0, None
+        while total is None or offset < total:
+            rows = None
+            for attempt in range(_MQA_VIOLATIONS_ATTEMPTS):
+                try:
+                    r = requests.get(url, params={"limit": _MQA_VIOLATIONS_PAGE, "offset": offset},
+                                     headers={"User-Agent": "DataGovGR-Dashboard/1.0"}, timeout=_MQA_VIOLATIONS_TIMEOUT)
+                    r.raise_for_status()
+                    body = r.json()["result"]
+                    rows, total = body["results"], body["count"]
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    if attempt < _MQA_VIOLATIONS_ATTEMPTS - 1:
+                        time.sleep(10 * (attempt + 1))
+            if rows is None:
+                if total is None:
+                    raise last_error  # not even the first page: nothing to report
+                skipped += 1          # this page won't come: carry on with the rest, mark the result partial
+                offset += _MQA_VIOLATIONS_PAGE
+                continue
+            if not rows:
+                break
+            _aggregate_eu_violations(rows, agg)
+            offset += _MQA_VIOLATIONS_PAGE
+            rows_seen += len(rows)
+            _mqa_viol_set(fetched=rows_seen, total=total or 0)
+        if not rows_seen:
+            raise last_error or RuntimeError("data.europa.eu returned no violations")
+        summary = _finish_eu_violation_summary(agg, total or rows_seen, rows_seen, skipped)
+        cached = _load_mqa_cache()
+        score_date = ((cached or {}).get("data") or {}).get("date")
+        with app.app_context():
+            db.session.add(MqaViolationSummary(score_date=score_date, total_violations=summary["total"],
+                                               data_json=json.dumps(summary)))
+            db.session.commit()
+            for old in MqaViolationSummary.query.order_by(MqaViolationSummary.id.desc()).offset(5).all():
+                db.session.delete(old)
+            db.session.commit()
+        _mqa_viol_set(running=False)
+        return True
+    except Exception as exc:
+        _mqa_viol_set(running=False, error=str(exc)[:300])
+        return False
+
+
+def _our_dcat_violations():
+    """Our own DCAT-AP check's violations, grouped the same way (by property IRI), or None if it has
+    never produced a result. Warnings are left out -- they are not what the EU side counts."""
+    result = _load_check_result("dcat")
+    if not result:
+        return None
+    props, datasets_with = {}, 0
+    for d in result.get("datasets") or []:
+        seen = set()
+        for e in d.get("details") or []:
+            if e.get("severity") != "violation":
+                continue
+            path = e.get("path") or ""
+            p = props.setdefault(path, {"violations": 0, "datasets": 0})
+            p["violations"] += e.get("count", 1)
+            if path not in seen:
+                p["datasets"] += 1
+                seen.add(path)
+        if seen:
+            datasets_with += 1
+    summary = result.get("summary") or {}
+    return {"properties": props, "violations": sum(p["violations"] for p in props.values()),
+            "datasets_with_violations": datasets_with, "checked": summary.get("checked"),
+            "total": summary.get("total"), "finished_at": result.get("finished_at"), "partial": result.get("partial")}
+
+
+@app.route("/api/quality/mqa/comparison")
+def get_mqa_comparison():
+    latest = MqaViolationSummary.query.order_by(MqaViolationSummary.id.desc()).first()
+    eu_summary = latest.data() if latest else None
+    ours = _our_dcat_violations()
+    cached = _load_mqa_cache()
+    assessed = (((cached or {}).get("data") or {}).get("counts") or {}).get("datasets")
+    eu_by_path = {p["path"]: p for p in (eu_summary or {}).get("properties", [])}
+    our_by_path = (ours or {}).get("properties", {})
+    rows = []
+    for path in set(eu_by_path) | set(our_by_path):
+        eu, our = eu_by_path.get(path), our_by_path.get(path)
+        rows.append({
+            "path": path,
+            "eu_violations": eu["violations"] if eu else 0, "eu_datasets": eu["datasets"] if eu else 0,
+            "eu_constraints": eu["constraints"] if eu else {},
+            "our_violations": our["violations"] if our else 0, "our_datasets": our["datasets"] if our else 0,
+        })
+    rows.sort(key=lambda r: -max(r["eu_violations"], r["our_violations"]))
+    return jsonify({
+        "eu": None if not latest else {
+            "fetched_at": latest.fetched_at.isoformat() if latest.fetched_at else None, "score_date": latest.score_date,
+            "violations": eu_summary["total"], "datasets_with_violations": eu_summary["datasets_with_violations"],
+            "datasets_assessed": assessed, "complete": eu_summary.get("complete", True),
+            "rows_seen": eu_summary.get("rows_seen", eu_summary["total"])},
+        "ours": None if not ours else {k: v for k, v in ours.items() if k != "properties"},
+        "rows": rows,
+        "status": _mqa_viol_get() | {"running": _mqa_viol_running()},
+        "can_refresh": bool(session.get("is_admin")),
+    })
+
+
+@app.route("/api/quality/mqa/violations/refresh", methods=["POST"])
+@limiter.limit("5 per hour")
+def refresh_mqa_violations():
+    err = _require_admin()
+    if err:
+        return err
+    if _mqa_viol_running():
+        return jsonify({"started": False, "already_running": True})
+    threading.Thread(target=_fetch_mqa_violation_summary, daemon=True).start()
+    return jsonify({"started": True})
 
 
 @app.route("/api/quality/mqa/history")

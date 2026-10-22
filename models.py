@@ -319,6 +319,24 @@ class MqaSnapshot(db.Model):
         }
 
 
+class MqaViolationSummary(db.Model):
+    """What data.europa.eu's MQA reports as DCAT-AP (SHACL) violations for our catalogue,
+    boiled down to counts: their endpoint lists every single violation (~160k rows, ~70 MB),
+    so app._fetch_mqa_violation_summary pulls it in the background and keeps only per-property
+    totals plus a violation count per dataset. Compared with our own DCAT-AP check on the MQA
+    tab. One row per fetch; only the latest few are kept."""
+    __tablename__ = "mqa_violation_summaries"
+
+    id               = db.Column(db.Integer, primary_key=True)
+    fetched_at       = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+    score_date       = db.Column(db.String(16))   # the MQA score date current when this was fetched
+    total_violations = db.Column(db.Integer)
+    data_json        = db.Column(db.Text, nullable=False)
+
+    def data(self):
+        return json.loads(self.data_json)
+
+
 class OrgSnapshot(db.Model):
     """Append-only time series, one row per org per background-loop run (see
     app._do_build_org_snapshots) -- mirrors PortalSnapshot's shape rather
