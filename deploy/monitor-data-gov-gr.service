@@ -30,6 +30,10 @@ WorkingDirectory=/home/localadmin/monitor-data-gov-gr
 # [INFO] lines are unaffected -- those go through logging.StreamHandler,
 # which flushes on every call regardless of this setting.
 Environment=PYTHONUNBUFFERED=1
+# glibc gives every thread its own malloc arena (up to 8 x cores). With 6 workers x 32 threads parsing big JSON
+# results (the Quality tab loads a 54 MB one) that fragments badly: a worker's RSS climbs after heavy requests and
+# is never handed back (seen 2026-11-02: 615 MB / 372 MB workers beside 120 MB ones). Two arenas keeps it compact.
+Environment=MALLOC_ARENA_MAX=2
 ExecStart=/home/localadmin/monitor-data-gov-gr/venv/bin/gunicorn -w 6 --threads 32 --graceful-timeout 10 --worker-class gthread -b 127.0.0.1:5000 app:app
 
 # Hard memory ceiling (see the same setting in monitor-data-gov-gr-worker.service):

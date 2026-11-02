@@ -18,6 +18,9 @@ User=localadmin
 WorkingDirectory=/home/localadmin/monitor-data-gov-gr
 Environment=PYTHONUNBUFFERED=1
 Environment=BACKGROUND_WORKER=1
+# See MALLOC_ARENA_MAX in monitor-data-gov-gr.service: this process runs many threads (the loop plus the
+# check threads) and retains RSS the same way.
+Environment=MALLOC_ARENA_MAX=2
 ExecStart=/home/localadmin/monitor-data-gov-gr/venv/bin/python background_worker.py
 
 # Hard memory ceiling for this service (and its SHACL subprocesses). On 2026-11-01
