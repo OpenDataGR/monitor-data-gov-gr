@@ -201,7 +201,7 @@ def test_top_datasets_only_lists_own_datasets(app, ckan, monkeypatch):
     monkeypatch.setattr(config, "MATOMO_TOKEN", "tok")
     appmod._dataset_day_cache.clear(); appmod._dataset_page_visits_cache.clear()
     monkeypatch.setattr(appmod, "_scope_dataset_names", lambda scope: {"mine-ds"})
-    monkeypatch.setattr(appmod, "_matomo_get", lambda method, params: [
+    monkeypatch.setattr(appmod, "_matomo_get", lambda method, params, **kw: [
         {"label": "dataset > mine-ds", "nb_visits": 3, "nb_uniq_visitors": 2},
         {"label": "dataset > theirs", "nb_visits": 99, "nb_uniq_visitors": 50}])
     c = app.test_client()
@@ -312,7 +312,7 @@ def _matomo_days(monkeypatch, rows_for_day):
     monkeypatch.setattr(config, "MATOMO_TOKEN", "tok")
     asked = []
 
-    def fake(method, params):
+    def fake(method, params, **kw):
         asked.append((method, dict(params)))
         return rows_for_day(params["date"])
 
@@ -415,7 +415,7 @@ def test_top_downloads_for_a_scoped_user_lists_only_their_own_datasets_files(app
 
     monkeypatch.setattr(appmod.requests, "get", fake_get)
 
-    def fake_matomo(method, params):
+    def fake_matomo(method, params, **kw):
         asked["matomo_filter_limit"] = params.get("filter_limit")
         return [
             {"label": "files.example.gr/a.csv", "nb_visits": 7},                       # scheme differs from CKAN's http://
@@ -566,7 +566,7 @@ def test_top_api_calls_for_a_scoped_user_counts_only_calls_about_their_datasets(
         "ids": {"mine-a": "mine-a", "pkg-uuid-a": "mine-a", "res-1": "mine-a", "mine-b": "mine-b"}})
     asked = {}
 
-    def fake_matomo(method, params):
+    def fake_matomo(method, params, **kw):
         asked.update(params, method=method)
         api = "http://data.gov.gr/api/action/"
         return [

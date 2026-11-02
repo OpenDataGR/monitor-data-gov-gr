@@ -256,29 +256,47 @@ class _SharedQueryCache:
     """Like _SharedCache, but for a cache keyed by an open-ended set of query
     strings (e.g. one entry per Matomo report+params combination) rather than
     a small fixed set of named fields -- so there's no defaults dict to
-    validate keys against. Same Redis-backed-with-local-fallback reasoning."""
+    validate keys against.
+
+    Every entry is its own Redis string with a real expiry (SET ... EX). It used to be ONE hash that only
+    ever grew (HSET, no field expiry -- the TTL was checked on read, so stale fields stayed forever) and
+    each process also kept an unbounded in-memory copy; with date-range keys that change every day, and
+    reports of hundreds of KB, Redis reached 194 MB in 66 keys. The in-process dict is now only a small
+    bounded fallback for when Redis is absent or erroring."""
+    _LOCAL_MAX = 100
+
     def __init__(self, name):
         self._name = f"cache:{name}"
         self._local: dict = {}
+        self._legacy_dropped = False
+
+    def _redis_key(self, key):
+        return f"{self._name}:{hashlib.sha1(key.encode('utf-8')).hexdigest()}"
 
     def get(self, key):
         client = _redis_client()
         if client is not None:
             try:
-                raw = client.hget(self._name, key)
+                raw = client.get(self._redis_key(key))
                 return json.loads(raw) if raw is not None else None
             except Exception as exc:
                 print(f"[{self._name}] Redis read error, falling back to local: {exc}")
         return self._local.get(key)
 
-    def set(self, key, value):
-        self._local[key] = value
+    def set(self, key, value, ttl=3600):
         client = _redis_client()
         if client is not None:
             try:
-                client.hset(self._name, key, json.dumps(value))
+                if not self._legacy_dropped:
+                    client.delete(self._name)  # the old never-expiring hash this replaces
+                    self._legacy_dropped = True
+                client.set(self._redis_key(key), json.dumps(value), ex=ttl)
+                return
             except Exception as exc:
                 print(f"[{self._name}] Redis write error, local-only for now: {exc}")
+        while len(self._local) >= self._LOCAL_MAX:
+            self._local.pop(next(iter(self._local)))
+        self._local[key] = value
 
 
 # Used for the HVD/DCAT-AP/GeoDCAT SHACL-validation pools (ProcessPoolExecutor
@@ -9273,10 +9291,13 @@ _MATOMO_CACHE = _SharedQueryCache("matomo")
 _MATOMO_CACHE_TTL = 3600  # 1 hour
 
 
-def _matomo_get(method: str, params: dict):
+def _matomo_get(method: str, params: dict, cache: bool = True):
+    """cache=False for the big raw reports (per-day page lists, the whole-portal downloads and API-event
+    lists): their callers cache a compact result themselves, and keeping hundreds of KB of raw rows per
+    date-range key in Redis is what grew it to 194 MB."""
     import json as _json
     key = method + "|" + _json.dumps(params, sort_keys=True)
-    entry = _MATOMO_CACHE.get(key)
+    entry = _MATOMO_CACHE.get(key) if cache else None
     if entry and time.time() - entry["ts"] < _MATOMO_CACHE_TTL:
         return entry["data"]
     full = {
@@ -9291,7 +9312,8 @@ def _matomo_get(method: str, params: dict):
     data = r.json()
     if isinstance(data, dict) and data.get("result") == "error":
         raise RuntimeError(data.get("message", "Matomo API error"))
-    _MATOMO_CACHE.set(key, {"data": data, "ts": time.time()})
+    if cache:
+        _MATOMO_CACHE.set(key, {"data": data, "ts": time.time()}, ttl=_MATOMO_CACHE_TTL)
     return data
 
 
@@ -9545,7 +9567,7 @@ def _matomo_all_downloads(start, end):
         return hit[1]
     items = _matomo_get("Actions.getDownloads", {
         "period": "range", "date": f"{start},{end}", "flat": 1, "filter_limit": 100000,
-    })
+    }, cache=False)
     out = {}
     for item in items if isinstance(items, list) else []:
         label = item.get("label", "")
@@ -9598,7 +9620,7 @@ def _matomo_all_api_events(start, end):
     items = _matomo_get("Events.getAction", {
         "period": "range", "date": f"{start},{end}", "secondaryDimension": "eventName",
         "flat": 1, "filter_limit": 100000,
-    })
+    }, cache=False)
     out = []
     for item in items if isinstance(items, list) else []:
         action, sep, name = (item.get("label") or "").partition(" - ")
@@ -9663,7 +9685,7 @@ def _dataset_page_visits_for_day(day):
     hit = _dataset_day_cache.get(day)
     if hit and time.time() - hit[0] < (600 if recent else 7 * 24 * 3600):
         return hit[1]
-    pages = _matomo_get("Actions.getPageUrls", {"period": "day", "date": day, "flat": 1, "filter_limit": 1000})
+    pages = _matomo_get("Actions.getPageUrls", {"period": "day", "date": day, "flat": 1, "filter_limit": 1000}, cache=False)
     out = {}
     for page in pages if isinstance(pages, list) else []:
         label = page.get("label", "")

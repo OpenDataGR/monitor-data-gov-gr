@@ -155,6 +155,11 @@ it again* (the nightly timer restarts at worker boot, so that can be up to 24 h 
 The VM froze ~2.5 h on 2026-11-01 from a steady ~1.5 GB/day memory growth (16 GB, no swap); `MemoryMax` was added to both units
 and the evidence is in `deploy/README.md`. **The leak itself is still unidentified** -- `~/memlog.txt` on the VM (10-min samples)
 was started to find it; the nightly checks only begin ~24 h after the worker boots.
+  Leads found since (2026-11-02): PostgreSQL's rise is page cache (cgroup `file`), not a leak; nothing grows while idle; two web workers sit at
+  370-615 MB after heavy tasks (never recycled, no `--max-requests`); and **Redis held 194 MB in 66 keys** because `_SharedQueryCache`
+  (the Matomo response cache) was one never-expiring hash plus an unbounded in-process dict -- fixed (one `SET ... EX` key per entry,
+  bounded local fallback, big raw reports uncached; `tests/test_matomo_cache.py`). That is NOT yet shown to explain the 1.5 GB/day
+  growth seen on the VM: keep reading `~/memlog.txt`, and check `redis-cli --bigkeys` / `memory.stat` (anon vs file) again after a day.
 
 ## The DCAT-AP check validated nothing until 2026-10-22 (found via the MQA comparison)
 
