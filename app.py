@@ -9571,8 +9571,9 @@ def _scoped_top_downloads(scope, start, end, limit):
     for label, hits in _matomo_all_downloads(start, end).items():
         name = by_url.get(_download_key(label))
         if not name:
+            # Portal file links are /dataset/<name OR uuid>/resource/...: real ones use the dataset's uuid.
             m = _DOWNLOAD_DATASET_RE.search(label)
-            name = m.group(1) if m and m.group(1) in titles else None
+            name = index["ids"].get(m.group(1)) if m else None
         if not name:
             continue
         url = label if label.startswith("http") else f"https://{label}"

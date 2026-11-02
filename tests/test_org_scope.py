@@ -346,7 +346,7 @@ def test_top_downloads_for_a_scoped_user_lists_only_their_own_datasets_files(app
         if url.endswith("/package_search"):
             asked.update(params)
             return _Resp({"success": True, "result": {"count": 1, "results": [
-                {"name": "mine-a", "title": "Mine A", "resources": [{"url": "http://files.example.gr/a.csv"},
+                {"name": "mine-a", "id": "pkg-uuid-a", "title": "Mine A", "resources": [{"url": "http://files.example.gr/a.csv"},
                                                                    {"url": "https://files.example.gr/a2.csv/"}]}]}})
         return _Resp({"success": True, "result": {}})
 
@@ -358,6 +358,7 @@ def test_top_downloads_for_a_scoped_user_lists_only_their_own_datasets_files(app
             {"label": "files.example.gr/a.csv", "nb_visits": 7},                       # scheme differs from CKAN's http://
             {"label": "https://files.example.gr/a2.csv", "nb_visits": 2},             # CKAN has a trailing slash
             {"label": "data.gov.gr/dataset/mine-a/resource/r1/download/x.xls", "nb_visits": 4},  # portal file link
+            {"label": "data.gov.gr/dataset/pkg-uuid-a/resource/r2/download/z.csv", "nb_visits": 6},  # the real format: dataset UUID
             {"label": "data.gov.gr/dataset/theirs/resource/r9/download/y.xls", "nb_visits": 999},  # another org's
             {"label": "elsewhere.example.org/unknown.csv", "nb_visits": 500},          # can't be attributed
             {"label": "Άλλα - 12 more", "nb_visits": 80},                              # Matomo aggregation row
@@ -370,8 +371,8 @@ def test_top_downloads_for_a_scoped_user_lists_only_their_own_datasets_files(app
     rows = c.get("/api/matomo/top-downloads?limit=50").get_json()
 
     assert [(r["url"].split("://", 1)[1], r["visits"]) for r in rows] == [
-        ("files.example.gr/a.csv", 7), ("data.gov.gr/dataset/mine-a/resource/r1/download/x.xls", 4),
-        ("files.example.gr/a2.csv", 2)]
+        ("files.example.gr/a.csv", 7), ("data.gov.gr/dataset/pkg-uuid-a/resource/r2/download/z.csv", 6),
+        ("data.gov.gr/dataset/mine-a/resource/r1/download/x.xls", 4), ("files.example.gr/a2.csv", 2)]
     assert {r["dataset"] for r in rows} == {"mine-a"} and rows[0]["dataset_title"] == "Mine A"
     assert asked["matomo_filter_limit"] > 1000          # the whole list, not Matomo's top few
     assert asked["fq"] == f'organization:("{MINE}")'     # CKAN was asked for their org only
