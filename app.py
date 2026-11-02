@@ -649,7 +649,7 @@ _ORG_SCOPE_ALLOWED = [
     (("GET",), re.compile(r"^/api/datasets/geo-locations$")),   # scoped: their own geospatial datasets
     (("GET",), re.compile(r"^/api/stats/dataset-growth$")),     # scoped: their own datasets over time
     (("GET",), re.compile(r"^/api/datasets/(?!geo-locations$|formats$|search$)[^/]+$")),
-    (("GET",), re.compile(r"^/api/quality/[a-z]+-check(/export)?$")),
+    (("GET",), re.compile(r"^/api/quality/[a-z]+-check(/export|/details)?$")),
     (("GET",), re.compile(r"^/api/organizations(/[^/]+)?$")),
     (("GET",), re.compile(r"^/api/matomo/(top-datasets|top-downloads|top-api-calls|dataset-stats|dataset-analytics)$")),
 ]
@@ -3889,6 +3889,7 @@ _QUALITY_CHECKS = {
         "list_datasets": _list_all_datasets, "check_one": _dcat_check_one,
         "check_version": _DCAT_CHECK_VERSION, "concurrency": _DCAT_CHECK_CONCURRENCY,
         "augment_row": _default_augment_row, "finalize_datasets": _nonconforming_finalize_datasets,
+        "slim_blob": True, "aggregate_violations": True,
         "summary_flag_fields": [
             ("vocabulary_issue", lambda r: r["vocabulary_issue"]),
             ("structural_issue", lambda r: r["structural_issue"]),
@@ -3915,6 +3916,7 @@ _QUALITY_CHECKS = {
         "list_datasets": _list_geo_datasets, "check_one": _geodcat_check_one,
         "check_version": _GEODCAT_CHECK_VERSION, "concurrency": _GEODCAT_CHECK_CONCURRENCY,
         "augment_row": _default_augment_row, "finalize_datasets": _nonconforming_finalize_datasets,
+        "slim_blob": True,
         "summary_flag_fields": [],
         "export_predicates": {"non_conforming": lambda d: not d.get("conforms")},
         "export_default_exclude_compliant": False,
@@ -4060,9 +4062,54 @@ def _persist_checked_rows(cfg: dict, slug_by_name: dict, newly_checked: list) ->
         db.session.commit()
 
 
+def _slim_row(row: dict) -> dict:
+    """A result row without its violation `details` (about 6 KB of the 6.3 KB a DCAT-AP row averages), flagged
+    so the UI knows to fetch them when a row is expanded. The whole-run result is ONE json blob parsed by a web
+    worker on every view; with details it was 141 MB for DCAT-AP, which ballooned workers and the response. The
+    per-dataset cache rows keep the details."""
+    slim = {k: v for k, v in row.items() if k != "details"}
+    slim["has_details"] = bool(row.get("details"))
+    return slim
+
+
+def _new_violation_agg() -> dict:
+    return {"props": {}, "datasets_with": 0}
+
+
+def _accumulate_violation_props(agg: dict, details) -> None:
+    """Folds one dataset's violation entries into {"props": {property IRI: {"violations", "datasets"}},
+    "datasets_with": n} -- what the EU comparison needs, computed while the details are still in hand."""
+    seen = set()
+    for e in details or []:
+        if e.get("severity") != "violation":
+            continue
+        path = e.get("path") or ""
+        p = agg["props"].setdefault(path, {"violations": 0, "datasets": 0})
+        p["violations"] += e.get("count", 1)
+        if path not in seen:
+            p["datasets"] += 1
+            seen.add(path)
+    if seen:
+        agg["datasets_with"] += 1
+
+
+def _load_check_details(cfg: dict, names: list) -> dict:
+    """{dataset name: details list} read from the per-dataset cache rows (500 at a time)."""
+    out, model = {}, cfg["dataset_cache_model"]
+    for i in range(0, len(names), 500):
+        for row in model.query.filter(model.name.in_(names[i:i + 500])).all():
+            try:
+                out[row.name] = (json.loads(row.result_json).get("result") or {}).get("details") or []
+            except (TypeError, ValueError):
+                out[row.name] = []
+    return out
+
+
 def _do_run_check(check_type: str) -> None:
     cfg = _QUALITY_CHECKS[check_type]
     cancelled = False
+    slim = bool(cfg.get("slim_blob"))
+    agg = _new_violation_agg() if cfg.get("aggregate_violations") else None
     try:
         datasets = cfg["list_datasets"]()
         _set_check_status(check_type, total=len(datasets))
@@ -4094,13 +4141,16 @@ def _do_run_check(check_type: str) -> None:
         # it's re-fetched and re-validated for real.
         to_fetch, rows = [], []
         for d in datasets:
-            result_json, cached_mtime = cached_snap.get(d["name"], (None, None))
+            # pop, not get: the raw json strings are freed as they are consumed instead of all living to the end
+            result_json, cached_mtime = cached_snap.pop(d["name"], (None, None))
             cached = json.loads(result_json) if result_json else None
             if (cached and isinstance(cached, dict) and cached.get("_cache_version") == cfg["check_version"]
                     and cached_mtime == d["metadata_modified"]):
                 cached_result = cached["result"]
                 cfg["augment_row"](cached_result, d)
-                rows.append(cached_result)
+                if agg is not None:
+                    _accumulate_violation_props(agg, cached_result.get("details"))
+                rows.append(_slim_row(cached_result) if slim else cached_result)
             else:
                 to_fetch.append(d)
         _bump_check_progress(check_type, len(rows))
@@ -4129,8 +4179,10 @@ def _do_run_check(check_type: str) -> None:
                     newly_checked.append((d["name"], d["metadata_modified"], None))
                 else:
                     cfg["augment_row"](result, d)
-                    rows.append(result)
-                    newly_checked.append((d["name"], d["metadata_modified"], result))
+                    if agg is not None:
+                        _accumulate_violation_props(agg, result.get("details"))
+                    rows.append(_slim_row(result) if slim else result)
+                    newly_checked.append((d["name"], d["metadata_modified"], result))   # full row: the cache keeps details
                 if len(newly_checked) >= _CHECK_CHECKPOINT_EVERY:
                     _persist_checked_rows(cfg, slug_by_name, newly_checked)
                     newly_checked = []
@@ -4146,7 +4198,7 @@ def _do_run_check(check_type: str) -> None:
 
         _persist_checked_rows(cfg, slug_by_name, newly_checked)  # the remainder after the last checkpoint
 
-        checked =[r for r in rows if "error" not in r]
+        checked = [r for r in rows if "error" not in r]
         failed  = [r for r in rows if "error" in r]
         summary = {
             "total":             len(datasets),
@@ -4164,6 +4216,9 @@ def _do_run_check(check_type: str) -> None:
             "partial":     cancelled,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         }
+        if agg is not None:
+            result["violation_properties"] = agg["props"]
+            result["datasets_with_violations"] = agg["datasets_with"]
         _save_check_cache(check_type, result)
         _set_check_status(check_type, error=None)
     except Exception as exc:
@@ -4219,6 +4274,27 @@ def get_check(check_type):
     })
 
 
+@app.route("/api/quality/<check_type>-check/details")
+def check_dataset_details(check_type):
+    """One dataset's violation list, read from its per-dataset cache row -- the whole-run result no longer
+    carries them. An org-scoped user gets only their own organizations' datasets (404 otherwise)."""
+    cfg = _QUALITY_CHECKS.get(check_type)
+    if not cfg:
+        return jsonify({"error": "Unknown check type"}), 404
+    name = (freq.args.get("name") or "").strip()
+    row = cfg["dataset_cache_model"].query.get(name) if name else None
+    if not row or not row.result_json:
+        return jsonify({"error": "No details for that dataset"}), 404
+    scope = _session_org_scope()
+    if scope is not None and row.org_slug not in scope:
+        return jsonify({"error": "No details for that dataset"}), 404
+    try:
+        details = (json.loads(row.result_json).get("result") or {}).get("details") or []
+    except (TypeError, ValueError):
+        details = []
+    return jsonify({"name": name, "details": details})
+
+
 @app.route("/api/quality/<check_type>-check/export")
 def check_export(check_type):
     cfg = _QUALITY_CHECKS.get(check_type)
@@ -4254,6 +4330,10 @@ def check_export(check_type):
         ]
     datasets = sorted(datasets, key=lambda d: (d.get("org_title") or "", -(d.get("violation_count") or 0)))
 
+    # Rows in the stored result carry no violation details (see _slim_row): read them from the per-dataset cache.
+    pending = [d["name"] for d in datasets if d.get("has_details") and "details" not in d]
+    details_by_name = _load_check_details(cfg, pending) if pending else {}
+
     wb = Workbook()
 
     summary_ws = wb.active
@@ -4288,7 +4368,7 @@ def check_export(check_type):
     ] + list(cfg["export_extra_columns"]) + [
         ("issues", "Issues", lambda d: "\n".join(
             f"[{v.get('severity')}] {v.get('message')}" + (f" (×{v['count']})" if v.get("count", 1) > 1 else "")
-            for v in d.get("details") or []
+            for v in (d.get("details") or details_by_name.get(d.get("name")) or [])
         )),
     ]
     for col_idx, (_key, header, _getter) in enumerate(columns, 1):
@@ -4590,20 +4670,13 @@ def _our_dcat_violations():
     result = _load_check_result("dcat")
     if not result:
         return None
-    props, datasets_with = {}, 0
-    for d in result.get("datasets") or []:
-        seen = set()
-        for e in d.get("details") or []:
-            if e.get("severity") != "violation":
-                continue
-            path = e.get("path") or ""
-            p = props.setdefault(path, {"violations": 0, "datasets": 0})
-            p["violations"] += e.get("count", 1)
-            if path not in seen:
-                p["datasets"] += 1
-                seen.add(path)
-        if seen:
-            datasets_with += 1
+    if result.get("violation_properties") is not None:
+        props, datasets_with = result["violation_properties"], result.get("datasets_with_violations", 0)
+    else:                                   # a result stored before rows were slimmed still carries details
+        agg = _new_violation_agg()
+        for d in result.get("datasets") or []:
+            _accumulate_violation_props(agg, d.get("details"))
+        props, datasets_with = agg["props"], agg["datasets_with"]
     summary = result.get("summary") or {}
     return {"properties": props, "violations": sum(p["violations"] for p in props.values()),
             "datasets_with_violations": datasets_with, "checked": summary.get("checked"),

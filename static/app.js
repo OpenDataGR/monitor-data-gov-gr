@@ -3931,6 +3931,36 @@ function collapseAllDcat() {
   _renderDcatTable();
 }
 
+// A DCAT-AP / GeoDCAT-AP row's violation list. The stored result no longer carries `details` (it was 141 MB for
+// DCAT-AP): the list is fetched from the per-dataset cache the first time the row is expanded. A row that does
+// carry its details (an older stored result) renders as before.
+function _qualityViolationList(details) {
+  return `<ul class="small mb-0 mt-1">${(details || []).map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>`;
+}
+
+function _qualityDetailsCell(d, kind) {
+  if (Array.isArray(d.details)) {
+    return `<details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>${_qualityViolationList(d.details)}</details>`;
+  }
+  if (!d.has_details) return '';
+  return `<details ontoggle="_loadQualityDetails(this, '${kind}', '${esc(d.name)}')"><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary><div class="small text-muted mt-1" data-q-details>…</div></details>`;
+}
+
+async function _loadQualityDetails(el, kind, name) {
+  if (!el.open || el.dataset.loaded) return;
+  el.dataset.loaded = '1';
+  const slot = el.querySelector('[data-q-details]');
+  try {
+    const r = await fetch(API_BASE + `api/quality/${kind}-check/details?name=` + encodeURIComponent(name));
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || r.status);
+    slot.outerHTML = _qualityViolationList(data.details);
+  } catch (e) {
+    el.dataset.loaded = '';
+    slot.textContent = t('traffic.failed');
+  }
+}
+
 function _dcatRowHtml(d, { indent = false, hidden = false, showOrg = false, reveal = false } = {}) {
   return `
       <tr${hidden ? ' style="display:none"' : ''}${reveal ? ' class="just-revealed"' : ''}>
@@ -3939,9 +3969,7 @@ function _dcatRowHtml(d, { indent = false, hidden = false, showOrg = false, reve
         <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
         <td>${d.structural_issue ? `<i class="bi bi-file-earmark-text text-warning" title="${esc(t('quality.dcat_structural_issue'))}"></i>` : ''}</td>
         <td>${d.vocabulary_issue ? `<i class="bi bi-tags text-warning" title="${esc(t('quality.dcat_vocabulary_issue'))}"></i>` : ''}</td>
-        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
-          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
-        </details></td>
+        <td>${_qualityDetailsCell(d, 'dcat')}</td>
       </tr>`;
 }
 
@@ -4327,9 +4355,7 @@ function _geodcatRowHtml(d, { indent = false, hidden = false, showOrg = false, r
         <td${indent ? ' class="ps-4"' : ''}><a href="#" onclick="openDatasetPanel('${esc(d.name)}');return false;" class="text-decoration-none">${esc(d.title)}</a></td>
         ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
         <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
-        <td><details><summary class="small text-muted" style="cursor:pointer">${t('quality.hvd_details')}</summary>
-          <ul class="small mb-0 mt-1">${d.details.map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>
-        </details></td>
+        <td>${_qualityDetailsCell(d, 'geodcat')}</td>
       </tr>`;
 }
 

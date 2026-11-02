@@ -160,6 +160,13 @@ was started to find it; the nightly checks only begin ~24 h after the worker boo
   (the Matomo response cache) was one never-expiring hash plus an unbounded in-process dict -- fixed (one `SET ... EX` key per entry,
   bounded local fallback, big raw reports uncached; `tests/test_matomo_cache.py`). That is NOT yet shown to explain the 1.5 GB/day
   growth seen on the VM: keep reading `~/memlog.txt`, and check `redis-cli --bigkeys` / `memory.stat` (anon vs file) again after a day.
+  **Leading explanation (found 2026-11-02 from real row sizes): the DCAT-AP whole-run result was a 141 MB JSON.** Since the shape fix every
+  dataset carries its violation `details` (6.3 KB avg x 23,568 rows); the stored result was parsed in full by a web worker on every view of the
+  tab and shipped whole to the browser, and rebuilt in the background worker every night -- the memory that ratcheted workers on the VM
+  (growth began right after the 22/10 fix). Now `_slim_row`: stored dcat/geodcat rows have no `details` (`has_details` instead), the per-dataset
+  cache rows keep them, the UI fetches a row's list on expand (`/api/quality/<type>-check/details`), per-property totals for the EU comparison are
+  precomputed (`violation_properties`), and the Excel export reads details from the cache rows. Existing blobs: `tools/slim_check_blobs.py`.
+  `MALLOC_ARENA_MAX=2` is set on both units as a second brake. Verify after a day: web workers stay near 150-250 MB, `~/memlog.txt` flat.
 
 ## The DCAT-AP check validated nothing until 2026-10-22 (found via the MQA comparison)
 

@@ -546,3 +546,10 @@ useful: `free -m`, `grep -E "^(AnonPages|SUnreclaim):" /proc/meminfo`,
 `monitor-data-gov-gr-worker`, `postgresql@16-main` -- plain `postgresql` is only a wrapper.)
 A leftover `crm-data-gov-gr.service` (same description as the web unit) also starts at
 boot; its purpose is unconfirmed.
+
+**Update 2026-11-02 -- likely cause found.** The stored DCAT-AP result had become one **141 MB JSON** (6.3 KB of violation details per dataset x
+23,568, after the shape fix made every dataset non-conforming): a web worker parsed it on every view of the Quality tab, and the background worker
+rebuilt it every night, neither returning the memory to the OS. Results are now stored slim (details read on demand), and `MALLOC_ARENA_MAX=2` is
+set in both unit files. After deploying: `cd ~/monitor-data-gov-gr && venv/bin/python tools/slim_check_blobs.py --dry-run`, then without
+`--dry-run`, then copy the unit files and `daemon-reload` + restart both services as above. Also found: the Matomo response cache was one
+never-expiring Redis hash (194 MB); `used_memory` is 4 MB since it was fixed.
