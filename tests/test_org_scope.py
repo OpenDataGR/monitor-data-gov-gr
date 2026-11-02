@@ -329,3 +329,70 @@ def test_top_datasets_for_a_scoped_user_reads_the_full_page_list(app, ckan, monk
     rows = c.get("/api/matomo/top-datasets?limit=100").get_json()
     assert asked["filter_limit"] > 300
     assert [(r["slug"], r["visits"]) for r in rows] == [("mine-a", 5), ("mine-b", 1)]
+
+
+# ── downloads of the scoped user's own datasets ────────────────────────────────
+
+def test_top_downloads_for_a_scoped_user_lists_only_their_own_datasets_files(app, ckan, monkeypatch):
+    """Matomo's download report is portal-wide; a scoped user must see only files that belong to
+    THEIR datasets -- matched by resource URL (scheme-insensitive) or by the portal's own
+    /dataset/<theirs>/resource/ path -- and never another org's file or one that can't be attributed."""
+    monkeypatch.setattr(config, "MATOMO_TOKEN", "tok")
+    appmod._all_downloads_cache.clear()
+    appmod._scope_resources_cache.clear()
+    asked = {}
+
+    def fake_get(url, params=None, **kw):
+        if url.endswith("/package_search"):
+            asked.update(params)
+            return _Resp({"success": True, "result": {"count": 1, "results": [
+                {"name": "mine-a", "title": "Mine A", "resources": [{"url": "http://files.example.gr/a.csv"},
+                                                                   {"url": "https://files.example.gr/a2.csv/"}]}]}})
+        return _Resp({"success": True, "result": {}})
+
+    monkeypatch.setattr(appmod.requests, "get", fake_get)
+
+    def fake_matomo(method, params):
+        asked["matomo_filter_limit"] = params.get("filter_limit")
+        return [
+            {"label": "files.example.gr/a.csv", "nb_visits": 7},                       # scheme differs from CKAN's http://
+            {"label": "https://files.example.gr/a2.csv", "nb_visits": 2},             # CKAN has a trailing slash
+            {"label": "data.gov.gr/dataset/mine-a/resource/r1/download/x.xls", "nb_visits": 4},  # portal file link
+            {"label": "data.gov.gr/dataset/theirs/resource/r9/download/y.xls", "nb_visits": 999},  # another org's
+            {"label": "elsewhere.example.org/unknown.csv", "nb_visits": 500},          # can't be attributed
+            {"label": "Άλλα - 12 more", "nb_visits": 80},                              # Matomo aggregation row
+        ]
+
+    monkeypatch.setattr(appmod, "_matomo_get", fake_matomo)
+    c = app.test_client()
+    _login(c, _scoped())
+
+    rows = c.get("/api/matomo/top-downloads?limit=50").get_json()
+
+    assert [(r["url"].split("://", 1)[1], r["visits"]) for r in rows] == [
+        ("files.example.gr/a.csv", 7), ("data.gov.gr/dataset/mine-a/resource/r1/download/x.xls", 4),
+        ("files.example.gr/a2.csv", 2)]
+    assert {r["dataset"] for r in rows} == {"mine-a"} and rows[0]["dataset_title"] == "Mine A"
+    assert asked["matomo_filter_limit"] > 1000          # the whole list, not Matomo's top few
+    assert asked["fq"] == f'organization:("{MINE}")'     # CKAN was asked for their org only
+
+
+def test_top_downloads_for_an_org_with_no_datasets_is_empty(app, ckan, monkeypatch):
+    monkeypatch.setattr(config, "MATOMO_TOKEN", "tok")
+    appmod._all_downloads_cache.clear()
+    appmod._scope_resources_cache.clear()
+    monkeypatch.setattr(appmod, "_matomo_get", lambda *a, **k: [{"label": "x.example.gr/a.csv", "nb_visits": 5}])
+    c = app.test_client()
+    _login(c, _scoped(orgs=()))
+    assert c.get("/api/matomo/top-downloads").get_json() == []
+
+
+def test_top_downloads_for_an_unscoped_user_is_still_the_portal_wide_list(app, ckan, monkeypatch):
+    monkeypatch.setattr(config, "MATOMO_TOKEN", "tok")
+    monkeypatch.setattr(appmod, "_matomo_get", lambda *a, **k: [
+        {"label": "x.example.gr/a.csv", "nb_visits": 5}, {"label": "y.example.gr/b.csv", "nb_visits": 9}])
+    c = app.test_client()
+    _login(c, _admin())
+    rows = c.get("/api/matomo/top-downloads").get_json()
+    assert [(r["url"], r["visits"]) for r in rows] == [("https://y.example.gr/b.csv", 9), ("https://x.example.gr/a.csv", 5)]
+    assert "dataset" not in rows[0]

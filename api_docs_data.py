@@ -307,7 +307,7 @@ ROUTES = {
         {"methods": ["GET"], "path": "/api/matomo/top-searches", "params": "?limit=20",
          "desc": "Top on-site search keywords."},
         {"methods": ["GET"], "path": "/api/matomo/top-downloads", "params": "?limit=20",
-         "desc": "Top downloaded resource URLs by visit count."},
+         "desc": "Top downloaded resource URLs by visit count. For an org-scoped user: only files of their own organizations' datasets (matched by resource URL), each row with its dataset and dataset_title."},
         {"methods": ["GET"], "path": "/api/matomo/dataset-stats", "params": "?name=&resource_url=",
          "desc": "Visits/unique/downloads for one dataset (30-day window)."},
         {"methods": ["GET"], "path": "/api/matomo/dataset-analytics",

@@ -181,6 +181,7 @@ const TRANSLATIONS = {
     'traffic.visits_chart': 'Visits Over Time',
     'traffic.top_datasets': 'Top Dataset Pages',
     'traffic.org_total': 'Visits to your datasets in this period:',
+    'traffic.org_downloads_total': 'Downloads of your datasets\' files in this period:',
     'traffic.top_queries': 'Top Search Queries',
     'traffic.top_api': 'Top API Calls',
     'traffic.top_downloads': 'Top Downloads',
@@ -844,6 +845,7 @@ const TRANSLATIONS = {
     'traffic.visits_chart': 'Εξέλιξη Επισκέψεων',
     'traffic.top_datasets': 'Κορυφαίες Σελίδες Δεδομένων',
     'traffic.org_total': 'Επισκέψεις στα σύνολα δεδομένων σας στην περίοδο:',
+    'traffic.org_downloads_total': 'Λήψεις αρχείων των συνόλων δεδομένων σας στην περίοδο:',
     'traffic.top_queries': 'Κορυφαίες Αναζητήσεις',
     'traffic.top_api': 'Κορυφαίες Κλήσεις API',
     'traffic.top_downloads': 'Κορυφαίες Λήψεις',
@@ -1577,7 +1579,8 @@ function _applyOrgScopedUi() {
   hide(document.getElementById('mqaSubTabBtn')?.closest('li'));
   // Traffic: only the "top dataset pages" card (filtered to their own datasets) is theirs.
   hide(document.querySelector('#tab-traffic .flat-tile-strip'));
-  ['trafficChart', 'trafficTopSearches', 'trafficTopApi', 'trafficTopDownloads']
+  // (Their downloads card stays: the server narrows it to files of their own datasets.)
+  ['trafficChart', 'trafficTopSearches', 'trafficTopApi']
     .forEach(id => hide(document.getElementById(id)?.closest('.p-4')));
   const trafficGrid = document.querySelector('#tab-traffic .flat-grid-2');
   if (trafficGrid) trafficGrid.style.gridTemplateColumns = '1fr';  // one column: the other cells are gone
@@ -2683,6 +2686,18 @@ async function loadTrafficTab() {
     } catch (e) {
       show('trafficTopDatasets').innerHTML = `<p class="text-muted small">${t('traffic.failed')}</p>`;
     }
+    try {
+      const files = await fetch(API_BASE + 'api/matomo/top-downloads?' + qs + '&limit=100').then(r => r.json());
+      if (Array.isArray(files)) {
+        renderTrafficTopDownloads(files);
+        const total = files.reduce((n, d) => n + (d.visits || 0), 0);
+        show('trafficTopDownloads').insertAdjacentHTML('afterbegin',
+          `<p class="small mb-2"><span class="text-muted">${t('traffic.org_downloads_total')}</span> <strong>${fmt(total)}</strong></p>`);
+      }
+      else show('trafficTopDownloads').innerHTML = `<p class="text-muted small">${esc(files.error || t('traffic.failed'))}</p>`;
+    } catch (e) {
+      show('trafficTopDownloads').innerHTML = `<p class="text-muted small">${t('traffic.failed')}</p>`;
+    }
     return;
   }
 
@@ -2929,6 +2944,7 @@ function renderTrafficTopDownloads(downloads) {
               <td style="max-width:260px">
                 <a href="${d.url.replace(/"/g,'&quot;')}" target="_blank"
                    class="small text-decoration-none text-truncate d-block" title="${d.url.replace(/"/g,'&quot;')}">${name.replace(/</g,'&lt;')}</a>
+                ${d.dataset_title ? `<div class="text-muted text-truncate" style="font-size:.72rem" title="${esc(d.dataset_title)}">${esc(d.dataset_title)}</div>` : ''}
                 <div class="mt-1" style="height:2px;border-radius:1px;background:#e9ecef">
                   <div style="width:${Math.round(d.visits/max*100)}%;height:100%;background:#ffc107;border-radius:1px"></div>
                 </div>

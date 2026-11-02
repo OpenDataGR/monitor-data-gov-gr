@@ -627,7 +627,7 @@ _ORG_SCOPE_ALLOWED = [
     (("GET",), re.compile(r"^/api/datasets/(?!geo-locations$|formats$|search$)[^/]+$")),
     (("GET",), re.compile(r"^/api/quality/[a-z]+-check(/export)?$")),
     (("GET",), re.compile(r"^/api/organizations(/[^/]+)?$")),
-    (("GET",), re.compile(r"^/api/matomo/(top-datasets|dataset-stats|dataset-analytics)$")),
+    (("GET",), re.compile(r"^/api/matomo/(top-datasets|top-downloads|dataset-stats|dataset-analytics)$")),
 ]
 
 
@@ -9394,6 +9394,93 @@ def _scope_dataset_names(scope):
     return names
 
 
+_scope_resources_cache = {}  # tuple(scope) -> (fetched_at, ({download key: dataset name}, {dataset name: title}))
+
+
+def _download_key(url):
+    """A resource/download URL reduced to what Matomo and CKAN agree on: no scheme (Matomo's
+    download labels often have none, CKAN's resource URLs have http:// or https://) and no
+    trailing slash."""
+    return re.sub(r"^https?://", "", (url or "").strip()).rstrip("/")
+
+
+def _scope_resource_index(scope):
+    """({download key: dataset name}, {dataset name: title}) for every resource of every dataset
+    in the given orgs, from CKAN package_search (full package dicts, 100 per page), cached 10
+    minutes per scope. This is how a scoped user's downloads are attributed to their own datasets."""
+    key = tuple(sorted(scope))
+    hit = _scope_resources_cache.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    by_url, titles, start = {}, {}, 0
+    while scope:
+        r = requests.get(f"{config.API_BASE}/package_search",
+                         params={"fq": _scope_fq(), "rows": 100, "start": start},
+                         headers=_api_headers(), timeout=config.REQUEST_TIMEOUT)
+        r.raise_for_status()
+        page = r.json()["result"]["results"]
+        for pkg in page:
+            name = pkg.get("name")
+            if not name:
+                continue
+            titles[name] = pkg.get("title") or name
+            for res in pkg.get("resources") or []:
+                if res.get("url"):
+                    by_url[_download_key(res["url"])] = name
+        if len(page) < 100:
+            break
+        start += 100
+    _scope_resources_cache[key] = (time.time(), (by_url, titles))
+    return by_url, titles
+
+
+_all_downloads_cache = {}  # (start, end) -> (fetched_at, {download label: hits})
+
+
+def _matomo_all_downloads(start, end):
+    """Hits per downloaded file over the WHOLE portal ({label: hits}), not just Matomo's top few --
+    an organization's files rarely rank in the portal-wide top 20. Compact result cached 10 minutes."""
+    key = (start, end)
+    hit = _all_downloads_cache.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    items = _matomo_get("Actions.getDownloads", {
+        "period": "range", "date": f"{start},{end}", "flat": 1, "filter_limit": 100000,
+    })
+    out = {}
+    for item in items if isinstance(items, list) else []:
+        label = item.get("label", "")
+        if not label or " - " in label:   # skip empty / Matomo aggregation rows
+            continue
+        out[label] = out.get(label, 0) + (item.get("nb_visits", 0) or item.get("nb_hits", 0) or 0)
+    if len(_all_downloads_cache) > 40:
+        _all_downloads_cache.clear()
+    _all_downloads_cache[key] = (time.time(), out)
+    return out
+
+
+_DOWNLOAD_DATASET_RE = re.compile(r"/dataset/([^/?#\s]+)/resource/", re.IGNORECASE)
+
+
+def _scoped_top_downloads(scope, start, end, limit):
+    """Downloads of the scoped user's OWN datasets' files only: a file counts when its URL is one
+    of their datasets' resource URLs, or is a portal file link under /dataset/<their dataset>/resource/.
+    Anything else -- every other org's files, or files this can't attribute -- is never listed."""
+    by_url, titles = _scope_resource_index(scope)
+    rows = {}
+    for label, hits in _matomo_all_downloads(start, end).items():
+        name = by_url.get(_download_key(label))
+        if not name:
+            m = _DOWNLOAD_DATASET_RE.search(label)
+            name = m.group(1) if m and m.group(1) in titles else None
+        if not name:
+            continue
+        url = label if label.startswith("http") else f"https://{label}"
+        row = rows.setdefault(url, {"url": url, "visits": 0, "dataset": name, "dataset_title": titles.get(name, name)})
+        row["visits"] += hits
+    return sorted(rows.values(), key=lambda r: r["visits"], reverse=True)[:limit]
+
+
 _DATASET_PAGE_RE = re.compile(r"/dataset/([^/?#\s]+)(/[^?#\s]*)?(?:[?#].*)?$", re.IGNORECASE)
 _dataset_page_visits_cache = {}  # (days, start, end) -> (fetched_at, {slug: {"visits", "unique_visitors", "label"}})
 
@@ -9539,6 +9626,9 @@ def matomo_top_downloads():
     limit = min(int(freq.args.get("limit", 20)), 100)
     days, start, end = _matomo_resolve_range()
     try:
+        scope = _session_org_scope()
+        if scope is not None:
+            return jsonify(_scoped_top_downloads(scope, start, end, limit))
         items = _matomo_get("Actions.getDownloads", {
             "period": "range",
             "date": f"{start},{end}",
