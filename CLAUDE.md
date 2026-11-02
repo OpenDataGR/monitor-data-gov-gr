@@ -221,8 +221,13 @@ tab list for them is the fixed `_ORG_SCOPED_TABS`, not the stored `allowed_tabs`
   recomputed from the org's own cache rows; a row with no `org_slug` is never shown),
   Matomo `top-datasets` (their datasets' own pages, from the WHOLE portal page list
   via `_matomo_dataset_page_visits` -- filtering the top-300 left them with an empty
-  list) and `dataset-stats`/`dataset-analytics` (dataset's CKAN org looked up first). Portal-wide Matomo summary/searches/API
-  calls/downloads are not available to them.
+  list) and `dataset-stats`/`dataset-analytics` (dataset's CKAN org looked up first). Matomo `top-downloads` is scoped too (2026-11-02):
+  `_scoped_top_downloads` matches the WHOLE portal download report (`_matomo_all_downloads`) against their
+  datasets' resource URLs (`_scope_resource_index`, scheme/trailing-slash insensitive) or
+  `/dataset/<theirs>/resource/` portal links; unattributable files are dropped. Not yet verified against the
+  real portal -- check a real org admin's list after deploy. **API-call stats can't be scoped**: the Matomo
+  events the code reads carry only the CKAN action name, no dataset/org. Portal-wide Matomo summary/searches/API
+  calls are not available to them.
 - The scope is cached in the session as `session["org_scope"]` by **every** place
   that fills the session from a user (password login, passkey, set-password,
   Keycloak callback, and API-token auth -- a scoped user's token is scoped too).
