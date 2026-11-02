@@ -184,6 +184,23 @@ Expect the DCAT-AP tab and org-analytics DCAT pass rates to drop sharply after t
 not a regression. The EU's top issues are dct:format as a literal (IRI expected) and dcat:byteSize not
 xsd:decimal -- likely fixable once at the portal's DCAT export.
 
+## DCAT-AP compliance = the EU's structural layer (2026-11-02, `_DCAT_CHECK_VERSION` 4)
+
+`tools/violation_report.sql` (read-only, run on the VM) showed 23,001 of 23,568 datasets non-conforming and **0** flagged `vocabulary_issue`:
+the MDR vocabulary shapes are blank nodes, so the old `"mdrcv" in shape IRI` test never matched. Now every node of the vocabulary file is
+marked (`_VOCAB_SHAPE_MARK`) and `_dcat_finding_category` sorts each finding: **structural** (counts), **vocabulary**, **type** (class/nested
+shape -- needs the ontologies the EU validates with), **blank_node** (nodeKind IRI vs the EU's BlankNodeOrIRI). A dataset conforms when it has
+no structural violation (`_dcat_result_for_graph`); the rest are `severity: warning` details carrying their `category`. Rationale: the EU's own
+report counts dct:format as plain text (82,556) and dcat:byteSize not xsd:decimal (74,203) and NOT our publisher (22,389) / spatial (21,952) /
+vocabulary findings; SEMIC's validator separates core, vocabulary and background-knowledge layers. Decided with the user: "as compliant as
+possible with the EU rules and checks". `tests/test_dcat_eu_alignment.py`. After the next run compare the MQA tab's per-property table: ours
+should now sit close to the EU's. GeoDCAT-AP and HVD are NOT changed (GeoDCAT is not an EU-scored check).
+
+**What the portal must fix** (the CKAN DCAT export, not this repo): `dct:format` as an EU file-type IRI (plain text on 21,284 datasets: `<dct:format>JSON</dct:format>`
+seen in the RDF), `dcat:byteSize` as `xsd:decimal` (19,397), `dcat:mediaType` as an IANA IRI; HVD: ELI IRI in `dcatap:applicableLegislation` (282),
+contact point (231), API access URL (122), `dcatap:hvdCategory` (65). The check reuses a dataset's cached result until CKAN's `metadata_modified`
+changes, which an export change does not touch: after the portal fix, bump `_DCAT_CHECK_VERSION` to force a full re-check.
+
 ## Detail views are modals, not slide-overs (2026-10-22)
 
 The organization, organization-contacts, dataset and dataset-analytics detail views were 440px

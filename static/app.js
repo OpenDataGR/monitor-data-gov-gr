@@ -225,7 +225,11 @@ const TRANSLATIONS = {
     'stats.latest_snapshot': 'Latest Snapshot',
     'quality.dcat_title': 'DCAT-AP Compliance Check (SHACL)',
     'quality.dcat_run': 'Run DCAT-AP Check',
-    'quality.dcat_desc': "Validates every dataset's real DCAT-AP RDF metadata against the EU's baseline DCAT-AP structural shapes and MDR controlled-vocabulary shapes (vendored from SEMICeu's dcat-ap_shacl repo) — the same rules data.europa.eu itself checks harvested metadata against.",
+    'quality.dcat_desc': "Validates every dataset's real DCAT-AP RDF metadata against the EU's baseline DCAT-AP structural shapes and MDR controlled-vocabulary shapes (vendored from SEMICeu's dcat-ap_shacl repo) — the same rules data.europa.eu itself checks harvested metadata against. A dataset counts as compliant when it has no structural violations, as in the EU's score; vocabulary, type and blank-node findings are listed for information only.",
+    'quality.cat_vocabulary': 'vocabulary',
+    'quality.cat_type': 'type',
+    'quality.cat_blank_node': 'blank node',
+    'quality.cat_hint': 'Shown for information: it does not count against DCAT-AP compliance (the EU scores the structural rules only).',
     'quality.dcat_hint': 'Click Run DCAT-AP Check to validate every dataset on the portal. This covers the full catalog (tens of thousands of datasets) and can take a long time on the first run.',
     'quality.collecting_list': 'Collecting the dataset list from the portal… the count appears once it is complete (a few minutes for the whole catalogue)',
     'quality.dcat_running': 'Validating every dataset on the portal against the official DCAT-AP + MDR vocabulary SHACL shapes… a full first run can take hours. Feel free to switch tabs — it keeps running in the background.',
@@ -902,7 +906,11 @@ const TRANSLATIONS = {
     'stats.latest_snapshot': 'Τελευταίο Στιγμιότυπο',
     'quality.dcat_title': 'Έλεγχος Συμμόρφωσης DCAT-AP (SHACL)',
     'quality.dcat_run': 'Εκτέλεση Ελέγχου DCAT-AP',
-    'quality.dcat_desc': 'Επικυρώνει τα πραγματικά μεταδεδομένα DCAT-AP κάθε συνόλου δεδομένων βάσει των βασικών δομικών μορφών SHACL DCAT-AP και των μορφών ελεγχόμενου λεξιλογίου MDR της ΕΕ (από το αποθετήριο SEMICeu dcat-ap_shacl) — τους ίδιους κανόνες που ελέγχει το data.europa.eu στα συλλεγμένα μεταδεδομένα.',
+    'quality.dcat_desc': 'Επικυρώνει τα πραγματικά μεταδεδομένα DCAT-AP κάθε συνόλου δεδομένων βάσει των βασικών δομικών μορφών SHACL DCAT-AP και των μορφών ελεγχόμενου λεξιλογίου MDR της ΕΕ (από το αποθετήριο SEMICeu dcat-ap_shacl) — τους ίδιους κανόνες που ελέγχει το data.europa.eu στα συλλεγμένα μεταδεδομένα. Ένα σύνολο δεδομένων θεωρείται συμμορφούμενο όταν δεν έχει δομικές παραβιάσεις, όπως στη βαθμολογία της ΕΕ· τα ευρήματα λεξιλογίου, τύπου και κενών κόμβων εμφανίζονται μόνο ενημερωτικά.',
+    'quality.cat_vocabulary': 'λεξιλόγιο',
+    'quality.cat_type': 'τύπος',
+    'quality.cat_blank_node': 'κενός κόμβος',
+    'quality.cat_hint': 'Εμφανίζεται ενημερωτικά: δεν μετράει στη συμμόρφωση DCAT-AP (η ΕΕ βαθμολογεί μόνο τους δομικούς κανόνες).',
     'quality.dcat_hint': 'Κάντε κλικ στο «Εκτέλεση Ελέγχου DCAT-AP» για επαλήθευση όλων των συνόλων δεδομένων της πύλης. Καλύπτει ολόκληρο τον κατάλογο (δεκάδες χιλιάδες σύνολα δεδομένων) και μπορεί να διαρκέσει πολύ την πρώτη φορά.',
     'quality.collecting_list': 'Συλλογή της λίστας συνόλων δεδομένων από την πύλη… ο αριθμός εμφανίζεται μόλις ολοκληρωθεί (λίγα λεπτά για ολόκληρο τον κατάλογο)',
     'quality.dcat_running': 'Επικύρωση όλων των συνόλων δεδομένων της πύλης βάσει των επίσημων μορφών SHACL DCAT-AP + MDR… μια πρώτη πλήρης εκτέλεση μπορεί να διαρκέσει ώρες. Μπορείτε να αλλάξετε καρτέλα — η διαδικασία συνεχίζεται στο παρασκήνιο.',
@@ -3935,7 +3943,13 @@ function collapseAllDcat() {
 // DCAT-AP): the list is fetched from the per-dataset cache the first time the row is expanded. A row that does
 // carry its details (an older stored result) renders as before.
 function _qualityViolationList(details) {
-  return `<ul class="small mb-0 mt-1">${(details || []).map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}</li>`).join('')}</ul>`;
+  return `<ul class="small mb-0 mt-1">${(details || []).map(v => `<li class="${v.severity === 'violation' ? 'text-danger' : 'text-warning'}" title="${esc(v.raw_message || '')}">${esc(v.message)}${v.count > 1 ? ` <span class="text-muted">(×${v.count})</span>` : ''}${_qualityCategoryTag(v)}</li>`).join('')}</ul>`;
+}
+
+// Findings that do not count toward DCAT-AP compliance (the EU scores the structural rules only) carry their kind.
+function _qualityCategoryTag(v) {
+  if (!v.category || v.category === 'structural' || v.category === 'warning') return '';
+  return ` <span class="badge bg-secondary-subtle text-secondary-emphasis" style="font-size:.65rem" title="${esc(t('quality.cat_hint'))}">${esc(t('quality.cat_' + v.category))}</span>`;
 }
 
 function _qualityDetailsCell(d, kind) {

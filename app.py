@@ -3244,7 +3244,7 @@ def _dedupe_shacl_details(entries: list) -> list:
     entries' shape coming from HVD's classifier originally."""
     deduped, index = [], {}
     for e in entries:
-        key = (e["severity"], e["message"])
+        key = (e["severity"], e["message"], e.get("category"))
         if key in index:
             index[key]["count"] += 1
         else:
@@ -3491,8 +3491,17 @@ _HVD_LICENSE_STATUS_LABELS = {"missing": "Missing", "non_open": "Not confirmed o
 _DCAT_SHAPES_GRAPH = rdflib.Graph()
 _DCAT_SHAPES_GRAPH.parse(
     data=(Path(__file__).parent / "shacl" / "dcat-ap.shapes.ttl").read_text(encoding="utf-8"), format="turtle")
-_DCAT_SHAPES_GRAPH.parse(
+# The controlled-vocabulary (MDR) shapes are parsed on their own and every node in them is marked, so a validation
+# result can be told apart by the shape it came from. Their property shapes are blank nodes, so the old test (an
+# "mdrcv" substring in the shape's IRI) never matched: NO dataset was ever flagged vocabulary_issue and every
+# vocabulary finding was reported as structural (found 2026-11-02: 23,001 structural / 0 vocabulary).
+_VOCAB_SHAPE_MARK = rdflib.URIRef("urn:monitor:from-mdr-vocabulary-shapes")
+_mdr_vocab_shapes = rdflib.Graph()
+_mdr_vocab_shapes.parse(
     data=(Path(__file__).parent / "shacl" / "dcat-ap-mdr-vocabularies.shapes.ttl").read_text(encoding="utf-8"), format="turtle")
+for _node in set(_mdr_vocab_shapes.subjects()):
+    _mdr_vocab_shapes.add((_node, _VOCAB_SHAPE_MARK, rdflib.Literal(True)))
+_DCAT_SHAPES_GRAPH += _mdr_vocab_shapes
 # SEMIC's DCAT-AP shapes name each node shape after the class it describes (dcat:Dataset, dcat:Distribution, ...)
 # and get their target from the DCAT ontology's own `a rdfs:Class` (SHACL's implicit class target). That
 # ontology isn't vendored, so as shipped NONE of the shapes had a target and the whole check validated nothing:
@@ -3506,7 +3515,8 @@ _DCAT_CHECK_CONCURRENCY = 5   # same conservative pool as the HVD check -- gentl
 _DCAT_CHECK_TIMEOUT = 30
 # Bump whenever _dcat_check_one()'s result schema/logic changes -- see
 # _HVD_CHECK_VERSION's comment, same reasoning.
-_DCAT_CHECK_VERSION = 3  # bumped: the shapes had no targets, so every cached result said "conforms" -- all must be re-checked.
+_DCAT_CHECK_VERSION = 4  # v4: compliance = structural findings only (the EU's scoring); vocabulary/type/blank-node findings are advisories.
+                          # v3: the shapes had no targets, so every cached result said "conforms" -- all had to be re-checked.
                           # (v2: vocabulary augmentation now dereferences vcard:hasEmail/dct:format
                           # and follows one more hop to each concept's own skos:ConceptScheme,
                           # instead of merging whole fetched documents in (which caused false
@@ -3605,10 +3615,38 @@ def _friendly_dcat_message(path_s: str, comp, raw_msg: str) -> str:
     return _generic_property_message(path_s, comp, _DCAT_PATH_LABELS) or raw_msg or "Unrecognized SHACL validation issue."
 
 
+# How a DCAT-AP validation finding is judged. data.europa.eu scores "DCAT-AP compliance" on the STRUCTURAL rules: its report
+# counts dct:format as plain text where a node is required (82,556), dcat:byteSize not xsd:decimal (74,203), missing mandatory
+# properties -- and none of what our stricter run also reported: the 22,389 publisher / 21,952 spatial findings, the
+# controlled-vocabulary findings, class-membership findings. SEMIC's own validator separates the same layers (core shapes,
+# vocabulary shapes, "background knowledge" -- the ontologies that make class checks pass), and its core-only case excludes
+# "range class membership constraints and controlled vocabulary usage". So only `structural` findings make a dataset
+# non-compliant; the rest stay visible in the details as advisories:
+#   structural   - counts (missing mandatory property, wrong datatype, a plain-text value where a resource is required)
+#   vocabulary   - raised by a controlled-vocabulary (MDR) shape: a value is not in an EU list, or the list could not be looked up
+#   type         - a class-membership / nested-shape check, which needs the ontologies the EU validates with
+#   blank_node   - nodeKind says IRI but the value is a blank node; the EU's rule is "blank node or IRI" (its report says
+#                  NodeKind[BlankNodeOrIRI]), so a blank-node publisher/spatial is not an error there
+_FINDING_COUNTS = "structural"
+
+
+def _dcat_finding_category(results_graph, r, shape, comp) -> str:
+    if (shape, _VOCAB_SHAPE_MARK, None) in _DCAT_SHAPES_GRAPH or "mdrcv" in str(shape or ""):
+        return "vocabulary"
+    if comp in (_SH_NS.ClassConstraintComponent, _SH_NS.NodeConstraintComponent):
+        return "type"
+    if comp == _SH_NS.NodeKindConstraintComponent:
+        value = results_graph.value(r, _SH_NS.value)
+        if value is not None and not isinstance(value, rdflib.Literal):
+            return "blank_node"
+    return "structural"
+
+
 def _classify_dcat_results(results_graph: "rdflib.Graph"):
+    """-> (violations, warnings, vocabulary_issue, structural_issue). `violations` are only the findings that count
+    toward compliance (see _FINDING_COUNTS); every other finding is a warning (an advisory) carrying its `category`."""
     violations, warnings = [], []
     vocabulary_issue = False
-    structural_issue = False
     for r in results_graph.subjects(rdflib.RDF.type, _SH_NS.ValidationResult):
         sev   = results_graph.value(r, _SH_NS.resultSeverity)
         msg   = results_graph.value(r, _SH_NS.resultMessage)
@@ -3616,27 +3654,47 @@ def _classify_dcat_results(results_graph: "rdflib.Graph"):
         shape = results_graph.value(r, _SH_NS.sourceShape)
         comp  = results_graph.value(r, _SH_NS.sourceConstraintComponent)
         path_s  = str(path) if path is not None else ""
-        shape_s = str(shape) if shape is not None else ""
         raw_msg = str(msg) if msg else ""
+        category = _dcat_finding_category(results_graph, r, shape, comp) if sev == _SH_NS.Violation else "warning"
         entry = {
-            "severity":    "violation" if sev == _SH_NS.Violation else "warning",
+            "severity":    "violation" if category == _FINDING_COUNTS else "warning",
+            "category":    category,
             "path":        path_s or None,
             "message":     _friendly_dcat_message(path_s, comp, raw_msg),
             "raw_message": raw_msg,
         }
-        if sev == _SH_NS.Violation:
+        if category == _FINDING_COUNTS:
             violations.append(entry)
-            # The MDR vocabulary shapes file's shapes all live under the
-            # http://data.europa.eu/r5r/mdrcv# base URI -- distinguishing a
-            # "used the wrong controlled-vocabulary value" violation from a
-            # "missing/malformed core DCAT-AP field" one.
-            if "mdrcv" in shape_s:
-                vocabulary_issue = True
-            else:
-                structural_issue = True
         else:
             warnings.append(entry)
-    return violations, warnings, vocabulary_issue, structural_issue
+            if category == "vocabulary":
+                vocabulary_issue = True
+    return violations, warnings, vocabulary_issue, bool(violations)
+
+
+def _dcat_result_for_graph(name: str, graph: "rdflib.Graph") -> dict:
+    """Validates one dataset's (vocabulary-augmented) RDF graph and builds its result row. A dataset conforms when it
+    has no structural violations -- pySHACL's own `conforms` would also fail it for the advisory findings."""
+    _conforms, results_graph, _ = pyshacl.validate(
+        graph, shacl_graph=_DCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
+    )
+    violations, warnings, vocabulary_issue, structural_issue = _classify_dcat_results(results_graph)
+
+    title = None
+    for t in graph.objects(None, _DCT_NS.title):
+        title = str(t)
+        break
+
+    return {
+        "name":             name,
+        "title":            title or name,
+        "conforms":         not violations,
+        "violation_count":  len(violations),
+        "warning_count":    len(warnings),
+        "vocabulary_issue": vocabulary_issue,
+        "structural_issue": structural_issue,
+        "details":          _dedupe_shacl_details(violations + warnings),
+    }
 
 
 def _dcat_check_one(name: str) -> dict:
@@ -3644,27 +3702,7 @@ def _dcat_check_one(name: str) -> dict:
     try:
         graph = _fetch_dataset_rdf_graph(name, _DCAT_CHECK_TIMEOUT)
         _augment_with_dcat_vocab(graph)
-
-        conforms, results_graph, _ = pyshacl.validate(
-            graph, shacl_graph=_DCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
-        )
-        violations, warnings, vocabulary_issue, structural_issue = _classify_dcat_results(results_graph)
-
-        title = None
-        for t in graph.objects(None, _DCT_NS.title):
-            title = str(t)
-            break
-
-        return {
-            "name":             name,
-            "title":            title or name,
-            "conforms":         conforms,
-            "violation_count":  len(violations),
-            "warning_count":    len(warnings),
-            "vocabulary_issue": vocabulary_issue,
-            "structural_issue": structural_issue,
-            "details":          _dedupe_shacl_details(violations + warnings),
-        }
+        return _dcat_result_for_graph(name, graph)
     except Exception as exc:
         return {"name": name, "error": str(exc)}
 
