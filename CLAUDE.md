@@ -129,6 +129,18 @@ button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
   the login was verified working end to end in production on 2026-10-21.
   Automated tests use a faked Keycloak/CKAN (`tests/test_keycloak_login.py`).
 
+## Quality checks are resumable; VM memory incident (2026-11-02)
+
+`_do_run_check` (HVD / DCAT-AP / GeoDCAT-AP) now flushes each batch of freshly validated datasets to the per-dataset cache
+every `_CHECK_CHECKPOINT_EVERY` (200) results via `_persist_checked_rows`, instead of once after the whole run. The next run
+already skips any dataset whose cached result has the current check version and unchanged `metadata_modified`, so a run
+killed part-way (deploy, reboot, the unit's `MemoryMax`) resumes instead of restarting from zero -- *provided someone starts
+it again* (the nightly timer restarts at worker boot, so that can be up to 24 h later; clicking Run resumes it at once).
+`tests/test_quality_checkpoint.py` kills a run mid-way and asserts what survived; it fails if checkpointing is disabled.
+The VM froze ~2.5 h on 2026-11-01 from a steady ~1.5 GB/day memory growth (16 GB, no swap); `MemoryMax` was added to both units
+and the evidence is in `deploy/README.md`. **The leak itself is still unidentified** -- `~/memlog.txt` on the VM (10-min samples)
+was started to find it; the nightly checks only begin ~24 h after the worker boots.
+
 ## The DCAT-AP check validated nothing until 2026-10-22 (found via the MQA comparison)
 
 The vendored SEMIC `dcat-ap.shapes.ttl` / `dcat-ap-mdr-vocabularies.shapes.ttl` name each node shape after its

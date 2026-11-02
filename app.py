@@ -3918,6 +3918,38 @@ def _save_check_cache(check_type: str, result: dict) -> None:
         db.session.commit()
 
 
+# Freshly validated datasets are written to the per-dataset cache this many at a time WHILE a run is
+# still going, not once at the very end. A full run is hours long and the worker can die under it (a
+# deploy, a reboot, the unit's MemoryMax), and the cache is exactly what makes the next run skip every
+# dataset already done (same check version + unchanged metadata_modified) -- so persisting as we go is
+# what makes an interrupted run resumable instead of starting from zero.
+_CHECK_CHECKPOINT_EVERY = 200
+
+
+def _persist_checked_rows(cfg: dict, slug_by_name: dict, newly_checked: list) -> None:
+    """Writes (name, metadata_modified, result-or-None-if-failed) tuples into the check's
+    per-dataset cache table."""
+    if not newly_checked:
+        return
+    with app.app_context():
+        dataset_cache_model = cfg["dataset_cache_model"]
+        for name, mtime, result in newly_checked:
+            row = dataset_cache_model.query.get(name)
+            if not row:
+                row = dataset_cache_model(name=name)
+                db.session.add(row)
+            row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            row.org_slug = slug_by_name.get(name) or row.org_slug
+            if result is not None:
+                # Only overwrite on success -- a transient fetch
+                # failure shouldn't erase a known-good cached result;
+                # leaving metadata_modified stale means it's simply
+                # retried again next run instead of wrongly reused.
+                row.metadata_modified = mtime
+                row.result_json = json.dumps({"_cache_version": cfg["check_version"], "result": result})
+        db.session.commit()
+
+
 def _do_run_check(check_type: str) -> None:
     cfg = _QUALITY_CHECKS[check_type]
     cancelled = False
@@ -3989,6 +4021,9 @@ def _do_run_check(check_type: str) -> None:
                     cfg["augment_row"](result, d)
                     rows.append(result)
                     newly_checked.append((d["name"], d["metadata_modified"], result))
+                if len(newly_checked) >= _CHECK_CHECKPOINT_EVERY:
+                    _persist_checked_rows(cfg, slug_by_name, newly_checked)
+                    newly_checked = []
                 if _bump_check_progress(check_type, len(rows)):
                     cancelled = True
                     break
@@ -3999,26 +4034,9 @@ def _do_run_check(check_type: str) -> None:
             # simply not collected -- don't block the cancel on them.
             pool.shutdown(wait=False, cancel_futures=True)
 
-        if newly_checked:
-            with app.app_context():
-                for name, mtime, result in newly_checked:
-                    dataset_cache_model = cfg["dataset_cache_model"]
-                    row = dataset_cache_model.query.get(name)
-                    if not row:
-                        row = dataset_cache_model(name=name)
-                        db.session.add(row)
-                    row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                    row.org_slug = slug_by_name.get(name) or row.org_slug
-                    if result is not None:
-                        # Only overwrite on success -- a transient fetch
-                        # failure shouldn't erase a known-good cached result;
-                        # leaving metadata_modified stale means it's simply
-                        # retried again next run instead of wrongly reused.
-                        row.metadata_modified = mtime
-                        row.result_json = json.dumps({"_cache_version": cfg["check_version"], "result": result})
-                db.session.commit()
+        _persist_checked_rows(cfg, slug_by_name, newly_checked)  # the remainder after the last checkpoint
 
-        checked = [r for r in rows if "error" not in r]
+        checked =[r for r in rows if "error" not in r]
         failed  = [r for r in rows if "error" in r]
         summary = {
             "total":             len(datasets),
