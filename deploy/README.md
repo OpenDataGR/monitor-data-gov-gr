@@ -506,3 +506,43 @@ done. The tell for "this 413 is coming from Flask, not nginx" is that it
 appears in nginx's *access* log but has no matching entry in nginx's
 *error* log -- nginx only writes to its error log when *it* is the one
 rejecting the request.
+
+## 502 / VM freeze from memory exhaustion (2026-11-01 -> 11-02, root cause still open)
+
+**Symptoms:** `monitor.data.gov.gr` returned 502; Bastion could not connect; the
+VM's Azure agent stayed "Not Ready" for a while after a portal restart; the serial
+console timed out. The VM (`MIN01-RG96-VM13`, 8 vCPU / 16 GB, **no swap**) was
+"Running" the whole time -- the Azure portal's Boot diagnostics screenshot showed a
+normal Ubuntu login prompt, so don't assume a stuck boot.
+
+**What the evidence showed** (`sar` history, `sudo sar -r -f /var/log/sysstat/saDD`,
+and `journalctl -b -1 -u monitor-data-gov-gr`):
+- Memory used grew in a straight line from ~19% (24 Oct) to ~89% (1 Nov), about
+  **1.5 GB/day**, then plateaued with ~1 GB available and commit at 123% of RAM.
+- On 2026-11-01 all six gunicorn workers hit `WORKER TIMEOUT` (their own timestamps
+  06:38-08:30, but journald only received them at 09:01), and `sar` has **no samples
+  between 06:30 and 09:01** -- the whole VM was stalled ~2.5 h, then resumed.
+- The old boot has no clean `shutdown` record in `last -x`; the VM was cut, not
+  rebooted. The kernel OOM killer never fired (no `oom`/`killed process` lines).
+  gunicorn's "Perhaps out of memory?" SIGKILL line is boilerplate for *any* SIGKILL.
+- A fresh boot sits at ~2.2 GB used (worker ~410 MB, web ~620 MB, Postgres ~240 MB,
+  Redis ~86 MB). A ~/memlog.txt logger (10-min samples of AnonPages, per-service
+  `MemoryCurrent`, Redis) was started 2026-11-02 08:41 UTC to catch the growth;
+  the nightly HVD/DCAT-AP/GeoDCAT checks only start ~24 h after the worker boots.
+- A local test (400 `pyshacl.validate` calls with the real DCAT-AP shapes) grew by
+  only ~2 MB, so validation itself is not the leak. The culprit is not yet known.
+
+**Safety net:** `MemoryMax=7G` on the worker unit and `MemoryMax=5G` on the web unit
+(in this directory's unit files). A runaway service is then killed and restarted by
+`Restart=always` instead of freezing the whole VM. Copy the files to
+`/etc/systemd/system/`, then `sudo systemctl daemon-reload` and restart both units.
+No `MemoryHigh`: without swap it throttles instead of failing fast.
+
+**Diagnosing next time, without Bastion:** Portal -> VM -> Operations -> **Run command
+-> RunShellScript** works whenever the agent is Ready and needs no password. Also
+useful: `free -m`, `grep -E "^(AnonPages|SUnreclaim):" /proc/meminfo`,
+`systemctl show <unit> -p MemoryCurrent`, `redis-cli info memory`,
+`last -x reboot shutdown`. (The unit names are `monitor-data-gov-gr`,
+`monitor-data-gov-gr-worker`, `postgresql@16-main` -- plain `postgresql` is only a wrapper.)
+A leftover `crm-data-gov-gr.service` (same description as the web unit) also starts at
+boot; its purpose is unconfirmed.

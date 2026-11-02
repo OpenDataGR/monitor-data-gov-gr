@@ -20,6 +20,15 @@ Environment=PYTHONUNBUFFERED=1
 Environment=BACKGROUND_WORKER=1
 ExecStart=/home/localadmin/monitor-data-gov-gr/venv/bin/python background_worker.py
 
+# Hard memory ceiling for this service (and its SHACL subprocesses). On 2026-11-01
+# the VM (16 GB, no swap) was ~90% full from a steady ~1.5 GB/day memory growth
+# and froze for ~2.5 h -- web workers timed out, the Azure agent/Bastion went
+# unreachable. With this limit the kernel kills just this service's biggest
+# process at 7 GB and Restart=always brings it back, instead of the whole VM
+# stalling. Deliberately MemoryMax only, no MemoryHigh: with no swap, MemoryHigh
+# throttles allocation and would stall the service rather than fail fast.
+MemoryMax=7G
+
 Restart=always
 
 [Install]
