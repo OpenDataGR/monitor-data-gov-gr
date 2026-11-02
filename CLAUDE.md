@@ -129,6 +129,21 @@ button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
   the login was verified working end to end in production on 2026-10-21.
   Automated tests use a faked Keycloak/CKAN (`tests/test_keycloak_login.py`).
 
+## Matomo limits that shape the Traffic tab (found 2026-11-02 with `tools/matomo_diag.py`)
+
+- **A flat `Actions.getPageUrls` over a date range returns HTTP 500** (`Allowed memory size of 536870912 bytes exhausted` --
+  Matomo's PHP limit; the Matomo UI loads the same range only because it shows folders, not the flat table). One DAY's flat report
+  works (~1 s), so `_matomo_dataset_page_visits` sums per-day reports (`_dataset_page_visits_for_day`, past days cached a week,
+  range capped at 120 days -> 400). Fixes the admin and org-admin "Top dataset pages" cards. Do not go back to one range query.
+- **Matomo only keeps the top rows of each report and folds the rest into an "Others" row** (top ~500 pages/files, ~1000 event
+  names, 100 per folder subtable). So page views of a quiet dataset, and most per-file downloads, simply are not in Matomo: on
+  2026-11-02, 5,348 of 7,335 download hits were in "Others". Org-admin page-visit and download numbers are therefore lower
+  bounds (the Traffic card says so). API calls ARE attributable (the event name is the API URL): 3,428 for `emy-2026`.
+  Real fix: raise Matomo's `memory_limit` and `datatable_archiving_maximum_rows_*` in `config.ini.php` and re-archive (needs the
+  Matomo owner). Alternative in the app: CKAN `tracking_summary` (per-dataset views/downloads, exact) -- already read by
+  `/api/datasets/<name>`; not yet used for lists (needs one `package_show` per dataset, or a live check that `package_search` returns it).
+- Download links on the portal use the dataset **uuid** (`/dataset/<uuid>/resource/<id>/download/...`), not its name.
+
 ## Quality checks are resumable; VM memory incident (2026-11-02)
 
 `_do_run_check` (HVD / DCAT-AP / GeoDCAT-AP) now flushes each batch of freshly validated datasets to the per-dataset cache
@@ -222,9 +237,7 @@ never the stored `allowed_tabs` (so users created before a tab existed get it to
   `organizations` list/detail, quality results + Excel export
   (`_load_check_result_for_user`: datasets filtered by `org_slug`, summary
   recomputed from the org's own cache rows; a row with no `org_slug` is never shown),
-  Matomo `top-datasets` (their datasets' own pages, from the WHOLE portal page list
-  via `_matomo_dataset_page_visits` -- filtering the top-300 left them with an empty
-  list) and `dataset-stats`/`dataset-analytics` (dataset's CKAN org looked up first). Matomo `top-downloads` is scoped too (2026-11-02):
+  Matomo `top-datasets` (their datasets' own pages, from `_matomo_dataset_page_visits`) and `dataset-stats`/`dataset-analytics` (dataset's CKAN org looked up first). Matomo `top-downloads` is scoped too (2026-11-02):
   `_scoped_top_downloads` matches the WHOLE portal download report (`_matomo_all_downloads`) against their
   datasets' resource URLs (`_scope_resource_index`, scheme/trailing-slash insensitive) or
   `/dataset/<theirs>/resource/` portal links; unattributable files are dropped. Not yet verified against the

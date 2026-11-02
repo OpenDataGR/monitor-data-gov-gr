@@ -9650,19 +9650,22 @@ _DATASET_PAGE_RE = re.compile(r"/dataset/([^/?#\s]+)(/[^?#\s]*)?(?:[?#].*)?$", r
 _dataset_page_visits_cache = {}  # (days, start, end) -> (fetched_at, {slug: {"visits", "unique_visitors", "label"}})
 
 
-def _matomo_dataset_page_visits(days, start, end):
-    """Visits per dataset page ({slug: {...}}) over the WHOLE portal's page list,
-    not just Matomo's top 300 -- an organization's datasets rarely rank that high,
-    so filtering the top 300 by org left a scoped user with an empty list. Only the
-    dataset's own page counts (not its resource/download sub-pages, which would
-    count the same visit again). Compact result cached 10 minutes per range."""
-    key = (days, start, end)
-    hit = _dataset_page_visits_cache.get(key)
-    if hit and time.time() - hit[0] < 600:
+_dataset_day_cache = {}  # ISO day -> (fetched_at, {slug: {"visits", "unique_visitors", "label"}})
+_PAGE_VISITS_MAX_DAYS = 120
+
+
+def _dataset_page_visits_for_day(day):
+    """Visits per dataset page on ONE day. Matomo's flat page report for a whole range exhausts its 512 MB PHP
+    memory limit ("Allowed memory size ... exhausted", HTTP 500) -- one day's fits (about a second) -- so the
+    range is built from days. A past day no longer changes, so it is cached for a week; yesterday and today for
+    10 minutes. Only each day's top 1000 page rows exist at all (Matomo folds the rest into an "Others" row)."""
+    recent = day >= (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    hit = _dataset_day_cache.get(day)
+    if hit and time.time() - hit[0] < (600 if recent else 7 * 24 * 3600):
         return hit[1]
-    pages = _matomo_flat_pages("Actions.getPageUrls", days, {"flat": 1, "filter_limit": 100000}, start=start, end=end)
+    pages = _matomo_get("Actions.getPageUrls", {"period": "day", "date": day, "flat": 1, "filter_limit": 1000})
     out = {}
-    for page in pages:
+    for page in pages if isinstance(pages, list) else []:
         label = page.get("label", "")
         if not label or "dataset" not in label.lower():
             continue
@@ -9673,6 +9676,43 @@ def _matomo_dataset_page_visits(days, start, end):
         row = out.setdefault(m.group(1), {"visits": 0, "unique_visitors": 0, "label": label})
         row["visits"] += page.get("nb_visits", 0) or 0
         row["unique_visitors"] += page.get("nb_uniq_visitors", 0) or 0
+    if len(_dataset_day_cache) > 500:
+        _dataset_day_cache.clear()
+    _dataset_day_cache[day] = (time.time(), out)
+    return out
+
+
+def _matomo_dataset_page_visits(days, start, end):
+    """Visits per dataset page ({slug: {...}}) over the range, summed from per-day reports (see
+    _dataset_page_visits_for_day for why not one range query). A dataset's own page only -- not its
+    resource sub-pages, which would count the same visit again -- with its /el/ and /en/ variants added
+    together. A day Matomo fails on is skipped; every day failing raises. Cached 10 minutes per range."""
+    key = (days, start, end)
+    hit = _dataset_page_visits_cache.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    d0, d1 = datetime.strptime(start, "%Y-%m-%d").date(), datetime.strptime(end, "%Y-%m-%d").date()
+    day_list = [(d0 + timedelta(days=n)).isoformat() for n in range((d1 - d0).days + 1)]
+    if len(day_list) > _PAGE_VISITS_MAX_DAYS:
+        raise ValueError(f"Top dataset pages covers at most {_PAGE_VISITS_MAX_DAYS} days -- pick a shorter range.")
+
+    def one(day):
+        try:
+            return _dataset_page_visits_for_day(day)
+        except Exception as exc:
+            print(f"[matomo] page visits for {day} failed: {exc}")
+            return None
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        per_day = list(pool.map(one, day_list))
+    if per_day and all(d is None for d in per_day):
+        raise RuntimeError("Matomo did not answer for any day of the range.")
+    out = {}
+    for day_rows in per_day:
+        for slug, row in (day_rows or {}).items():
+            agg = out.setdefault(slug, {"visits": 0, "unique_visitors": 0, "label": row["label"]})
+            agg["visits"] += row["visits"]
+            agg["unique_visitors"] += row["unique_visitors"]   # summed over days: an upper bound, like Matomo's own range sum
     if len(_dataset_page_visits_cache) > 40:
         _dataset_page_visits_cache.clear()
     _dataset_page_visits_cache[key] = (time.time(), out)
@@ -9687,32 +9727,13 @@ def matomo_top_datasets():
     days, start, end = _matomo_resolve_range()
     try:
         scope = _session_org_scope()
+        own_names = _scope_dataset_names(scope) if scope is not None else None  # None = the whole portal
         result = []
-        if scope is not None:
-            # Org-scoped: every one of THEIR datasets that had visits, from the full page list.
-            own_names = _scope_dataset_names(scope)
-            for slug, row in _matomo_dataset_page_visits(days, start, end).items():
-                if slug in own_names:
-                    result.append({"slug": slug, "label": row["label"], "visits": row["visits"],
-                                   "unique_visitors": row["unique_visitors"]})
-        else:
-            pages = _matomo_flat_pages("Actions.getPageUrls", days,
-                                       {"flat": 1, "filter_limit": 300}, start=start, end=end)
-            for page in pages:
-                label = page.get("label", "")
-                if not label or "dataset" not in label.lower():
-                    continue
-                # flat=1 uses ' > ' as path separator; reconstruct the URL path
-                path = "/" + "/".join(p.strip().lstrip("/") for p in label.split(" > "))
-                m = re.search(r"/dataset/([^/?#\s]+)", path, re.IGNORECASE)
-                if not m:
-                    continue
-                result.append({
-                    "slug":            m.group(1),
-                    "label":           label,
-                    "visits":          page.get("nb_visits", 0),
-                    "unique_visitors": page.get("nb_uniq_visitors", 0),
-                })
+        for slug, row in _matomo_dataset_page_visits(days, start, end).items():
+            if own_names is not None and slug not in own_names:
+                continue  # org-scoped: only THEIR datasets
+            result.append({"slug": slug, "label": row["label"], "visits": row["visits"],
+                           "unique_visitors": row["unique_visitors"]})
         result.sort(key=lambda x: x["visits"], reverse=True)
         top = result[:limit]
         # Matomo only knows the URL slug — look up the real (Greek) title from
@@ -9737,6 +9758,8 @@ def matomo_top_datasets():
             for item in top:
                 item["title"] = titles.get(item["slug"], item["slug"])
         return jsonify(top)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 

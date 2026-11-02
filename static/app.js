@@ -188,6 +188,7 @@ const TRANSLATIONS = {
     'stats.org_added_30d': 'Added in the last 30 days',
     'stats.org_last_added': 'Last dataset added',
     'traffic.org_api_total': 'API calls to your datasets in this period:',
+    'traffic.org_pages_note': 'Matomo keeps only the most-visited pages of each day, so datasets with very few visits may be missing and the total is a lower bound.',
     'traffic.org_downloads_total': 'Downloads of your datasets\' files in this period:',
     'traffic.top_queries': 'Top Search Queries',
     'traffic.top_api': 'Top API Calls',
@@ -864,6 +865,7 @@ const TRANSLATIONS = {
     'stats.org_added_30d': 'Προστέθηκαν τις τελευταίες 30 ημέρες',
     'stats.org_last_added': 'Τελευταίο σύνολο που προστέθηκε',
     'traffic.org_api_total': 'Κλήσεις API προς τα σύνολα δεδομένων σας στην περίοδο:',
+    'traffic.org_pages_note': 'Το Matomo κρατά μόνο τις πιο δημοφιλείς σελίδες κάθε ημέρας, οπότε σύνολα δεδομένων με πολύ λίγες επισκέψεις μπορεί να λείπουν και το σύνολο είναι κατώτατο όριο.',
     'traffic.org_downloads_total': 'Λήψεις αρχείων των συνόλων δεδομένων σας στην περίοδο:',
     'traffic.top_queries': 'Κορυφαίες Αναζητήσεις',
     'traffic.top_api': 'Κορυφαίες Κλήσεις API',
@@ -2739,7 +2741,8 @@ async function loadTrafficTab() {
         renderTrafficTopDatasets(rows);
         const total = rows.reduce((n, d) => n + (d.visits || 0), 0);
         show('trafficTopDatasets').insertAdjacentHTML('afterbegin',
-          `<p class="small mb-2"><span class="text-muted">${t('traffic.org_total')}</span> <strong>${fmt(total)}</strong></p>`);
+          `<p class="small mb-1"><span class="text-muted">${t('traffic.org_total')}</span> <strong>${fmt(total)}</strong></p>
+           <p class="text-muted mb-2" style="font-size:.72rem">${t('traffic.org_pages_note')}</p>`);
       }
       else show('trafficTopDatasets').innerHTML = `<p class="text-muted small">${esc(rows.error || t('traffic.failed'))}</p>`;
     } catch (e) {

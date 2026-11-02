@@ -199,13 +199,14 @@ def test_matomo_dataset_stats_checks_the_datasets_org(app, ckan, monkeypatch):
 
 def test_top_datasets_only_lists_own_datasets(app, ckan, monkeypatch):
     monkeypatch.setattr(config, "MATOMO_TOKEN", "tok")
+    appmod._dataset_day_cache.clear(); appmod._dataset_page_visits_cache.clear()
     monkeypatch.setattr(appmod, "_scope_dataset_names", lambda scope: {"mine-ds"})
-    monkeypatch.setattr(appmod, "_matomo_flat_pages", lambda *a, **k: [
+    monkeypatch.setattr(appmod, "_matomo_get", lambda method, params: [
         {"label": "dataset > mine-ds", "nb_visits": 3, "nb_uniq_visitors": 2},
         {"label": "dataset > theirs", "nb_visits": 99, "nb_uniq_visitors": 50}])
     c = app.test_client()
     _login(c, _scoped())
-    assert [r["slug"] for r in c.get("/api/matomo/top-datasets").get_json()] == ["mine-ds"]
+    assert [r["slug"] for r in c.get("/api/matomo/top-datasets?days=2").get_json()] == ["mine-ds"]
 
 
 def test_api_token_of_a_scoped_user_is_scoped_too(app, ckan):
@@ -305,30 +306,92 @@ def test_orgs_tab_is_offered_even_to_a_scoped_user_created_before_it_existed(app
     assert c.get("/api/organizations").status_code == 200
 
 
-def test_top_datasets_for_a_scoped_user_reads_the_full_page_list(app, ckan, monkeypatch):
-    """Their datasets rarely rank in the portal's top 300 pages -- the scoped path must ask for
-    the whole list, count a dataset's own page only (not its resource sub-pages), and never
-    show another org's dataset."""
+def _matomo_days(monkeypatch, rows_for_day):
+    """Fakes _matomo_get for the per-day page report; records every (method, params) asked."""
+    appmod._dataset_day_cache.clear(); appmod._dataset_page_visits_cache.clear()
     monkeypatch.setattr(config, "MATOMO_TOKEN", "tok")
-    appmod._dataset_page_visits_cache.clear()
+    asked = []
+
+    def fake(method, params):
+        asked.append((method, dict(params)))
+        return rows_for_day(params["date"])
+
+    monkeypatch.setattr(appmod, "_matomo_get", fake)
+    return asked
+
+
+def test_top_datasets_for_a_scoped_user_sums_per_day_reports(app, ckan, monkeypatch):
+    """A flat page report over a whole range exhausts Matomo's 512 MB PHP limit (HTTP 500), so the range is
+    built from one-day reports. A scoped user sees only their own datasets, a dataset's own page only (not its
+    resource sub-pages), with its /el/ and /en/ variants added up."""
     monkeypatch.setattr(appmod, "_scope_dataset_names", lambda scope: {"mine-a", "mine-b"})
-    asked = {}
-
-    def fake_pages(method, days, extra, start=None, end=None):
-        asked.update(extra)
-        return [
-            {"label": "dataset > mine-a", "nb_visits": 5, "nb_uniq_visitors": 4},
-            {"label": "dataset > mine-a > resource > r1", "nb_visits": 50, "nb_uniq_visitors": 40},  # sub-page: not counted
-            {"label": "dataset > mine-b", "nb_visits": 1, "nb_uniq_visitors": 1},
-            {"label": "dataset > theirs", "nb_visits": 999, "nb_uniq_visitors": 500},
-        ]
-
-    monkeypatch.setattr(appmod, "_matomo_flat_pages", fake_pages)
+    asked = _matomo_days(monkeypatch, lambda day: [
+        {"label": "dataset > mine-a", "nb_visits": 5, "nb_uniq_visitors": 4},
+        {"label": "el > dataset > mine-a", "nb_visits": 3, "nb_uniq_visitors": 3},
+        {"label": "dataset > mine-a > resource > r1", "nb_visits": 50, "nb_uniq_visitors": 40},  # sub-page: not counted
+        {"label": "dataset > mine-b", "nb_visits": 1, "nb_uniq_visitors": 1},
+        {"label": "dataset > theirs", "nb_visits": 999, "nb_uniq_visitors": 500},
+    ])
     c = app.test_client()
     _login(c, _scoped())
-    rows = c.get("/api/matomo/top-datasets?limit=100").get_json()
-    assert asked["filter_limit"] > 300
-    assert [(r["slug"], r["visits"]) for r in rows] == [("mine-a", 5), ("mine-b", 1)]
+
+    rows = c.get("/api/matomo/top-datasets?days=3&limit=100").get_json()
+
+    assert [(r["slug"], r["visits"]) for r in rows] == [("mine-a", 24), ("mine-b", 3)]   # 3 days x (5+3) / x 1
+    assert len(asked) == 3 and {m for m, _ in asked} == {"Actions.getPageUrls"}
+    assert all(p["period"] == "day" and p["flat"] == 1 and p["filter_limit"] == 1000 for _, p in asked)
+    assert len({p["date"] for _, p in asked}) == 3
+
+
+def test_top_datasets_for_an_unscoped_admin_also_avoids_the_range_report(app, ckan, monkeypatch):
+    asked = _matomo_days(monkeypatch, lambda day: [
+        {"label": "dataset > a", "nb_visits": 5, "nb_uniq_visitors": 4},
+        {"label": "en > dataset > a", "nb_visits": 2, "nb_uniq_visitors": 2},
+        {"label": "dataset > b", "nb_visits": 1, "nb_uniq_visitors": 1}])
+    c = app.test_client()
+    _login(c, _admin())
+    rows = c.get("/api/matomo/top-datasets?days=2").get_json()
+    assert [(r["slug"], r["visits"]) for r in rows] == [("a", 14), ("b", 2)]
+    assert all(p["period"] == "day" for _, p in asked)
+
+
+def test_past_days_are_cached_so_a_longer_range_only_asks_for_the_new_days(app, ckan, monkeypatch):
+    monkeypatch.setattr(appmod, "_scope_dataset_names", lambda scope: {"a"})
+    asked = _matomo_days(monkeypatch, lambda day: [{"label": "dataset > a", "nb_visits": 1, "nb_uniq_visitors": 1}])
+    c = app.test_client()
+    _login(c, _admin())
+    c.get("/api/matomo/top-datasets?days=2")
+    assert len(asked) == 2
+    c.get("/api/matomo/top-datasets?days=3")        # a different range, but two of its days are already known
+    assert len(asked) == 3
+
+
+def test_a_day_matomo_fails_on_is_skipped_but_all_days_failing_is_an_error(app, ckan, monkeypatch):
+    def rows(day):
+        raise RuntimeError("Allowed memory size exhausted")
+    _matomo_days(monkeypatch, rows)
+    c = app.test_client()
+    _login(c, _admin())
+    r = c.get("/api/matomo/top-datasets?days=2")
+    assert r.status_code == 503 and "did not answer" in r.get_json()["error"]
+
+    first = {}
+    def flaky(day):
+        if not first:
+            first["day"] = day
+            raise RuntimeError("boom")
+        return [{"label": "dataset > a", "nb_visits": 4, "nb_uniq_visitors": 4}]
+    _matomo_days(monkeypatch, flaky)
+    rows_ok = c.get("/api/matomo/top-datasets?days=3").get_json()
+    assert [(r["slug"], r["visits"]) for r in rows_ok] == [("a", 8)]    # the 2 days that answered
+
+
+def test_a_range_longer_than_the_page_report_supports_is_refused_clearly(app, ckan, monkeypatch):
+    asked = _matomo_days(monkeypatch, lambda day: [])
+    c = app.test_client()
+    _login(c, _admin())
+    r = c.get("/api/matomo/top-datasets?start=2025-01-01&end=2026-01-01")
+    assert r.status_code == 400 and "at most 120 days" in r.get_json()["error"] and asked == []
 
 
 # ── downloads of the scoped user's own datasets ────────────────────────────────

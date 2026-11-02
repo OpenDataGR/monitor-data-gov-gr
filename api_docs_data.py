@@ -303,7 +303,7 @@ ROUTES = {
         {"methods": ["GET"], "path": "/api/matomo/visits-history",
          "desc": "Same metrics broken out per day over the range."},
         {"methods": ["GET"], "path": "/api/matomo/top-datasets", "params": "?limit=20",
-         "desc": "Top dataset pages by visits, enriched with CKAN titles."},
+         "desc": "Top dataset pages by visits, enriched with CKAN titles. Built from one-day Matomo reports (a flat range report exhausts Matomo's PHP memory), so a range is limited to 120 days (400 beyond) and only each day's top 1000 pages exist; a dataset's /el/ and /en/ pages are added together. For an org-scoped user: only their own organizations' datasets."},
         {"methods": ["GET"], "path": "/api/matomo/top-searches", "params": "?limit=20",
          "desc": "Top on-site search keywords."},
         {"methods": ["GET"], "path": "/api/matomo/top-downloads", "params": "?limit=20",
