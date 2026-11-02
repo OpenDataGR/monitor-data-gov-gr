@@ -25,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 import io
 import secrets
 import hashlib
+from collections import OrderedDict
 from urllib.parse import urlparse, quote, parse_qs
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response, g
 from flask_compress import Compress
@@ -3077,22 +3078,57 @@ def _bump_hvd_progress(completed: int) -> bool: return _bump_check_progress("hvd
 
 
 
-def _get_vocab_graph(url: str):
-    with _hvd_vocab_lock:
-        if url in _hvd_vocab_cache:
-            return _hvd_vocab_cache[url]
-    g = None
+def _fetch_vocab_graph(url: str):
+    """The vocabulary document at `url` parsed into a graph, or None if it could not be fetched/parsed."""
     try:
         r = requests.get(url, timeout=_HVD_CHECK_TIMEOUT,
                           headers={"Accept": "application/rdf+xml", "User-Agent": "DataGovGR-Dashboard/1.0"})
         r.raise_for_status()
         g = rdflib.Graph()
         g.parse(data=r.text, format="xml")
+        return g
     except Exception:
-        g = None
+        return None
+
+
+def _get_vocab_graph(url: str):
+    """The WHOLE parsed document, cached for the life of the process. Only for the HVD check, which merges whole
+    documents but touches a handful of distinct URLs (categories, API, licenses). The DCAT-AP / GeoDCAT-AP checks must
+    not use it -- see _get_vocab_node_facts."""
+    with _hvd_vocab_lock:
+        if url in _hvd_vocab_cache:
+            return _hvd_vocab_cache[url]
+    g = _fetch_vocab_graph(url)
     with _hvd_vocab_lock:
         _hvd_vocab_cache[url] = g
     return g
+
+
+# The DCAT-AP check dereferences a vocabulary document for every distinct language, license, theme, file type, place...
+# a dataset mentions, but uses ONLY the triples about that one node. Caching each whole parsed document (some are whole
+# concept schemes: file types, languages, countries, corporate bodies -- many MB as rdflib graphs) made each of the 5
+# validation subprocesses grow ~11 MB a minute (190 -> 248 MB in 4.5 minutes, web service 1.87 -> 2.14 GB), which would have
+# hit the unit's 5 GB limit well before the 23,000 datasets were done. So keep just the node's own triples, and bound it.
+_vocab_facts_cache: "OrderedDict" = OrderedDict()
+_VOCAB_FACTS_MAX = 20000
+
+
+def _get_vocab_node_facts(ref: "rdflib.URIRef"):
+    """The triples whose subject is `ref`, from its dereferenced document (None if it could not be fetched). The parsed
+    document is dropped immediately; a failed lookup is remembered too, so it is not retried for every dataset."""
+    url = str(ref)
+    with _hvd_vocab_lock:
+        if url in _vocab_facts_cache:
+            _vocab_facts_cache.move_to_end(url)
+            return _vocab_facts_cache[url]
+    g = _fetch_vocab_graph(url)
+    facts = tuple(g.triples((ref, None, None))) if g is not None else None
+    del g
+    with _hvd_vocab_lock:
+        _vocab_facts_cache[url] = facts
+        while len(_vocab_facts_cache) > _VOCAB_FACTS_MAX:
+            _vocab_facts_cache.popitem(last=False)
+    return facts
 
 
 def _augment_with_vocab(graph: "rdflib.Graph") -> None:
@@ -3562,10 +3598,7 @@ def _merge_vocab_node_facts(graph: "rdflib.Graph", ref: "rdflib.URIRef") -> None
     extra validation targets of their own (confirmed by testing: merging
     the whole document in produced false-positive violations on unrelated
     vocabulary entries that were never actually part of the dataset)."""
-    vocab_graph = _get_vocab_graph(str(ref))
-    if vocab_graph is None:
-        return
-    for triple in vocab_graph.triples((ref, None, None)):
+    for triple in _get_vocab_node_facts(ref) or ():
         graph.add(triple)
 
 

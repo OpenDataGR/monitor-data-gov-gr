@@ -196,6 +196,14 @@ vocabulary findings; SEMIC's validator separates core, vocabulary and background
 possible with the EU rules and checks". `tests/test_dcat_eu_alignment.py`. After the next run compare the MQA tab's per-property table: ours
 should now sit close to the EU's. GeoDCAT-AP and HVD are NOT changed (GeoDCAT is not an EU-scored check).
 
+**Vocabulary lookups keep facts, not documents (2026-11-02).** During the first full v4 run each of the 5 validation subprocesses grew
+~11 MB/min (190 -> 248 MB in 4.5 min; web service 1.87 -> 2.14 GB, heading for its 5 GB `MemoryMax`): `_get_vocab_graph` cached every
+dereferenced vocabulary document WHOLE (concept schemes: file types, languages, countries, corporate bodies) while the DCAT-AP check reads
+only the triples about one node. `_merge_vocab_node_facts` now uses `_get_vocab_node_facts`: a bounded LRU (`_VOCAB_FACTS_MAX`) of just
+those triples, failures remembered too (`tests/test_vocab_facts_cache.py`; 20 documents: +303 MB before, +35 MB after). `_get_vocab_graph`
+(whole documents) remains for HVD only, which touches a handful of URLs. When a run is slow or memory looks odd, compare two `ps` readings
+of the `multiprocessing.spawn` children a few minutes apart -- they should stay flat.
+
 **What the portal must fix** (the CKAN DCAT export, not this repo): `dct:format` as an EU file-type IRI (plain text on 21,284 datasets: `<dct:format>JSON</dct:format>`
 seen in the RDF), `dcat:byteSize` as `xsd:decimal` (19,397), `dcat:mediaType` as an IANA IRI; HVD: ELI IRI in `dcatap:applicableLegislation` (282),
 contact point (231), API access URL (122), `dcatap:hvdCategory` (65). The check reuses a dataset's cached result until CKAN's `metadata_modified`
