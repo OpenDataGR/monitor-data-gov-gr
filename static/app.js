@@ -218,6 +218,7 @@ const TRANSLATIONS = {
     'quality.dcat_run': 'Run DCAT-AP Check',
     'quality.dcat_desc': "Validates every dataset's real DCAT-AP RDF metadata against the EU's baseline DCAT-AP structural shapes and MDR controlled-vocabulary shapes (vendored from SEMICeu's dcat-ap_shacl repo) — the same rules data.europa.eu itself checks harvested metadata against.",
     'quality.dcat_hint': 'Click Run DCAT-AP Check to validate every dataset on the portal. This covers the full catalog (tens of thousands of datasets) and can take a long time on the first run.',
+    'quality.collecting_list': 'Collecting the dataset list from the portal… the count appears once it is complete (a few minutes for the whole catalogue)',
     'quality.dcat_running': 'Validating every dataset on the portal against the official DCAT-AP + MDR vocabulary SHACL shapes… a full first run can take hours. Feel free to switch tabs — it keeps running in the background.',
     'quality.dcat_still_running': 'Still running after a long wait — a full first run over the whole catalog can take hours. It will keep going in the background; check back later.',
     'quality.dcat_rerun_title': 'Run DCAT-AP Check Again?',
@@ -880,6 +881,7 @@ const TRANSLATIONS = {
     'quality.dcat_run': 'Εκτέλεση Ελέγχου DCAT-AP',
     'quality.dcat_desc': 'Επικυρώνει τα πραγματικά μεταδεδομένα DCAT-AP κάθε συνόλου δεδομένων βάσει των βασικών δομικών μορφών SHACL DCAT-AP και των μορφών ελεγχόμενου λεξιλογίου MDR της ΕΕ (από το αποθετήριο SEMICeu dcat-ap_shacl) — τους ίδιους κανόνες που ελέγχει το data.europa.eu στα συλλεγμένα μεταδεδομένα.',
     'quality.dcat_hint': 'Κάντε κλικ στο «Εκτέλεση Ελέγχου DCAT-AP» για επαλήθευση όλων των συνόλων δεδομένων της πύλης. Καλύπτει ολόκληρο τον κατάλογο (δεκάδες χιλιάδες σύνολα δεδομένων) και μπορεί να διαρκέσει πολύ την πρώτη φορά.',
+    'quality.collecting_list': 'Συλλογή της λίστας συνόλων δεδομένων από την πύλη… ο αριθμός εμφανίζεται μόλις ολοκληρωθεί (λίγα λεπτά για ολόκληρο τον κατάλογο)',
     'quality.dcat_running': 'Επικύρωση όλων των συνόλων δεδομένων της πύλης βάσει των επίσημων μορφών SHACL DCAT-AP + MDR… μια πρώτη πλήρης εκτέλεση μπορεί να διαρκέσει ώρες. Μπορείτε να αλλάξετε καρτέλα — η διαδικασία συνεχίζεται στο παρασκήνιο.',
     'quality.dcat_still_running': 'Εξακολουθεί να εκτελείται μετά από μεγάλη αναμονή — μια πρώτη πλήρης εκτέλεση σε όλο τον κατάλογο μπορεί να διαρκέσει ώρες. Θα συνεχίσει στο παρασκήνιο· δοκιμάστε ξανά αργότερα.',
     'quality.dcat_rerun_title': 'Εκτέλεση Ελέγχου DCAT-AP Ξανά;',
@@ -3090,7 +3092,11 @@ function _showProgressBar(prefix, completed, total, unit = '') {
   const bar = document.getElementById(`${prefix}ProgressBar`);
   if (bar) { bar.style.width = pct + '%'; bar.setAttribute('aria-valuenow', pct); }
   const label = document.getElementById(`${prefix}ProgressLabel`);
-  if (label) label.textContent = `${fmt(completed)} / ${fmt(total)}` + (unit ? ` ${unit}` : '');
+  // total is 0 while a quality check is still collecting the dataset list from the portal (~230 requests
+  // for the whole catalogue) -- "0 / 0" looked like a hang, so say what it is actually doing.
+  if (label) label.textContent = total
+    ? `${fmt(completed)} / ${fmt(total)}` + (unit ? ` ${unit}` : '')
+    : t('quality.collecting_list');
   const pctEl = document.getElementById(`${prefix}ProgressPct`);
   if (pctEl) pctEl.textContent = `${pct}%`;
 }
