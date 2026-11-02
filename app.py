@@ -604,6 +604,10 @@ def _session_allowed_tabs():
     next login, same tradeoff the rest of the session cache already makes."""
     if session.get("is_admin") or not session.get("allowed_tabs"):
         return None
+    if _session_org_scope() is not None:
+        # The fixed set, not the value stored when the user was created: one created before a tab was
+        # added to _ORG_SCOPED_TABS must be able to call that tab's (scoped) routes too.
+        return _parse_allowed_tabs(_ORG_SCOPED_TABS)
     return _parse_allowed_tabs(session["allowed_tabs"])
 
 
@@ -613,7 +617,7 @@ def _session_allowed_tabs():
 # plus per-route filtering of what an allowed route returns -- not by hiding tabs,
 # and independently of allowed_tabs (a superadmin granting such a user an extra
 # tab can't widen it).
-_ORG_SCOPED_TABS = "overview,orgs,org-analytics,datasets,quality,traffic"
+_ORG_SCOPED_TABS = "overview,orgs,org-analytics,datasets,quality,traffic,stats,geo-insights"
 _SLUG_RE = re.compile(r"^[A-Za-z0-9_.\-]+$")
 
 # (HTTP methods, path regex). Anything else is refused for an org-scoped user.
@@ -624,6 +628,8 @@ _ORG_SCOPE_ALLOWED = [
     (("GET",), re.compile(r"^/api/org-analytics/(categories|[^/]+/(scorecard|peer-comparison|trend))$")),
     (("GET",), re.compile(r"^/api/datasets/search$")),
     (("GET",), re.compile(r"^/api/datasets/formats$")),
+    (("GET",), re.compile(r"^/api/datasets/geo-locations$")),   # scoped: their own geospatial datasets
+    (("GET",), re.compile(r"^/api/stats/dataset-growth$")),     # scoped: their own datasets over time
     (("GET",), re.compile(r"^/api/datasets/(?!geo-locations$|formats$|search$)[^/]+$")),
     (("GET",), re.compile(r"^/api/quality/[a-z]+-check(/export)?$")),
     (("GET",), re.compile(r"^/api/organizations(/[^/]+)?$")),
@@ -2361,6 +2367,59 @@ def _save_dataset_growth(weeks: list) -> None:
         db.session.commit()
 
 
+def _weekly_dataset_counts(created_dates: list) -> list:
+    """[{"week_start": Monday, "count": datasets that existed by the end of that week}] for the last
+    12 months, from a list of metadata_created timestamps (any order)."""
+    created_dates = sorted(created_dates)
+    today  = datetime.now(timezone.utc).date()
+    cursor = today - timedelta(days=365)
+    cursor -= timedelta(days=cursor.weekday())  # align to Monday
+    idx, n = 0, len(created_dates)
+    weeks = []
+    while cursor <= today:
+        cutoff = (cursor + timedelta(days=7)).isoformat()
+        while idx < n and created_dates[idx] < cutoff:
+            idx += 1
+        weeks.append({"week_start": cursor.isoformat(), "count": idx})
+        cursor += timedelta(days=7)
+    return weeks
+
+
+_scope_growth_cache = {}  # tuple(scope) -> (fetched_at, {"weeks": [...], "summary": {...}})
+
+
+def _scoped_dataset_growth(scope):
+    """Weekly growth of the scoped user's OWN datasets plus a small summary, from CKAN
+    metadata_created (package_search restricted to their orgs, paged), cached 10 minutes per scope."""
+    key = tuple(sorted(scope))
+    hit = _scope_growth_cache.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    created, start = [], 0
+    while scope:
+        r = requests.get(f"{config.API_BASE}/package_search",
+                         params={"fq": _scope_fq(), "fl": "metadata_created", "rows": 1000, "start": start,
+                                 "sort": "metadata_created asc"},
+                         headers=_api_headers(), timeout=config.REQUEST_TIMEOUT)
+        r.raise_for_status()
+        page = r.json()["result"]["results"]
+        created.extend(p["metadata_created"] for p in page if p.get("metadata_created"))
+        if len(page) < 1000:
+            break
+        start += 1000
+    month_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    out = {
+        "weeks": _weekly_dataset_counts(created),
+        "summary": {"datasets": len(created), "organizations": len(scope),
+                    "added_30d": sum(1 for c in created if c >= month_ago),
+                    "last_added": max(created) if created else None},
+    }
+    if len(_scope_growth_cache) > 200:
+        _scope_growth_cache.clear()
+    _scope_growth_cache[key] = (time.time(), out)
+    return out
+
+
 def _do_refresh_dataset_growth() -> None:
     """Reconstruct weekly dataset-count history straight from CKAN's metadata_created
     dates, since our own PortalSnapshot history only covers the time this app has
@@ -2395,19 +2454,7 @@ def _do_refresh_dataset_growth() -> None:
             start += batch
             if start >= (total or 0):
                 break
-        created_dates.sort()
-
-        today  = datetime.now(timezone.utc).date()
-        cursor = today - timedelta(days=365)
-        cursor -= timedelta(days=cursor.weekday())  # align to Monday
-        idx, n = 0, len(created_dates)
-        weeks = []
-        while cursor <= today:
-            cutoff = (cursor + timedelta(days=7)).isoformat()
-            while idx < n and created_dates[idx] < cutoff:
-                idx += 1
-            weeks.append({"week_start": cursor.isoformat(), "count": idx})
-            cursor += timedelta(days=7)
+        weeks = _weekly_dataset_counts(created_dates)
 
         _dataset_growth_cache["weeks"]      = weeks
         _dataset_growth_cache["fetched_at"] = datetime.now(timezone.utc).isoformat()
@@ -2420,6 +2467,13 @@ def _do_refresh_dataset_growth() -> None:
 
 @app.route("/api/stats/dataset-growth")
 def stats_dataset_growth():
+    scope = _session_org_scope()
+    if scope is not None:
+        # Their own datasets only -- never the shared portal-wide series.
+        try:
+            return jsonify({**_scoped_dataset_growth(scope), "fetched_at": None, "enriching": False})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 503
     if _dataset_growth_cache["weeks"] is None and not _dataset_growth_cache["enriching"]:
         _dataset_growth_cache["enriching"] = True
         threading.Thread(target=_do_refresh_dataset_growth, daemon=True).start()
@@ -2543,8 +2597,46 @@ def _do_refresh_geo_datasets() -> None:
         _geo_datasets_cache["enriching"] = False
 
 
+_scope_geo_cache = {}  # tuple(scope) -> (fetched_at, [dataset points])
+
+
+def _scoped_geo_locations(scope):
+    """One point per GEOSPATIAL dataset of the scoped user's own orgs (the same centroid/bbox logic and
+    dcat_type filter the portal-wide per-org map uses), cached 10 minutes per scope. Points carry the
+    dataset's name/title so the map can open that dataset -- the shared per-org marker list is never used."""
+    key = tuple(sorted(scope))
+    hit = _scope_geo_cache.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    points, start = [], 0
+    while scope:
+        r = requests.get(f"{config.API_BASE}/package_search",
+                         params={"fq": f"({_scope_fq()}) AND dcat_type:*GEOSPATIAL*", "rows": 100, "start": start},
+                         headers=_api_headers(), timeout=config.REQUEST_TIMEOUT)
+        r.raise_for_status()
+        page = r.json()["result"]["results"]
+        for pkg in page:
+            loc = _pkg_centroid(pkg)
+            if loc and pkg.get("name"):
+                points.append({"dataset": pkg["name"], "org_title": pkg.get("title") or pkg["name"],
+                               "lat": loc[0], "lon": loc[1], "count": 1})
+        if len(page) < 100:
+            break
+        start += 100
+    if len(_scope_geo_cache) > 200:
+        _scope_geo_cache.clear()
+    _scope_geo_cache[key] = (time.time(), points)
+    return points
+
+
 @app.route("/api/datasets/geo-locations")
 def datasets_geo_locations():
+    scope = _session_org_scope()
+    if scope is not None:
+        try:
+            return jsonify({"locations": _scoped_geo_locations(scope), "fetched_at": None, "enriching": False})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 503
     if _geo_datasets_cache["locations"] is None and not _geo_datasets_cache["enriching"]:
         _geo_datasets_cache["enriching"] = True
         threading.Thread(target=_do_refresh_geo_datasets, daemon=True).start()

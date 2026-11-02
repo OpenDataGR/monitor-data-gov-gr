@@ -72,7 +72,7 @@ def _admin():
 @pytest.mark.parametrize("path", [
     "/api/communications", "/api/cases", "/api/contacts", "/api/portal-members", "/api/public-orgs",
     "/api/stats/latest", "/api/stats/live", "/api/health/summary", "/api/matomo/summary",
-    "/api/matomo/top-searches", "/api/matomo/live", "/api/quality/mqa", "/api/quality/mqa/history", "/api/quality/mqa/comparison", "/api/datasets/geo-locations",
+    "/api/matomo/top-searches", "/api/matomo/live", "/api/quality/mqa", "/api/quality/mqa/history", "/api/quality/mqa/comparison", "/api/stats/history",
     "/api/org-analytics/classifications", "/api/users", "/admin/users", "/api-docs",
 ])
 def test_everything_outside_the_allowlist_is_refused(app, ckan, path):
@@ -233,7 +233,7 @@ def test_index_hides_overview_and_flags_the_user(app, ckan):
     _login(c, _scoped())
     html = c.get("/").get_data(as_text=True)
     assert "window.__ORG_SCOPED__ = true;" in html
-    assert 'window.__ALLOWED_TABS__ = ["orgs", "org-analytics", "datasets", "quality", "traffic"];' in html
+    assert 'window.__ALLOWED_TABS__ = ["orgs", "org-analytics", "datasets", "quality", "traffic", "stats", "geo-insights"];' in html
 
 
 def test_extra_tabs_granted_by_a_superadmin_do_not_widen_the_scope(app, ckan):
@@ -396,3 +396,81 @@ def test_top_downloads_for_an_unscoped_user_is_still_the_portal_wide_list(app, c
     rows = c.get("/api/matomo/top-downloads").get_json()
     assert [(r["url"], r["visits"]) for r in rows] == [("https://y.example.gr/b.csv", 9), ("https://x.example.gr/a.csv", 5)]
     assert "dataset" not in rows[0]
+
+
+# ── their own datasets on the map, and over time ───────────────────────────────
+
+def _fake_ckan_packages(monkeypatch, packages, seen):
+    def fake_get(url, params=None, **kw):
+        if url.endswith("/package_search"):
+            seen.append(dict(params or {}))
+            return _Resp({"success": True, "result": {"count": len(packages), "results": packages}})
+        return _Resp({"success": True, "result": {}})
+    monkeypatch.setattr(appmod.requests, "get", fake_get)
+
+
+def test_geo_locations_for_a_scoped_user_are_their_own_datasets_only(app, ckan, monkeypatch):
+    """The shared map is one marker per organization across the whole portal; a scoped user gets one
+    point per geospatial dataset of THEIR orgs (and a request restricted to them in CKAN)."""
+    appmod._scope_geo_cache.clear()
+    seen = []
+    _fake_ckan_packages(monkeypatch, [
+        {"name": "mine-a", "title": "Mine A", "spatial_coverage": [{"centroid": '{"type":"Point","coordinates":[23.7,37.9]}'}]},
+        {"name": "no-location", "title": "N", "spatial_coverage": []},
+    ], seen)
+    c = app.test_client()
+    _login(c, _scoped())
+
+    data = c.get("/api/datasets/geo-locations").get_json()
+
+    assert data["locations"] == [{"dataset": "mine-a", "org_title": "Mine A", "lat": 37.9, "lon": 23.7, "count": 1}]
+    assert data["enriching"] is False
+    assert seen[0]["fq"] == f'(organization:("{MINE}")) AND dcat_type:*GEOSPATIAL*'
+
+
+def test_geo_locations_for_an_org_with_no_orgs_is_empty_and_asks_ckan_nothing(app, ckan, monkeypatch):
+    appmod._scope_geo_cache.clear()
+    seen = []
+    _fake_ckan_packages(monkeypatch, [{"name": "x", "spatial_coverage": [{"centroid": '{"type":"Point","coordinates":[1,2]}'}]}], seen)
+    c = app.test_client()
+    _login(c, _scoped(orgs=()))
+    assert c.get("/api/datasets/geo-locations").get_json()["locations"] == [] and seen == []
+
+
+def test_dataset_growth_for_a_scoped_user_counts_only_their_datasets(app, ckan, monkeypatch):
+    appmod._scope_growth_cache.clear()
+    seen = []
+    _fake_ckan_packages(monkeypatch, [{"metadata_created": "2020-01-05T10:00:00"},
+                                      {"metadata_created": "2026-01-02T10:00:00"}], seen)
+    c = app.test_client()
+    _login(c, _scoped())
+
+    data = c.get("/api/stats/dataset-growth").get_json()
+
+    assert seen[0]["fq"] == f'organization:("{MINE}")' and seen[0]["fl"] == "metadata_created"
+    assert data["summary"]["datasets"] == 2 and data["summary"]["organizations"] == 1
+    assert data["summary"]["last_added"] == "2026-01-02T10:00:00"
+    assert data["weeks"][-1]["count"] == 2 and data["enriching"] is False
+
+
+def test_dataset_growth_for_an_unscoped_admin_is_still_the_shared_portal_series(app, ckan, monkeypatch):
+    monkeypatch.setitem(appmod._dataset_growth_cache, "weeks", [{"week_start": "2026-01-05", "count": 123}])
+    c = app.test_client()
+    _login(c, _admin())
+    data = c.get("/api/stats/dataset-growth").get_json()
+    assert data["weeks"] == [{"week_start": "2026-01-05", "count": 123}] and "summary" not in data
+
+
+def test_a_scoped_user_created_before_these_tabs_existed_can_still_use_them(app, ckan, monkeypatch):
+    """Their stored allowed_tabs predates stats/geo-insights; the tab check must use the fixed scoped set."""
+    appmod._scope_growth_cache.clear()
+    appmod._scope_geo_cache.clear()
+    _fake_ckan_packages(monkeypatch, [], [])
+    u = _scoped()
+    u.allowed_tabs = "overview,orgs,org-analytics,datasets,quality,traffic"  # the old stored value
+    db.session.commit()
+    c = app.test_client()
+    _login(c, u)
+    assert c.get("/api/stats/dataset-growth").status_code == 200
+    assert c.get("/api/datasets/geo-locations").status_code == 200
+    assert c.get("/api/stats/history").status_code == 403      # portal-wide: still not theirs

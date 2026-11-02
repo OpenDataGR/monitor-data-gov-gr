@@ -181,6 +181,12 @@ const TRANSLATIONS = {
     'traffic.visits_chart': 'Visits Over Time',
     'traffic.top_datasets': 'Top Dataset Pages',
     'traffic.org_total': 'Visits to your datasets in this period:',
+    'stats.geo_map_own': 'of your datasets have a location on the map',
+    'stats.geo_map_click_dataset': 'Click to open this dataset',
+    'stats.org_datasets': 'Your datasets',
+    'stats.org_organizations': 'Your organizations',
+    'stats.org_added_30d': 'Added in the last 30 days',
+    'stats.org_last_added': 'Last dataset added',
     'traffic.org_downloads_total': 'Downloads of your datasets\' files in this period:',
     'traffic.top_queries': 'Top Search Queries',
     'traffic.top_api': 'Top API Calls',
@@ -845,6 +851,12 @@ const TRANSLATIONS = {
     'traffic.visits_chart': 'Εξέλιξη Επισκέψεων',
     'traffic.top_datasets': 'Κορυφαίες Σελίδες Δεδομένων',
     'traffic.org_total': 'Επισκέψεις στα σύνολα δεδομένων σας στην περίοδο:',
+    'stats.geo_map_own': 'από τα σύνολα δεδομένων σας έχουν θέση στον χάρτη',
+    'stats.geo_map_click_dataset': 'Κάντε κλικ για να ανοίξετε αυτό το σύνολο δεδομένων',
+    'stats.org_datasets': 'Τα σύνολα δεδομένων σας',
+    'stats.org_organizations': 'Οι οργανισμοί σας',
+    'stats.org_added_30d': 'Προστέθηκαν τις τελευταίες 30 ημέρες',
+    'stats.org_last_added': 'Τελευταίο σύνολο που προστέθηκε',
     'traffic.org_downloads_total': 'Λήψεις αρχείων των συνόλων δεδομένων σας στην περίοδο:',
     'traffic.top_queries': 'Κορυφαίες Αναζητήσεις',
     'traffic.top_api': 'Κορυφαίες Κλήσεις API',
@@ -2382,7 +2394,31 @@ document.getElementById('geoInsightsTabBtn').addEventListener('shown.bs.tab', ()
   if (_geoDatasetsMap) _geoDatasetsMap.invalidateSize();
 });
 
+// An org-scoped user's Insights tab: the portal-wide snapshot and resource history aren't theirs, so it
+// shows how THEIR datasets grew (server-side restricted to their orgs) and a small summary of them.
+async function _loadScopedStatsTab() {
+  try {
+    const growth = await fetch(API_BASE + 'api/stats/dataset-growth').then(r => r.json());
+    const el = show('latestSnapshot');
+    const s = growth && growth.summary;
+    if (s) {
+      const last = s.last_added ? new Date(s.last_added).toLocaleDateString(_lang === 'el' ? 'el-GR' : 'en-GB') : '—';
+      el.innerHTML = `
+        <dl class="row mb-0 small">
+          <dt class="col-7 text-muted">${t('stats.org_datasets')}</dt>       <dd class="col-5 fw-bold text-end mb-1">${fmt(s.datasets)}</dd>
+          <dt class="col-7 text-muted">${t('stats.org_organizations')}</dt>  <dd class="col-5 fw-bold text-end mb-1">${fmt(s.organizations)}</dd>
+          <dt class="col-7 text-muted">${t('stats.org_added_30d')}</dt>      <dd class="col-5 fw-bold text-end mb-1">${fmt(s.added_30d)}</dd>
+          <dt class="col-7 text-muted">${t('stats.org_last_added')}</dt>     <dd class="col-5 text-end mb-1">${last}</dd>
+        </dl>`;
+    } else {
+      el.innerHTML = `<p class="text-muted text-center">${esc((growth && growth.error) || t('stats.no_snapshot'))}</p>`;
+    }
+    _renderStatsChart([], growth && growth.weeks ? growth : { weeks: [] });
+  } catch (_) {}
+}
+
 async function loadStatsTab() {
+  if (ORG_SCOPED) return _loadScopedStatsTab();
   // Latest snapshot
   try {
     const snap = await fetch(API_BASE + 'api/stats/latest').then(r => r.ok ? r.json() : null);
@@ -2547,15 +2583,26 @@ function _renderGeoDatasetsMap(locations) {
   const maxCount = Math.max(1, ...locations.map(l => l.count));
   for (const loc of locations) {
     // Area-proportional (sqrt) radius so a 10x larger org isn't a 10x wider circle.
-    const radius = 6 + Math.sqrt(loc.count / maxCount) * 34;
+    // An org-scoped user's points are single datasets (the server sends no other org's): a small
+    // fixed-size dot each, and a click opens that dataset instead of an organization.
+    const radius = ORG_SCOPED ? 9 : 6 + Math.sqrt(loc.count / maxCount) * 34;
+    const tip = ORG_SCOPED
+      ? `<strong>${esc(loc.org_title)}</strong><br><span class="text-muted">${esc(t('stats.geo_map_click_dataset'))}</span>`
+      : `<strong>${esc(loc.org_title)}</strong><br>${fmt(loc.count)} ${t('stats.geo_map_datasets')}<br><span class="text-muted">${esc(t('stats.geo_map_click_hint'))}</span>`;
     const marker = L.circleMarker([loc.lat, loc.lon], {
       radius, color: '#198754', fillColor: '#198754', fillOpacity: 0.35, weight: 1.5,
     })
-      .bindTooltip(`<strong>${esc(loc.org_title)}</strong><br>${fmt(loc.count)} ${t('stats.geo_map_datasets')}<br><span class="text-muted">${esc(t('stats.geo_map_click_hint'))}</span>`)
-      .on('click', () => openOrgPanel(loc.org_name));
+      .bindTooltip(tip)
+      .on('click', () => ORG_SCOPED ? openDatasetPanel(loc.dataset) : openOrgPanel(loc.org_name));
     marker.addTo(_geoDatasetsMap);
     _geoDatasetsMarkers.push(marker);
   }
+}
+
+// An org-scoped user's list is one point per dataset, so "N datasets with a location" -- not N orgs.
+function _geoMapSummaryText(locations, totalCount) {
+  if (ORG_SCOPED) return `${fmt(locations.length)} ${t('stats.geo_map_own')}`;
+  return `${fmt(locations.length)} ${t('stats.geo_map_orgs')} · ${fmt(totalCount)} ${t('stats.geo_map_datasets')}`;
 }
 
 async function loadGeoDatasetsMap() {
@@ -2569,7 +2616,7 @@ async function loadGeoDatasetsMap() {
       _renderGeoDatasetsMap(locations);
       const totalCount = locations.reduce((s, l) => s + l.count, 0);
       show('geoMapSummary').textContent =
-        `${fmt(locations.length)} ${t('stats.geo_map_orgs')} · ${fmt(totalCount)} ${t('stats.geo_map_datasets')}`;
+        _geoMapSummaryText(locations, totalCount);
     } else if (!data.enriching) {
       show('geoMapLoading').classList.add('d-none');
       show('geoMapEmpty').classList.remove('d-none');
@@ -2598,7 +2645,7 @@ async function _pollGeoDatasetsMap(attempts = 0) {
       _renderGeoDatasetsMap(locations);
       const totalCount = locations.reduce((s, l) => s + l.count, 0);
       show('geoMapSummary').textContent =
-        `${fmt(locations.length)} ${t('stats.geo_map_orgs')} · ${fmt(totalCount)} ${t('stats.geo_map_datasets')}`;
+        _geoMapSummaryText(locations, totalCount);
     }
     if (data.enriching) _pollGeoDatasetsMap(attempts + 1);
   } catch (_) {}

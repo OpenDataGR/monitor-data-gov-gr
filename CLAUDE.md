@@ -201,10 +201,13 @@ as such on the page. `MqaSnapshot` keeps a dated history (one row per distinct p
 A CKAN org admin who signs in through Keycloak becomes an **org-scoped** user
 (`User.org_scoped`, `User.ckan_orgs` = JSON list of CKAN org slugs, refreshed from
 CKAN at every Keycloak login). They see Organizations, Org Analytics, Datasets,
-Quality and Traffic -- for their own orgs only -- and nothing else (no Overview,
-Comms, Contacts, Health, Stats, Geo/Temporal Insights, MQA, admin panel; the
-header's portal-wide totals and "Check Now" are not rendered for them). The sidebar
-tab list for them is the fixed `_ORG_SCOPED_TABS`, not the stored `allowed_tabs`.
+Quality, Traffic, Insights and Geo Insights -- for their own orgs only -- and nothing else (no Overview,
+Comms, Contacts, Health, MQA, admin panel; the
+header's portal-wide totals and "Check Now" are not rendered for them). Insights = their own datasets' growth over
+time + a small summary (`/api/stats/dataset-growth`, scoped via `_scoped_dataset_growth`); Geo Insights = one point per
+geospatial dataset of theirs (`_scoped_geo_locations`, click opens the dataset). Temporal Insights is still an empty
+"coming soon" placeholder. The sidebar tab list AND the tab-route check for them use the fixed `_ORG_SCOPED_TABS`,
+never the stored `allowed_tabs` (so users created before a tab existed get it too).
 - **Enforced server-side, deny-by-default**: `require_login` calls
   `_org_scope_route_ok`, a method+regex allowlist (`_ORG_SCOPE_ALLOWED`); any
   route not on it is a 403 for a scoped user, *independent of `allowed_tabs`*
