@@ -50,3 +50,15 @@ def test_script_opens_each_as_a_modal():
 
 def test_no_slide_over_is_left_in_the_dashboard(app):
     assert 'class="offcanvas' not in _index_html(app)
+
+
+def test_the_org_panel_omits_communications_when_the_server_withholds_them():
+    """organization_detail leaves comms_summary out for a viewer without comms access (org admins). The
+    panel must not read a missing value as zero and print 'No communications recorded' -- that claims there
+    are none; the section has to be left out entirely. Its headings are also translated, not hardcoded."""
+    from pathlib import Path
+    src = (Path(__file__).parent.parent / "static" / "app.js").read_text(encoding="utf-8")
+    assert "const cs = data.comms_summary;" in src and "const commsHtml = !cs ? ''" in src
+    assert "No communications recorded.</p>" not in src
+    for key in ("recent_datasets", "comms_title", "comms_none", "last_contact", "members_title"):
+        assert src.count(f"'org_detail.{key}':") == 2, key  # one English, one Greek entry

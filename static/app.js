@@ -355,6 +355,11 @@ const TRANSLATIONS = {
     'orgs.server_error_hint': '— check the server logs.',
     'org_detail.org': 'Organization',
     'org_detail.datasets': 'datasets published',
+    'org_detail.recent_datasets': 'Recent Datasets',
+    'org_detail.comms_title': 'Communications',
+    'org_detail.comms_none': 'No communications recorded.',
+    'org_detail.last_contact': 'Last contact:',
+    'org_detail.members_title': 'Portal Members',
     'org_detail.member_since': 'Member since',
     'org_detail.view': 'View on data.gov.gr',
     'org_detail.quality_title': 'Data Quality',
@@ -1026,6 +1031,11 @@ const TRANSLATIONS = {
     'orgs.server_error_hint': '— ελέγξτε τα αρχεία καταγραφής.',
     'org_detail.org': 'Οργανισμός',
     'org_detail.datasets': 'σύνολα δεδομένων',
+    'org_detail.recent_datasets': 'Πρόσφατα σύνολα δεδομένων',
+    'org_detail.comms_title': 'Επικοινωνίες',
+    'org_detail.comms_none': 'Δεν έχουν καταγραφεί επικοινωνίες.',
+    'org_detail.last_contact': 'Τελευταία επικοινωνία:',
+    'org_detail.members_title': 'Μέλη πύλης',
     'org_detail.member_since': 'Μέλος από',
     'org_detail.view': 'Προβολή στο data.gov.gr',
     'org_detail.quality_title': 'Ποιότητα Δεδομένων',
@@ -9096,7 +9106,7 @@ function renderOrgPanel(data) {
 
   const datasets = data.recent_datasets || [];
   const datasetsHtml = datasets.length
-    ? `<h6 class="fw-semibold mt-4 mb-2">Recent Datasets</h6>
+    ? `<h6 class="fw-semibold mt-4 mb-2">${t('org_detail.recent_datasets')}</h6>
        <div class="list-group list-group-flush">
          ${datasets.map(d => `
            <div class="list-group-item px-0 py-2">
@@ -9123,11 +9133,13 @@ function renderOrgPanel(data) {
     return (order[a.capacity] ?? 3) - (order[b.capacity] ?? 3);
   });
   const PENDING_STATUSES = new Set(['Initial Contact', 'Intermediate Contact']);
-  const cs = data.comms_summary || {};
-  const byStatus = cs.by_status || {};
+  // comms_summary is absent when the viewer has no "comms" access (an org admin never does): omit the
+  // whole section then -- "No communications recorded" would claim there are none, not that they are withheld.
+  const cs = data.comms_summary;
+  const byStatus = (cs && cs.by_status) || {};
   const statusOrder = ['Initial Contact', 'Intermediate Contact', 'Positive Response', 'Negative Response', 'No Response'];
-  const commsHtml = cs.total > 0
-    ? `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-envelope me-1 text-primary"></i>Communications</h6>
+  const commsHtml = !cs ? '' : cs.total > 0
+    ? `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-envelope me-1 text-primary"></i>${t('org_detail.comms_title')}</h6>
        <div class="d-flex flex-wrap gap-2 mb-1">
          ${statusOrder.filter(s => byStatus[s]).map(s => `
            <span class="badge ${STATUS_BADGE[s]} d-flex align-items-center gap-1${PENDING_STATUSES.has(s) ? '' : ''}">
@@ -9135,9 +9147,9 @@ function renderOrgPanel(data) {
              ${s} <span class="ms-1 fw-bold">${byStatus[s]}</span>
            </span>`).join('')}
        </div>
-       ${cs.latest_date ? `<div class="text-muted" style="font-size:.75rem">Last contact: ${cs.latest_date}</div>` : ''}`
-    : `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-envelope me-1 text-primary"></i>Communications</h6>
-       <p class="text-muted small">No communications recorded.</p>`;
+       ${cs.latest_date ? `<div class="text-muted" style="font-size:.75rem">${t('org_detail.last_contact')} ${cs.latest_date}</div>` : ''}`
+    : `<h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-envelope me-1 text-primary"></i>${t('org_detail.comms_title')}</h6>
+       <p class="text-muted small">${t('org_detail.comms_none')}</p>`;
 
   // quality_summary is only present at all when the viewer has "quality"
   // access (see organization_detail() in app.py) -- unlike comms_summary
@@ -9165,7 +9177,7 @@ function renderOrgPanel(data) {
   // error where the panel used to load.
   const canOpenMember = !ALLOWED_TABS || ALLOWED_TABS.includes('contacts');
   const membersHtml = `
-    <h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-person-badge me-1 text-primary"></i>Portal Members</h6>
+    <h6 class="fw-semibold mt-4 mb-2"><i class="bi bi-person-badge me-1 text-primary"></i>${t('org_detail.members_title')}</h6>
     ${members.length
       ? `<div class="list-group list-group-flush">
            ${members.map(m => {

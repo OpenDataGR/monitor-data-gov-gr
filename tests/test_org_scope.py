@@ -541,3 +541,15 @@ def test_top_api_calls_for_an_unscoped_user_is_still_the_portal_wide_report(app,
     _login(c, _admin())
     data = c.get("/api/matomo/top-api-calls").get_json()
     assert data == {"total": 7, "endpoints": [{"path": "package_show", "visits": 5}]}
+
+
+def test_org_detail_withholds_communications_from_a_scoped_user(app, ckan):
+    """The org panel must be able to tell 'withheld' from 'none': the key is simply absent for someone
+    without comms access (the panel then omits the section instead of claiming 'no communications')."""
+    c = app.test_client()
+    _login(c, _scoped())
+    data = c.get(f"/api/organizations/{MINE}").get_json()
+    assert "comms_summary" not in data and "quality_summary" in data
+    c2 = app.test_client()
+    _login(c2, _admin())
+    assert "comms_summary" in c2.get(f"/api/organizations/{MINE}").get_json()
