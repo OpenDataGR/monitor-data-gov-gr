@@ -228,9 +228,11 @@ never the stored `allowed_tabs` (so users created before a tab existed get it to
   `_scoped_top_downloads` matches the WHOLE portal download report (`_matomo_all_downloads`) against their
   datasets' resource URLs (`_scope_resource_index`, scheme/trailing-slash insensitive) or
   `/dataset/<theirs>/resource/` portal links; unattributable files are dropped. Not yet verified against the
-  real portal -- check a real org admin's list after deploy. **API-call stats can't be scoped**: the Matomo
-  events the code reads carry only the CKAN action name, no dataset/org. Portal-wide Matomo summary/searches/API
-  calls are not available to them.
+  real portal -- check a real org admin's list after deploy. **API calls are scoped too**: the Matomo event NAME is the full API URL
+  (`.../package_show?id=<dataset>`, `.../datastore_search?resource_id=<uuid>`), so `_scoped_api_calls` keeps only calls
+  whose `?id=`/`?resource_id=` is one of their datasets/dataset uuids/resource uuids (`_scope_resource_index` "ids"). Searches
+  and other orgs' calls can't be attributed and are dropped; the response never carries raw URLs (they hold other
+  people's search terms). Portal-wide Matomo summary/searches are not available to them.
 - The scope is cached in the session as `session["org_scope"]` by **every** place
   that fills the session from a user (password login, passkey, set-password,
   Keycloak callback, and API-token auth -- a scoped user's token is scoped too).

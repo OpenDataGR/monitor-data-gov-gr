@@ -25,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 import io
 import secrets
 import hashlib
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, quote, parse_qs
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response, g
 from flask_compress import Compress
 from flask_wtf import CSRFProtect
@@ -633,7 +633,7 @@ _ORG_SCOPE_ALLOWED = [
     (("GET",), re.compile(r"^/api/datasets/(?!geo-locations$|formats$|search$)[^/]+$")),
     (("GET",), re.compile(r"^/api/quality/[a-z]+-check(/export)?$")),
     (("GET",), re.compile(r"^/api/organizations(/[^/]+)?$")),
-    (("GET",), re.compile(r"^/api/matomo/(top-datasets|top-downloads|dataset-stats|dataset-analytics)$")),
+    (("GET",), re.compile(r"^/api/matomo/(top-datasets|top-downloads|top-api-calls|dataset-stats|dataset-analytics)$")),
 ]
 
 
@@ -9497,14 +9497,15 @@ def _download_key(url):
 
 
 def _scope_resource_index(scope):
-    """({download key: dataset name}, {dataset name: title}) for every resource of every dataset
-    in the given orgs, from CKAN package_search (full package dicts, 100 per page), cached 10
-    minutes per scope. This is how a scoped user's downloads are attributed to their own datasets."""
+    """{"by_url": {download key: dataset name}, "titles": {dataset name: title}, "ids": {dataset name /
+    dataset id / resource id: dataset name}} for every dataset of the given orgs, from CKAN package_search
+    (full package dicts, 100 per page), cached 10 minutes per scope. This is how a scoped user's downloads
+    and API calls are attributed to their own datasets."""
     key = tuple(sorted(scope))
     hit = _scope_resources_cache.get(key)
     if hit and time.time() - hit[0] < 600:
         return hit[1]
-    by_url, titles, start = {}, {}, 0
+    by_url, titles, ids, start = {}, {}, {}, 0
     while scope:
         r = requests.get(f"{config.API_BASE}/package_search",
                          params={"fq": _scope_fq(), "rows": 100, "start": start},
@@ -9516,14 +9517,20 @@ def _scope_resource_index(scope):
             if not name:
                 continue
             titles[name] = pkg.get("title") or name
+            ids[name] = name
+            if pkg.get("id"):
+                ids[pkg["id"]] = name
             for res in pkg.get("resources") or []:
                 if res.get("url"):
                     by_url[_download_key(res["url"])] = name
+                if res.get("id"):
+                    ids[res["id"]] = name
         if len(page) < 100:
             break
         start += 100
-    _scope_resources_cache[key] = (time.time(), (by_url, titles))
-    return by_url, titles
+    out = {"by_url": by_url, "titles": titles, "ids": ids}
+    _scope_resources_cache[key] = (time.time(), out)
+    return out
 
 
 _all_downloads_cache = {}  # (start, end) -> (fetched_at, {download label: hits})
@@ -9558,7 +9565,8 @@ def _scoped_top_downloads(scope, start, end, limit):
     """Downloads of the scoped user's OWN datasets' files only: a file counts when its URL is one
     of their datasets' resource URLs, or is a portal file link under /dataset/<their dataset>/resource/.
     Anything else -- every other org's files, or files this can't attribute -- is never listed."""
-    by_url, titles = _scope_resource_index(scope)
+    index = _scope_resource_index(scope)
+    by_url, titles = index["by_url"], index["titles"]
     rows = {}
     for label, hits in _matomo_all_downloads(start, end).items():
         name = by_url.get(_download_key(label))
@@ -9571,6 +9579,70 @@ def _scoped_top_downloads(scope, start, end, limit):
         row = rows.setdefault(url, {"url": url, "visits": 0, "dataset": name, "dataset_title": titles.get(name, name)})
         row["visits"] += hits
     return sorted(rows.values(), key=lambda r: r["visits"], reverse=True)[:limit]
+
+
+_all_api_events_cache = {}  # (start, end) -> (fetched_at, [(action, event name, count)])
+_CKAN_ACTION_RE = re.compile(r"^[a-z][a-z0-9_]+$")
+
+
+def _matomo_all_api_events(start, end):
+    """Every tracked CKAN API call over the range as (action, event name, count). The event NAME is the
+    full API URL (e.g. .../api/action/package_show?id=<dataset>), which is what lets a call be attributed to a
+    dataset. Matomo's non-API events (ClickStatTile, Open, ...) are dropped by the action-name shape.
+    Compact result cached 10 minutes."""
+    key = (start, end)
+    hit = _all_api_events_cache.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    items = _matomo_get("Events.getAction", {
+        "period": "range", "date": f"{start},{end}", "secondaryDimension": "eventName",
+        "flat": 1, "filter_limit": 100000,
+    })
+    out = []
+    for item in items if isinstance(items, list) else []:
+        action, sep, name = (item.get("label") or "").partition(" - ")
+        if sep and _CKAN_ACTION_RE.match(action):
+            out.append((action, name, item.get("nb_events", 0) or item.get("nb_visits", 0) or 0))
+    if len(_all_api_events_cache) > 40:
+        _all_api_events_cache.clear()
+    _all_api_events_cache[key] = (time.time(), out)
+    return out
+
+
+def _api_call_dataset(name, ids):
+    """The dataset an API-call event URL is about -- its ?id= (dataset name/uuid, or a resource uuid) or
+    ?resource_id= -- if that is one of `ids`; None for any other call (another org's, or a search)."""
+    try:
+        q = parse_qs(urlparse(name).query)
+    except ValueError:
+        return None
+    for param in ("id", "resource_id"):
+        for value in q.get(param, []):
+            if value in ids:
+                return ids[value]
+    return None
+
+
+def _scoped_api_calls(scope, start, end, limit):
+    """API calls aimed at the scoped user's OWN datasets (or their resources) only: the total, the calls per
+    CKAN action, and the calls per dataset. Raw URLs/query strings (which can hold other people's search
+    terms) are never returned -- only the dataset's title and counts."""
+    index = _scope_resource_index(scope)
+    ids, titles = index["ids"], index["titles"]
+    total, by_action, by_dataset = 0, {}, {}
+    for action, name, count in _matomo_all_api_events(start, end):
+        dataset = _api_call_dataset(name, ids)
+        if not dataset:
+            continue
+        total += count
+        by_action[action] = by_action.get(action, 0) + count
+        by_dataset[dataset] = by_dataset.get(dataset, 0) + count
+    return {
+        "total": total,
+        "endpoints": [{"path": a, "visits": n} for a, n in sorted(by_action.items(), key=lambda x: -x[1])][:limit],
+        "datasets": [{"dataset": d, "dataset_title": titles.get(d, d), "visits": n}
+                     for d, n in sorted(by_dataset.items(), key=lambda x: -x[1])][:limit],
+    }
 
 
 _DATASET_PAGE_RE = re.compile(r"/dataset/([^/?#\s]+)(/[^?#\s]*)?(?:[?#].*)?$", re.IGNORECASE)
@@ -9918,6 +9990,9 @@ def matomo_top_api_calls():
     limit = min(int(freq.args.get("limit", 20)), 100)
     days, start, end = _matomo_resolve_range()
     try:
+        scope = _session_org_scope()
+        if scope is not None:
+            return jsonify(_scoped_api_calls(scope, start, end, limit))
         # Total from the "API" event category
         cats = _matomo_flat_pages("Events.getCategory", days, {"filter_limit": 50}, start=start, end=end)
         api_total = next(

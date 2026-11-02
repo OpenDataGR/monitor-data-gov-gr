@@ -313,7 +313,7 @@ ROUTES = {
         {"methods": ["GET"], "path": "/api/matomo/dataset-analytics",
          "desc": "Time series, visitor countries, referrer types, per-resource downloads for one dataset."},
         {"methods": ["GET"], "path": "/api/matomo/top-api-calls", "params": "?limit=20",
-         "desc": "Top CKAN API actions tracked as Matomo events."},
+         "desc": "Top CKAN API actions tracked as Matomo events. For an org-scoped user: only calls aimed at their own organizations' datasets or resources (the event name is the API URL; matched on ?id= / ?resource_id=), as {total, endpoints (per action), datasets (per dataset: dataset, dataset_title, visits)} -- raw URLs are never returned."},
         {"methods": ["GET"], "path": "/api/matomo/today",
          "desc": "Today's visits/unique/pageviews/downloads, uncached."},
         {"methods": ["GET"], "path": "/api/matomo/live", "params": "?minutes=30&limit=20",

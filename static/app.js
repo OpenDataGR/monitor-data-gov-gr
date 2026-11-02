@@ -187,6 +187,7 @@ const TRANSLATIONS = {
     'stats.org_organizations': 'Your organizations',
     'stats.org_added_30d': 'Added in the last 30 days',
     'stats.org_last_added': 'Last dataset added',
+    'traffic.org_api_total': 'API calls to your datasets in this period:',
     'traffic.org_downloads_total': 'Downloads of your datasets\' files in this period:',
     'traffic.top_queries': 'Top Search Queries',
     'traffic.top_api': 'Top API Calls',
@@ -857,6 +858,7 @@ const TRANSLATIONS = {
     'stats.org_organizations': 'Οι οργανισμοί σας',
     'stats.org_added_30d': 'Προστέθηκαν τις τελευταίες 30 ημέρες',
     'stats.org_last_added': 'Τελευταίο σύνολο που προστέθηκε',
+    'traffic.org_api_total': 'Κλήσεις API προς τα σύνολα δεδομένων σας στην περίοδο:',
     'traffic.org_downloads_total': 'Λήψεις αρχείων των συνόλων δεδομένων σας στην περίοδο:',
     'traffic.top_queries': 'Κορυφαίες Αναζητήσεις',
     'traffic.top_api': 'Κορυφαίες Κλήσεις API',
@@ -1591,8 +1593,8 @@ function _applyOrgScopedUi() {
   hide(document.getElementById('mqaSubTabBtn')?.closest('li'));
   // Traffic: only the "top dataset pages" card (filtered to their own datasets) is theirs.
   hide(document.querySelector('#tab-traffic .flat-tile-strip'));
-  // (Their downloads card stays: the server narrows it to files of their own datasets.)
-  ['trafficChart', 'trafficTopSearches', 'trafficTopApi']
+  // (Their downloads and API-calls cards stay: the server narrows both to their own datasets.)
+  ['trafficChart', 'trafficTopSearches']
     .forEach(id => hide(document.getElementById(id)?.closest('.p-4')));
   const trafficGrid = document.querySelector('#tab-traffic .flat-grid-2');
   if (trafficGrid) trafficGrid.style.gridTemplateColumns = '1fr';  // one column: the other cells are gone
@@ -2745,6 +2747,13 @@ async function loadTrafficTab() {
     } catch (e) {
       show('trafficTopDownloads').innerHTML = `<p class="text-muted small">${t('traffic.failed')}</p>`;
     }
+    try {
+      const api = await fetch(API_BASE + 'api/matomo/top-api-calls?' + qs + '&limit=100').then(r => r.json());
+      if (api && !api.error) renderTrafficOwnApiCalls(api);
+      else show('trafficTopApi').innerHTML = `<p class="text-muted small">${esc((api && api.error) || t('traffic.failed'))}</p>`;
+    } catch (e) {
+      show('trafficTopApi').innerHTML = `<p class="text-muted small">${t('traffic.failed')}</p>`;
+    }
     return;
   }
 
@@ -2935,6 +2944,42 @@ function renderTrafficTopSearches(searches) {
                 </div>
               </td>
               <td class="text-end fw-semibold small">${fmt(s.searches)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// An org-scoped user's API-calls card: calls aimed at THEIR datasets (server-side attributed), per dataset
+// -- never the raw API URLs, which can hold other people's search terms.
+function renderTrafficOwnApiCalls(data) {
+  const el = show('trafficTopApi');
+  const rows = data.datasets || [];
+  if (!rows.length) {
+    el.innerHTML = `<p class="text-muted small">${t('traffic.no_api')}</p>`;
+    return;
+  }
+  const max = Math.max(...rows.map(r => r.visits), 1);
+  const actions = (data.endpoints || []).map(e => `${esc(e.path)} ${fmt(e.visits)}`).join(' · ');
+  el.innerHTML = `
+    <p class="small mb-1"><span class="text-muted">${t('traffic.org_api_total')}</span> <strong>${fmt(data.total || 0)}</strong></p>
+    ${actions ? `<p class="text-muted mb-2" style="font-size:.72rem">${actions}</p>` : ''}
+    <div style="max-height:380px;overflow-y:auto">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="sticky-top bg-white">
+          <tr><th>${t('traffic.col_dataset')}</th><th class="text-end" style="width:80px">${t('traffic.col_calls')}</th></tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td style="max-width:260px">
+                <a href="#" class="small text-decoration-none text-truncate d-block" title="${esc(r.dataset_title)}"
+                   onclick="openDatasetPanel('${esc(r.dataset)}');return false;">${esc(r.dataset_title)}</a>
+                <div class="mt-1" style="height:2px;border-radius:1px;background:#e9ecef">
+                  <div style="width:${Math.round(r.visits/max*100)}%;height:100%;background:#dc3545;border-radius:1px"></div>
+                </div>
+              </td>
+              <td class="text-end fw-semibold small">${fmt(r.visits)}</td>
             </tr>`).join('')}
         </tbody>
       </table>

@@ -474,3 +474,69 @@ def test_a_scoped_user_created_before_these_tabs_existed_can_still_use_them(app,
     assert c.get("/api/stats/dataset-growth").status_code == 200
     assert c.get("/api/datasets/geo-locations").status_code == 200
     assert c.get("/api/stats/history").status_code == 403      # portal-wide: still not theirs
+
+
+# ── API calls aimed at their own datasets ──────────────────────────────────────
+
+def test_scope_resource_index_carries_dataset_and_resource_ids(app, ckan, monkeypatch):
+    appmod._scope_resources_cache.clear()
+    seen = []
+    _fake_ckan_packages(monkeypatch, [
+        {"name": "mine-a", "id": "pkg-uuid-a", "title": "Mine A",
+         "resources": [{"id": "res-1", "url": "http://f.example.gr/a.csv"}, {"id": "res-2"}]}], seen)
+    with app.test_request_context():
+        appmod.session["org_scope"] = [MINE]
+        index = appmod._scope_resource_index((MINE,))
+    assert index["ids"] == {"mine-a": "mine-a", "pkg-uuid-a": "mine-a", "res-1": "mine-a", "res-2": "mine-a"}
+    assert index["titles"] == {"mine-a": "Mine A"} and index["by_url"] == {"f.example.gr/a.csv": "mine-a"}
+
+
+def test_top_api_calls_for_a_scoped_user_counts_only_calls_about_their_datasets(app, ckan, monkeypatch):
+    """The event NAME is the whole API URL; a call is theirs only if its ?id= / ?resource_id= is one of their
+    datasets, their dataset uuids or their resource uuids. Searches, other orgs' datasets and Matomo's own
+    non-API events never count, and raw URLs are never sent back."""
+    monkeypatch.setattr(config, "MATOMO_TOKEN", "tok")
+    appmod._all_api_events_cache.clear()
+    monkeypatch.setattr(appmod, "_scope_resource_index", lambda scope: {
+        "by_url": {}, "titles": {"mine-a": "Mine A", "mine-b": "Mine B"},
+        "ids": {"mine-a": "mine-a", "pkg-uuid-a": "mine-a", "res-1": "mine-a", "mine-b": "mine-b"}})
+    asked = {}
+
+    def fake_matomo(method, params):
+        asked.update(params, method=method)
+        api = "http://data.gov.gr/api/action/"
+        return [
+            {"label": f"package_show - {api}package_show?id=mine-a", "nb_events": 14},
+            {"label": f"package_show - {api}package_show?id=pkg-uuid-a", "nb_events": 3},
+            {"label": f"datastore_search - {api}datastore_search?resource_id=res-1&limit=200&q=secret", "nb_events": 6},
+            {"label": f"package_show - {api}package_show?id=mine-b", "nb_events": 2},
+            {"label": f"package_show - {api}package_show?id=theirs", "nb_events": 999},        # another org's
+            {"label": f"package_search - {api}package_search?q=mine-a", "nb_events": 50},      # a search, no id
+            {"label": "ClickStatTile - Οργανισμοί", "nb_events": 12},                          # not an API event
+            {"label": f"Open - {api}package_show?id=mine-a", "nb_events": 77},                 # capitalised: not a CKAN action
+        ]
+
+    monkeypatch.setattr(appmod, "_matomo_get", fake_matomo)
+    c = app.test_client()
+    _login(c, _scoped())
+
+    resp = c.get("/api/matomo/top-api-calls?limit=10")
+    data = resp.get_json()
+
+    assert data["total"] == 25
+    assert data["endpoints"] == [{"path": "package_show", "visits": 19}, {"path": "datastore_search", "visits": 6}]
+    assert data["datasets"] == [{"dataset": "mine-a", "dataset_title": "Mine A", "visits": 23},
+                                {"dataset": "mine-b", "dataset_title": "Mine B", "visits": 2}]
+    assert asked["method"] == "Events.getAction" and asked["filter_limit"] > 1000
+    assert "http" not in resp.get_data(as_text=True) and "secret" not in resp.get_data(as_text=True)
+
+
+def test_top_api_calls_for_an_unscoped_user_is_still_the_portal_wide_report(app, ckan, monkeypatch):
+    monkeypatch.setattr(config, "MATOMO_TOKEN", "tok")
+    monkeypatch.setattr(appmod, "_matomo_flat_pages", lambda method, *a, **k: (
+        [{"label": "API", "nb_events": 7}] if method == "Events.getCategory"
+        else [{"label": "package_show", "nb_events": 5}]))
+    c = app.test_client()
+    _login(c, _admin())
+    data = c.get("/api/matomo/top-api-calls").get_json()
+    assert data == {"total": 7, "endpoints": [{"path": "package_show", "visits": 5}]}
