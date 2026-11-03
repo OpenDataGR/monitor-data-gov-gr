@@ -10402,22 +10402,23 @@ def admin_test_email():
 # organization cannot be matched is NEVER selected by an organization-level criterion and is counted in the preview.
 _MASS_EMAIL_MAX_RECIPIENTS = 5000
 _MASS_EMAIL_POOLS = ("contacts", "members", "users")
-_MASS_EMAIL_ROLES = ("org_admin", "org_editor", "org_member", "data_governance_officer", "data_steward",
+_MASS_EMAIL_ROLES = ("org_central_admin", "org_admin", "org_editor", "org_member", "data_governance_officer", "data_steward",
                      "dashboard_admin", "dashboard_superadmin")
 _MASS_EMAIL_QUALITY = ("hvd_issues", "hvd_all_compliant", "no_hvd_checked", "dcat_pass_below")
 _MASS_EMAIL_MERGE_FIELDS = ("name", "first_name", "last_name", "organization")
 _MASS_EMAIL_STALE_AFTER = 120   # seconds without a heartbeat before a "running" job is treated as killed
 _EMAIL_ADDRESS_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _CONTACT_TYPE_ROLE = {
-    "Org Administrator": "org_admin", "Κεντρικός Διαχειριστής Οργανισμού": "org_admin",
+    "Org Administrator": "org_admin", "Κεντρικός Διαχειριστής Οργανισμού": "org_central_admin",
     "Org Editor": "org_editor", "Org Member": "org_member",
     "Data Governance Officer": "data_governance_officer", "DGO": "data_governance_officer", "Data Steward": "data_steward",
 }
 _CAPACITY_ROLE = {"admin": "org_admin", "editor": "org_editor", "member": "org_member"}
 
 
-# CKAN's own spellings of the two newer roles (the exact capacity strings were not seen on the live portal, so a few likely ones)
-_CAPACITY_ALIASES = {"org_admin": "org_admin", "orgadmin": "org_admin", "organization_admin": "org_admin", "organisation_admin": "org_admin",
+# CKAN's spellings of the portal's two newer roles (Κεντρικός Διαχειριστής = central administrator, above Διαχειριστής; ΥΧΔ - DGO). The exact
+# capacity strings were not seen on the live portal: a capacity not listed here still shows up by itself as its own role (never merged with "admin").
+_CAPACITY_ALIASES = {"central_admin": "org_central_admin", "org_central_admin": "org_central_admin", "central_org_admin": "org_central_admin",
                      "dgo": "data_governance_officer", "data_governance_officer": "data_governance_officer"}
 
 
@@ -10431,7 +10432,7 @@ def _capacity_role(capacity):
     slug = re.sub(r"[^a-z0-9]+", "_", cap).strip("_")
     if slug in _CAPACITY_ALIASES:
         return _CAPACITY_ALIASES[slug]
-    if slug in _MASS_EMAIL_ROLES:                       # e.g. a CKAN "data_steward" capacity IS the Data steward role
+    if slug in _MASS_EMAIL_ROLES and not slug.startswith("org_"):   # e.g. a CKAN "data_steward" capacity IS the Data steward role
         return slug
     return _CAPACITY_ROLE.get(cap) or "org_" + slug
 
