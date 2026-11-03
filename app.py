@@ -10401,7 +10401,7 @@ _MASS_EMAIL_POOLS = ("contacts", "members", "users")
 _MASS_EMAIL_ROLES = ("org_admin", "org_editor", "org_member", "data_governance_officer", "data_steward",
                      "dashboard_admin", "dashboard_superadmin")
 _MASS_EMAIL_QUALITY = ("hvd_issues", "hvd_all_compliant", "no_hvd_checked", "dcat_pass_below")
-_MASS_EMAIL_MERGE_FIELDS = ("name", "first_name", "organization")
+_MASS_EMAIL_MERGE_FIELDS = ("name", "first_name", "last_name", "organization")
 _MASS_EMAIL_STALE_AFTER = 120   # seconds without a heartbeat before a "running" job is treated as killed
 _EMAIL_ADDRESS_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _CONTACT_TYPE_ROLE = {
@@ -10591,9 +10591,12 @@ def _merge_values_for(rec) -> dict:
     """The merge-field values of a resolved recipient dict or a MassEmailRecipient row."""
     if isinstance(rec, dict):
         orgs = rec.get("orgs") or []
-        return {"name": rec.get("name") or "", "first_name": rec.get("first_name") or "",
-                "organization": orgs[0][1] if orgs else ""}
-    return {"name": rec.name or "", "first_name": rec.first_name or "", "organization": rec.org_title or ""}
+        name, first, org = rec.get("name") or "", rec.get("first_name") or "", orgs[0][1] if orgs else ""
+    else:
+        name, first, org = rec.name or "", rec.first_name or "", rec.org_title or ""
+    # the last name is what follows the first name in the full name (exact for contacts, whose name is first + last)
+    last = name[len(first):].strip() if first and name.startswith(first) else ""
+    return {"name": name, "first_name": first, "last_name": last, "organization": org}
 
 
 def _mass_email_job_dict(job, with_failures: bool = False) -> dict:

@@ -428,3 +428,10 @@ def test_the_full_list_is_only_returned_on_request_and_carries_roles(admin_clien
 def test_the_panel_has_insert_buttons_and_configurable_fallbacks(admin_client):
     html = admin_client.get("/admin/users").get_data(as_text=True)
     assert "_meInsertField('first_name')" in html and 'id="meFallbackPerson"' in html and "{{name|" not in html
+
+
+def test_last_name_is_what_follows_the_first_name():
+    v = appmod._merge_values_for({"name": "Eleni Papadopoulou Kyriakou", "first_name": "Eleni", "orgs": []})
+    assert v["first_name"] == "Eleni" and v["last_name"] == "Papadopoulou Kyriakou"
+    assert appmod._merge_values_for({"name": "Eleni", "first_name": "Eleni", "orgs": []})["last_name"] == ""
+    assert appmod._render_mass_email("{{first_name}} {{last_name|-}}", {"first_name": "A", "last_name": ""}) == "A -"

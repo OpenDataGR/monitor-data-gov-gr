@@ -296,7 +296,7 @@
               <div id="meMergeBox" class="border rounded p-2 mb-2 small">
                 <div class="mb-1 text-muted" data-i18n="admin.me_merge_help">Personalise each email: click a field to insert it where your cursor is. It is replaced by each recipient's own details.</div>
                 <div class="d-flex flex-wrap gap-1 mb-2">
-                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('name')" data-i18n="admin.me_field_name">Full name</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('last_name')" data-i18n="admin.me_field_last_name">Last name</button>
                   <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('first_name')" data-i18n="admin.me_field_first_name">First name</button>
                   <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('organization')" data-i18n="admin.me_field_organization">Organization</button>
                 </div>
@@ -975,7 +975,7 @@
         'admin.me_over_limit': 'Too many for one send (limit {max}). Narrow the criteria.',
         'admin.me_sample_note': 'First {n} shown.',
         'admin.me_merge_help': 'Personalise each email: click a field to insert it where your cursor is. It is replaced by each recipient\'s own details.',
-        'admin.me_field_name': 'Full name',
+        'admin.me_field_last_name': 'Last name',
         'admin.me_field_first_name': 'First name',
         'admin.me_field_organization': 'Organization',
         'admin.me_fallback_person': 'If a person has no name, write:',
@@ -1193,7 +1193,7 @@
         'admin.me_over_limit': 'Πάρα πολλοί για μία αποστολή (όριο {max}). Περιορίστε τα κριτήρια.',
         'admin.me_sample_note': 'Εμφανίζονται οι πρώτοι {n}.',
         'admin.me_merge_help': 'Εξατομίκευση κάθε email: πατήστε ένα πεδίο για να μπει εκεί που βρίσκεται ο δρομέας. Αντικαθίσταται με τα στοιχεία κάθε παραλήπτη.',
-        'admin.me_field_name': 'Πλήρες όνομα',
+        'admin.me_field_last_name': 'Επώνυμο',
         'admin.me_field_first_name': 'Μικρό όνομα',
         'admin.me_field_organization': 'Οργανισμός',
         'admin.me_fallback_person': 'Αν ο παραλήπτης δεν έχει όνομα, γράψε:',
@@ -1847,8 +1847,8 @@
 
     function _meBakeFallbacks(text) {
       const clean = id => document.getElementById(id).value.replace(/[|{}]/g, '').trim();
-      const fb = {name: clean('meFallbackPerson'), first_name: clean('meFallbackPerson'), organization: clean('meFallbackOrg')};
-      return text.replace(/\{\{\s*(name|first_name|organization)\s*\}\}/gi, (m, k) => {
+      const fb = {name: clean('meFallbackPerson'), first_name: clean('meFallbackPerson'), last_name: clean('meFallbackPerson'), organization: clean('meFallbackOrg')};
+      return text.replace(/\{\{\s*(name|first_name|last_name|organization)\s*\}\}/gi, (m, k) => {
         const v = fb[k.toLowerCase()];
         return v ? '{' + '{' + k.toLowerCase() + '|' + v + '}' + '}' : m;
       });
