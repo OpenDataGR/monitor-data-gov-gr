@@ -9864,9 +9864,11 @@ function renderContactsSummary(roleCounts, stateCounts, fileCounts) {
     document.getElementById('contactsFileSummary').innerHTML = '';
     return;
   }
-  _renderContactsFilterGroup('contactsRoleSummary',  [0, 1, 2, 3, 4, 5], 'contactsRoleTabDot');
-  _renderContactsFilterGroup('contactsStateSummary', [6, 7, 8, 9],       'contactsStateTabDot');
-  _renderContactsFilterGroup('contactsFileSummary',  [10, 11, 12],      'contactsFileTabDot');
+  // grouped by each card's own filter type, not by position: the number of role cards varies (roles CKAN adds later)
+  const idxOf = type => _contactsSummaryCards.map((c, i) => (c.filter.type === type ? i : -1)).filter(i => i >= 0);
+  _renderContactsFilterGroup('contactsRoleSummary',  idxOf('role'),  'contactsRoleTabDot');
+  _renderContactsFilterGroup('contactsStateSummary', idxOf('state'), 'contactsStateTabDot');
+  _renderContactsFilterGroup('contactsFileSummary',  idxOf('file'),  'contactsFileTabDot');
 }
 
 function setContactsFilter(idx) {
