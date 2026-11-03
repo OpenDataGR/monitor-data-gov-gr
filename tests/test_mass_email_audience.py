@@ -463,4 +463,13 @@ def test_the_options_say_which_registry_each_role_belongs_to(admin_client):
     g = admin_client.get("/api/admin/mass-email/options").get_json()["role_groups"]
     assert "data_steward" in g["contacts"] and "data_steward" not in g["members"]
     assert {"org_central_admin", "org_admin", "org_editor", "org_member", "data_governance_officer"} <= set(g["members"])
-    assert g["users"] == ["org_admin", "dashboard_admin", "dashboard_superadmin"]
+    assert g["users"] == ["org_admin", "dashboard_admin", "dashboard_superadmin"] and "portal_sysadmin" in g["members"]
+
+
+def test_a_portal_sysadmin_is_selectable_as_a_role(admin_client):
+    appmod._pm_cache["data"] = {"members": [
+        {"email": "s@x.gr", "username": "s", "capacity": "user", "sysadmin": True, "state": "active"},
+        {"email": "e@x.gr", "username": "e", "capacity": "editor", "org_name": "org-b", "org_title": "Org B", "state": "active"}]}
+    data = admin_client.post("/api/admin/mass-email/audience",
+                             json={"pools": ["members"], "criteria": {"roles": ["portal_sysadmin"]}, "full": True}).get_json()
+    assert [r["email"] for r in data["recipients"]] == ["s@x.gr"] and data["recipients"][0]["roles"] == ["portal_sysadmin"]

@@ -10403,7 +10403,7 @@ def admin_test_email():
 _MASS_EMAIL_MAX_RECIPIENTS = 5000
 _MASS_EMAIL_POOLS = ("contacts", "members", "users")
 _MASS_EMAIL_ROLES = ("org_central_admin", "org_admin", "org_editor", "org_member", "data_governance_officer", "data_steward",
-                     "dashboard_admin", "dashboard_superadmin")
+                     "portal_sysadmin", "dashboard_admin", "dashboard_superadmin")
 _MASS_EMAIL_QUALITY = ("hvd_issues", "hvd_all_compliant", "no_hvd_checked", "dcat_pass_below")
 _MASS_EMAIL_MERGE_FIELDS = ("name", "first_name", "last_name", "organization")
 _MASS_EMAIL_STALE_AFTER = 120   # seconds without a heartbeat before a "running" job is treated as killed
@@ -10441,7 +10441,7 @@ def _roles_by_pool(extra: dict) -> dict:
     """Which roles each registry can actually produce, so the panel can show them under the registry they belong to."""
     order = {r: i for i, r in enumerate(_MASS_EMAIL_ROLES)}
     contacts = set(_CONTACT_TYPE_ROLE.values())
-    members = set(_CAPACITY_ROLE.values()) | set(_CAPACITY_ALIASES.values()) | set(extra)
+    members = set(_CAPACITY_ROLE.values()) | set(_CAPACITY_ALIASES.values()) | set(extra) | {"portal_sysadmin"}
     users = {"org_admin", "dashboard_admin", "dashboard_superadmin"}          # org_admin = a CKAN org admin who signed in through Keycloak
     key = lambda r: (order.get(r, len(order)), r)
     return {"contacts": sorted(contacts, key=key), "members": sorted(members, key=key), "users": sorted(users, key=key)}
@@ -10504,7 +10504,7 @@ def _mass_email_member_candidates() -> list:
         first = (m.get("contact_first_name") or (name.split(" ")[0] if name and " " in name else "")).strip()
         role = _capacity_role(m.get("capacity"))
         orgs = [(m["org_name"], m.get("org_title") or m["org_name"])] if m.get("org_name") else []
-        out.append({"email": (m.get("email") or "").strip(), "pool": "members", "roles": {role} if role else set(),
+        out.append({"email": (m.get("email") or "").strip(), "pool": "members", "roles": ({role} if role else set()) | ({"portal_sysadmin"} if m.get("sysadmin") else set()),
                     "orgs": orgs, "name": name, "first_name": first})
     return out
 
