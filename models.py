@@ -517,6 +517,45 @@ class MassEmailLog(db.Model):
         }
 
 
+class MassEmailJob(db.Model):
+    """One audience-based mass email (see app.admin_mass_email). The recipients are resolved ONCE, when the send is
+    confirmed, and stored as MassEmailRecipient rows -- so what was previewed is exactly what is sent, the send runs in
+    the background with a live count, and a send killed part-way (deploy, reboot) can be resumed: its unsent recipients
+    are still 'pending'. created_by_user_id is a plain column (no ForeignKey), like MassEmailLog.sent_by_user_id."""
+    __tablename__ = "mass_email_jobs"
+
+    id                 = db.Column(db.Integer, primary_key=True)
+    created_by_user_id = db.Column(db.Integer)
+    created_by_name    = db.Column(db.String(255))
+    subject            = db.Column(db.String(500), nullable=False)
+    message_html       = db.Column(db.Text, nullable=False)
+    audience_json      = db.Column(db.Text)            # the pools + criteria this was resolved from, for the record
+    log_comms          = db.Column(db.Boolean, nullable=False, default=False)
+    status             = db.Column(db.String(20), nullable=False, default="running", index=True)  # running | cancelling | cancelled | done
+    total              = db.Column(db.Integer, nullable=False, default=0)
+    created_at         = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    heartbeat_at       = db.Column(db.DateTime)          # touched after every recipient: a 'running' job whose heartbeat is stale was killed
+    finished_at        = db.Column(db.DateTime)
+
+    recipients = db.relationship("MassEmailRecipient", backref="job", cascade="all, delete-orphan", lazy="dynamic")
+
+
+class MassEmailRecipient(db.Model):
+    __tablename__ = "mass_email_recipients"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    job_id     = db.Column(db.Integer, db.ForeignKey("mass_email_jobs.id"), nullable=False, index=True)
+    email      = db.Column(db.String(255), nullable=False)
+    name       = db.Column(db.String(255))
+    first_name = db.Column(db.String(120))
+    org_title  = db.Column(db.String(300))     # the first / primary organization, for {{organization}}
+    orgs_json = db.Column(db.Text)            # [[slug, title], ...] every organization, for logging in Communications
+    pools      = db.Column(db.String(60))      # contacts,members,users (comma-separated)
+    status     = db.Column(db.String(12), nullable=False, default="pending", index=True)  # pending | sent | failed
+    error      = db.Column(db.String(300))
+    sent_at    = db.Column(db.DateTime)
+
+
 STALE_CASE_DAYS = 14  # an open case idle this many days is flagged as stale (treated as "No Response")
 
 

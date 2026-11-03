@@ -299,6 +299,23 @@ never the stored `allowed_tabs` (so users created before a tab existed get it to
   panels, and opens Org Analytics on the user's first org. Tests:
   `tests/test_org_scope.py`.
 
+## Mass email by audience (shipped 2026-11-03)
+
+The admin panel's Mass Email tab has two modes: the original "pick dashboard users" checkbox list (synchronous, `user_ids`) and **By criteria**.
+By criteria resolves recipients from up to three pools -- the Contacts directory (`OrgContact`), the portal's member accounts (the cached CKAN
+fetch behind Contacts > Portal Members, `_pm_cache`) and dashboard users -- through `_resolve_mass_email_audience(pools, criteria)`, deduplicated by
+address. Criteria are ANDed: organizations (CKAN slugs), role (`_MASS_EMAIL_ROLES`, mapped from contact types / portal capacity / dashboard flags),
+organization category (`OrgClassification`) and data-quality status (latest `OrgSnapshot`; pass rates are fractions 0..1). **Contacts carry HRMS
+labels, not CKAN slugs, so they are matched to an organization by normalized title (`_norm_org_text`); one that can't be matched is NEVER selected by an
+organization-level criterion and is counted in the preview (`no_matching_org`)** -- same fuzzy-match limit that keeps org-scoped contacts/communications
+unbuilt. The flow: preview (`/api/admin/mass-email/audience`) -> optional test to the admin only (`/test`) -> send (`/api/admin/mass-email` with `audience`).
+A send makes a `MassEmailJob` + one `MassEmailRecipient` row each (the previewed list is stored, not re-resolved), runs in a daemon thread
+(`_run_mass_email_job`), records every result, and heartbeats; a job whose heartbeat is stale was killed (deploy) and can be resumed -- only `pending`
+recipients are sent. Merge fields `{{name}}`, `{{first_name}}`, `{{organization}}`, `{{x|fallback}}` (`_render_mass_email`). `log_comms` writes one
+case-less `Communication` per organization reached (source `mass-email`, Outbound, Email). Limits: 5,000 recipients per send, one running send at a
+time, refused (503) when SMTP isn't configured. **`admin_users.html` is a Jinja template: a literal `{{name}}` in it must be written
+`{{ '{{' }}name{{ '}}' }}`** or it renders as nothing. POSTs use the `d=<base64>` form (the WAF blocks raw HTML bodies). Tests: `tests/test_mass_email_audience.py`.
+
 ## Conventions
 
 - i18n: every user-facing string needs both an `en` and `el` entry, kept

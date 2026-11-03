@@ -26,6 +26,7 @@ import io
 import secrets
 import hashlib
 from collections import OrderedDict
+from html import escape as _html_escape
 from urllib.parse import urlparse, quote, parse_qs
 from flask import Flask, render_template, jsonify, request as freq, session, redirect, url_for, send_file, Response, g
 from flask_compress import Compress
@@ -35,7 +36,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, MqaSnapshot, MqaViolationSummary, OrgClassification, OrgSnapshot, ORG_CATEGORIES, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, InboundEmail, InboundEmailCommunication, UnmatchedEmailContact, ExcludedEmailAddress, InboundListenAddress, ApiToken
+from models import db, HealthCheck, PortalSnapshot, Communication, CommunicationContact, Case, OrgContact, DatasetGrowthCache, OrgsCache, GeoDatasetsCache, HvdCheckCache, HvdCheckStatus, HvdDatasetCheckCache, DcatApCheckCache, DcatApCheckStatus, DcatApDatasetCheckCache, GeoDcatCheckCache, GeoDcatCheckStatus, GeoDcatDatasetCheckCache, MqaCache, MqaSnapshot, MqaViolationSummary, OrgClassification, OrgSnapshot, ORG_CATEGORIES, User, PasswordResetToken, WebAuthnCredential, MassEmailLog, MassEmailJob, MassEmailRecipient, InboundEmail, InboundEmailCommunication, UnmatchedEmailContact, ExcludedEmailAddress, InboundListenAddress, ApiToken
 import rdflib
 import pyshacl
 import config
@@ -10386,6 +10387,445 @@ def admin_test_email():
     return jsonify({"ok": True})
 
 
+# ── Mass email by audience: who it can reach, preview, test send, background send ───────────────────────────────
+# Recipients come from up to three pools mapped to one shape ({email, name, first_name, orgs, roles}): the Contacts
+# directory (OrgContact), the portal's member accounts (the cached CKAN fetch behind Contacts > Portal Members) and the
+# dashboard's own users. Four criteria narrow them and are ANDed: organization(s), role, organization category and
+# data-quality status. A person who appears in several pools is addressed once.
+#
+# Organizations are matched on the CKAN slug. Contacts are stored against HRMS organization labels, not slugs, so they
+# are matched to a CKAN organization by normalized title (the same match the rest of the app uses); a contact whose
+# organization cannot be matched is NEVER selected by an organization-level criterion and is counted in the preview.
+_MASS_EMAIL_MAX_RECIPIENTS = 5000
+_MASS_EMAIL_POOLS = ("contacts", "members", "users")
+_MASS_EMAIL_ROLES = ("org_admin", "org_editor", "org_member", "data_governance_officer", "data_steward",
+                     "dashboard_admin", "dashboard_superadmin")
+_MASS_EMAIL_QUALITY = ("hvd_issues", "hvd_all_compliant", "no_hvd_checked", "dcat_pass_below")
+_MASS_EMAIL_MERGE_FIELDS = ("name", "first_name", "organization")
+_MASS_EMAIL_STALE_AFTER = 120   # seconds without a heartbeat before a "running" job is treated as killed
+_EMAIL_ADDRESS_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_CONTACT_TYPE_ROLE = {
+    "Org Administrator": "org_admin", "Κεντρικός Διαχειριστής Οργανισμού": "org_admin",
+    "Org Editor": "org_editor", "Org Member": "org_member",
+    "Data Governance Officer": "data_governance_officer", "Data Steward": "data_steward",
+}
+_CAPACITY_ROLE = {"admin": "org_admin", "editor": "org_editor", "member": "org_member"}
+
+
+class MassEmailAudienceError(Exception):
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
+
+
+def _slug_by_norm_title() -> dict:
+    return {_norm_org_text(t): slug for slug, t in _org_title_by_slug().items() if _norm_org_text(t)}
+
+
+def _mass_email_contact_candidates(slug_by_title: dict, title_by_slug: dict) -> list:
+    out = []
+    for c in OrgContact.query.all():
+        entries = []
+        if c.org_codes:
+            try:
+                entries = json.loads(c.org_codes) or []
+            except (TypeError, ValueError):
+                entries = []
+        if not entries and (c.org_code or c.org_label):
+            entries = [{"code": c.org_code, "label": c.org_label or c.org_code}]
+        orgs = []
+        for e in entries:
+            label = (e.get("label") or e.get("code") or "").strip()
+            slug = slug_by_title.get(_norm_org_text(label), "")
+            orgs.append((slug, title_by_slug.get(slug) or label))
+        roles = {_CONTACT_TYPE_ROLE[t.strip()] for t in (c.contact_type or "").split(",") if t.strip() in _CONTACT_TYPE_ROLE}
+        out.append({"email": (c.email or "").strip(), "pool": "contacts", "roles": roles, "orgs": orgs,
+                    "name": f"{c.first_name or ''} {c.last_name or ''}".strip(), "first_name": (c.first_name or "").strip()})
+    return out
+
+
+def _mass_email_member_candidates() -> list:
+    data = _pm_cache["data"]
+    if not data:
+        if not _pm_cache["loading"]:
+            threading.Thread(target=_do_fetch_portal_members, daemon=True).start()
+        raise MassEmailAudienceError("The portal's member accounts are still loading -- try again in a minute or two.", 409)
+    out = []
+    for m in data.get("members") or []:
+        if (m.get("state") or "active") != "active":
+            continue
+        name = _pm_display_name(m)
+        first = (m.get("contact_first_name") or (name.split(" ")[0] if name and " " in name else "")).strip()
+        role = _CAPACITY_ROLE.get(m.get("capacity") or "")
+        orgs = [(m["org_name"], m.get("org_title") or m["org_name"])] if m.get("org_name") else []
+        out.append({"email": (m.get("email") or "").strip(), "pool": "members", "roles": {role} if role else set(),
+                    "orgs": orgs, "name": name, "first_name": first})
+    return out
+
+
+def _mass_email_user_candidates(title_by_slug: dict) -> list:
+    out = []
+    for u in User.query.all():
+        roles = set()
+        if u.is_superadmin:
+            roles.add("dashboard_superadmin")
+        if u.is_admin:
+            roles.add("dashboard_admin")
+        if u.org_scoped:
+            roles.add("org_admin")              # a CKAN org admin who signed in through Keycloak
+        orgs = [(slug, title_by_slug.get(slug) or slug) for slug in _parse_ckan_orgs(u.ckan_orgs)]
+        name = (u.name or "").strip()
+        out.append({"email": (u.email or "").strip(), "pool": "users", "roles": roles, "orgs": orgs,
+                    "name": name, "first_name": name.split(" ")[0] if name else ""})
+    return out
+
+
+def _orgs_with_quality(status: str, threshold) -> set:
+    """Slugs of the organizations whose LATEST snapshot matches the status. Pass rates are fractions (0..1)."""
+    snaps = {s_.org_slug: s_ for s_ in _latest_org_snapshots()}
+    if status == "no_hvd_checked":
+        return {slug for slug in _org_title_by_slug() if slug not in snaps or not snaps[slug].hvd_checked}
+    if status == "hvd_issues":
+        return {slug for slug, s_ in snaps.items() if s_.hvd_checked and s_.hvd_conforms < s_.hvd_checked}
+    if status == "hvd_all_compliant":
+        return {slug for slug, s_ in snaps.items() if s_.hvd_checked and s_.hvd_conforms >= s_.hvd_checked}
+    try:
+        limit = max(0.0, min(100.0, float(threshold if threshold is not None else 50))) / 100.0
+    except (TypeError, ValueError):
+        limit = 0.5
+    return {slug for slug, s_ in snaps.items() if s_.dcat_checked and s_.dcat_pass_rate is not None and s_.dcat_pass_rate < limit}
+
+
+def _mass_email_org_filter(criteria: dict):
+    """The organization slugs that satisfy ALL org-level criteria (organizations, category, data-quality status), or
+    None when none of them is set."""
+    sets = []
+    orgs = {o for o in (criteria.get("orgs") or []) if isinstance(o, str) and o}
+    if orgs:
+        sets.append(orgs)
+    cats = [c for c in (criteria.get("categories") or []) if c in ORG_CATEGORIES]
+    if cats:
+        sets.append({r.org_slug for r in OrgClassification.query.filter(OrgClassification.category.in_(cats)).all()})
+    q = criteria.get("quality")
+    if isinstance(q, dict) and q.get("status") in _MASS_EMAIL_QUALITY:
+        sets.append(_orgs_with_quality(q["status"], q.get("threshold")))
+    return set.intersection(*sets) if sets else None
+
+
+def _resolve_mass_email_audience(pools, criteria) -> dict:
+    """-> {"recipients": [{email, name, first_name, orgs, pools}], "diagnostics": {...}}, deduplicated by address."""
+    pools = [p for p in (pools or []) if p in _MASS_EMAIL_POOLS]
+    if not pools:
+        raise MassEmailAudienceError("Pick at least one group of people.")
+    criteria = criteria if isinstance(criteria, dict) else {}
+    roles_wanted = {r for r in (criteria.get("roles") or []) if r in _MASS_EMAIL_ROLES}
+    org_filter = _mass_email_org_filter(criteria)
+
+    title_by_slug = _org_title_by_slug() if ({"contacts", "users"} & set(pools)) else {}
+    candidates = []
+    if "contacts" in pools:
+        candidates += _mass_email_contact_candidates(_slug_by_norm_title(), title_by_slug)
+    if "members" in pools:
+        candidates += _mass_email_member_candidates()
+    if "users" in pools:
+        candidates += _mass_email_user_candidates(title_by_slug)
+
+    diag = {"by_pool": {p: 0 for p in pools}, "no_valid_email": 0, "no_matching_org": 0, "role_filtered": 0, "org_filtered": 0}
+    merged = {}
+    for c in candidates:
+        email = c["email"].lower()
+        if not _EMAIL_ADDRESS_RE.match(email):
+            diag["no_valid_email"] += 1
+            continue
+        if roles_wanted and not (c["roles"] & roles_wanted):
+            diag["role_filtered"] += 1
+            continue
+        if org_filter is not None:
+            slugs = {slug for slug, _t in c["orgs"] if slug}
+            if not slugs:
+                diag["no_matching_org"] += 1       # no portal organization could be identified for this person
+                continue
+            if not (slugs & org_filter):
+                diag["org_filtered"] += 1
+                continue
+        diag["by_pool"][c["pool"]] += 1
+        cur = merged.setdefault(email, {"email": email, "name": "", "first_name": "", "orgs": [], "pools": []})
+        if len(c["name"]) > len(cur["name"]):
+            cur["name"] = c["name"]
+        if len(c["first_name"]) > len(cur["first_name"]):
+            cur["first_name"] = c["first_name"]
+        for o in c["orgs"]:
+            if o not in cur["orgs"]:
+                cur["orgs"].append(o)
+        if c["pool"] not in cur["pools"]:
+            cur["pools"].append(c["pool"])
+    recipients = sorted(merged.values(), key=lambda r: r["email"])
+    diag["total"] = len(recipients)
+    return {"recipients": recipients, "diagnostics": diag}
+
+
+_MERGE_FIELD_RE = re.compile(r"\{\{\s*([A-Za-z_]+)\s*(?:\|([^}]*))?\}\}")
+
+
+def _render_mass_email(text: str, values: dict, escape: bool = True) -> str:
+    """Fills {{name}}, {{first_name}} and {{organization}}. {{name|colleague}} falls back to "colleague" when the
+    person has no name; with no fallback an empty value becomes empty text. Unknown {{fields}} are left as written."""
+    def sub(m):
+        key = m.group(1).lower()
+        if key not in _MASS_EMAIL_MERGE_FIELDS:
+            return m.group(0)
+        val = (values.get(key) or "").strip() or (m.group(2) or "").strip()
+        return _html_escape(val) if escape else val
+    return _MERGE_FIELD_RE.sub(sub, text or "")
+
+
+def _unknown_merge_fields(*texts) -> list:
+    return sorted({m.group(1).lower() for t in texts for m in _MERGE_FIELD_RE.finditer(t or "")
+                   if m.group(1).lower() not in _MASS_EMAIL_MERGE_FIELDS})
+
+
+def _merge_values_for(rec) -> dict:
+    """The merge-field values of a resolved recipient dict or a MassEmailRecipient row."""
+    if isinstance(rec, dict):
+        orgs = rec.get("orgs") or []
+        return {"name": rec.get("name") or "", "first_name": rec.get("first_name") or "",
+                "organization": orgs[0][1] if orgs else ""}
+    return {"name": rec.name or "", "first_name": rec.first_name or "", "organization": rec.org_title or ""}
+
+
+def _mass_email_job_dict(job, with_failures: bool = False) -> dict:
+    counts = dict(db.session.query(MassEmailRecipient.status, db.func.count())
+                  .filter(MassEmailRecipient.job_id == job.id).group_by(MassEmailRecipient.status).all())
+    stale = (job.status in ("running", "cancelling") and job.heartbeat_at is not None
+             and (datetime.now(timezone.utc).replace(tzinfo=None) - job.heartbeat_at).total_seconds() > _MASS_EMAIL_STALE_AFTER)
+    out = {
+        "id": job.id, "subject": job.subject, "status": job.status, "total": job.total,
+        "sent": counts.get("sent", 0), "failed": counts.get("failed", 0), "pending": counts.get("pending", 0),
+        "interrupted": bool(stale), "log_comms": bool(job.log_comms),
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+    }
+    if with_failures:
+        out["failures"] = [{"email": r.email, "error": r.error}
+                           for r in MassEmailRecipient.query.filter_by(job_id=job.id, status="failed").limit(100).all()]
+    return out
+
+
+def _log_mass_email_communications(job) -> None:
+    """One Communication entry per organization that had at least one recipient reached (no case: an announcement is
+    not a request awaiting an answer). A person with no identified organization is simply not logged."""
+    per_org = {}
+    for r in MassEmailRecipient.query.filter_by(job_id=job.id, status="sent").all():
+        try:
+            orgs = json.loads(r.orgs_json or "[]")
+        except (TypeError, ValueError):
+            orgs = []
+        for slug, title in orgs:
+            per_org.setdefault(slug or title, {"slug": slug, "title": title, "n": 0})["n"] += 1
+    today = datetime.now(timezone.utc).date().isoformat()
+    for key, o in per_org.items():
+        db.session.add(Communication(
+            contact_date=today, org_name=o["slug"] or o["title"], org_title=o["title"],
+            subject=f"Mass email: {job.subject}"[:500], status="Intermediate Contact", medium="Email",
+            direction="Outbound", source="mass-email",
+            notes=f"Sent by mass email to {o['n']} recipient(s) of this organization."))
+    db.session.commit()
+
+
+def _run_mass_email_job(job_id: int) -> None:
+    """Sends a job's pending recipients one at a time, saving each result. Stops at the next recipient when the job is
+    cancelled; a killed worker leaves the rest 'pending' (see _mass_email_job_dict's `interrupted`, and /resume)."""
+    with app.app_context():
+        job = MassEmailJob.query.get(job_id)
+        if not job:
+            return
+        try:
+            while True:
+                db.session.refresh(job)
+                if job.status == "cancelling":
+                    job.status = "cancelled"
+                    db.session.commit()
+                    return
+                r = MassEmailRecipient.query.filter_by(job_id=job_id, status="pending").order_by(MassEmailRecipient.id).first()
+                if r is None:
+                    break
+                values = _merge_values_for(r)
+                try:
+                    send_email(r.email, _render_mass_email(job.subject, values, escape=False),
+                               _render_mass_email(job.message_html, values))
+                    r.status, r.sent_at = "sent", datetime.now(timezone.utc).replace(tzinfo=None)
+                except Exception as exc:
+                    r.status, r.error = "failed", str(exc)[:300]
+                job.heartbeat_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                db.session.commit()
+            counts = _mass_email_job_dict(job, with_failures=False)
+            failed = [r.email for r in MassEmailRecipient.query.filter_by(job_id=job_id, status="failed").all()]
+            db.session.add(MassEmailLog(
+                sent_by_user_id=job.created_by_user_id, sent_by_name=job.created_by_name, subject=job.subject,
+                message_html=job.message_html, recipient_count=job.total, success_count=counts["sent"],
+                failed_emails=",".join(failed) or None))
+            job.status, job.finished_at = "done", datetime.now(timezone.utc).replace(tzinfo=None)
+            db.session.commit()
+            if job.log_comms:
+                _log_mass_email_communications(job)
+        except Exception as exc:
+            print(f"[mass-email] job {job_id} stopped: {exc}")
+
+
+def _email_configured() -> bool:
+    return bool(config.SMTP_USERNAME and config.SMTP_PASSWORD and config.SENDGRID_FROM_EMAIL)
+
+
+def _start_mass_email_job(subject: str, html: str, audience: dict, log_comms: bool):
+    if not _email_configured():
+        # Otherwise a job would be created and then fail for every single recipient.
+        return jsonify({"error": "Email sending is not configured (SMTP_USERNAME / SMTP_PASSWORD / SENDGRID_FROM_EMAIL)."}), 503
+    running = MassEmailJob.query.filter(MassEmailJob.status.in_(("running", "cancelling"))).all()
+    for j in running:
+        if not _mass_email_job_dict(j)["interrupted"]:
+            return jsonify({"error": "Another mass email is still being sent -- wait for it to finish."}), 409
+    try:
+        resolved = _resolve_mass_email_audience(audience.get("pools"), audience.get("criteria"))
+    except MassEmailAudienceError as exc:
+        return jsonify({"error": str(exc)}), exc.status
+    recipients = resolved["recipients"]
+    if not recipients:
+        return jsonify({"error": "No one matches those criteria."}), 400
+    if len(recipients) > _MASS_EMAIL_MAX_RECIPIENTS:
+        return jsonify({"error": f"That is {len(recipients)} recipients; the limit is {_MASS_EMAIL_MAX_RECIPIENTS} per send. Narrow the criteria."}), 400
+    unknown = _unknown_merge_fields(subject, html)
+    if unknown:
+        return jsonify({"error": "Unknown merge field(s): " + ", ".join("{{" + u + "}}" for u in unknown)}), 400
+
+    admin = User.query.get(session.get("user_id"))
+    job = MassEmailJob(created_by_user_id=session.get("user_id"), created_by_name=(admin.name or admin.email) if admin else None,
+                       subject=subject, message_html=html, audience_json=json.dumps(audience), log_comms=log_comms,
+                       status="running", total=len(recipients), heartbeat_at=datetime.now(timezone.utc).replace(tzinfo=None))
+    db.session.add(job)
+    db.session.flush()
+    for r in recipients:
+        db.session.add(MassEmailRecipient(
+            job_id=job.id, email=r["email"], name=r["name"], first_name=r["first_name"],
+            org_title=r["orgs"][0][1] if r["orgs"] else "", orgs_json=json.dumps(r["orgs"]), pools=",".join(r["pools"])))
+    db.session.commit()
+    threading.Thread(target=_run_mass_email_job, args=(job.id,), daemon=True).start()
+    return jsonify({"ok": True, "job_id": job.id, "total": len(recipients)})
+
+
+@app.route("/api/admin/mass-email/options", methods=["GET"])
+def admin_mass_email_options():
+    err = _require_admin()
+    if err:
+        return err
+    orgs = sorted(({"slug": slug, "title": title} for slug, title in _org_title_by_slug().items()), key=lambda o: o["title"].lower())
+    return jsonify({"pools": list(_MASS_EMAIL_POOLS), "roles": list(_MASS_EMAIL_ROLES), "categories": list(ORG_CATEGORIES),
+                    "quality": list(_MASS_EMAIL_QUALITY), "merge_fields": list(_MASS_EMAIL_MERGE_FIELDS),
+                    "max_recipients": _MASS_EMAIL_MAX_RECIPIENTS, "orgs": orgs})
+
+
+@app.route("/api/admin/mass-email/audience", methods=["POST"])
+@limiter.limit("120 per hour")
+def admin_mass_email_audience():
+    """Preview: how many people the pools + criteria select (deduplicated), a sample, and what was left out and why."""
+    err = _require_admin()
+    if err:
+        return err
+    body = _decode_payload()
+    try:
+        resolved = _resolve_mass_email_audience(body.get("pools"), body.get("criteria"))
+    except MassEmailAudienceError as exc:
+        return jsonify({"error": str(exc)}), exc.status
+    recs = resolved["recipients"]
+    return jsonify({"total": len(recs), "diagnostics": resolved["diagnostics"], "max_recipients": _MASS_EMAIL_MAX_RECIPIENTS,
+                    "sample": [{"email": r["email"], "name": r["name"], "organization": r["orgs"][0][1] if r["orgs"] else "",
+                                "pools": r["pools"]} for r in recs[:20]]})
+
+
+@app.route("/api/admin/mass-email/test", methods=["POST"])
+@limiter.limit("20 per hour")
+def admin_mass_email_test():
+    """Sends the message, merge fields filled from the first selected person (or a made-up one), to the ADMIN's own
+    address only, with [TEST] in the subject."""
+    err = _require_admin()
+    if err:
+        return err
+    body = _decode_payload()
+    subject = (body.get("subject") or "").strip()
+    html = (body.get("message") or "").strip()
+    if not subject or not re.sub("<[^<]+?>", "", html).strip():
+        return jsonify({"error": "Subject and message are required"}), 400
+    unknown = _unknown_merge_fields(subject, html)
+    if unknown:
+        return jsonify({"error": "Unknown merge field(s): " + ", ".join("{{" + u + "}}" for u in unknown)}), 400
+    sample = {"name": "Maria Papadopoulou", "first_name": "Maria", "orgs": [("", "Example Organization")]}
+    audience = body.get("audience")
+    if isinstance(audience, dict):
+        try:
+            recs = _resolve_mass_email_audience(audience.get("pools"), audience.get("criteria"))["recipients"]
+            sample = recs[0] if recs else sample
+        except MassEmailAudienceError:
+            pass
+    me = User.query.get(session.get("user_id"))
+    if not me or not me.email:
+        return jsonify({"error": "Your account has no email address"}), 400
+    values = _merge_values_for(sample)
+    try:
+        send_email(me.email, "[TEST] " + _render_mass_email(subject, values, escape=False), _render_mass_email(html, values))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+    return jsonify({"ok": True, "sent_to": me.email, "rendered_for": values})
+
+
+@app.route("/api/admin/mass-email/jobs/latest", methods=["GET"])
+def admin_mass_email_job_latest():
+    """The most recent audience send (or null), so the panel can show its progress again after a page reload."""
+    err = _require_admin()
+    if err:
+        return err
+    job = MassEmailJob.query.order_by(MassEmailJob.id.desc()).first()
+    return jsonify(_mass_email_job_dict(job, with_failures=True) if job else None)
+
+
+@app.route("/api/admin/mass-email/jobs/<int:job_id>", methods=["GET"])
+def admin_mass_email_job(job_id):
+    err = _require_admin()
+    if err:
+        return err
+    job = MassEmailJob.query.get_or_404(job_id)
+    return jsonify(_mass_email_job_dict(job, with_failures=True))
+
+
+@app.route("/api/admin/mass-email/jobs/<int:job_id>/cancel", methods=["POST"])
+def admin_mass_email_job_cancel(job_id):
+    err = _require_admin()
+    if err:
+        return err
+    job = MassEmailJob.query.get_or_404(job_id)
+    if job.status == "running":
+        job.status = "cancelling"
+        db.session.commit()
+    return jsonify(_mass_email_job_dict(job))
+
+
+@app.route("/api/admin/mass-email/jobs/<int:job_id>/resume", methods=["POST"])
+def admin_mass_email_job_resume(job_id):
+    """Continues a send that was killed (deploy, reboot) or cancelled: only its still-pending recipients are sent."""
+    err = _require_admin()
+    if err:
+        return err
+    job = MassEmailJob.query.get_or_404(job_id)
+    d = _mass_email_job_dict(job)
+    if job.status == "done" or d["pending"] == 0:
+        return jsonify({"error": "Nothing left to send."}), 400
+    if job.status == "running" and not d["interrupted"]:
+        return jsonify({"error": "This send is still running."}), 409
+    job.status = "running"
+    job.heartbeat_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.session.commit()
+    threading.Thread(target=_run_mass_email_job, args=(job.id,), daemon=True).start()
+    return jsonify(_mass_email_job_dict(job))
+
+
 @app.route("/api/admin/mass-email", methods=["POST"])
 @limiter.limit("5 per hour")
 def admin_mass_email():
@@ -10400,6 +10840,9 @@ def admin_mass_email():
     user_ids = body.get("user_ids")
     if not subject or not re.sub("<[^<]+?>", "", html).strip():
         return jsonify({"error": "Subject and message are required"}), 400
+    if isinstance(body.get("audience"), dict):
+        # By audience (pools + criteria): resolved once, stored, and sent in the background -- see _start_mass_email_job.
+        return _start_mass_email_job(subject, html, body["audience"], bool(body.get("log_comms")))
     if not isinstance(user_ids, list) or not user_ids:
         return jsonify({"error": "Select at least one recipient"}), 400
 

@@ -241,20 +241,71 @@
               </div>
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <label class="form-label small mb-0" data-i18n="admin.recipients">Recipients</label>
-                <div>
-                  <a href="#" class="small" data-i18n="admin.all" onclick="_setMassEmailRecipients(true);return false;">All</a>
-                  <span class="text-muted">/</span>
-                  <a href="#" class="small" data-i18n="admin.none" onclick="_setMassEmailRecipients(false);return false;">None</a>
+                <div class="btn-group btn-group-sm" role="group">
+                  <input type="radio" class="btn-check" name="meMode" id="meModeCriteria" checked onchange="_setMassEmailMode('criteria')">
+                  <label class="btn btn-outline-primary" for="meModeCriteria" data-i18n="admin.me_mode_criteria">By criteria</label>
+                  <input type="radio" class="btn-check" name="meMode" id="meModePick" onchange="_setMassEmailMode('pick')">
+                  <label class="btn btn-outline-primary" for="meModePick" data-i18n="admin.me_mode_pick">Pick dashboard users</label>
                 </div>
               </div>
-              <div id="massEmailRecipientList" class="mb-2" style="max-height:200px;overflow-y:auto;border:1px solid #dee2e6;border-radius:.375rem;padding:.5rem">
-                <p class="text-muted small mb-0" data-i18n="admin.loading_users">Loading users…</p>
+
+              <div id="meCriteriaPanel" class="border rounded p-3 mb-2">
+                <div class="mb-3">
+                  <div class="small fw-semibold mb-1" data-i18n="admin.me_people">People</div>
+                  <div class="form-check form-check-inline"><input class="form-check-input me-pool" type="checkbox" value="contacts" id="mePoolContacts" checked onchange="_meCriteriaChanged()"><label class="form-check-label small" for="mePoolContacts" data-i18n="admin.me_pool_contacts">Contacts directory</label></div>
+                  <div class="form-check form-check-inline"><input class="form-check-input me-pool" type="checkbox" value="members" id="mePoolMembers" onchange="_meCriteriaChanged()"><label class="form-check-label small" for="mePoolMembers" data-i18n="admin.me_pool_members">Portal members</label></div>
+                  <div class="form-check form-check-inline"><input class="form-check-input me-pool" type="checkbox" value="users" id="mePoolUsers" onchange="_meCriteriaChanged()"><label class="form-check-label small" for="mePoolUsers" data-i18n="admin.me_pool_users">Dashboard users</label></div>
+                </div>
+                <div class="mb-3">
+                  <div class="small fw-semibold mb-1"><span data-i18n="admin.me_orgs">Organizations</span> <span class="text-muted fw-normal" data-i18n="admin.me_orgs_hint">(none selected = all)</span></div>
+                  <input type="text" id="meOrgSearch" class="form-control form-control-sm mb-1" autocomplete="off" data-i18n-ph="admin.me_orgs_search" placeholder="Search organizations…" oninput="_meRenderOrgList()">
+                  <div id="meOrgList" class="border rounded p-2 mb-1" style="max-height:150px;overflow-y:auto"></div>
+                  <div id="meOrgChips"></div>
+                </div>
+                <div class="mb-3">
+                  <div class="small fw-semibold mb-1" data-i18n="admin.me_roles">Role</div>
+                  <div id="meRoles"></div>
+                </div>
+                <div class="mb-3">
+                  <div class="small fw-semibold mb-1" data-i18n="admin.me_category">Organization category</div>
+                  <div id="meCategories"></div>
+                </div>
+                <div class="mb-3">
+                  <div class="small fw-semibold mb-1" data-i18n="admin.me_quality">Data-quality status of the organization</div>
+                  <div class="d-flex align-items-center gap-2">
+                    <select id="meQualityStatus" class="form-select form-select-sm" style="max-width:340px" onchange="_meCriteriaChanged()"></select>
+                    <span id="meThresholdWrap" class="d-none small"><input type="number" id="meQualityThreshold" class="form-control form-control-sm d-inline-block" style="width:80px" min="0" max="100" value="50" oninput="_meCriteriaChanged()"> %</span>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="previewMassEmailAudience()"><i class="bi bi-people me-1"></i><span data-i18n="admin.me_preview">Preview audience</span></button>
+                <div id="mePreviewResult" class="small mt-2"></div>
               </div>
-              <div class="small text-muted mb-3" id="massEmailRecipientSummary"></div>
+
+              <div id="mePickPanel" class="d-none mb-2">
+                <div class="d-flex justify-content-end mb-1">
+                  <a href="#" class="small" data-i18n="admin.all" onclick="_setMassEmailRecipients(true);return false;">All</a>
+                  <span class="text-muted mx-1">/</span>
+                  <a href="#" class="small" data-i18n="admin.none" onclick="_setMassEmailRecipients(false);return false;">None</a>
+                </div>
+                <div id="massEmailRecipientList" class="mb-2" style="max-height:200px;overflow-y:auto;border:1px solid #dee2e6;border-radius:.375rem;padding:.5rem">
+                  <p class="text-muted small mb-0" data-i18n="admin.loading_users">Loading users…</p>
+                </div>
+                <div class="small text-muted" id="massEmailRecipientSummary"></div>
+              </div>
+
+              <div class="small text-muted mb-2" data-i18n="admin.me_merge_hint">Personalise with {{ '{{' }}name{{ '}}' }}, {{ '{{' }}first_name{{ '}}' }} and {{ '{{' }}organization{{ '}}' }}. Add a fallback after a bar: {{ '{{' }}first_name|colleague{{ '}}' }}.</div>
+              <div class="form-check mb-3" id="meLogCommsWrap">
+                <input class="form-check-input" type="checkbox" id="meLogComms">
+                <label class="form-check-label small" for="meLogComms" data-i18n="admin.me_log_comms">Record in Communications (one entry per organization)</label>
+              </div>
+              <button type="button" class="btn btn-outline-secondary btn-sm me-2" onclick="sendMassEmailTest()">
+                <i class="bi bi-envelope-check me-1"></i><span data-i18n="admin.me_send_test">Send a test to me</span>
+              </button>
               <button type="button" class="btn btn-primary btn-sm" onclick="openMassEmailConfirm()">
                 <i class="bi bi-send me-1"></i><span data-i18n="admin.send_mass_email">Send Mass Email</span>
               </button>
               <div id="massEmailResult" class="mt-2 small d-none"></div>
+              <div id="meJobCard" class="d-none mt-3 border rounded p-3"></div>
             </div>
 
             <div class="card p-4">
@@ -847,6 +898,57 @@
         'admin.send_mass_email': 'Send Mass Email', 'admin.send_history': 'Send History',
         'admin.subject_message_required': 'Subject and message are required.',
         'admin.select_recipient': 'Select at least one recipient.',
+        'admin.me_mode_criteria': 'By criteria',
+        'admin.me_mode_pick': 'Pick dashboard users',
+        'admin.me_people': 'People',
+        'admin.me_pool_contacts': 'Contacts directory',
+        'admin.me_pool_members': 'Portal members',
+        'admin.me_pool_users': 'Dashboard users',
+        'admin.me_orgs': 'Organizations',
+        'admin.me_orgs_hint': '(none selected = all)',
+        'admin.me_orgs_search': 'Search organizations…',
+        'admin.me_no_orgs': 'No organization matches.',
+        'admin.me_roles': 'Role',
+        'admin.me_role_org_admin': 'Organization administrator',
+        'admin.me_role_org_editor': 'Organization editor',
+        'admin.me_role_org_member': 'Organization member',
+        'admin.me_role_data_governance_officer': 'Data governance officer',
+        'admin.me_role_data_steward': 'Data steward',
+        'admin.me_role_dashboard_admin': 'Dashboard admin',
+        'admin.me_role_dashboard_superadmin': 'Dashboard superadmin',
+        'admin.me_category': 'Organization category',
+        'admin.me_quality': 'Data-quality status of the organization',
+        'admin.me_quality_any': 'Any',
+        'admin.me_quality_hvd_issues': 'Has non-compliant HVD datasets',
+        'admin.me_quality_hvd_all_compliant': 'All HVD datasets compliant',
+        'admin.me_quality_no_hvd_checked': 'No HVD datasets checked',
+        'admin.me_quality_dcat_pass_below': 'DCAT-AP pass rate below…',
+        'admin.me_preview': 'Preview audience',
+        'admin.me_preview_total': '{n} people will receive this (duplicates removed)',
+        'admin.me_diag_no_email': '{n} entries without a valid email were left out.',
+        'admin.me_diag_no_org': '{n} contacts could not be matched to a portal organization, so organization-based criteria exclude them.',
+        'admin.me_diag_role': '{n} were left out by the role filter.',
+        'admin.me_diag_org': '{n} were left out by the organization filters.',
+        'admin.me_over_limit': 'Too many for one send (limit {max}). Narrow the criteria.',
+        'admin.me_sample_note': 'First {n} shown.',
+        'admin.me_merge_hint': 'Personalise with {{ '{{' }}name{{ '}}' }}, {{ '{{' }}first_name{{ '}}' }} and {{ '{{' }}organization{{ '}}' }}. Add a fallback after a bar: {{ '{{' }}first_name|colleague{{ '}}' }}.',
+        'admin.me_log_comms': 'Record in Communications (one entry per organization)',
+        'admin.me_send_test': 'Send a test to me',
+        'admin.me_test_sent': 'Test sent to {email}.',
+        'admin.me_preview_first': 'Preview the audience first, so you see exactly who will receive this.',
+        'admin.me_no_one': 'No one matches those criteria.',
+        'admin.me_send_confirm_summary': 'You are about to send this email to {n} people. It cannot be recalled.',
+        'admin.me_started': 'Sending to {n} people in the background.',
+        'admin.me_progress': 'Sent {sent} of {total} · {failed} failed · {pending} waiting',
+        'admin.me_status_running': 'Sending…',
+        'admin.me_status_done': 'Finished',
+        'admin.me_status_cancelling': 'Cancelling…',
+        'admin.me_status_cancelled': 'Cancelled',
+        'admin.me_status_interrupted': 'Interrupted',
+        'admin.me_interrupted': 'This send was interrupted (the server restarted). Resume to send the rest.',
+        'admin.me_cancel': 'Cancel',
+        'admin.me_resume': 'Resume',
+        'admin.me_failures': '{n} failed',
         'admin.send_confirm_summary': 'You are about to send this email to {n} recipient(s).',
         'admin.send_mass_email_modal_title': 'Send Mass Email?',
         'admin.send_mass_email_modal_note': 'This sends immediately and cannot be recalled.',
@@ -999,6 +1101,57 @@
         'admin.send_mass_email': 'Αποστολή Μαζικού Email', 'admin.send_history': 'Ιστορικό Αποστολών',
         'admin.subject_message_required': 'Το θέμα και το μήνυμα είναι υποχρεωτικά.',
         'admin.select_recipient': 'Επιλέξτε τουλάχιστον έναν παραλήπτη.',
+        'admin.me_mode_criteria': 'Με κριτήρια',
+        'admin.me_mode_pick': 'Επιλογή χρηστών dashboard',
+        'admin.me_people': 'Άτομα',
+        'admin.me_pool_contacts': 'Μητρώο επαφών',
+        'admin.me_pool_members': 'Μέλη πύλης',
+        'admin.me_pool_users': 'Χρήστες dashboard',
+        'admin.me_orgs': 'Οργανισμοί',
+        'admin.me_orgs_hint': '(κανένας επιλεγμένος = όλοι)',
+        'admin.me_orgs_search': 'Αναζήτηση οργανισμών…',
+        'admin.me_no_orgs': 'Κανένας οργανισμός δεν ταιριάζει.',
+        'admin.me_roles': 'Ρόλος',
+        'admin.me_role_org_admin': 'Διαχειριστής οργανισμού',
+        'admin.me_role_org_editor': 'Συντάκτης οργανισμού',
+        'admin.me_role_org_member': 'Μέλος οργανισμού',
+        'admin.me_role_data_governance_officer': 'Υπεύθυνος διακυβέρνησης δεδομένων',
+        'admin.me_role_data_steward': 'Data steward',
+        'admin.me_role_dashboard_admin': 'Διαχειριστής dashboard',
+        'admin.me_role_dashboard_superadmin': 'Υπερδιαχειριστής dashboard',
+        'admin.me_category': 'Κατηγορία οργανισμού',
+        'admin.me_quality': 'Κατάσταση ποιότητας δεδομένων του οργανισμού',
+        'admin.me_quality_any': 'Οποιαδήποτε',
+        'admin.me_quality_hvd_issues': 'Έχει μη συμμορφούμενα σύνολα HVD',
+        'admin.me_quality_hvd_all_compliant': 'Όλα τα σύνολα HVD συμμορφώνονται',
+        'admin.me_quality_no_hvd_checked': 'Κανένα σύνολο HVD δεν έχει ελεγχθεί',
+        'admin.me_quality_dcat_pass_below': 'Ποσοστό συμμόρφωσης DCAT-AP κάτω από…',
+        'admin.me_preview': 'Προεπισκόπηση παραληπτών',
+        'admin.me_preview_total': '{n} άτομα θα το λάβουν (χωρίς διπλότυπα)',
+        'admin.me_diag_no_email': '{n} εγγραφές χωρίς έγκυρο email εξαιρέθηκαν.',
+        'admin.me_diag_no_org': '{n} επαφές δεν αντιστοιχίστηκαν σε οργανισμό της πύλης, οπότε τα κριτήρια οργανισμού τις εξαιρούν.',
+        'admin.me_diag_role': '{n} εξαιρέθηκαν από το φίλτρο ρόλου.',
+        'admin.me_diag_org': '{n} εξαιρέθηκαν από τα φίλτρα οργανισμού.',
+        'admin.me_over_limit': 'Πάρα πολλοί για μία αποστολή (όριο {max}). Περιορίστε τα κριτήρια.',
+        'admin.me_sample_note': 'Εμφανίζονται οι πρώτοι {n}.',
+        'admin.me_merge_hint': 'Εξατομίκευση με {{ '{{' }}name{{ '}}' }}, {{ '{{' }}first_name{{ '}}' }} και {{ '{{' }}organization{{ '}}' }}. Εναλλακτική τιμή μετά από μπάρα: {{ '{{' }}first_name|συνάδελφε{{ '}}' }}.',
+        'admin.me_log_comms': 'Καταγραφή στις Επικοινωνίες (μία εγγραφή ανά οργανισμό)',
+        'admin.me_send_test': 'Αποστολή δοκιμής σε εμένα',
+        'admin.me_test_sent': 'Η δοκιμή στάλθηκε στο {email}.',
+        'admin.me_preview_first': 'Κάντε πρώτα προεπισκόπηση, ώστε να δείτε ακριβώς ποιοι θα το λάβουν.',
+        'admin.me_no_one': 'Κανείς δεν ταιριάζει με αυτά τα κριτήρια.',
+        'admin.me_send_confirm_summary': 'Πρόκειται να στείλετε αυτό το email σε {n} άτομα. Δεν μπορεί να ανακληθεί.',
+        'admin.me_started': 'Αποστολή σε {n} άτομα στο παρασκήνιο.',
+        'admin.me_progress': 'Στάλθηκαν {sent} από {total} · {failed} απέτυχαν · {pending} σε αναμονή',
+        'admin.me_status_running': 'Αποστολή…',
+        'admin.me_status_done': 'Ολοκληρώθηκε',
+        'admin.me_status_cancelling': 'Ακύρωση…',
+        'admin.me_status_cancelled': 'Ακυρώθηκε',
+        'admin.me_status_interrupted': 'Διακόπηκε',
+        'admin.me_interrupted': 'Η αποστολή διακόπηκε (επανεκκίνηση του διακομιστή). Συνεχίστε για να σταλούν τα υπόλοιπα.',
+        'admin.me_cancel': 'Ακύρωση',
+        'admin.me_resume': 'Συνέχεια',
+        'admin.me_failures': '{n} απέτυχαν',
         'admin.send_confirm_summary': 'Πρόκειται να στείλετε αυτό το email σε {n} παραλήπτες.',
         'admin.send_mass_email_modal_title': 'Αποστολή Μαζικού Email;',
         'admin.send_mass_email_modal_note': 'Η αποστολή γίνεται άμεσα και δεν μπορεί να ανακληθεί.',
@@ -1136,6 +1289,7 @@
       if (typeof massEmailQuill !== 'undefined') massEmailQuill.root.dataset.placeholder = t('admin.write_announcement_ph');
       if (_usersCache.length) loadUsers();
       if (_massEmailHistoryCache.length) loadMassEmailHistory();
+      _meRenderOptions();
       loadExcludedEmails();
       loadListenAddresses();
       loadParsedEmails();
@@ -1440,9 +1594,235 @@
       document.getElementById('massEmailRecipientSummary').textContent = t('admin.recipients_selected').replace('{n}', n);
     }
 
-    let _massEmailModal = null;
+    // ── Mass email by audience (criteria mode) ──────────────────────────
+    // Recipients are chosen by who they are (pools) and what narrows them (organizations, role, organization category,
+    // data-quality status -- ANDed), previewed, optionally test-sent to the admin, then sent in the background.
+    let _meOptions = null, _meMode = 'criteria', _mePreview = null, _meJobTimer = null, _meJobId = null;
+    const _meOrgs = new Set();
+    const _meNorm = x => (x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+    async function _loadMassEmailOptions() {
+      try {
+        const resp = await fetch('../api/admin/mass-email/options');
+        if (!resp.ok) return;
+        _meOptions = await resp.json();
+        _meRenderOptions();
+      } catch (_) {}
+    }
+
+    function _meRenderOptions() {
+      if (!_meOptions) return;
+      const keep = id => new Set([...document.querySelectorAll('#' + id + ' input:checked')].map(i => i.value));
+      const roles = keep('meRoles'), cats = keep('meCategories');
+      document.getElementById('meRoles').innerHTML = _meOptions.roles.map(r => `
+        <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" value="${r}" id="meRole_${r}" ${roles.has(r) ? 'checked' : ''} onchange="_meCriteriaChanged()">
+        <label class="form-check-label small" for="meRole_${r}">${t('admin.me_role_' + r)}</label></div>`).join('');
+      document.getElementById('meCategories').innerHTML = _meOptions.categories.map(c => `
+        <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" value="${c}" id="meCat_${c}" ${cats.has(c) ? 'checked' : ''} onchange="_meCriteriaChanged()">
+        <label class="form-check-label small" for="meCat_${c}">${t('admin.org_class_category_' + c)}</label></div>`).join('');
+      const sel = document.getElementById('meQualityStatus'), cur = sel.value;
+      sel.innerHTML = `<option value="">${t('admin.me_quality_any')}</option>` +
+        _meOptions.quality.map(q => `<option value="${q}">${t('admin.me_quality_' + q)}</option>`).join('');
+      sel.value = cur;
+      _meRenderOrgList();
+      _meRenderOrgChips();
+    }
+
+    function _meRenderOrgList() {
+      if (!_meOptions) return;
+      const q = _meNorm(document.getElementById('meOrgSearch').value);
+      const rows = _meOptions.orgs.filter(o => !q || _meNorm(o.title).includes(q) || o.slug.includes(q)).slice(0, 60);
+      document.getElementById('meOrgList').innerHTML = rows.length ? rows.map(o => `
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="meOrg_${esc(o.slug)}" value="${esc(o.slug)}" ${_meOrgs.has(o.slug) ? 'checked' : ''} onchange="_meToggleOrg(this.value, this.checked)">
+        <label class="form-check-label small" for="meOrg_${esc(o.slug)}">${esc(o.title)}</label></div>`).join('')
+        : `<p class="text-muted small mb-0">${t('admin.me_no_orgs')}</p>`;
+    }
+
+    function _meRenderOrgChips() {
+      const titles = Object.fromEntries(((_meOptions && _meOptions.orgs) || []).map(o => [o.slug, o.title]));
+      document.getElementById('meOrgChips').innerHTML = [..._meOrgs].map(sl => `
+        <span class="badge text-bg-primary me-1 mb-1">${esc(titles[sl] || sl)} <a href="#" class="text-white ms-1 text-decoration-none" onclick="_meToggleOrg('${esc(sl)}', false);return false;">&times;</a></span>`).join('');
+    }
+
+    function _meToggleOrg(slug, on) {
+      if (on) _meOrgs.add(slug); else _meOrgs.delete(slug);
+      _meRenderOrgList();
+      _meRenderOrgChips();
+      _meCriteriaChanged();
+    }
+
+    function _meCriteriaChanged() {
+      _mePreview = null;                       // the preview no longer describes what is selected
+      document.getElementById('mePreviewResult').innerHTML = '';
+      document.getElementById('meThresholdWrap').classList.toggle('d-none', document.getElementById('meQualityStatus').value !== 'dcat_pass_below');
+    }
+
+    function _meAudience() {
+      const vals = sel => [...document.querySelectorAll(sel)].map(i => i.value);
+      const criteria = {orgs: [..._meOrgs].sort(), roles: vals('#meRoles input:checked'), categories: vals('#meCategories input:checked')};
+      const status = document.getElementById('meQualityStatus').value;
+      if (status) criteria.quality = {status, threshold: parseInt(document.getElementById('meQualityThreshold').value, 10) || 50};
+      return {pools: vals('.me-pool:checked'), criteria};
+    }
+
+    function _setMassEmailMode(mode) {
+      _meMode = mode;
+      document.getElementById('meCriteriaPanel').classList.toggle('d-none', mode !== 'criteria');
+      document.getElementById('mePickPanel').classList.toggle('d-none', mode !== 'pick');
+      document.getElementById('meLogCommsWrap').classList.toggle('d-none', mode !== 'criteria');
+    }
+
+    function _meForm(obj) {
+      return {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'd=' + _b64enc(obj)};
+    }
+
+    function _meShowResult(text, kind) {
+      const el = document.getElementById('massEmailResult');
+      el.className = 'mt-2 small text-' + kind;
+      el.textContent = text;
+    }
+
+    async function previewMassEmailAudience() {
+      const el = document.getElementById('mePreviewResult');
+      const audience = _meAudience();
+      el.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      try {
+        const resp = await fetch('../api/admin/mass-email/audience', _meForm(audience));
+        const data = await _parseJsonResponse(resp);
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_send'));
+        _mePreview = {total: data.total, key: JSON.stringify(audience)};
+        const d = data.diagnostics, bits = [];
+        Object.entries(d.by_pool).forEach(([k, n]) => bits.push(`${t('admin.me_pool_' + k)}: ${n}`));
+        const notes = [];
+        if (d.no_valid_email) notes.push(t('admin.me_diag_no_email').replace('{n}', d.no_valid_email));
+        if (d.no_matching_org) notes.push(t('admin.me_diag_no_org').replace('{n}', d.no_matching_org));
+        if (d.role_filtered) notes.push(t('admin.me_diag_role').replace('{n}', d.role_filtered));
+        if (d.org_filtered) notes.push(t('admin.me_diag_org').replace('{n}', d.org_filtered));
+        const over = data.total > data.max_recipients ? `<div class="text-danger">${t('admin.me_over_limit').replace('{max}', data.max_recipients)}</div>` : '';
+        el.innerHTML = `
+          <div class="fw-semibold ${data.total ? '' : 'text-danger'}">${t('admin.me_preview_total').replace('{n}', data.total)}</div>
+          <div class="text-muted">${esc(bits.join(' · '))}</div>
+          ${notes.map(n => `<div class="text-muted">${esc(n)}</div>`).join('')}${over}
+          ${data.sample.length ? `<div class="table-responsive mt-2"><table class="table table-sm mb-0"><tbody>${data.sample.map(r => `
+            <tr><td>${esc(r.email)}</td><td>${esc(r.name)}</td><td class="text-muted">${esc(r.organization)}</td></tr>`).join('')}</tbody></table></div>
+            <div class="text-muted">${t('admin.me_sample_note').replace('{n}', data.sample.length)}</div>` : ''}`;
+      } catch (e) {
+        _mePreview = null;
+        el.innerHTML = `<span class="text-danger">${esc(e.message)}</span>`;
+      }
+    }
+
+    function _meSubjectAndMessage() {
+      if (_massEmailHtmlMode) toggleMassEmailHtmlSource();       // apply any unsaved HTML edits first
+      const subject = document.getElementById('massEmailSubject').value.trim();
+      if (!subject || !massEmailQuill.getText().trim().length) { _meShowResult(t('admin.subject_message_required'), 'danger'); return null; }
+      return {subject, message: massEmailQuill.root.innerHTML};
+    }
+
+    async function sendMassEmailTest() {
+      const sm = _meSubjectAndMessage();
+      if (!sm) return;
+      document.getElementById('massEmailResult').classList.remove('d-none');
+      try {
+        const resp = await fetch('../api/admin/mass-email/test', _meForm({...sm, audience: _meMode === 'criteria' ? _meAudience() : null}));
+        const data = await _parseJsonResponse(resp);
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_send'));
+        _meShowResult(t('admin.me_test_sent').replace('{email}', data.sent_to), 'success');
+      } catch (e) { _meShowResult(e.message, 'danger'); }
+    }
 
     function openMassEmailConfirm() {
+      if (_meMode !== 'criteria') return _openMassEmailConfirmPick();
+      const sm = _meSubjectAndMessage();
+      document.getElementById('massEmailResult').classList.remove('d-none');
+      if (!sm) return;
+      if (!_mePreview || _mePreview.key !== JSON.stringify(_meAudience())) { _meShowResult(t('admin.me_preview_first'), 'danger'); return; }
+      if (!_mePreview.total) { _meShowResult(t('admin.me_no_one'), 'danger'); return; }
+      document.getElementById('massEmailConfirmSummary').textContent = t('admin.me_send_confirm_summary').replace('{n}', _mePreview.total);
+      if (!_massEmailModal) _massEmailModal = new bootstrap.Modal(document.getElementById('massEmailModal'));
+      _massEmailModal.show();
+    }
+
+    async function confirmMassEmail() {
+      if (_meMode !== 'criteria') return _confirmMassEmailPick();
+      const btn = document.getElementById('massEmailSendBtn');
+      if (btn.disabled) return;
+      btn.disabled = true;
+      try {
+        const sm = _meSubjectAndMessage();
+        const resp = await fetch('../api/admin/mass-email', _meForm({...sm, audience: _meAudience(), log_comms: document.getElementById('meLogComms').checked}));
+        const data = await _parseJsonResponse(resp);
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_send'));
+        _massEmailModal.hide();
+        document.getElementById('massEmailSubject').value = '';
+        massEmailQuill.setText('');
+        _meShowResult(t('admin.me_started').replace('{n}', data.total), 'success');
+        _meTrackJob(data.job_id);
+      } catch (e) {
+        _meShowResult(e.message, 'danger');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // Progress of the background send: polled while it runs, resumable if the server restarted under it.
+    function _meTrackJob(id) {
+      _meJobId = id;
+      if (_meJobTimer) clearTimeout(_meJobTimer);
+      _mePollJob();
+    }
+
+    async function _mePollJob() {
+      if (!_meJobId) return;
+      try {
+        const resp = await fetch('../api/admin/mass-email/jobs/' + _meJobId);
+        const job = await _parseJsonResponse(resp);
+        if (!resp.ok) throw new Error(job.error || 'HTTP ' + resp.status);
+        _meRenderJob(job);
+        const live = (job.status === 'running' || job.status === 'cancelling') && !job.interrupted;
+        if (live) _meJobTimer = setTimeout(_mePollJob, 3000);
+        else { _meJobTimer = null; loadMassEmailHistory(); }
+      } catch (_) { _meJobTimer = setTimeout(_mePollJob, 6000); }
+    }
+
+    function _meRenderJob(job) {
+      const done = job.sent + job.failed, pct = job.total ? Math.round(done / job.total * 100) : 100;
+      const label = job.interrupted ? 'interrupted' : job.status;
+      const canCancel = job.status === 'running' && !job.interrupted;
+      const canResume = job.pending > 0 && (job.interrupted || job.status === 'cancelled');
+      const card = document.getElementById('meJobCard');
+      card.classList.remove('d-none');
+      card.innerHTML = `
+        <div class="d-flex justify-content-between small mb-1"><strong>${esc(job.subject)}</strong><span>${t('admin.me_status_' + label)}</span></div>
+        <div class="progress mb-2" style="height:8px"><div class="progress-bar ${job.failed ? 'bg-warning' : ''}" style="width:${pct}%"></div></div>
+        <div class="small">${t('admin.me_progress').replace('{sent}', job.sent).replace('{failed}', job.failed).replace('{pending}', job.pending).replace('{total}', job.total)}</div>
+        ${job.interrupted ? `<div class="small text-warning mt-1">${t('admin.me_interrupted')}</div>` : ''}
+        ${canCancel ? `<button class="btn btn-outline-danger btn-sm mt-2" onclick="_meJobAction('cancel')">${t('admin.me_cancel')}</button>` : ''}
+        ${canResume ? `<button class="btn btn-outline-primary btn-sm mt-2" onclick="_meJobAction('resume')">${t('admin.me_resume')}</button>` : ''}
+        ${(job.failures || []).length ? `<details class="small mt-2"><summary>${t('admin.me_failures').replace('{n}', job.failed)}</summary>
+          <ul class="mb-0">${job.failures.slice(0, 20).map(f => `<li>${esc(f.email)} — ${esc(f.error || '')}</li>`).join('')}</ul></details>` : ''}`;
+    }
+
+    async function _meJobAction(action) {
+      try {
+        const resp = await fetch(`../api/admin/mass-email/jobs/${_meJobId}/${action}`, _meForm({}));
+        const data = await _parseJsonResponse(resp);
+        if (!resp.ok) throw new Error(data.error || 'HTTP ' + resp.status);
+        _meTrackJob(_meJobId);
+      } catch (e) { _meShowResult(e.message, 'danger'); document.getElementById('massEmailResult').classList.remove('d-none'); }
+    }
+
+    async function _meLoadLatestJob() {
+      try {
+        const resp = await fetch('../api/admin/mass-email/jobs/latest');
+        const job = resp.ok ? await resp.json() : null;
+        if (job && (job.status === 'running' || job.status === 'cancelling' || job.interrupted || job.pending > 0 && job.status === 'cancelled')) _meTrackJob(job.id);
+      } catch (_) {}
+    }
+
+    let _massEmailModal = null;
+
+    function _openMassEmailConfirmPick() {
       if (_massEmailHtmlMode) toggleMassEmailHtmlSource();  // apply any unsaved HTML edits first
       const subject = document.getElementById('massEmailSubject').value.trim();
       const hasMessage = massEmailQuill.getText().trim().length > 0;
@@ -1485,7 +1865,7 @@
       }
     }
 
-    async function confirmMassEmail() {
+    async function _confirmMassEmailPick() {
       const btn = document.getElementById('massEmailSendBtn');
       if (btn.disabled) return;
       btn.disabled = true;
@@ -2543,6 +2923,8 @@
     applyThemeIcon();
     loadUsers();
     loadMassEmailHistory();
+    _loadMassEmailOptions();
+    _meLoadLatestJob();
     loadExcludedEmails();
     loadListenAddresses();
     loadParsedEmails();
