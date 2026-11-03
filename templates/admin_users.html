@@ -229,6 +229,24 @@
                 <label class="form-label small mb-1" data-i18n="admin.subject">Subject</label>
                 <input type="text" id="massEmailSubject" class="form-control form-control-sm">
               </div>
+              <div id="meMergeBox" class="border rounded p-2 mb-2 small">
+                <div class="mb-1 text-muted" data-i18n="admin.me_merge_help">Personalise each email: click a field to insert it where your cursor is. It is replaced by each recipient's own details.</div>
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('first_name')" data-i18n="admin.me_field_first_name">First name</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('last_name')" data-i18n="admin.me_field_last_name">Last name</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('organization')" data-i18n="admin.me_field_organization">Organization</button>
+                </div>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <label class="form-label mb-0 text-muted" for="meFallbackPerson" data-i18n="admin.me_fallback_person">If a person has no name, write:</label>
+                    <input type="text" id="meFallbackPerson" class="form-control form-control-sm" maxlength="60" autocomplete="off">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label mb-0 text-muted" for="meFallbackOrg" data-i18n="admin.me_fallback_org">If a person has no organization, write:</label>
+                    <input type="text" id="meFallbackOrg" class="form-control form-control-sm" maxlength="60" autocomplete="off">
+                  </div>
+                </div>
+              </div>
               <div class="mb-2">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                   <label class="form-label small mb-0" data-i18n="admin.message">Message</label>
@@ -293,24 +311,6 @@
                 <div class="small text-muted" id="massEmailRecipientSummary"></div>
               </div>
 
-              <div id="meMergeBox" class="border rounded p-2 mb-2 small">
-                <div class="mb-1 text-muted" data-i18n="admin.me_merge_help">Personalise each email: click a field to insert it where your cursor is. It is replaced by each recipient's own details.</div>
-                <div class="d-flex flex-wrap gap-1 mb-2">
-                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('last_name')" data-i18n="admin.me_field_last_name">Last name</button>
-                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('first_name')" data-i18n="admin.me_field_first_name">First name</button>
-                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('organization')" data-i18n="admin.me_field_organization">Organization</button>
-                </div>
-                <div class="row g-2">
-                  <div class="col-md-6">
-                    <label class="form-label mb-0 text-muted" for="meFallbackPerson" data-i18n="admin.me_fallback_person">If a person has no name, write:</label>
-                    <input type="text" id="meFallbackPerson" class="form-control form-control-sm" maxlength="60" autocomplete="off">
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label mb-0 text-muted" for="meFallbackOrg" data-i18n="admin.me_fallback_org">If a person has no organization, write:</label>
-                    <input type="text" id="meFallbackOrg" class="form-control form-control-sm" maxlength="60" autocomplete="off">
-                  </div>
-                </div>
-              </div>
               <div class="form-check mb-3" id="meLogCommsWrap">
                 <input class="form-check-input" type="checkbox" id="meLogComms">
                 <label class="form-check-label small" for="meLogComms" data-i18n="admin.me_log_comms">Record in Communications (one entry per organization)</label>
@@ -1743,6 +1743,7 @@
       document.getElementById('meCriteriaPanel').classList.toggle('d-none', mode !== 'criteria');
       document.getElementById('mePickPanel').classList.toggle('d-none', mode !== 'pick');
       document.getElementById('meLogCommsWrap').classList.toggle('d-none', mode !== 'criteria');
+      document.getElementById('meMergeBox').classList.toggle('d-none', mode !== 'criteria');
     }
 
     function _meForm(obj) {
