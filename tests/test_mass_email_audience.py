@@ -438,6 +438,8 @@ def test_last_name_is_what_follows_the_first_name():
 
 
 def test_a_capacity_ckan_added_later_becomes_a_selectable_role(admin_client):
+    assert appmod._capacity_role("dgo") == appmod._capacity_role("DGO") == "data_governance_officer"
+    assert appmod._capacity_role("org_admin") == appmod._capacity_role("Org Admin") == "org_admin"
     assert appmod._capacity_role("editor") == "org_editor" and appmod._capacity_role("user") is None
     assert appmod._capacity_role("Data Steward") == "data_steward" and appmod._capacity_role("Auditor") == "org_auditor"
     appmod._pm_cache["data"] = {"members": [

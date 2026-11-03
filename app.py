@@ -10407,9 +10407,14 @@ _EMAIL_ADDRESS_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _CONTACT_TYPE_ROLE = {
     "Org Administrator": "org_admin", "Κεντρικός Διαχειριστής Οργανισμού": "org_admin",
     "Org Editor": "org_editor", "Org Member": "org_member",
-    "Data Governance Officer": "data_governance_officer", "Data Steward": "data_steward",
+    "Data Governance Officer": "data_governance_officer", "DGO": "data_governance_officer", "Data Steward": "data_steward",
 }
 _CAPACITY_ROLE = {"admin": "org_admin", "editor": "org_editor", "member": "org_member"}
+
+
+# CKAN's own spellings of the two newer roles (the exact capacity strings were not seen on the live portal, so a few likely ones)
+_CAPACITY_ALIASES = {"org_admin": "org_admin", "orgadmin": "org_admin", "organization_admin": "org_admin", "organisation_admin": "org_admin",
+                     "dgo": "data_governance_officer", "data_governance_officer": "data_governance_officer"}
 
 
 def _capacity_role(capacity):
@@ -10420,6 +10425,8 @@ def _capacity_role(capacity):
     if not cap or cap == "user":
         return None
     slug = re.sub(r"[^a-z0-9]+", "_", cap).strip("_")
+    if slug in _CAPACITY_ALIASES:
+        return _CAPACITY_ALIASES[slug]
     if slug in _MASS_EMAIL_ROLES:                       # e.g. a CKAN "data_steward" capacity IS the Data steward role
         return slug
     return _CAPACITY_ROLE.get(cap) or "org_" + slug
