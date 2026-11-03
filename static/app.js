@@ -9838,8 +9838,8 @@ function _renderContactsFilterGroup(elId, indices, tabDotId) {
 // new fetch resolves) using whatever's already in the cards array.
 function renderContactsSummary(roleCounts, stateCounts, fileCounts) {
   if (roleCounts) {
-    // roles CKAN reports beyond admin/editor/member/user get a card each, named as CKAN names them
-    const otherRoleCards = Object.entries(roleCounts.other || {}).map(([cap, n]) =>
+    // roles CKAN reports beyond admin/editor/member/user get a card each, named as CKAN names them; the two newest are always shown, even at 0
+    const otherRoleCards = Object.entries({ central_admin: 0, dgo: 0, ...(roleCounts.other || {}) }).map(([cap, n]) =>
       ({ filter: { type: 'role', value: cap }, label: _PORTAL_ROLE_I18N_KEY[cap] ? t(_PORTAL_ROLE_I18N_KEY[cap]) : cap, value: n, bg: "bg-info bg-opacity-10", text: "text-info", icon: "bi-person-gear" }));
     _contactsSummaryCards = [
       { filter: { type: 'role', value: null },       label: t('contacts.total'), value: roleCounts.total,    bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
