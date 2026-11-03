@@ -450,3 +450,9 @@ def test_a_capacity_ckan_added_later_becomes_a_selectable_role(admin_client):
     data = admin_client.post("/api/admin/mass-email/audience",
                              json={"pools": ["members"], "criteria": {"roles": ["org_auditor"]}, "full": True}).get_json()
     assert [r["email"] for r in data["recipients"]] == ["s@x.gr"]
+
+
+def test_the_members_tab_counts_a_capacity_it_has_never_heard_of():
+    import inspect
+    src = inspect.getsource(appmod)
+    assert '"other": dict(sorted(other.items()))' in src

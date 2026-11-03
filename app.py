@@ -9392,12 +9392,16 @@ def portal_members_all():
     role_counts = state_counts = file_counts = None
     if start == 0:
         rc = {"admin": 0, "editor": 0, "member": 0, "user": 0, "sysadmin": 0}
+        other = {}                                   # capacities CKAN reports that this code has never heard of (roles added later)
         for m in role_scope:
+            cap = m.get("capacity")
             if m.get("sysadmin"):
                 rc["sysadmin"] += 1
-            elif m.get("capacity") in rc:
-                rc[m["capacity"]] += 1
-        role_counts = {"total": len(role_scope), **rc}
+            elif cap in rc:
+                rc[cap] += 1
+            elif cap:
+                other[cap] = other.get(cap, 0) + 1
+        role_counts = {"total": len(role_scope), **rc, "other": dict(sorted(other.items()))}
         sc = {"active": 0, "pending": 0, "deleted": 0}
         for m in state_scope:
             st = m.get("state") or "active"

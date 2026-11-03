@@ -9834,12 +9834,16 @@ function _renderContactsFilterGroup(elId, indices, tabDotId) {
 // new fetch resolves) using whatever's already in the cards array.
 function renderContactsSummary(roleCounts, stateCounts, fileCounts) {
   if (roleCounts) {
+    // roles CKAN reports beyond admin/editor/member/user get a card each, named as CKAN names them
+    const otherRoleCards = Object.entries(roleCounts.other || {}).map(([cap, n]) =>
+      ({ filter: { type: 'role', value: cap }, label: cap, value: n, bg: "bg-info bg-opacity-10", text: "text-info", icon: "bi-person-gear" }));
     _contactsSummaryCards = [
       { filter: { type: 'role', value: null },       label: t('contacts.total'), value: roleCounts.total,    bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
       { filter: { type: 'role', value: 'admin' },    label: t('contacts.role_admin'),    value: roleCounts.admin,    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-shield-check" },
       { filter: { type: 'role', value: 'editor' },   label: t('contacts.role_editor'),   value: roleCounts.editor,   bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-pencil-square" },
       { filter: { type: 'role', value: 'member' },   label: t('contacts.role_member'),   value: roleCounts.member,   bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person" },
       { filter: { type: 'role', value: 'user' },     label: t('contacts.role_user'),     value: roleCounts.user,     bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-person-badge" },
+      ...otherRoleCards,
       { filter: { type: 'role', value: 'sysadmin' }, label: t('contacts.role_sysadmin'), value: roleCounts.sysadmin, bg: "bg-danger bg-opacity-10",    text: "text-danger",    icon: "bi-shield-lock" },
       { filter: { type: 'state', value: null },      label: t('contacts.total'), value: stateCounts.total,      bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
       { filter: { type: 'state', value: 'active' },  label: t('contacts.state_active'),  value: stateCounts.active,  bg: "bg-success bg-opacity-10",   text: "text-success",   icon: "bi-check-circle" },
