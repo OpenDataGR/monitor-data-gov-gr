@@ -10549,7 +10549,8 @@ def _resolve_mass_email_audience(pools, criteria) -> dict:
                 diag["org_filtered"] += 1
                 continue
         diag["by_pool"][c["pool"]] += 1
-        cur = merged.setdefault(email, {"email": email, "name": "", "first_name": "", "orgs": [], "pools": []})
+        cur = merged.setdefault(email, {"email": email, "name": "", "first_name": "", "orgs": [], "pools": [], "roles": set()})
+        cur["roles"] |= c["roles"]
         if len(c["name"]) > len(cur["name"]):
             cur["name"] = c["name"]
         if len(c["first_name"]) > len(cur["first_name"]):
@@ -10560,6 +10561,8 @@ def _resolve_mass_email_audience(pools, criteria) -> dict:
         if c["pool"] not in cur["pools"]:
             cur["pools"].append(c["pool"])
     recipients = sorted(merged.values(), key=lambda r: r["email"])
+    for r in recipients:
+        r["roles"] = sorted(r["roles"])
     diag["total"] = len(recipients)
     return {"recipients": recipients, "diagnostics": diag}
 
@@ -10736,9 +10739,13 @@ def admin_mass_email_audience():
     except MassEmailAudienceError as exc:
         return jsonify({"error": str(exc)}), exc.status
     recs = resolved["recipients"]
-    return jsonify({"total": len(recs), "diagnostics": resolved["diagnostics"], "max_recipients": _MASS_EMAIL_MAX_RECIPIENTS,
-                    "sample": [{"email": r["email"], "name": r["name"], "organization": r["orgs"][0][1] if r["orgs"] else "",
-                                "pools": r["pools"]} for r in recs[:20]]})
+    row = lambda r: {"email": r["email"], "name": r["name"], "organization": r["orgs"][0][1] if r["orgs"] else "",
+                     "organizations": [t for _slug, t in r["orgs"]], "pools": r["pools"], "roles": r["roles"]}
+    out = {"total": len(recs), "diagnostics": resolved["diagnostics"], "max_recipients": _MASS_EMAIL_MAX_RECIPIENTS,
+           "sample": [row(r) for r in recs[:20]]}
+    if body.get("full"):                     # the whole list, for the panel's searchable "view all" (never more than the audience itself)
+        out["recipients"] = [row(r) for r in recs]
+    return jsonify(out)
 
 
 @app.route("/api/admin/mass-email/test", methods=["POST"])

@@ -293,7 +293,24 @@
                 <div class="small text-muted" id="massEmailRecipientSummary"></div>
               </div>
 
-              <div class="small text-muted mb-2" data-i18n="admin.me_merge_hint">Personalise with {{ '{{' }}name{{ '}}' }}, {{ '{{' }}first_name{{ '}}' }} and {{ '{{' }}organization{{ '}}' }}. Add a fallback after a bar: {{ '{{' }}first_name|colleague{{ '}}' }}.</div>
+              <div id="meMergeBox" class="border rounded p-2 mb-2 small">
+                <div class="mb-1 text-muted" data-i18n="admin.me_merge_help">Personalise each email: click a field to insert it where your cursor is. It is replaced by each recipient's own details.</div>
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('name')" data-i18n="admin.me_field_name">Full name</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('first_name')" data-i18n="admin.me_field_first_name">First name</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" onmousedown="event.preventDefault()" onclick="_meInsertField('organization')" data-i18n="admin.me_field_organization">Organization</button>
+                </div>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <label class="form-label mb-0 text-muted" for="meFallbackPerson" data-i18n="admin.me_fallback_person">If a person has no name, write:</label>
+                    <input type="text" id="meFallbackPerson" class="form-control form-control-sm" maxlength="60" autocomplete="off">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label mb-0 text-muted" for="meFallbackOrg" data-i18n="admin.me_fallback_org">If a person has no organization, write:</label>
+                    <input type="text" id="meFallbackOrg" class="form-control form-control-sm" maxlength="60" autocomplete="off">
+                  </div>
+                </div>
+              </div>
               <div class="form-check mb-3" id="meLogCommsWrap">
                 <input class="form-check-input" type="checkbox" id="meLogComms">
                 <label class="form-check-label small" for="meLogComms" data-i18n="admin.me_log_comms">Record in Communications (one entry per organization)</label>
@@ -770,6 +787,32 @@
     </div>
   </div>
 
+  <!-- Mass email: the full recipient list, searchable -->
+  <div class="modal fade" id="meRecipientsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold"><i class="bi bi-people me-2"></i><span data-i18n="admin.me_list_title">Recipients</span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="text" id="meListSearch" class="form-control form-control-sm mb-2" autocomplete="off"
+                 data-i18n-ph="admin.me_list_search" placeholder="Search by email, name or organization…" oninput="_meRenderRecipients()">
+          <div class="small text-muted mb-2" id="meListCount"></div>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead><tr>
+                <th data-i18n="admin.me_col_email">Email</th><th data-i18n="admin.me_col_name">Name</th>
+                <th data-i18n="admin.me_col_org">Organization</th><th data-i18n="admin.me_col_roles">Role</th><th data-i18n="admin.me_col_groups">Group</th>
+              </tr></thead>
+              <tbody id="meListBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Mass email confirmation modal -->
   <div class="modal fade" id="massEmailModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -931,7 +974,12 @@
         'admin.me_diag_org': '{n} were left out by the organization filters.',
         'admin.me_over_limit': 'Too many for one send (limit {max}). Narrow the criteria.',
         'admin.me_sample_note': 'First {n} shown.',
-        'admin.me_merge_hint': 'Personalise with {{ '{{' }}name{{ '}}' }}, {{ '{{' }}first_name{{ '}}' }} and {{ '{{' }}organization{{ '}}' }}. Add a fallback after a bar: {{ '{{' }}first_name|colleague{{ '}}' }}.',
+        'admin.me_merge_help': 'Personalise each email: click a field to insert it where your cursor is. It is replaced by each recipient\'s own details.',
+        'admin.me_field_name': 'Full name',
+        'admin.me_field_first_name': 'First name',
+        'admin.me_field_organization': 'Organization',
+        'admin.me_fallback_person': 'If a person has no name, write:',
+        'admin.me_fallback_org': 'If a person has no organization, write:',
         'admin.me_log_comms': 'Record in Communications (one entry per organization)',
         'admin.me_send_test': 'Send a test to me',
         'admin.me_test_sent': 'Test sent to {email}.',
@@ -949,6 +997,16 @@
         'admin.me_cancel': 'Cancel',
         'admin.me_resume': 'Resume',
         'admin.me_failures': '{n} failed',
+        'admin.me_view_list': 'View the full list ({n})',
+        'admin.me_list_title': 'Recipients',
+        'admin.me_list_search': 'Search by email, name or organization…',
+        'admin.me_list_showing': 'Showing {shown} of {total}',
+        'admin.me_list_cap': 'only the first {n} are listed; refine the search to see others',
+        'admin.me_col_email': 'Email',
+        'admin.me_col_name': 'Name',
+        'admin.me_col_org': 'Organization',
+        'admin.me_col_roles': 'Role',
+        'admin.me_col_groups': 'Group',
         'admin.send_confirm_summary': 'You are about to send this email to {n} recipient(s).',
         'admin.send_mass_email_modal_title': 'Send Mass Email?',
         'admin.send_mass_email_modal_note': 'This sends immediately and cannot be recalled.',
@@ -1134,7 +1192,12 @@
         'admin.me_diag_org': '{n} εξαιρέθηκαν από τα φίλτρα οργανισμού.',
         'admin.me_over_limit': 'Πάρα πολλοί για μία αποστολή (όριο {max}). Περιορίστε τα κριτήρια.',
         'admin.me_sample_note': 'Εμφανίζονται οι πρώτοι {n}.',
-        'admin.me_merge_hint': 'Εξατομίκευση με {{ '{{' }}name{{ '}}' }}, {{ '{{' }}first_name{{ '}}' }} και {{ '{{' }}organization{{ '}}' }}. Εναλλακτική τιμή μετά από μπάρα: {{ '{{' }}first_name|συνάδελφε{{ '}}' }}.',
+        'admin.me_merge_help': 'Εξατομίκευση κάθε email: πατήστε ένα πεδίο για να μπει εκεί που βρίσκεται ο δρομέας. Αντικαθίσταται με τα στοιχεία κάθε παραλήπτη.',
+        'admin.me_field_name': 'Πλήρες όνομα',
+        'admin.me_field_first_name': 'Μικρό όνομα',
+        'admin.me_field_organization': 'Οργανισμός',
+        'admin.me_fallback_person': 'Αν ο παραλήπτης δεν έχει όνομα, γράψε:',
+        'admin.me_fallback_org': 'Αν ο παραλήπτης δεν έχει οργανισμό, γράψε:',
         'admin.me_log_comms': 'Καταγραφή στις Επικοινωνίες (μία εγγραφή ανά οργανισμό)',
         'admin.me_send_test': 'Αποστολή δοκιμής σε εμένα',
         'admin.me_test_sent': 'Η δοκιμή στάλθηκε στο {email}.',
@@ -1152,6 +1215,16 @@
         'admin.me_cancel': 'Ακύρωση',
         'admin.me_resume': 'Συνέχεια',
         'admin.me_failures': '{n} απέτυχαν',
+        'admin.me_view_list': 'Προβολή πλήρους λίστας ({n})',
+        'admin.me_list_title': 'Παραλήπτες',
+        'admin.me_list_search': 'Αναζήτηση με email, όνομα ή οργανισμό…',
+        'admin.me_list_showing': 'Εμφανίζονται {shown} από {total}',
+        'admin.me_list_cap': 'εμφανίζονται μόνο οι πρώτοι {n}· περιορίστε την αναζήτηση για τους υπόλοιπους',
+        'admin.me_col_email': 'Email',
+        'admin.me_col_name': 'Όνομα',
+        'admin.me_col_org': 'Οργανισμός',
+        'admin.me_col_roles': 'Ρόλος',
+        'admin.me_col_groups': 'Ομάδα',
         'admin.send_confirm_summary': 'Πρόκειται να στείλετε αυτό το email σε {n} παραλήπτες.',
         'admin.send_mass_email_modal_title': 'Αποστολή Μαζικού Email;',
         'admin.send_mass_email_modal_note': 'Η αποστολή γίνεται άμεσα και δεν μπορεί να ανακληθεί.',
@@ -1702,6 +1775,7 @@
         el.innerHTML = `
           <div class="fw-semibold ${data.total ? '' : 'text-danger'}">${t('admin.me_preview_total').replace('{n}', data.total)}</div>
           <div class="text-muted">${esc(bits.join(' · '))}</div>
+          ${data.total ? `<a href="#" class="small" onclick="_meOpenRecipients();return false;"><i class="bi bi-list-ul me-1"></i>${t('admin.me_view_list').replace('{n}', data.total)}</a>` : ''}
           ${notes.map(n => `<div class="text-muted">${esc(n)}</div>`).join('')}${over}
           ${data.sample.length ? `<div class="table-responsive mt-2"><table class="table table-sm mb-0"><tbody>${data.sample.map(r => `
             <tr><td>${esc(r.email)}</td><td>${esc(r.name)}</td><td class="text-muted">${esc(r.organization)}</td></tr>`).join('')}</tbody></table></div>
@@ -1712,11 +1786,81 @@
       }
     }
 
+    // The whole audience, searchable (the preview only shows a sample of 20).
+    let _meAllRecipients = [], _meListModal = null;
+
+    async function _meOpenRecipients() {
+      try {
+        const resp = await fetch('../api/admin/mass-email/audience', _meForm({..._meAudience(), full: true}));
+        const data = await _parseJsonResponse(resp);
+        if (!resp.ok) throw new Error(data.error || t('admin.failed_to_send'));
+        _meAllRecipients = data.recipients || [];
+        document.getElementById('meListSearch').value = '';
+        _meRenderRecipients();
+        if (!_meListModal) _meListModal = new bootstrap.Modal(document.getElementById('meRecipientsModal'));
+        _meListModal.show();
+      } catch (e) {
+        document.getElementById('mePreviewResult').insertAdjacentHTML('beforeend', `<div class="text-danger">${esc(e.message)}</div>`);
+      }
+    }
+
+    function _meRenderRecipients() {
+      const q = _meNorm(document.getElementById('meListSearch').value.trim());
+      const rows = q ? _meAllRecipients.filter(r => _meNorm([r.email, r.name, ...(r.organizations || [])].join(' ')).includes(q)) : _meAllRecipients;
+      const CAP = 500, shown = rows.slice(0, CAP);
+      document.getElementById('meListCount').textContent = t('admin.me_list_showing').replace('{shown}', shown.length).replace('{total}', _meAllRecipients.length)
+        + (rows.length > CAP ? ' — ' + t('admin.me_list_cap').replace('{n}', CAP) : '');
+      document.getElementById('meListBody').innerHTML = shown.map(r => {
+        const orgs = r.organizations || [];
+        const org = orgs.length ? esc(orgs[0]) + (orgs.length > 1 ? ` <span class="text-muted">+${orgs.length - 1}</span>` : '') : '<span class="text-muted">—</span>';
+        return `<tr><td>${esc(r.email)}</td><td>${esc(r.name)}</td><td>${org}</td>
+          <td class="small">${esc((r.roles || []).map(x => t('admin.me_role_' + x)).join(', '))}</td>
+          <td class="small text-muted">${esc((r.pools || []).map(x => t('admin.me_pool_' + x)).join(', '))}</td></tr>`;
+      }).join('');
+    }
+
+    // Merge fields: insert at the cursor; the fallback texts are written into the message at send time (field, a bar, then the fallback).
+    let _meLastField = 'editor';
+    document.addEventListener('DOMContentLoaded', () => {
+      const subj = document.getElementById('massEmailSubject');
+      subj.addEventListener('focus', () => { _meLastField = 'subject'; });
+      massEmailQuill.on('selection-change', r => { if (r) _meLastField = 'editor'; });
+      document.getElementById('meFallbackPerson').value = _lang === 'el' ? 'συνάδελφε' : 'colleague';
+    });
+
+    function _meInsertField(key) {
+      const tag = '{' + '{' + key + '}' + '}';
+      if (_meLastField === 'subject') {
+        const el = document.getElementById('massEmailSubject'), a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+        el.value = el.value.slice(0, a) + tag + el.value.slice(b);
+        el.focus(); el.setSelectionRange(a + tag.length, a + tag.length);
+      } else if (_massEmailHtmlMode) {
+        const el = document.getElementById('massEmailHtmlSource'), a = el.selectionStart, b = el.selectionEnd;
+        el.value = el.value.slice(0, a) + tag + el.value.slice(b);
+        el.focus(); el.setSelectionRange(a + tag.length, a + tag.length);
+      } else {
+        const r = massEmailQuill.getSelection(true);
+        massEmailQuill.deleteText(r.index, r.length);
+        massEmailQuill.insertText(r.index, tag);
+        massEmailQuill.setSelection(r.index + tag.length);
+      }
+    }
+
+    function _meBakeFallbacks(text) {
+      const clean = id => document.getElementById(id).value.replace(/[|{}]/g, '').trim();
+      const fb = {name: clean('meFallbackPerson'), first_name: clean('meFallbackPerson'), organization: clean('meFallbackOrg')};
+      return text.replace(/\{\{\s*(name|first_name|organization)\s*\}\}/gi, (m, k) => {
+        const v = fb[k.toLowerCase()];
+        return v ? '{' + '{' + k.toLowerCase() + '|' + v + '}' + '}' : m;
+      });
+    }
+
     function _meSubjectAndMessage() {
       if (_massEmailHtmlMode) toggleMassEmailHtmlSource();       // apply any unsaved HTML edits first
       const subject = document.getElementById('massEmailSubject').value.trim();
       if (!subject || !massEmailQuill.getText().trim().length) { _meShowResult(t('admin.subject_message_required'), 'danger'); return null; }
-      return {subject, message: massEmailQuill.root.innerHTML};
+      if (_meMode !== 'criteria') return {subject, message: massEmailQuill.root.innerHTML};
+      return {subject: _meBakeFallbacks(subject), message: _meBakeFallbacks(massEmailQuill.root.innerHTML)};
     }
 
     async function sendMassEmailTest() {

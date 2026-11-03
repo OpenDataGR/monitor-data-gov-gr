@@ -403,8 +403,7 @@ def test_the_admin_page_renders_with_the_merge_field_hint_intact_in_both_languag
     r = admin_client.get("/admin/users")
     assert r.status_code == 200
     page = r.get_data(as_text=True)
-    assert "Personalise with {{name}}, {{first_name}} and {{organization}}. Add a fallback after a bar: {{first_name|colleague}}." in page
-    assert "Εξατομίκευση με {{name}}, {{first_name}} και {{organization}}." in page
+    assert "click a field to insert it" in page and "Αν ο παραλήπτης δεν έχει όνομα" in page
     for hook in ("meCriteriaPanel", "previewMassEmailAudience", "sendMassEmailTest", "meJobCard", "_loadMassEmailOptions"):
         assert hook in page
 
@@ -414,3 +413,18 @@ def test_a_send_is_refused_up_front_when_email_is_not_configured(admin_client, m
     _contact("a@x.gr", "Org B")
     r = admin_client.post("/api/admin/mass-email", json={"subject": "S", "message": "<p>x</p>", "audience": {"pools": ["contacts"]}})
     assert r.status_code == 503 and "not configured" in r.get_json()["error"] and MassEmailJob.query.count() == 0
+
+
+def test_the_full_list_is_only_returned_on_request_and_carries_roles(admin_client):
+    _contact("a@x.gr", "Org B")
+    _contact("c@x.gr", "Org B")
+    body = {"pools": ["contacts"], "criteria": {"orgs": ["org-b"]}}
+    assert "recipients" not in admin_client.post("/api/admin/mass-email/audience", json=body).get_json()
+    data = admin_client.post("/api/admin/mass-email/audience", json={**body, "full": True}).get_json()
+    assert [r["email"] for r in data["recipients"]] == ["a@x.gr", "c@x.gr"] == [r["email"] for r in data["sample"]]
+    assert data["recipients"][0]["organizations"] == ["Org B"] and isinstance(data["recipients"][0]["roles"], list)
+
+
+def test_the_panel_has_insert_buttons_and_configurable_fallbacks(admin_client):
+    html = admin_client.get("/admin/users").get_data(as_text=True)
+    assert "_meInsertField('first_name')" in html and 'id="meFallbackPerson"' in html and "{{name|" not in html

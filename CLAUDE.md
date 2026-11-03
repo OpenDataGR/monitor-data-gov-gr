@@ -316,6 +316,8 @@ case-less `Communication` per organization reached (source `mass-email`, Outboun
 time, refused (503) when SMTP isn't configured. **`admin_users.html` is a Jinja template: a literal `{{name}}` in it must be written
 `{{ '{{' }}name{{ '}}' }}`** or it renders as nothing. POSTs use the `d=<base64>` form (the WAF blocks raw HTML bodies). Tests: `tests/test_mass_email_audience.py`.
 
+**Full list + merge fields (2026-11-03):** the preview's "View the full list" posts the same audience with `full: true` and gets every recipient (email, name, organizations, roles, pools) for a client-side, accent-insensitive search modal. Merge fields are inserted with buttons, and the "if no name / no organization, write" fallbacks are inputs: `_meBakeFallbacks` turns `{{name}}` into `{{name|<fallback>}}` in the subject/message at send time (criteria mode only), so the backend and the stored job need no extra field. Never write a literal `{{x|y}}` in `admin_users.html` (even in a JS comment): Jinja reads it as a filter.
+
 ## Conventions
 
 - i18n: every user-facing string needs both an `en` and `el` entry, kept
