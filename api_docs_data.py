@@ -197,7 +197,7 @@ ROUTES = {
     ],
     "org-analytics": [
         {"methods": ["GET"], "path": "/api/org-analytics/categories",
-         "desc": "Peer-group (ministry/municipality/region/decentralized_admin/university/other) counts and averages from the latest daily snapshot batch."},
+         "desc": "Peer-group (ministry/municipality/region/decentralized_admin/national_authority/university/company/other) counts and averages from the latest daily snapshot batch."},
         {"methods": ["GET"], "path": "/api/org-analytics/<org_slug>/scorecard",
          "desc": "One org's latest snapshot plus portal-wide averages and percentile rank for dataset count and each check's pass rate."},
         {"methods": ["GET"], "path": "/api/org-analytics/<org_slug>/peer-comparison",

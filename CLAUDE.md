@@ -320,6 +320,8 @@ time, refused (503) when SMTP isn't configured. **`admin_users.html` is a Jinja 
 
 **Roles come from CKAN (2026-11-03):** a portal member's role is `_capacity_role(capacity)` -- the CKAN capacity as reported, so a role the portal adds later appears in the Role filter by itself (`org_<capacity>`, labelled with CKAN's own word via `role_labels`; a capacity that equals a built-in role id joins it). Only the contact-directory roles (`_CONTACT_TYPE_ROLE`) are still a fixed list.
 
+**Org categories come from CKAN's `publishertype` (2026-11-03).** Each CKAN organization carries a top-level `publishertype` (an ADMS publisher-type IRI, e.g. `.../publishertype/NationalAuthority`) -- returned by `organization_show` but NOT by `organization_list` (checked live). `_refresh_org_publishertypes` reads it for every org (one GET each, 6 in parallel, at most daily, background loop only) into `_org_publishertype`, `_do_classify_orgs` stores it in `OrgClassification.publisher_type` and `_classify_org(title, publisher_type)` maps it: Local->municipality, Regional->region, Academia->university, Company->company, NationalAuthority->ministry / decentralized_admin by title else the new `national_authority`, other types->other; no type -> the old title keywords. Categories are now ministry, municipality, region, decentralized_admin, national_authority, university, company, other. Manual overrides still win. This supersedes the HRMS-payload question above for categorisation.
+
 ## Conventions
 
 - i18n: every user-facing string needs both an `en` and `el` entry, kept

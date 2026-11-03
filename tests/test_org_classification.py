@@ -164,3 +164,37 @@ class TestOrgSlugBackfill:
         row = HvdDatasetCheckCache.query.get("ds2")
         assert row is not None
         assert row.org_slug == "a-municipality"
+
+
+class TestPublisherTypeFromCkan:
+    P = "http://purl.org/adms/publishertype/"
+
+    def test_ckans_publisher_type_decides_over_the_title(self):
+        c = appmod._classify_org
+        assert c("Κάτι χωρίς λέξη-κλειδί", self.P + "LocalAuthority") == "municipality"
+        assert c("Κάτι", self.P + "RegionalAuthority") == "region"
+        assert c("Κάτι", self.P + "Academia-ScientificOrganisation") == "university"
+        assert c("Ελληνικό Μετρό Α.Ε.", self.P + "Company") == "company"
+        assert c("Δήμος Αβδήρων", self.P + "Company") == "company"             # CKAN wins over the keyword
+        assert c("Κάτι", self.P + "NonProfitOrganisation") == "other"
+
+    def test_a_national_authority_is_a_ministry_a_decentralized_admin_or_a_national_authority(self):
+        c = appmod._classify_org
+        assert c("Υπουργείο Ψηφιακής Διακυβέρνησης", self.P + "NationalAuthority") == "ministry"
+        assert c("Αποκεντρωμένη Διοίκηση Θεσσαλίας - Στερεάς Ελλάδας", self.P + "NationalAuthority") == "decentralized_admin"
+        assert c("Εθνική Μετεωρολογική Υπηρεσία (ΕΜΥ)", self.P + "NationalAuthority") == "national_authority"
+        assert c("1η Υγειονομική Περιφέρεια (ΥΠΕ) Αττικής", self.P + "NationalAuthority") == "national_authority"
+
+    def test_without_a_publisher_type_the_title_keywords_still_apply(self):
+        assert appmod._classify_org("Δήμος Αβδήρων") == "municipality" and appmod._classify_org("Δήμος Αβδήρων", "") == "municipality"
+
+    def test_the_stored_type_is_kept_when_ckan_could_not_be_read(self, app):
+        with app.app_context():
+            appmod._orgs_cache["data"] = [{"name": "o1", "title": "Κάτι"}]
+            appmod._org_publishertype["data"] = {"o1": self.P + "Company"}
+            appmod._do_classify_orgs()
+            appmod._org_publishertype["data"] = {}                                  # next refresh failed for everything
+            appmod._do_classify_orgs()
+            row = appmod.OrgClassification.query.get("o1")
+            assert row.category == "company" and row.publisher_type == self.P + "Company"
+        appmod._org_publishertype["data"] = {}

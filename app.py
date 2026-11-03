@@ -396,6 +396,9 @@ if _is_main_process():
         if 'org_codes' not in _case_cols:
             db.session.execute(text('ALTER TABLE cases ADD COLUMN org_codes TEXT'))
             db.session.commit()
+        if 'publisher_type' not in [c['name'] for c in _insp.get_columns('org_classifications')]:
+            db.session.execute(text('ALTER TABLE org_classifications ADD COLUMN publisher_type VARCHAR(200)'))
+            db.session.commit()
         # Cleanup: a case whose last communication was deleted used to linger forever
         # with zero entries, still counted in the Communications tab's Total/Open/
         # Closed/stale summaries (communications_delete() now deletes the case itself
@@ -1879,16 +1882,64 @@ _ORG_CATEGORY_KEYWORDS = [
 ]
 
 
-def _classify_org(org_title: str) -> str:
-    """Best-effort peer-group category from an org's title alone -- see
-    _ORG_CATEGORY_KEYWORDS's comment above. Returns "other" when nothing
-    matches (e.g. a legal entity, a general secretariat with no keyword of
-    its own, etc.)."""
+# CKAN's own `publishertype` on each organization (the ADMS publisher-type vocabulary DCAT-AP's dct:type uses) is the authority when an org has
+# one. A National authority is split by title into the two kinds this dashboard already compared separately (a ministry, a decentralized
+# administration); every other National authority is the new "national_authority" peer group. Types with no counterpart here are "other".
+_PUBLISHERTYPE_CATEGORY = {
+    "LocalAuthority": "municipality", "RegionalAuthority": "region", "Academia-ScientificOrganisation": "university",
+    "Company": "company",
+}
+
+
+def _classify_org(org_title: str, publisher_type: str = None) -> str:
+    """Peer-group category of an org. With CKAN's publisher type, that decides (see _PUBLISHERTYPE_CATEGORY); without one, a best-effort
+    guess from the title alone -- see _ORG_CATEGORY_KEYWORDS's comment above. "other" when nothing matches."""
     norm = _norm_org_text(org_title)
+    kind = (publisher_type or "").rstrip("/").rsplit("/", 1)[-1]
+    if kind in _PUBLISHERTYPE_CATEGORY:
+        return _PUBLISHERTYPE_CATEGORY[kind]
+    if kind == "NationalAuthority":
+        for category in ("ministry", "decentralized_admin"):
+            if any(kw in norm for kw in dict(_ORG_CATEGORY_KEYWORDS)[category]):
+                return category
+        return "national_authority"
+    if kind:
+        return "other"
     for category, keywords in _ORG_CATEGORY_KEYWORDS:
         if any(kw in norm for kw in keywords):
             return category
     return "other"
+
+
+_ORG_PUBLISHERTYPE_REFRESH = 24 * 3600
+_org_publishertype = {"at": 0.0, "data": {}}      # {slug: IRI}; the list endpoint does not return the field, only organization_show does
+
+
+def _refresh_org_publishertypes(force: bool = False) -> None:
+    """Reads each org's `publishertype` from CKAN's organization_show (one GET per org, a few in parallel), at most once a day. An org whose
+    call fails keeps the value it had. Run by the background loop just before _do_classify_orgs, never from a request."""
+    if not force and time.time() - _org_publishertype["at"] < _ORG_PUBLISHERTYPE_REFRESH:
+        return
+    slugs = [o.get("name") for o in (_orgs_cache.get("data") or []) if o.get("name")]
+
+    def one(slug):
+        try:
+            r = requests.get(f"{config.PORTAL_BASE}/api/3/action/organization_show", params={"id": slug},
+                             timeout=config.REQUEST_TIMEOUT, headers={"User-Agent": "DataGovGR-Dashboard/1.0"})
+            d = r.json()
+            if d.get("success"):
+                return slug, (d["result"].get("publishertype") or "")
+        except Exception:
+            pass
+        return slug, None
+
+    got = dict(_org_publishertype["data"])
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        for slug, value in pool.map(one, slugs):
+            if value is not None:
+                got[slug] = value
+    _org_publishertype["data"] = got
+    _org_publishertype["at"] = time.time()
 
 
 def _do_classify_orgs() -> None:
@@ -1911,16 +1962,18 @@ def _do_classify_orgs() -> None:
             if not slug:
                 continue
             title = o.get("title") or slug
-            heuristic = _classify_org(title)
             row = existing.get(slug)
+            ptype = _org_publishertype["data"].get(slug, row.publisher_type if row else None) or None
+            heuristic = _classify_org(title, ptype)
             if not row:
                 row = OrgClassification(
                     org_slug=slug, org_title=title, category=heuristic,
-                    heuristic_category=heuristic, is_override=False,
+                    heuristic_category=heuristic, is_override=False, publisher_type=ptype,
                 )
                 db.session.add(row)
             else:
                 row.org_title = title
+                row.publisher_type = ptype
                 row.heuristic_category = heuristic
                 if not row.is_override:
                     row.category = heuristic
@@ -2034,6 +2087,7 @@ def _background_loop():
     except Exception as exc:
         print(f"[orgs] initial error: {exc}")
     try:
+        _refresh_org_publishertypes()
         _do_classify_orgs()
     except Exception as exc:
         print(f"[org-classify] initial error: {exc}")
@@ -2075,6 +2129,7 @@ def _background_loop():
             except Exception as exc:
                 print(f"[orgs] refresh error: {exc}")
             try:
+                _refresh_org_publishertypes()
                 _do_classify_orgs()
             except Exception as exc:
                 print(f"[org-classify] refresh error: {exc}")

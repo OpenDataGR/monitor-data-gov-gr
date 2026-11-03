@@ -398,7 +398,9 @@ const TRANSLATIONS = {
     'org_analytics.category_municipality': 'Municipality',
     'org_analytics.category_region': 'Region',
     'org_analytics.category_decentralized_admin': 'Decentralized Administration',
+    'org_analytics.category_national_authority': 'National authority',
     'org_analytics.category_university': 'University',
+    'org_analytics.category_company': 'Company',
     'org_analytics.category_other': 'Other',
     'comms.title': 'Communications Log',
     'comms.view_all': 'All',
@@ -1081,7 +1083,9 @@ const TRANSLATIONS = {
     'org_analytics.category_municipality': 'Δήμος',
     'org_analytics.category_region': 'Περιφέρεια',
     'org_analytics.category_decentralized_admin': 'Αποκεντρωμένη Διοίκηση',
+    'org_analytics.category_national_authority': 'Εθνική αρχή',
     'org_analytics.category_university': 'Πανεπιστήμιο',
+    'org_analytics.category_company': 'Εταιρεία',
     'org_analytics.category_other': 'Άλλο',
     'comms.title': 'Αρχείο Επικοινωνιών',
     'comms.view_all': 'Όλες',
@@ -4956,7 +4960,7 @@ function renderOrgsTable(orgs) {
 }
 
 // ── Organization Analytics tab ───────────────────────────────────────────────
-const ORG_ANALYTICS_CATEGORIES = ['ministry', 'municipality', 'region', 'decentralized_admin', 'university', 'other'];
+const ORG_ANALYTICS_CATEGORIES = ['ministry', 'municipality', 'region', 'decentralized_admin', 'national_authority', 'university', 'company', 'other'];
 function _orgAnalyticsCategoryLabel(cat) {
   return t('org_analytics.category_' + (ORG_ANALYTICS_CATEGORIES.includes(cat) ? cat : 'other'));
 }

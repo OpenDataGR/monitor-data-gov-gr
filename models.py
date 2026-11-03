@@ -257,7 +257,7 @@ class MqaCache(db.Model):
         return json.loads(self.data_json)
 
 
-ORG_CATEGORIES = ("ministry", "municipality", "region", "decentralized_admin", "university", "other")
+ORG_CATEGORIES = ("ministry", "municipality", "region", "decentralized_admin", "national_authority", "university", "company", "other")
 
 
 class OrgClassification(db.Model):
@@ -274,6 +274,7 @@ class OrgClassification(db.Model):
     org_title             = db.Column(db.String(300))  # denormalized, for the admin override UI
     category              = db.Column(db.String(30), nullable=False)  # effective category, one of ORG_CATEGORIES
     heuristic_category     = db.Column(db.String(30))  # what _classify_org currently computes, independent of any override
+    publisher_type         = db.Column(db.String(200))  # the org's own `publishertype` in CKAN (an ADMS publisher-type IRI), when it has one
     is_override            = db.Column(db.Boolean, nullable=False, default=False)
     overridden_by_user_id  = db.Column(db.Integer)  # plain column, no FK -- same reasoning as MassEmailLog.sent_by_user_id
     overridden_at          = db.Column(db.DateTime)
@@ -285,6 +286,7 @@ class OrgClassification(db.Model):
             "org_title":         self.org_title or self.org_slug,
             "category":          self.category,
             "heuristic_category": self.heuristic_category,
+            "publisher_type":    self.publisher_type,
             "is_override":       self.is_override,
             "overridden_at":     self.overridden_at.isoformat() if self.overridden_at else None,
             "classified_at":     self.classified_at.isoformat() if self.classified_at else None,

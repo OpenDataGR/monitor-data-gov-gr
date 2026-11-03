@@ -931,6 +931,7 @@
         'admin.org_class_clear_override': 'Clear override',
         'admin.org_class_category_ministry': 'Ministry', 'admin.org_class_category_municipality': 'Municipality',
         'admin.org_class_category_region': 'Region', 'admin.org_class_category_decentralized_admin': 'Decentralized Administration',
+        'admin.org_class_category_national_authority': 'National authority', 'admin.org_class_category_company': 'Company',
         'admin.org_class_category_university': 'University', 'admin.org_class_category_other': 'Other',
         'admin.invite_title': 'Invite a new user', 'admin.email': 'Email', 'admin.name': 'Name',
         'admin.admin_checkbox': 'Admin', 'admin.invite': 'Invite',
@@ -1151,6 +1152,7 @@
         'admin.org_class_clear_override': 'Καθαρισμός παράκαμψης',
         'admin.org_class_category_ministry': 'Υπουργείο', 'admin.org_class_category_municipality': 'Δήμος',
         'admin.org_class_category_region': 'Περιφέρεια', 'admin.org_class_category_decentralized_admin': 'Αποκεντρωμένη Διοίκηση',
+        'admin.org_class_category_national_authority': 'Εθνική αρχή', 'admin.org_class_category_company': 'Εταιρεία',
         'admin.org_class_category_university': 'Πανεπιστήμιο', 'admin.org_class_category_other': 'Άλλο',
         'admin.invite_title': 'Πρόσκληση νέου χρήστη', 'admin.email': 'Email', 'admin.name': 'Όνομα',
         'admin.admin_checkbox': 'Διαχειριστής', 'admin.invite': 'Πρόσκληση',
@@ -2720,7 +2722,7 @@
     }
 
     // ── Org Classifications (peer-group category for Organization Analytics) ──
-    const ORG_CLASS_CATEGORIES = ['ministry', 'municipality', 'region', 'decentralized_admin', 'university', 'other'];
+    const ORG_CLASS_CATEGORIES = ['ministry', 'municipality', 'region', 'decentralized_admin', 'national_authority', 'university', 'company', 'other'];
     function _orgClassCategoryLabel(cat) {
       return t('admin.org_class_category_' + (ORG_CLASS_CATEGORIES.includes(cat) ? cat : 'other'));
     }
