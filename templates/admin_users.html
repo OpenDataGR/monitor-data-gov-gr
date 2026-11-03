@@ -56,6 +56,8 @@
     .admin-nav .nav-link:not(.active):hover { background: #e9ecef; }
     .admin-nav .nav-link i { width: 1.4rem; text-align: center; flex-shrink: 0; }
     #massEmailMessageEditor .ql-editor { min-height: 150px; }
+    /* the recipient list scrolls under a fixed search box and a fixed header row */
+    .me-list-table thead th { position: sticky; top: 0; z-index: 1; background: var(--bs-modal-bg, var(--bs-body-bg)); }
     .back-to-top-btn {
       display: none; position: fixed; bottom: 1.5rem; right: 1.5rem;
       width: 44px; height: 44px; border-radius: 50%; background: #003366; color: #fff;
@@ -795,12 +797,12 @@
           <h5 class="modal-title fw-bold"><i class="bi bi-people me-2"></i><span data-i18n="admin.me_list_title">Recipients</span></h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body d-flex flex-column" style="height:70vh;overflow:hidden">
           <input type="text" id="meListSearch" class="form-control form-control-sm mb-2" autocomplete="off"
                  data-i18n-ph="admin.me_list_search" placeholder="Search by email, name or organization…" oninput="_meRenderRecipients()">
           <div class="small text-muted mb-2" id="meListCount"></div>
-          <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle mb-0">
+          <div class="table-responsive flex-grow-1" style="min-height:0;overflow:auto">
+            <table class="table table-sm table-hover align-middle mb-0 me-list-table">
               <thead><tr>
                 <th data-i18n="admin.me_col_email">Email</th><th data-i18n="admin.me_col_name">Name</th>
                 <th data-i18n="admin.me_col_org">Organization</th><th data-i18n="admin.me_col_roles">Role</th><th data-i18n="admin.me_col_groups">Group</th>
