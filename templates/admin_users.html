@@ -49,9 +49,9 @@
       border-radius: .5rem;
       font-weight: 600;
       font-size: .9rem;
-      white-space: nowrap;
       overflow: hidden;
     }
+    .admin-nav .nav-link .sidebar-label { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
     .admin-nav .nav-link.active { background: #0057b8; color: #fff; }
     .admin-nav .nav-link:not(.active):hover { background: #e9ecef; }
     .admin-nav .nav-link i { width: 1.4rem; text-align: center; flex-shrink: 0; }
@@ -68,7 +68,7 @@
 
     /* ── Collapsible sidebar (same pattern as the main dashboard) ────── */
     .admin-sidebar {
-      width: 220px; flex-shrink: 0; background: #fff; border-radius: 12px;
+      width: 240px; flex-shrink: 0; background: #fff; border-radius: 12px;
       box-shadow: 0 2px 8px rgba(0,0,0,.08); padding: .6rem; margin-right: 1rem;
       position: sticky; top: 1rem; transition: width .2s ease;
     }
