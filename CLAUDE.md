@@ -150,7 +150,9 @@ button on `login.html`. **Off until `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`,
 every `_CHECK_CHECKPOINT_EVERY` (200) results via `_persist_checked_rows`, instead of once after the whole run. The next run
 already skips any dataset whose cached result has the current check version and unchanged `metadata_modified`, so a run
 killed part-way (deploy, reboot, the unit's `MemoryMax`) resumes instead of restarting from zero -- *provided someone starts
-it again* (the nightly timer restarts at worker boot, so that can be up to 24 h later; clicking Run resumes it at once).
+it again* (the nightly loop treats a check as due 24 h after it LAST FINISHED -- `_check_last_finished_epoch`, the stored result's timestamp --
+not 24 h after process start, so deploys no longer push the nightly checks back; a killed run writes no result and is simply overdue at the
+next loop pass. Clicking Run resumes it at once).
 `tests/test_quality_checkpoint.py` kills a run mid-way and asserts what survived; it fails if checkpointing is disabled.
 The VM froze ~2.5 h on 2026-11-01 from a steady ~1.5 GB/day memory growth (16 GB, no swap); `MemoryMax` was added to both units
 and the evidence is in `deploy/README.md`. **The leak itself is still unidentified** -- `~/memlog.txt` on the VM (10-min samples)

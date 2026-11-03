@@ -2008,6 +2008,20 @@ def _latest_org_snapshots() -> list:
         return OrgSnapshot.query.filter_by(computed_at=latest_ts).all()
 
 
+def _check_last_finished_epoch(check_type: str) -> float:
+    """UTC epoch seconds when this SHACL check's stored result was last written (a completed run, or a deliberately
+    cancelled partial one), or 0.0 if it never produced one -- which makes it due immediately. A run killed part-way
+    (deploy, reboot) writes nothing, so it stays overdue and is started again, resuming from its saved batches."""
+    try:
+        with app.app_context():
+            row = _QUALITY_CHECKS[check_type]["cache_model"].query.get(1)
+            if row and row.fetched_at:
+                return row.fetched_at.replace(tzinfo=timezone.utc).timestamp()
+    except Exception as exc:
+        print(f"[{check_type}-check] could not read when it last finished: {exc}")
+    return 0.0
+
+
 def _background_loop():
     # Run immediately on startup, then repeat every interval
     try:
@@ -2039,9 +2053,12 @@ def _background_loop():
     last_orgs_refresh           = time.time()
     last_dataset_growth_refresh = time.time()
     last_geo_datasets_refresh   = time.time()
-    last_hvd_check_refresh      = time.time()
-    last_dcat_check_refresh     = time.time()
-    last_geodcat_check_refresh  = time.time()
+    # The three SHACL checks are due 24 h after they LAST FINISHED (the stored result's timestamp), not 24 h after this process
+    # started: counting from process start meant every deploy/restart pushed the nightly checks back another day, so with
+    # more than one deploy a day they never ran. A check that never finished is due at the first pass of the loop.
+    last_hvd_check_refresh      = _check_last_finished_epoch("hvd")
+    last_dcat_check_refresh     = _check_last_finished_epoch("dcat")
+    last_geodcat_check_refresh  = _check_last_finished_epoch("geodcat")
     last_mqa_refresh            = time.time()
     last_pm_refresh             = time.time()
     last_org_snapshot_refresh   = time.time()
