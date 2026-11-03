@@ -1825,7 +1825,6 @@
       const subj = document.getElementById('massEmailSubject');
       subj.addEventListener('focus', () => { _meLastField = 'subject'; });
       massEmailQuill.on('selection-change', r => { if (r) _meLastField = 'editor'; });
-      document.getElementById('meFallbackPerson').value = _lang === 'el' ? 'συνάδελφε' : 'colleague';
     });
 
     function _meInsertField(key) {
