@@ -10437,6 +10437,16 @@ def _capacity_role(capacity):
     return _CAPACITY_ROLE.get(cap) or "org_" + slug
 
 
+def _roles_by_pool(extra: dict) -> dict:
+    """Which roles each registry can actually produce, so the panel can show them under the registry they belong to."""
+    order = {r: i for i, r in enumerate(_MASS_EMAIL_ROLES)}
+    contacts = set(_CONTACT_TYPE_ROLE.values())
+    members = set(_CAPACITY_ROLE.values()) | set(_CAPACITY_ALIASES.values()) | set(extra)
+    users = {"org_admin", "dashboard_admin", "dashboard_superadmin"}          # org_admin = a CKAN org admin who signed in through Keycloak
+    key = lambda r: (order.get(r, len(order)), r)
+    return {"contacts": sorted(contacts, key=key), "members": sorted(members, key=key), "users": sorted(users, key=key)}
+
+
 def _discovered_capacity_roles() -> dict:
     """{role id: the capacity as CKAN spells it} for capacities present in the loaded portal members and not built in."""
     out = {}
@@ -10761,7 +10771,7 @@ def admin_mass_email_options():
         return err
     orgs = sorted(({"slug": slug, "title": title} for slug, title in _org_title_by_slug().items()), key=lambda o: o["title"].lower())
     extra = _discovered_capacity_roles()
-    return jsonify({"pools": list(_MASS_EMAIL_POOLS), "roles": list(_MASS_EMAIL_ROLES) + sorted(extra), "role_labels": extra,
+    return jsonify({"pools": list(_MASS_EMAIL_POOLS), "roles": list(_MASS_EMAIL_ROLES) + sorted(extra), "role_labels": extra, "role_groups": _roles_by_pool(extra),
                     "categories": list(ORG_CATEGORIES),
                     "quality": list(_MASS_EMAIL_QUALITY), "merge_fields": list(_MASS_EMAIL_MERGE_FIELDS),
                     "max_recipients": _MASS_EMAIL_MAX_RECIPIENTS, "orgs": orgs})

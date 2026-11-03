@@ -457,3 +457,10 @@ def test_the_members_tab_counts_a_capacity_it_has_never_heard_of():
     import inspect
     src = inspect.getsource(appmod)
     assert '"other": dict(sorted(other.items()))' in src
+
+
+def test_the_options_say_which_registry_each_role_belongs_to(admin_client):
+    g = admin_client.get("/api/admin/mass-email/options").get_json()["role_groups"]
+    assert "data_steward" in g["contacts"] and "data_steward" not in g["members"]
+    assert {"org_central_admin", "org_admin", "org_editor", "org_member", "data_governance_officer"} <= set(g["members"])
+    assert g["users"] == ["org_admin", "dashboard_admin", "dashboard_superadmin"]
