@@ -10412,6 +10412,30 @@ _CONTACT_TYPE_ROLE = {
 _CAPACITY_ROLE = {"admin": "org_admin", "editor": "org_editor", "member": "org_member"}
 
 
+def _capacity_role(capacity):
+    """The mass-email role of a CKAN organization capacity. The three classic ones have fixed ids; any other capacity CKAN
+    reports (a role the portal added later) becomes `org_<capacity>`, so new portal roles need no code change. "user" is a
+    plain portal account without an organization role."""
+    cap = (capacity or "").strip().lower()
+    if not cap or cap == "user":
+        return None
+    slug = re.sub(r"[^a-z0-9]+", "_", cap).strip("_")
+    if slug in _MASS_EMAIL_ROLES:                       # e.g. a CKAN "data_steward" capacity IS the Data steward role
+        return slug
+    return _CAPACITY_ROLE.get(cap) or "org_" + slug
+
+
+def _discovered_capacity_roles() -> dict:
+    """{role id: the capacity as CKAN spells it} for capacities present in the loaded portal members and not built in."""
+    out = {}
+    for m in ((_pm_cache.get("data") or {}).get("members") or []):
+        cap = (m.get("capacity") or "").strip()
+        role = _capacity_role(cap)
+        if role and role not in _MASS_EMAIL_ROLES and role not in out:
+            out[role] = cap
+    return out
+
+
 class MassEmailAudienceError(Exception):
     def __init__(self, message, status=400):
         super().__init__(message)
@@ -10456,7 +10480,7 @@ def _mass_email_member_candidates() -> list:
             continue
         name = _pm_display_name(m)
         first = (m.get("contact_first_name") or (name.split(" ")[0] if name and " " in name else "")).strip()
-        role = _CAPACITY_ROLE.get(m.get("capacity") or "")
+        role = _capacity_role(m.get("capacity"))
         orgs = [(m["org_name"], m.get("org_title") or m["org_name"])] if m.get("org_name") else []
         out.append({"email": (m.get("email") or "").strip(), "pool": "members", "roles": {role} if role else set(),
                     "orgs": orgs, "name": name, "first_name": first})
@@ -10518,7 +10542,7 @@ def _resolve_mass_email_audience(pools, criteria) -> dict:
     if not pools:
         raise MassEmailAudienceError("Pick at least one group of people.")
     criteria = criteria if isinstance(criteria, dict) else {}
-    roles_wanted = {r for r in (criteria.get("roles") or []) if r in _MASS_EMAIL_ROLES}
+    roles_wanted = {r for r in (criteria.get("roles") or []) if r in _MASS_EMAIL_ROLES or re.fullmatch(r"org_[a-z0-9_]+", str(r))}
     org_filter = _mass_email_org_filter(criteria)
 
     title_by_slug = _org_title_by_slug() if ({"contacts", "users"} & set(pools)) else {}
@@ -10724,7 +10748,9 @@ def admin_mass_email_options():
     if err:
         return err
     orgs = sorted(({"slug": slug, "title": title} for slug, title in _org_title_by_slug().items()), key=lambda o: o["title"].lower())
-    return jsonify({"pools": list(_MASS_EMAIL_POOLS), "roles": list(_MASS_EMAIL_ROLES), "categories": list(ORG_CATEGORIES),
+    extra = _discovered_capacity_roles()
+    return jsonify({"pools": list(_MASS_EMAIL_POOLS), "roles": list(_MASS_EMAIL_ROLES) + sorted(extra), "role_labels": extra,
+                    "categories": list(ORG_CATEGORIES),
                     "quality": list(_MASS_EMAIL_QUALITY), "merge_fields": list(_MASS_EMAIL_MERGE_FIELDS),
                     "max_recipients": _MASS_EMAIL_MAX_RECIPIENTS, "orgs": orgs})
 

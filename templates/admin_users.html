@@ -1683,13 +1683,19 @@
       } catch (_) {}
     }
 
+    // Built-in roles are translated; roles that CKAN added later come with the portal's own name for them.
+    function _meRoleLabel(r) {
+      const k = 'admin.me_role_' + r, v = t(k);
+      return v !== k ? v : ((_meOptions && _meOptions.role_labels && _meOptions.role_labels[r]) || r);
+    }
+
     function _meRenderOptions() {
       if (!_meOptions) return;
       const keep = id => new Set([...document.querySelectorAll('#' + id + ' input:checked')].map(i => i.value));
       const roles = keep('meRoles'), cats = keep('meCategories');
       document.getElementById('meRoles').innerHTML = _meOptions.roles.map(r => `
         <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" value="${r}" id="meRole_${r}" ${roles.has(r) ? 'checked' : ''} onchange="_meCriteriaChanged()">
-        <label class="form-check-label small" for="meRole_${r}">${t('admin.me_role_' + r)}</label></div>`).join('');
+        <label class="form-check-label small" for="meRole_${r}">${esc(_meRoleLabel(r))}</label></div>`).join('');
       document.getElementById('meCategories').innerHTML = _meOptions.categories.map(c => `
         <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" value="${c}" id="meCat_${c}" ${cats.has(c) ? 'checked' : ''} onchange="_meCriteriaChanged()">
         <label class="form-check-label small" for="meCat_${c}">${t('admin.org_class_category_' + c)}</label></div>`).join('');
@@ -1815,7 +1821,7 @@
         const orgs = r.organizations || [];
         const org = orgs.length ? esc(orgs[0]) + (orgs.length > 1 ? ` <span class="text-muted">+${orgs.length - 1}</span>` : '') : '<span class="text-muted">—</span>';
         return `<tr><td>${esc(r.email)}</td><td>${esc(r.name)}</td><td>${org}</td>
-          <td class="small">${esc((r.roles || []).map(x => t('admin.me_role_' + x)).join(', '))}</td>
+          <td class="small">${esc((r.roles || []).map(_meRoleLabel).join(', '))}</td>
           <td class="small text-muted">${esc((r.pools || []).map(x => t('admin.me_pool_' + x)).join(', '))}</td></tr>`;
       }).join('');
     }

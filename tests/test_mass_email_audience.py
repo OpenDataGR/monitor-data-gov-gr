@@ -435,3 +435,16 @@ def test_last_name_is_what_follows_the_first_name():
     assert v["first_name"] == "Eleni" and v["last_name"] == "Papadopoulou Kyriakou"
     assert appmod._merge_values_for({"name": "Eleni", "first_name": "Eleni", "orgs": []})["last_name"] == ""
     assert appmod._render_mass_email("{{first_name}} {{last_name|-}}", {"first_name": "A", "last_name": ""}) == "A -"
+
+
+def test_a_capacity_ckan_added_later_becomes_a_selectable_role(admin_client):
+    assert appmod._capacity_role("editor") == "org_editor" and appmod._capacity_role("user") is None
+    assert appmod._capacity_role("Data Steward") == "data_steward" and appmod._capacity_role("Auditor") == "org_auditor"
+    appmod._pm_cache["data"] = {"members": [
+        {"email": "s@x.gr", "username": "s", "capacity": "auditor", "org_name": "org-b", "org_title": "Org B", "state": "active"},
+        {"email": "e@x.gr", "username": "e", "capacity": "editor", "org_name": "org-b", "org_title": "Org B", "state": "active"}]}
+    opts = admin_client.get("/api/admin/mass-email/options").get_json()
+    assert "org_auditor" in opts["roles"] and opts["role_labels"] == {"org_auditor": "auditor"}
+    data = admin_client.post("/api/admin/mass-email/audience",
+                             json={"pools": ["members"], "criteria": {"roles": ["org_auditor"]}, "full": True}).get_json()
+    assert [r["email"] for r in data["recipients"]] == ["s@x.gr"]

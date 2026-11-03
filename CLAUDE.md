@@ -318,6 +318,8 @@ time, refused (503) when SMTP isn't configured. **`admin_users.html` is a Jinja 
 
 **Full list + merge fields (2026-11-03):** the preview's "View the full list" posts the same audience with `full: true` and gets every recipient (email, name, organizations, roles, pools) for a client-side, accent-insensitive search modal. Merge fields are inserted with buttons, and the "if no name / no organization, write" fallbacks are inputs: `_meBakeFallbacks` turns `{{name}}` into `{{name|<fallback>}}` in the subject/message at send time (criteria mode only), so the backend and the stored job need no extra field. Never write a literal `{{x|y}}` in `admin_users.html` (even in a JS comment): Jinja reads it as a filter.
 
+**Roles come from CKAN (2026-11-03):** a portal member's role is `_capacity_role(capacity)` -- the CKAN capacity as reported, so a role the portal adds later appears in the Role filter by itself (`org_<capacity>`, labelled with CKAN's own word via `role_labels`; a capacity that equals a built-in role id joins it). Only the contact-directory roles (`_CONTACT_TYPE_ROLE`) are still a fixed list.
+
 ## Conventions
 
 - i18n: every user-facing string needs both an `en` and `el` entry, kept
