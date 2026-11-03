@@ -8539,7 +8539,7 @@ def contacts_export():
 
     # Dedupe by username, keeping the highest-ranked role per user — same rule
     # as the frontend's _dedupeContacts so counts always match the dashboard.
-    role_rank = {"admin": 3, "editor": 2, "member": 1}
+    role_rank = {"central_admin": 3.5, "admin": 3, "editor": 2, "dgo": 1.5, "member": 1}
     def _rank(m):
         return 4 if m.get("sysadmin") else role_rank.get(m.get("capacity"), 0)
     by_username = {}
@@ -9413,7 +9413,7 @@ def portal_members_all():
     sort_map = {
         "name":  lambda m: _search_normalize(_pm_display_name(m)),
         "org":   lambda m: _search_normalize(m.get("org_title") or m.get("org_name") or ""),
-        "type":  lambda m: 0 if m.get("sysadmin") else {"admin": 1, "editor": 2, "member": 3}.get(m.get("capacity"), 4),
+        "type":  lambda m: 0 if m.get("sysadmin") else {"central_admin": 0.5, "admin": 1, "editor": 2, "dgo": 2.5, "member": 3}.get(m.get("capacity"), 4),
         "state": lambda m: m.get("state") or "active",
         "email": lambda m: (m.get("email") or "").lower(),
     }

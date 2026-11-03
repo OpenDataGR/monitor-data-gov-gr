@@ -126,6 +126,8 @@ const TRANSLATIONS = {
     'contacts.col_role': 'Role',
     'contacts.col_type': 'Type',
     'contacts.col_state': 'State',
+    'contacts.role_central_admin': 'Central Administrator',
+    'contacts.role_dgo': 'Data Governance Officer (DGO)',
     'contacts.role_admin': 'Admin',
     'contacts.role_editor': 'Editor',
     'contacts.role_member': 'Member',
@@ -807,6 +809,8 @@ const TRANSLATIONS = {
     'contacts.col_role': 'Ρόλος',
     'contacts.col_type': 'Τύπος',
     'contacts.col_state': 'Κατάσταση',
+    'contacts.role_central_admin': 'Κεντρικός Διαχειριστής',
+    'contacts.role_dgo': 'Υπεύθυνος Χρήσης Δεδομένων (ΥΧΔ - DGO)',
     'contacts.role_admin': 'Διαχειριστής',
     'contacts.role_editor': 'Συντάκτης',
     'contacts.role_member': 'Μέλος',
@@ -9719,7 +9723,7 @@ function _contactsSortArrow(col) {
 }
 
 
-const ROLE_BADGE_CLS = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary', user: 'bg-light text-dark border', sysadmin: 'bg-danger' };
+const ROLE_BADGE_CLS = { admin: 'bg-primary', editor: 'bg-success', member: 'bg-secondary', user: 'bg-light text-dark border', sysadmin: 'bg-danger', central_admin: 'bg-dark border border-primary', dgo: 'bg-info text-dark' };
 const STATE_BADGE_CLS = { active: 'bg-success', deleted: 'bg-danger', pending: 'bg-warning text-dark' };
 const CONTACT_TYPE_CLS = {
   'Org Administrator':    'bg-primary',
@@ -9735,7 +9739,7 @@ const CONTACT_TYPE_CLS = {
 // strings, unrelated to the current UI language) -- kept separate from the
 // actual translated text shown to the user, via _portalRoleLabel() below.
 const _PORTAL_ROLE_LOOKUP_KEY = { admin: 'Org Administrator', editor: 'Org Editor', member: 'Org Member', user: 'User' };
-const _PORTAL_ROLE_I18N_KEY   = { admin: 'contacts.type_org_administrator', editor: 'contacts.type_org_editor', member: 'contacts.type_org_member', user: 'contacts.role_user' };
+const _PORTAL_ROLE_I18N_KEY   = { admin: 'contacts.type_org_administrator', editor: 'contacts.type_org_editor', member: 'contacts.type_org_member', central_admin: 'contacts.role_central_admin', dgo: 'contacts.role_dgo', user: 'contacts.role_user' };
 
 // The contacts-file "contact type" is stored as fixed English strings (see
 // CONTACT_TYPE_CLS above) -- this maps each one to its translated display text.
@@ -9836,7 +9840,7 @@ function renderContactsSummary(roleCounts, stateCounts, fileCounts) {
   if (roleCounts) {
     // roles CKAN reports beyond admin/editor/member/user get a card each, named as CKAN names them
     const otherRoleCards = Object.entries(roleCounts.other || {}).map(([cap, n]) =>
-      ({ filter: { type: 'role', value: cap }, label: cap, value: n, bg: "bg-info bg-opacity-10", text: "text-info", icon: "bi-person-gear" }));
+      ({ filter: { type: 'role', value: cap }, label: _PORTAL_ROLE_I18N_KEY[cap] ? t(_PORTAL_ROLE_I18N_KEY[cap]) : cap, value: n, bg: "bg-info bg-opacity-10", text: "text-info", icon: "bi-person-gear" }));
     _contactsSummaryCards = [
       { filter: { type: 'role', value: null },       label: t('contacts.total'), value: roleCounts.total,    bg: "bg-secondary bg-opacity-10", text: "text-secondary", icon: "bi-people" },
       { filter: { type: 'role', value: 'admin' },    label: t('contacts.role_admin'),    value: roleCounts.admin,    bg: "bg-primary bg-opacity-10",   text: "text-primary",   icon: "bi-shield-check" },
