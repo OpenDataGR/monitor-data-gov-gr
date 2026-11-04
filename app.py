@@ -4180,6 +4180,39 @@ def _save_check_cache(check_type: str, result: dict) -> None:
 # dataset already done (same check version + unchanged metadata_modified) -- so persisting as we go is
 # what makes an interrupted run resumable instead of starting from zero.
 _CHECK_CHECKPOINT_EVERY = 200
+_POOL_REAP_GRACE = 60   # seconds a finished run's pool workers get to exit on their own before they are killed
+
+
+def _reap_pool_processes(procs, grace=None):
+    """Make sure a finished run's spawn workers are really gone. On the VM (2026-11-04) 15 idle workers (0 CPU, ~110 MB
+    each, up to 20 h old) were still alive in the worker unit after their runs had ended: shutdown(wait=False) hands
+    the exit to the pool's manager thread, and when that does not finish the job nothing else ever reaps the children
+    -- about 1.6 GB, the unexplained ~1.5 GB/day growth. Runs in a daemon thread so the run is not held up."""
+    procs = [p for p in procs if p is not None]
+    if not procs:
+        return None
+    deadline = time.monotonic() + (_POOL_REAP_GRACE if grace is None else grace)
+
+    def reap():
+        stragglers = 0
+        for p in procs:
+            try:
+                p.join(max(0.0, deadline - time.monotonic()))
+                if p.is_alive():
+                    stragglers += 1
+                    p.terminate()
+                    p.join(5)
+                    if p.is_alive():
+                        p.kill()
+                        p.join(5)
+            except Exception:
+                pass   # already gone / closed by the pool's own teardown
+        if stragglers:
+            app.logger.warning("quality-check pool: terminated %d worker process(es) that outlived their run", stragglers)
+
+    t = threading.Thread(target=reap, name="pool-reaper", daemon=True)
+    t.start()
+    return t
 
 
 def _persist_checked_rows(cfg: dict, slug_by_name: dict, newly_checked: list) -> None:
@@ -4338,7 +4371,9 @@ def _do_run_check(check_type: str) -> None:
             # requests in other threads finish on their own (Python can't
             # forcibly kill a thread mid-request) but their results are
             # simply not collected -- don't block the cancel on them.
+            pool_procs = list((getattr(pool, "_processes", None) or {}).values())
             pool.shutdown(wait=False, cancel_futures=True)
+            _reap_pool_processes(pool_procs)
 
         _persist_checked_rows(cfg, slug_by_name, newly_checked)  # the remainder after the last checkpoint
 

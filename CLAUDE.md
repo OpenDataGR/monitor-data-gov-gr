@@ -169,6 +169,14 @@ was started to find it; the nightly checks only begin ~24 h after the worker boo
   cache rows keep them, the UI fetches a row's list on expand (`/api/quality/<type>-check/details`), per-property totals for the EU comparison are
   precomputed (`violation_properties`), and the Excel export reads details from the cache rows. Existing blobs: `tools/slim_check_blobs.py`.
   `MALLOC_ARENA_MAX=2` is set on both units as a second brake. Verify after a day: web workers stay near 150-250 MB, `~/memlog.txt` flat.
+  **Found 2026-11-04 from the VM (the likely ~1.5 GB/day leak): finished runs left their spawn workers alive.** `~/memlog.txt` was flat at ~2,225 MB
+  until a +865 MB step at 08:21 UTC; the worker's cgroup (`anon` 1.95 GB, `file` ~0) held, beside its own 632 MB process, **15 idle
+  `multiprocessing.spawn` children** (0 CPU s, state S, ~110 MB each; 5 were 20 h old, 10 were 1 h 52 m old = two runs at ~08:10). Roughly 3 checks/night x 5
+  workers x 110 MB matches the old growth. `pool.shutdown(wait=False)` leaves the exit to the pool's manager thread and nothing reaped the children when it
+  did not. A standalone probe (spawn pool of 5, normal/break/raise) could NOT reproduce it, so the root cause is unknown; `_reap_pool_processes` now terminates
+  (then kills) any of the run's workers still alive `_POOL_REAP_GRACE` s after the run, logging a warning when it had to (`tests/test_quality_pool_reaping.py`).
+  Verify after the first nightly runs: `cgroup.procs` of the worker unit should list only `background_worker.py` (+ the live pool during a run), and
+  the `pool-reaper` warning in the journal tells how often it was needed. A deploy restarts the unit and clears the existing 15 at once.
 
 ## The DCAT-AP check validated nothing until 2026-10-22 (found via the MQA comparison)
 
