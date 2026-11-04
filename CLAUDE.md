@@ -169,14 +169,17 @@ was started to find it; the nightly checks only begin ~24 h after the worker boo
   cache rows keep them, the UI fetches a row's list on expand (`/api/quality/<type>-check/details`), per-property totals for the EU comparison are
   precomputed (`violation_properties`), and the Excel export reads details from the cache rows. Existing blobs: `tools/slim_check_blobs.py`.
   `MALLOC_ARENA_MAX=2` is set on both units as a second brake. Verify after a day: web workers stay near 150-250 MB, `~/memlog.txt` flat.
-  **Found 2026-11-04 from the VM (the likely ~1.5 GB/day leak): finished runs left their spawn workers alive.** `~/memlog.txt` was flat at ~2,225 MB
-  until a +865 MB step at 08:21 UTC; the worker's cgroup (`anon` 1.95 GB, `file` ~0) held, beside its own 632 MB process, **15 idle
-  `multiprocessing.spawn` children** (0 CPU s, state S, ~110 MB each; 5 were 20 h old, 10 were 1 h 52 m old = two runs at ~08:10). Roughly 3 checks/night x 5
-  workers x 110 MB matches the old growth. `pool.shutdown(wait=False)` leaves the exit to the pool's manager thread and nothing reaped the children when it
-  did not. A standalone probe (spawn pool of 5, normal/break/raise) could NOT reproduce it, so the root cause is unknown; `_reap_pool_processes` now terminates
-  (then kills) any of the run's workers still alive `_POOL_REAP_GRACE` s after the run, logging a warning when it had to (`tests/test_quality_pool_reaping.py`).
-  Verify after the first nightly runs: `cgroup.procs` of the worker unit should list only `background_worker.py` (+ the live pool during a run), and
-  the `pool-reaper` warning in the journal tells how often it was needed. A deploy restarts the unit and clears the existing 15 at once.
+  **Found 2026-11-04 from the VM -- the nightly checks could never finish (root cause: `background_worker.py`).** `~/memlog.txt` was flat at ~2,225 MB
+  until a +865 MB step at 08:21 UTC; the worker's cgroup (`anon` 1.95 GB) held, beside its own process, **15 idle `multiprocessing.spawn` children** (0 CPU s,
+  state S, ~110 MB each; 5 were 20 h old). `f338587` (checks due 24 h after they LAST FINISHED) made the worker start its overdue checks ~9 min after every boot,
+  and each spawned validation worker hung: `spawn` re-executes the parent's main script as `__mp_main__` in every child, and `background_worker.py` ended in a
+  bare `while True: signal.pause()`, so every child slept there forever and never took a task -- the run never finished, its pool was never torn down, and
+  3 checks x 5 workers x 110 MB piled up (the ~1.5 GB/day). Web-triggered runs (gunicorn is the main script) were unaffected, which is why a hand-started run
+  always worked. Fixed: the loop is under `if __name__ == "__main__":` (`tests/test_background_worker_entrypoint.py` pins it and reproduces the mechanism
+  with a real spawn pool; the unguarded script times out, the guarded one returns). **Any new module-level side effect in the entry scripts must be guarded
+  the same way.** Also added as a safety net: `_reap_pool_processes` terminates (then kills) any of a finished run's workers still alive `_POOL_REAP_GRACE` s
+  after it (`tests/test_quality_pool_reaping.py`), logging `outlived their run` when it had to. Verify after the deploy: ~9 min after boot the worker's
+  `cgroup.procs` shows 15 children WITH growing `cputimes`, and 1 process once the runs end; a deploy clears the stuck ones at once.
 
 ## The DCAT-AP check validated nothing until 2026-10-22 (found via the MQA comparison)
 

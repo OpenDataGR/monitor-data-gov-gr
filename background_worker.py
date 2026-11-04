@@ -9,5 +9,9 @@ request-serving worker's GIL.
 import signal
 import app  # noqa: F401  (import side effects start the background loop thread)
 
-while True:
-    signal.pause()
+# The guard matters: the HVD/DCAT-AP/GeoDCAT validation pools use the "spawn" start method, and every spawned worker
+# re-executes this file as `__mp_main__` before it takes a task. An unguarded `while True: signal.pause()` made each
+# worker sleep here forever, so no nightly check could ever finish (found 2026-11-04: 15 idle children, 0 CPU).
+if __name__ == "__main__":
+    while True:
+        signal.pause()
