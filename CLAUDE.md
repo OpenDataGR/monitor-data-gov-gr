@@ -155,7 +155,7 @@ not 24 h after process start, so deploys no longer push the nightly checks back;
 next loop pass. Clicking Run resumes it at once).
 `tests/test_quality_checkpoint.py` kills a run mid-way and asserts what survived; it fails if checkpointing is disabled.
 The VM froze ~2.5 h on 2026-11-01 from a steady ~1.5 GB/day memory growth (16 GB, no swap); `MemoryMax` was added to both units
-and the evidence is in `deploy/README.md`. **The leak itself is still unidentified** -- `~/memlog.txt` on the VM (10-min samples)
+and the evidence is in `deploy/README.md`. **The leak was identified on 2026-11-04 (see "Found 2026-11-04" below)**; `~/memlog.txt` on the VM (10-min samples) is how
 was started to find it; the nightly checks only begin ~24 h after the worker boots.
   Leads found since (2026-11-02): PostgreSQL's rise is page cache (cgroup `file`), not a leak; nothing grows while idle; two web workers sit at
   370-615 MB after heavy tasks (never recycled, no `--max-requests`); and **Redis held 194 MB in 66 keys** because `_SharedQueryCache`
@@ -180,6 +180,11 @@ was started to find it; the nightly checks only begin ~24 h after the worker boo
   the same way.** Also added as a safety net: `_reap_pool_processes` terminates (then kills) any of a finished run's workers still alive `_POOL_REAP_GRACE` s
   after it (`tests/test_quality_pool_reaping.py`), logging `outlived their run` when it had to. Verify after the deploy: ~9 min after boot the worker's
   `cgroup.procs` shows 15 children WITH growing `cputimes`, and 1 process once the runs end; a deploy clears the stuck ones at once.
+  **Verified on the VM 2026-11-09 (5 days after the deploy):** AnonPages flat at ~2,325-2,365 MB (2,322 -> 2,332 over 46 h; +30-80 MB blips during the ~11:07-11:21 UTC
+  daily check window that fall back within the hour) versus +1.5 GB/day before; `cgroup.procs` = the worker + the resource tracker only; all three checks complete daily
+  (the Quality tabs show "last run" ~1 h old); system memory 21%. **The `outlived` warning fires on every run (1-3 of a pool's 5 workers still alive 60 s after it)**,
+  so the reaper is doing real work -- why `shutdown(wait=False)` leaves stragglers on the VM is not understood (a local probe never reproduced it). The worker's own
+  RSS went 704 MB (30 min after boot) -> 936 MB (5 days): ~45 MB/day, to be watched, not yet a problem.
 
 ## The DCAT-AP check validated nothing until 2026-10-22 (found via the MQA comparison)
 
