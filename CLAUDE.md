@@ -183,7 +183,12 @@ was started to find it; the nightly checks only begin ~24 h after the worker boo
   **Verified on the VM 2026-11-09 (5 days after the deploy):** AnonPages flat at ~2,325-2,365 MB (2,322 -> 2,332 over 46 h; +30-80 MB blips during the ~11:07-11:21 UTC
   daily check window that fall back within the hour) versus +1.5 GB/day before; `cgroup.procs` = the worker + the resource tracker only; all three checks complete daily
   (the Quality tabs show "last run" ~1 h old); system memory 21%. **The `outlived` warning fires on every run (1-3 of a pool's 5 workers still alive 60 s after it)**,
-  so the reaper is doing real work -- why `shutdown(wait=False)` leaves stragglers on the VM is not understood (a local probe never reproduced it). The worker's own
+  so the reaper is doing real work. **Why (2026-11-09): late-booting workers, not a leak.** `tools/pool_probe.py` on the VM (Python 3.12.3) shows the pool shuts down
+  cleanly (0 workers alive 5 s after a normal run, 40 s after a cancelled one); but a spawn worker first re-imports the whole app, and with 3 checks starting at once
+  (15 processes importing) some are still booting when a small run (a few dozen changed datasets) has already finished -- reproduced locally with workers that boot in
+  3 s vs 70 s: run over after 4 s, 2 workers alive at +60 s, gone by +90 s. They would exit by themselves after booting; the reaper just cuts it short. Mitigation:
+  `_pool_workers` starts one worker per `_CHECK_DATASETS_PER_WORKER` (15) datasets, max the configured concurrency, so a 40-dataset run spawns 3, not 5. Not verified on the VM:
+  the real boot time of a spawned worker (`time` an `import app` with `multiprocessing.current_process().name` set to a non-main name). The worker's own
   RSS went 704 MB (30 min after boot) -> 936 MB (5 days): ~45 MB/day, to be watched, not yet a problem.
 
 ## The DCAT-AP check validated nothing until 2026-10-22 (found via the MQA comparison)
