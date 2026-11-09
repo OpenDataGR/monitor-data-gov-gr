@@ -4181,6 +4181,14 @@ def _save_check_cache(check_type: str, result: dict) -> None:
 # what makes an interrupted run resumable instead of starting from zero.
 _CHECK_CHECKPOINT_EVERY = 200
 _POOL_REAP_GRACE = 60   # seconds a finished run's pool workers get to exit on their own before they are killed
+_CHECK_DATASETS_PER_WORKER = 15   # a spawn worker re-imports the whole app (~110 MB, several seconds): not worth it for fewer datasets
+
+
+def _pool_workers(concurrency: int, to_fetch: int) -> int:
+    """Pool size for a run: the configured concurrency, but no more workers than the work can keep busy. The nightly
+    runs mostly re-validate a few dozen changed datasets, and 5 freshly spawned workers for 40 datasets cost more
+    memory and start-up than the validation itself (and some of them were still alive a minute after the run)."""
+    return max(1, min(concurrency, -(-to_fetch // _CHECK_DATASETS_PER_WORKER)))
 
 
 def _reap_pool_processes(procs, grace=None):
@@ -4340,7 +4348,7 @@ def _do_run_check(check_type: str) -> None:
         # Separate processes each get their own GIL, so this actually uses
         # multiple cores. See _MP_SPAWN_CONTEXT's comment for why spawn, not
         # the default fork.
-        pool = ProcessPoolExecutor(max_workers=cfg["concurrency"], mp_context=_MP_SPAWN_CONTEXT)
+        pool = ProcessPoolExecutor(max_workers=_pool_workers(cfg["concurrency"], len(to_fetch)), mp_context=_MP_SPAWN_CONTEXT)
         try:
             futures = {pool.submit(cfg["check_one"], d["name"]): d for d in to_fetch}
             for fut in as_completed(futures):

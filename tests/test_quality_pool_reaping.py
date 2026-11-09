@@ -84,3 +84,14 @@ def test_a_run_reaps_workers_its_pool_failed_to_stop(app, monkeypatch):
     assert appmod._get_check_status("dcat")["error"] is None
     assert DcatApDatasetCheckCache.query.count() == 1
     assert _wait(lambda: all(p.terminated and not p.alive for p in stuck))
+
+
+def test_a_small_run_does_not_spawn_a_full_pool():
+    """40 changed datasets used to start 5 workers, each re-importing the whole app; one worker per 15 datasets is plenty."""
+    assert appmod._pool_workers(5, 0) == 1
+    assert appmod._pool_workers(5, 1) == 1
+    assert appmod._pool_workers(5, 15) == 1
+    assert appmod._pool_workers(5, 16) == 2
+    assert appmod._pool_workers(5, 40) == 3
+    assert appmod._pool_workers(5, 75) == 5
+    assert appmod._pool_workers(5, 2186) == 5   # a big run keeps the configured concurrency
