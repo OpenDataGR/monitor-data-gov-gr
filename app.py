@@ -324,6 +324,16 @@ def _is_main_process() -> bool:
     return multiprocessing.current_process().name == "MainProcess"
 
 
+if not _is_main_process():
+    # A spawned pool worker: let the parent ask for a stack dump on SIGUSR1 (see _ask_worker_where_it_is).
+    try:
+        import faulthandler
+        import signal as _signal
+        faulthandler.register(_signal.SIGUSR1, all_threads=True, chain=False)
+    except (ImportError, AttributeError, ValueError, OSError):
+        pass   # no SIGUSR1 (Windows)
+
+
 if _is_main_process():
     with app.app_context():
         db.create_all()
@@ -4191,6 +4201,27 @@ def _pool_workers(concurrency: int, to_fetch: int) -> int:
     return max(1, min(concurrency, -(-to_fetch // _CHECK_DATASETS_PER_WORKER)))
 
 
+def _ask_worker_where_it_is(p) -> None:
+    """Before a straggler is killed, make it print its Python stack (faulthandler, registered in every spawned worker
+    at import) and log its OS state, so the journal says WHAT it was doing a minute after its run ended -- the cause of
+    the daily 'outlived their run' warnings is still unknown (a worker boots in ~0.6 s on the VM, so it is not slow boot)."""
+    pid = getattr(p, "pid", None)
+    if not pid:
+        return
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        ticks = os.sysconf("SC_CLK_TCK")
+        app.logger.warning("quality-check pool: straggler pid %s state=%s cpu=%.1fs", pid, stat[0], (int(stat[11]) + int(stat[12])) / ticks)
+    except Exception:
+        pass   # not Linux, or already gone
+    try:
+        import signal as _signal
+        os.kill(pid, _signal.SIGUSR1)   # the worker's faulthandler writes every thread's stack to its stderr (the journal)
+        time.sleep(1)
+    except Exception:
+        pass
+
+
 def _reap_pool_processes(procs, grace=None):
     """Make sure a finished run's spawn workers are really gone. On the VM (2026-11-04) 15 idle workers (0 CPU, ~110 MB
     each, up to 20 h old) were still alive in the worker unit after their runs had ended: shutdown(wait=False) hands
@@ -4208,6 +4239,7 @@ def _reap_pool_processes(procs, grace=None):
                 p.join(max(0.0, deadline - time.monotonic()))
                 if p.is_alive():
                     stragglers += 1
+                    _ask_worker_where_it_is(p)
                     p.terminate()
                     p.join(5)
                     if p.is_alive():

@@ -188,7 +188,9 @@ was started to find it; the nightly checks only begin ~24 h after the worker boo
   (15 processes importing) some are still booting when a small run (a few dozen changed datasets) has already finished -- reproduced locally with workers that boot in
   3 s vs 70 s: run over after 4 s, 2 workers alive at +60 s, gone by +90 s. They would exit by themselves after booting; the reaper just cuts it short. Mitigation:
   `_pool_workers` starts one worker per `_CHECK_DATASETS_PER_WORKER` (15) datasets, max the configured concurrency, so a 40-dataset run spawns 3, not 5. Not verified on the VM:
-  the real boot time of a spawned worker (`time` an `import app` with `multiprocessing.current_process().name` set to a non-main name). The worker's own
+  **Refuted 2026-11-11:** a spawned worker's `import app` takes 0.65 s on the VM (8 cores), so slow boot cannot explain stragglers alive 60 s after a run, and the smaller pools
+  did not stop them (11 Nov: still 3 + 2). **Cause still unknown.** `_reap_pool_processes` now logs each straggler's `/proc` state + CPU and sends it SIGUSR1 first -- every spawned worker
+  registers `faulthandler` for it (top of app.py) -- so the next `journalctl -u monitor-data-gov-gr-worker | grep -A25 straggler` shows the Python stack it was stuck in. The worker's own
   RSS went 704 MB (30 min after boot) -> 936 MB (5 days): ~45 MB/day, to be watched, not yet a problem.
 
 ## The DCAT-AP check validated nothing until 2026-10-22 (found via the MQA comparison)

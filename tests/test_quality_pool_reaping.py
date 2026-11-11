@@ -95,3 +95,14 @@ def test_a_small_run_does_not_spawn_a_full_pool():
     assert appmod._pool_workers(5, 40) == 3
     assert appmod._pool_workers(5, 75) == 5
     assert appmod._pool_workers(5, 2186) == 5   # a big run keeps the configured concurrency
+
+
+def test_asking_a_vanished_or_unreachable_worker_where_it_is_never_raises():
+    class Gone(FakeProc):
+        pid = 2_000_000_000   # no such process (and not Linux's /proc on a dev machine)
+
+    stuck = Gone()
+    appmod._ask_worker_where_it_is(stuck)
+    t = appmod._reap_pool_processes([stuck], grace=0.05)
+    t.join(5)
+    assert stuck.terminated and not stuck.alive
