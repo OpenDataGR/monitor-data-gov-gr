@@ -7,6 +7,16 @@
   <meta name="description" content="Εγχειρίδιο χρήστη για το data.gov.gr Monitor Dashboard">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="header_shared.css">
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('theme');
+        var theme = saved === 'dark' || saved === 'light' ? saved
+          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-bs-theme', theme);
+      } catch (e) { /* storage blocked: stay light */ }
+    })();
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -412,6 +422,31 @@
       .site-header { position: relative; }
       a { color: var(--slate); text-decoration: none; }
     }
+
+    /* ── Dark theme: same switch as the app (data-bs-theme on <html>) ───────────────────── */
+    [data-bs-theme="dark"] {
+      color-scheme: dark;
+      --navy:    #a9c7f5;   /* used for headings/links in dark: light enough to read */
+      --blue:    #6ea8fe;
+      --blue-lt: #1d2b3f;
+      --slate:   #c9d1db;
+      --muted:   #95a3b5;
+      --bg:      #15181c;
+      --surface: #1e2226;
+      --divider: #323a42;
+      --tip-bg:  #182436;
+      --tip-br:  #6ea8fe;
+      --warn-bg: #2b2411;
+      --warn-br: #e6a817;
+    }
+    /* surfaces that used --navy as a BACKGROUND under white text keep a dark navy */
+    [data-bs-theme="dark"] .action-table th,
+    [data-bs-theme="dark"] .col-key,
+    [data-bs-theme="dark"] .sidebar-toggle { background: #0b3d7a; }
+    [data-bs-theme="dark"] code,
+    [data-bs-theme="dark"] .icon-ref { background: #262d35; }
+    [data-bs-theme="dark"] .callout.warn .callout-title { color: #f0c36a; }
+    [data-bs-theme="dark"] .action-table tr:nth-child(even) td { background: #232930; }
   </style>
 </head>
 <body>
@@ -452,6 +487,7 @@
       <ul class="toc-list">
         <li><a href="#appendix-search">Α. Αναζήτηση και φίλτρα</a></li>
         <li><a href="#appendix-import">Β. Μορφή αρχείου εισαγωγής</a></li>
+        <li><a href="#appendix-api">Γ. Αναφορά API και διακριτικά</a></li>
       </ul>
     </div>
   </nav>
@@ -973,7 +1009,7 @@
       <h3>Γράφημα «Εξέλιξη Συνόλων Δεδομένων»</h3>
       <p>Γραμμικό γράφημα (Chart.js) με δύο σειρές δεδομένων, εβδομαδιαία, για τους τελευταίους <strong>12 μήνες</strong>:</p>
       <ul>
-        <li><strong style="color:#0057b8">Datasets</strong> — άθροισμα δημοσιευμένων datasets ανά εβδομάδα, υπολογισμένο απευθείας από το CKAN (όχι μόνο από το ιστορικό της εφαρμογής)· εμφανίζεται πάντα.</li>
+        <li><strong style="color:var(--blue)">Datasets</strong> — άθροισμα δημοσιευμένων datasets ανά εβδομάδα, υπολογισμένο απευθείας από το CKAN (όχι μόνο από το ιστορικό της εφαρμογής)· εμφανίζεται πάντα.</li>
         <li><strong style="color:#0dcaf0">Resources</strong> — εξέλιξη συνόλου πόρων, από το δικό μας ιστορικό στιγμιότυπων· είναι <em>κρυμμένη από προεπιλογή</em> — κλικ στο όνομά της στο υπόμνημα κάτω από το γράφημα για να εμφανιστεί.</li>
       </ul>
       <p>Ο άξονας Χ καλύπτει σταθερά τους τελευταίους 12 μήνες, ανά εβδομάδα. Αιωρηθείτε πάνω από σημείο για να δείτε τις ακριβείς τιμές και την ημερομηνία.</p>
@@ -1145,6 +1181,27 @@
           </tbody>
         </table>
       </div>
+    </section>
+
+    <!-- Appendix C: API reference and tokens -->
+    <section id="appendix-api">
+      <div class="section-eyebrow">Παράρτημα Γ</div>
+      <h2>Αναφορά API και διακριτικά (tokens)</h2>
+      <p>Όλα όσα εμφανίζει το dashboard διατίθενται και ως API, ώστε να τα χρησιμοποιείτε από δικά σας scripts ή εργαλεία.</p>
+
+      <h3>Αναφορά API</h3>
+      <p>Η σελίδα <a href="../api-docs" target="_blank"><code>/api-docs</code></a> απαριθμεί όλες τις διαδρομές του dashboard, ομαδοποιημένες ανά θέμα, με τις παραμέτρους και την περιγραφή τους. Δείχνει και ποιες διαδρομές απαιτούν δικαιώματα διαχειριστή.</p>
+
+      <h3>Διακριτικά API (personal tokens)</h3>
+      <p>Για κλήσεις εκτός browser δημιουργείτε προσωπικό διακριτικό από την ίδια σελίδα (<code>/api-docs</code>) και το στέλνετε στην κεφαλίδα <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+      <ul>
+        <li>Η τιμή του διακριτικού εμφανίζεται <strong>μία μόνο φορά</strong>, κατά τη δημιουργία· αποθηκεύστε την αμέσως.</li>
+        <li>Το διακριτικό έχει <strong>τα ίδια δικαιώματα με εσάς</strong> (και τους ίδιους περιορισμούς καρτελών ή οργανισμών, αν έχετε).</li>
+        <li>Μπορείτε να το ανακαλέσετε ανά πάσα στιγμή από τη σελίδα· η ανάκληση ισχύει αμέσως.</li>
+      </ul>
+
+      <h3>Κονσόλα API</h3>
+      <p>Η σελίδα <a href="../api-console" target="_blank"><code>/api-console</code></a> επιτρέπει να δοκιμάσετε κλήσεις απευθείας από τον browser, με τη σύνοδο (session) στην οποία είστε ήδη συνδεδεμένοι. Μια διαδρομή που απαιτεί δικαιώματα διαχειριστή απορρίπτεται και εδώ, όπως θα απορριπτόταν από το ίδιο το dashboard.</p>
     </section>
 
   </main>
