@@ -241,9 +241,16 @@ splits by type, the scorecard's `snapshot.services` feeds an extra line on each 
 tool and the spec disagree follow the spec.** Audit of the HVD check against the spec and the EU's HVD Reporting Tool (data.europa.eu/apps/hvd-reporting-tool):
 **licences done (`_HVD_CHECK_VERSION` 5, `tests/test_hvd_license.py`)** -- `_license_status` reads only `dct:license` on distributions (bulk downloads, i.e. with a
 `downloadURL`) and data services (own licence, else the distribution's via `dcat:accessService`), never the dataset's; open = the EU authority URIs CC_BY_4_0 / CC0
-or a licence mapped to them (skos exact/narrow/broad/closeMatch, owl:sameAs, rdfs:seeAlso); other CC versions / BY-SA / NC / ODC-By are NOT open; a MISSING licence is
-only "recommended" (distribution) / optional (service) and no longer flags a dataset, a stated non-open one does. Still open: no English title/description check,
-no leaf-level category check, no `downloadURL` check on bulk downloads, no INSPIRE checks.
+or a licence mapped to them (skos:exactMatch, owl:sameAs, skos:broadMatch, skos:narrowMatch -- the spec's list; **closeMatch ("not recommended") and rdfs:seeAlso are
+deliberately NOT accepted although the EU reporting tool accepts them**); other CC versions / BY-SA / NC / ODC-By are NOT open; a MISSING licence is only "recommended"
+(distribution) / optional (service) and no longer flags a dataset, a stated non-open one does.
+**Checked against the DCAT-AP HVD 3.0.0 spec itself (semiceu.github.io/DCAT-AP/releases/3.0.0-hvd/, 2026-11-12) -- what is and is NOT required:** the spec states NO language
+requirement for title/description (the "English title and description" came from the EU tool's page: NOT implemented); the most precise `hvdCategory` is only recommended
+(the category itself is mandatory from the controlled vocabulary: already checked); a bulk download ("should be encoded as a Distribution", `downloadURL` "preferred") is a
+strong recommendation, so `no_bulk_download` (`_HVD_CHECK_VERSION` 6) is REPORTED (warning detail, card, icon, filter, export) but does NOT flag a dataset
+(`tests/test_hvd_bulk_download.py`); INSPIRE: no requirement. Mandatory per spec and already enforced by the shapes: Dataset applicableLegislation + hvdCategory + an associated
+Data Service; Distribution accessURL + applicableLegislation; Data Service applicableLegislation, contactPoint, documentation (foaf:page), endpointURL, hvdCategory.
+Rule of thumb: before adding an HVD check, find it in the spec's property tables -- a tool's list is not a requirement.
 
 ## DCAT-AP compliance = the EU's structural layer (2026-11-02, `_DCAT_CHECK_VERSION` 4)
 

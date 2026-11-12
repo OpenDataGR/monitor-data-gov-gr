@@ -264,7 +264,7 @@ const TRANSLATIONS = {
     'quality.hvd_non_conforming': 'Non-conforming',
     'quality.hvd_legal_issue': 'Legal citation not linked',
     'quality.hvd_no_api': 'No API access',
-    'quality.hvd_no_bulk': 'No bulk download',
+    'quality.hvd_no_bulk': 'No bulk download (recommended)',
     'quality.hvd_license_missing': 'License missing (recommended)',
     'quality.hvd_license_non_open': 'License not open (CC BY 4.0 / CC0)',
     'quality.hvd_license_open': 'Open license',
@@ -954,7 +954,7 @@ const TRANSLATIONS = {
     'quality.hvd_non_conforming': 'Μη συμμορφούμενα',
     'quality.hvd_legal_issue': 'Μη συνδεδεμένη νομική αναφορά',
     'quality.hvd_no_api': 'Χωρίς πρόσβαση API',
-    'quality.hvd_no_bulk': 'Χωρίς μαζική λήψη',
+    'quality.hvd_no_bulk': 'Χωρίς μαζική λήψη (προτείνεται)',
     'quality.hvd_license_missing': 'Λείπει άδεια χρήσης (προτείνεται)',
     'quality.hvd_license_non_open': 'Μη ανοιχτή άδεια (CC BY 4.0 / CC0)',
     'quality.hvd_license_open': 'Ανοιχτή άδεια',
@@ -3121,8 +3121,8 @@ const HVD_FILTER_PREDICATES = {
 // Datasets with no issue at all are hidden from the default (flagged-only)
 // view -- same as before this became a filter card -- but selecting the
 // "Compliant" card explicitly asks for them, so it lifts that default hiding.
-const HVD_ISSUE_FILTER_KEYS = ['non_conforming', 'legal_citation_issue', 'no_api_access', 'no_bulk_download', 'license_non_open', 'publisher_mismatch'];
-// (license_missing is NOT an issue flag any more: a missing licence is only recommended, so a compliant dataset may have one)
+const HVD_ISSUE_FILTER_KEYS = ['non_conforming', 'legal_citation_issue', 'no_api_access', 'license_non_open', 'publisher_mismatch'];
+// (license_missing and no_bulk_download are NOT issue flags: the spec only recommends a licence and a bulk download, so a compliant dataset may lack them)
 
 // Pure -- what _hvdActiveFilters would become if `key` were toggled right
 // now, without mutating it. Shared by the real toggle handler and by

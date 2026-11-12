@@ -3162,8 +3162,10 @@ _HVD_OPEN_LICENCES = (
     "http://publications.europa.eu/resource/authority/licence/CC_BY_4_0",
     "http://publications.europa.eu/resource/authority/licence/CC0",
 )
-_LICENCE_MAPPING_PROPS = (_SKOS_NS.exactMatch, _SKOS_NS.narrowMatch, _SKOS_NS.broadMatch, _SKOS_NS.closeMatch,
-                          rdflib.OWL.sameAs, rdflib.RDFS.seeAlso)
+# DCAT-AP HVD 3.0.0 on mapping a national licence to the EU vocabulary: prefer skos:exactMatch or owl:sameAs, then skos:broadMatch or
+# skos:narrowMatch; "skos:closeMatch is not recommended" and rdfs:seeAlso is not listed. We follow the SPECIFICATION, so those two do NOT
+# make a licence open here, although the EU's HVD reporting tool accepts them.
+_LICENCE_MAPPING_PROPS = (_SKOS_NS.exactMatch, _SKOS_NS.narrowMatch, _SKOS_NS.broadMatch, rdflib.OWL.sameAs)
 
 # Concept/service URI -> its parsed RDF graph (or None if unfetchable), kept
 # for the process lifetime. HVD category codes repeat across hundreds of
@@ -3302,8 +3304,8 @@ _HVD_OPEN_LICENCES_NORM = {_norm_iri(u) for u in _HVD_OPEN_LICENCES}
 
 
 def _licence_is_open(graph: "rdflib.Graph", licence) -> bool:
-    """True when `licence` is CC BY 4.0 / CC0, or is mapped to one of them (skos:exactMatch/narrowMatch/broadMatch/closeMatch,
-    owl:sameAs, rdfs:seeAlso) -- up to three hops through the licence documents already merged into the graph."""
+    """True when `licence` is CC BY 4.0 / CC0, or is mapped to one of them (skos:exactMatch/narrowMatch/broadMatch, owl:sameAs --
+    see _LICENCE_MAPPING_PROPS) -- up to three hops through the licence documents already merged into the graph."""
     seen, frontier = {_norm_iri(licence)}, [licence]
     for _ in range(4):
         nxt = []
@@ -3583,13 +3585,14 @@ def _hvd_check_one(name: str) -> dict:
                 publisher_name = str(name_lit)
                 break
 
-        # Regulation (EU) 2023/138 art. 3: an HVD is made available through an API AND as a bulk download. A bulk download is a
-        # distribution with a dcat:downloadURL; the SHACL shapes only require an accessURL, so this is checked here.
+        # DCAT-AP HVD 3.0.0: "Bulk downloads should be encoded as a Distribution" and downloadURL is "preferred" -- a STRONG RECOMMENDATION, not
+        # a requirement. So a dataset without any dcat:downloadURL is reported (a warning entry, a card, an icon) but is NOT flagged as
+        # non-compliant. (The SHACL shapes only require an accessURL.)
         no_bulk_download = not any(True for _ in graph.subjects(_DCAT_NS.downloadURL, None))
         details = _dedupe_shacl_details(violations + warnings)
         if no_bulk_download:
             details.append({"severity": "warning", "path": str(_DCAT_NS.downloadURL), "count": 1,
-                            "message": "No bulk download: none of the distributions has a download URL (the HVD regulation requires both an API and a bulk download).",
+                            "message": "No bulk download (recommended): none of the distributions has a download URL; the HVD specification strongly recommends offering one.",
                             "raw_message": "no dcat:downloadURL on any distribution"})
         return {
             "name":                 name,
@@ -3701,7 +3704,7 @@ def _hvd_augment_row(result: dict, d: dict) -> None:
 def _hvd_finalize_datasets(checked: list) -> list:
     for r in checked:
         r["flagged"] = bool(
-            r["legal_citation_issue"] or r["no_api_access"] or r.get("no_bulk_download") or r["license_status"] == "non_open"
+            r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] == "non_open"
             or not r["conforms"] or r["publisher_mismatch"]
         )
     checked.sort(key=lambda r: (not r["flagged"], -r["violation_count"]))

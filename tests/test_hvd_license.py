@@ -58,9 +58,14 @@ def test_other_cc_versions_and_restricted_cc_licences_are_not_open_for_hvd():
 
 def test_a_national_licence_mapped_to_cc_by_4_is_open():
     mapped = "<http://example.org/gr-open-licence> skos:exactMatch lic:CC_BY_4_0 .\n"
-    for prop in ("skos:exactMatch", "skos:narrowMatch", "skos:broadMatch", "skos:closeMatch", "owl:sameAs", "rdfs:seeAlso"):
+    # DCAT-AP HVD 3.0.0: exactMatch / sameAs preferred, then broadMatch / narrowMatch
+    for prop in ("skos:exactMatch", "owl:sameAs", "skos:broadMatch", "skos:narrowMatch"):
         body = dist("<http://example.org/gr-open-licence>") + f"<http://example.org/gr-open-licence> {prop} lic:CC_BY_4_0 .\n"
         assert _status(body) == "open", prop
+    # "skos:closeMatch is not recommended" and rdfs:seeAlso is not listed: we follow the specification, not the EU reporting tool
+    for prop in ("skos:closeMatch", "rdfs:seeAlso"):
+        body = dist("<http://example.org/gr-open-licence>") + f"<http://example.org/gr-open-licence> {prop} lic:CC_BY_4_0 .\n"
+        assert _status(body) == "non_open", prop
     assert _status(dist("<http://example.org/gr-open-licence>") + mapped) == "open"
     assert _status(dist("<http://example.org/gr-open-licence>")) == "non_open"   # unmapped
 
