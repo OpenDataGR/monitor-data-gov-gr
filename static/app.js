@@ -5089,6 +5089,9 @@ async function loadOrgAnalyticsScorecard(orgSlug) {
           pct == null ? `<span class="text-muted">${t('org_analytics.no_checked_datasets')}</span>` : '',
           _orgAnalyticsDeltaHtml(s.pass_rate, scorecard.portal_avg[k + '_pass_rate'], t('org_analytics.vs_portal')),
           _orgAnalyticsDeltaHtml(s.pass_rate, peer.peer_avg[k + '_pass_rate'], t('org_analytics.vs_peer')),
+          // data services are reported on their own, never blended into the dataset rate above
+          (snap.services && snap.services[k] && snap.services[k].checked)
+            ? `<span class="text-muted">${esc(t('quality.type_line').replace('{label}', t('quality.type_service')).replace('{conforms}', fmt(snap.services[k].conforms)).replace('{checked}', fmt(snap.services[k].checked)))}</span>` : '',
         ]);
       }),
     ];

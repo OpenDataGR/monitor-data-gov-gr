@@ -378,6 +378,15 @@ class OrgSnapshot(db.Model):
     geodcat_conforms   = db.Column(db.Integer, nullable=False, default=0)
     geodcat_pass_rate  = db.Column(db.Float)
 
+    # The same three checks for the organization's DATA SERVICES, kept apart from the dataset figures above (never blended: a few
+    # services would otherwise move, or hide in, an organization's dataset rate). Added 2026-11-12, so older rows read 0 / 0.
+    hvd_services_checked      = db.Column(db.Integer, nullable=False, default=0)
+    hvd_services_conforms     = db.Column(db.Integer, nullable=False, default=0)
+    dcat_services_checked     = db.Column(db.Integer, nullable=False, default=0)
+    dcat_services_conforms    = db.Column(db.Integer, nullable=False, default=0)
+    geodcat_services_checked  = db.Column(db.Integer, nullable=False, default=0)
+    geodcat_services_conforms = db.Column(db.Integer, nullable=False, default=0)
+
     __table_args__ = (db.Index("ix_org_snapshots_org_slug_computed_at", "org_slug", "computed_at"),)
 
     def to_dict(self):
@@ -390,6 +399,8 @@ class OrgSnapshot(db.Model):
             "hvd":     {"checked": self.hvd_checked, "conforms": self.hvd_conforms, "pass_rate": self.hvd_pass_rate},
             "dcat":    {"checked": self.dcat_checked, "conforms": self.dcat_conforms, "pass_rate": self.dcat_pass_rate},
             "geodcat": {"checked": self.geodcat_checked, "conforms": self.geodcat_conforms, "pass_rate": self.geodcat_pass_rate},
+            "services": {k: {"checked": getattr(self, f"{k}_services_checked") or 0, "conforms": getattr(self, f"{k}_services_conforms") or 0}
+                         for k in ("hvd", "dcat", "geodcat")},
         }
 
 

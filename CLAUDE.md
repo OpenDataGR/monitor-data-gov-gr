@@ -236,7 +236,8 @@ No check-version bump: a cached data-service row without `exported_as` is simply
 `tests/test_package_types.py`, `tests/test_quality_listers.py`. All three Quality tabs show the per-type line, a "Data services" filter card and an
 Excel Type column; HVD rows get no type verdict (they don't record `exported_as`, hence `records_export_kind` on dcat/geodcat only -- without it every
 HVD-tagged service was re-fetched on every run, seen as "1,179 of 1,278 from cache" on 2026-11-12). Not done: separate org-analytics pass rate for
-services (OrgSnapshot has dataset columns only). **Principle (user, 2026-11-12): comply with the official specs (DCAT-AP, DCAT-AP HVD, GeoDCAT-AP), not with a tool's reading of them; where the EU's reporting
+services -- **done 2026-11-12**: `OrgSnapshot` has `{hvd,dcat,geodcat}_services_{checked,conforms}` (migration adds them; older rows read 0), `_rollup_check_by_org(model, pkg_type)`
+splits by type, the scorecard's `snapshot.services` feeds an extra line on each Org Analytics card (`tests/test_org_services_analytics.py`); the trend/peer charts are still datasets only. **Principle (user, 2026-11-12): comply with the official specs (DCAT-AP, DCAT-AP HVD, GeoDCAT-AP), not with a tool's reading of them; where the EU's reporting
 tool and the spec disagree follow the spec.** Audit of the HVD check against the spec and the EU's HVD Reporting Tool (data.europa.eu/apps/hvd-reporting-tool):
 **licences done (`_HVD_CHECK_VERSION` 5, `tests/test_hvd_license.py`)** -- `_license_status` reads only `dct:license` on distributions (bulk downloads, i.e. with a
 `downloadURL`) and data services (own licence, else the distribution's via `dcat:accessService`), never the dataset's; open = the EU authority URIs CC_BY_4_0 / CC0

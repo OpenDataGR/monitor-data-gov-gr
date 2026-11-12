@@ -496,6 +496,15 @@ if _is_main_process():
         if 'matched_contact_ids' not in _inbound_cols:
             db.session.execute(text('ALTER TABLE inbound_emails ADD COLUMN matched_contact_ids TEXT'))
             db.session.commit()
+        # data-service counts per quality check on the org-analytics snapshots (2026-11-12)
+        _snap_cols = [c['name'] for c in _insp.get_columns('org_snapshots')] if _insp.has_table('org_snapshots') else None
+        if _snap_cols is not None:
+            for _k in ('hvd', 'dcat', 'geodcat'):
+                for _suffix in ('checked', 'conforms'):
+                    _col = f'{_k}_services_{_suffix}'
+                    if _col not in _snap_cols:
+                        db.session.execute(text(f'ALTER TABLE org_snapshots ADD COLUMN {_col} INTEGER NOT NULL DEFAULT 0'))
+            db.session.commit()
         # index=True on a model column only creates the index for a table
         # db.create_all() creates fresh -- an already-existing table needs
         # it added by hand here. org_name is filtered on every inbound
@@ -2036,7 +2045,7 @@ def _do_classify_orgs() -> None:
 _ORG_SNAPSHOT_INTERVAL = 24 * 3600  # daily, same cadence as the SHACL checks it rolls up
 
 
-def _rollup_check_by_org(dataset_cache_model) -> dict:
+def _rollup_check_by_org(dataset_cache_model, pkg_type: str = "dataset") -> dict:
     """{org_slug: {"checked": n, "conforms": n}} from a per-dataset quality-
     check cache table's currently-cached results, grouped by org_slug.
     Skips rows with no org_slug yet (not backfilled -- see _do_run_check)
@@ -2054,8 +2063,8 @@ def _rollup_check_by_org(dataset_cache_model) -> dict:
         result = cached.get("result")
         if not result:
             continue
-        if (getattr(row, "pkg_type", None) or result.get("pkg_type") or "dataset") != "dataset":
-            continue   # data services (and rows no longer listed) are not datasets: blending them would skew an organization's dataset rate
+        if (getattr(row, "pkg_type", None) or result.get("pkg_type") or "dataset") != pkg_type:
+            continue   # one package type at a time: blending data services into the dataset rate would skew an organization's figure
         c = counts.setdefault(row.org_slug, {"checked": 0, "conforms": 0})
         c["checked"] += 1
         if result.get("conforms"):
@@ -2081,6 +2090,10 @@ def _do_build_org_snapshots() -> None:
         hvd_counts     = _rollup_check_by_org(HvdDatasetCheckCache)
         dcat_counts    = _rollup_check_by_org(DcatApDatasetCheckCache)
         geodcat_counts = _rollup_check_by_org(GeoDcatDatasetCheckCache)
+        svc = {"hvd": _rollup_check_by_org(HvdDatasetCheckCache, "data-service"),
+               "dcat": _rollup_check_by_org(DcatApDatasetCheckCache, "data-service"),
+               "geodcat": _rollup_check_by_org(GeoDcatDatasetCheckCache, "data-service")}
+        none = {"checked": 0, "conforms": 0}
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         for o in orgs:
@@ -2099,6 +2112,9 @@ def _do_build_org_snapshots() -> None:
                 dcat_pass_rate=(dcat["conforms"] / dcat["checked"]) if dcat["checked"] else None,
                 geodcat_checked=geodcat["checked"], geodcat_conforms=geodcat["conforms"],
                 geodcat_pass_rate=(geodcat["conforms"] / geodcat["checked"]) if geodcat["checked"] else None,
+                hvd_services_checked=svc["hvd"].get(slug, none)["checked"], hvd_services_conforms=svc["hvd"].get(slug, none)["conforms"],
+                dcat_services_checked=svc["dcat"].get(slug, none)["checked"], dcat_services_conforms=svc["dcat"].get(slug, none)["conforms"],
+                geodcat_services_checked=svc["geodcat"].get(slug, none)["checked"], geodcat_services_conforms=svc["geodcat"].get(slug, none)["conforms"],
             ))
         db.session.commit()
 

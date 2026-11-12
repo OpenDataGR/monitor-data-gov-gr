@@ -202,7 +202,7 @@ ROUTES = {
         {"methods": ["GET"], "path": "/api/org-analytics/categories",
          "desc": "Peer-group (ministry/municipality/region/decentralized_admin/national_authority/university/company/other) counts and averages from the latest daily snapshot batch."},
         {"methods": ["GET"], "path": "/api/org-analytics/<org_slug>/scorecard",
-         "desc": "One org's latest snapshot plus portal-wide averages and percentile rank for dataset count and each check's pass rate."},
+         "desc": "One org's latest snapshot plus portal-wide averages and percentile rank for dataset count and each check's pass rate. The snapshot also carries services: {hvd|dcat|geodcat: {checked, conforms}} -- the organization's data services, reported apart from the dataset pass rates (which count datasets only)."},
         {"methods": ["GET"], "path": "/api/org-analytics/<org_slug>/peer-comparison",
          "desc": "One org's latest snapshot vs. the average of other orgs in its own peer-group category."},
         {"methods": ["GET"], "path": "/api/org-analytics/<org_slug>/trend",
