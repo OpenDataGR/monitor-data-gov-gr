@@ -3756,6 +3756,29 @@ _DCAT_SHAPES_GRAPH += _mdr_vocab_shapes
 for _shape in (_DCAT_NS.Catalog, _DCAT_NS.CatalogRecord, _DCAT_NS.Dataset, _DCAT_NS.Distribution):
     _DCAT_SHAPES_GRAPH.add((_shape, _SH_NS.targetClass, _shape))
 
+# Four node-kind rules data.europa.eu's DCAT-AP validation applies and the vendored SEMIC shapes do not state (found 2026-11-12 by
+# sampling the EU's own violation list for our catalogue, 30,000 of its 161,554 rows). Each message below is the EU's, with a real value:
+#   dcatap:applicableLegislation   NodeKind[IRI]            Expected IRI for "ν.4270/2014"                 (~1,900 findings: a law cited as text)
+#   dct:identifier                 NodeKind[Literal]        Expected Literal for <http://semantics.gr/..>  (an IRI where text belongs)
+#   dct:language (distribution)    NodeKind[BlankNodeOrIRI] Expected BlankNodeOrIRI for "el"               (text where an IRI belongs)
+#   dcat:mediaType                 NodeKind[BlankNodeOrIRI] Expected BlankNodeOrIRI for "cif/ xml"
+# All four are structural (a wrong kind of value, like dct:format), so they count toward compliance.
+_DCATAP_NS_APPLICABLE = rdflib.URIRef("http://data.europa.eu/r5r/applicableLegislation")
+for _cls, _path, _kind, _what in (
+    (_DCAT_NS.Dataset,      _DCATAP_NS_APPLICABLE,        _SH_NS.IRI,             "the applicable legislation must be an IRI (a link to the law), not text"),
+    (_DCAT_NS.Distribution, _DCATAP_NS_APPLICABLE,        _SH_NS.IRI,             "the applicable legislation must be an IRI (a link to the law), not text"),
+    (_DCAT_NS.Dataset,      rdflib.URIRef("http://purl.org/dc/terms/identifier"), _SH_NS.Literal, "the identifier must be a literal, not an IRI"),
+    (_DCAT_NS.Distribution, rdflib.URIRef("http://purl.org/dc/terms/language"),   _SH_NS.BlankNodeOrIRI, "the language must be a resource (an EU language IRI), not text"),
+    (_DCAT_NS.CatalogRecord, rdflib.URIRef("http://purl.org/dc/terms/language"),  _SH_NS.BlankNodeOrIRI, "the language must be a resource (an EU language IRI), not text"),
+    (_DCAT_NS.Distribution, _DCAT_NS.mediaType,           _SH_NS.BlankNodeOrIRI,  "the media type must be a resource (an IANA media-type IRI), not text"),
+):
+    _ps = rdflib.BNode()
+    _DCAT_SHAPES_GRAPH.add((_cls, _SH_NS.property, _ps))
+    _DCAT_SHAPES_GRAPH.add((_ps, _SH_NS.path, _path))
+    _DCAT_SHAPES_GRAPH.add((_ps, _SH_NS.nodeKind, _kind))
+    _DCAT_SHAPES_GRAPH.add((_ps, _SH_NS.severity, _SH_NS.Violation))
+    _DCAT_SHAPES_GRAPH.add((_ps, _SH_NS.message, rdflib.Literal(_what, lang="en")))
+
 # The vendored SEMIC file has NO dcat:DataService shape (the HVD and GeoDCAT-AP files do), so a data service had nothing to be
 # checked against. The DCAT-AP 3 mandatory properties of a data service are its title and its endpoint URL; those are stated here
 # and used ONLY for a graph whose top-level resource is a data service (see _export_root_kind) -- not for the data services nested
@@ -3792,7 +3815,7 @@ _DCAT_CHECK_CONCURRENCY = 5   # same conservative pool as the HVD check -- gentl
 _DCAT_CHECK_TIMEOUT = 30
 # Bump whenever _dcat_check_one()'s result schema/logic changes -- see
 # _HVD_CHECK_VERSION's comment, same reasoning.
-_DCAT_CHECK_VERSION = 4  # v4: compliance = structural findings only (the EU's scoring); vocabulary/type/blank-node findings are advisories.
+_DCAT_CHECK_VERSION = 5  # v5: four more node-kind rules the EU applies (applicableLegislation, identifier, language, mediaType) -- full re-run. v4: compliance = structural findings only (the EU's scoring); vocabulary/type/blank-node findings are advisories.
                           # v3: the shapes had no targets, so every cached result said "conforms" -- all had to be re-checked.
                           # (v2: vocabulary augmentation now dereferences vcard:hasEmail/dct:format
                           # and follows one more hop to each concept's own skos:ConceptScheme,
@@ -3911,7 +3934,9 @@ def _dcat_finding_category(results_graph, r, shape, comp) -> str:
         return "type"
     if comp == _SH_NS.NodeKindConstraintComponent:
         value = results_graph.value(r, _SH_NS.value)
-        if value is not None and not isinstance(value, rdflib.Literal):
+        # Only a BLANK NODE where an IRI was expected is the advisory case (the EU accepts BlankNodeOrIRI). An IRI where a literal
+        # belongs (dct:identifier) is a wrong kind of value and counts, like text where a resource belongs.
+        if isinstance(value, rdflib.BNode):
             return "blank_node"
     return "structural"
 

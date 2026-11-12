@@ -257,6 +257,15 @@ vocabulary findings; SEMIC's validator separates core, vocabulary and background
 possible with the EU rules and checks". `tests/test_dcat_eu_alignment.py`. After the next run compare the MQA tab's per-property table: ours
 should now sit close to the EU's. GeoDCAT-AP and HVD are NOT changed (GeoDCAT is not an EU-scored check).
 
+**Four more EU node-kind rules (2026-11-12, `_DCAT_CHECK_VERSION` 5 = a full re-run).** Sampling data.europa.eu's own violation list for our catalogue
+(`/api/mqa/cache/catalogues/data-gov-gr/violations?limit=&offset=`; 30,000 of 161,554 rows, spread across offsets) showed rules the vendored SEMIC file does not
+state: `dcatap:applicableLegislation` NodeKind[IRI] (text like "ν.4270/2014"; ~1,900 findings -- the biggest gap), `dct:identifier` NodeKind[Literal] (an IRI where text
+belongs), `dct:language` on distributions and `dcat:mediaType` NodeKind[BlankNodeOrIRI] (text "el" / "cif/ xml"). They are added next to the target statements in
+app.py (`_DCAT_SHAPES_GRAPH`, so also in `_DCAT_SERVICE_SHAPES_GRAPH`), all structural; `tests/test_dcat_eu_node_kinds.py` uses the EU's real values. The classifier also
+changed: only a BLANK NODE that breaks a node-kind rule is the advisory `blank_node` case (it used to be any non-literal, which would have hidden an IRI-for-literal).
+The EU reported none of accessURL / type / description in the sample, which is what we flag beyond it. Expect the DCAT-AP pass rate to drop a little after the re-run
+(mostly the legislation-as-text datasets); the MQA tab's per-property table should show ours closer to the EU's.
+
 **Vocabulary lookups keep facts, not documents (2026-11-02).** During the first full v4 run each of the 5 validation subprocesses grew
 ~11 MB/min (190 -> 248 MB in 4.5 min; web service 1.87 -> 2.14 GB, heading for its 5 GB `MemoryMax`): `_get_vocab_graph` cached every
 dereferenced vocabulary document WHOLE (concept schemes: file types, languages, countries, corporate bodies) while the DCAT-AP check reads
