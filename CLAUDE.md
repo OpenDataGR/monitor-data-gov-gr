@@ -348,9 +348,14 @@ never the stored `allowed_tabs` (so users created before a tab existed get it to
   Keycloak callback, and API-token auth -- a scoped user's token is scoped too).
   A session missing the key is resolved from the DB (fails closed). A CKAN
   membership change applies at the user's next Keycloak sign-in.
-- Only users **created** by the Keycloak login are scoped (non-sysadmin). An
-  existing CRM user linked by email keeps their roles and is *not* scoped; there
-  is no admin-panel toggle for `org_scoped` yet. Their Organizations tab never
+- Users **created** by the Keycloak login are scoped (non-sysadmin); an existing CRM
+  user linked by email keeps their roles and is *not* scoped automatically. **Admin
+  toggle (2026-11-12):** a superadmin can limit any non-admin user to hand-picked
+  organizations, or lift the limit, from the user table's building button
+  (`POST /api/users/<id>/scope`, `admin_users.html` `scopeModal`, `tests/test_admin_org_scope.py`).
+  `User.scope_manual` marks a hand-picked list: the Keycloak login then does NOT overwrite
+  `ckan_orgs` from CKAN. Never for a superadmin, an admin or oneself (400). Like tab access
+  it is cached in the session, so it applies at the user's NEXT sign-in. Their Organizations tab never
   reads/writes the browser-wide `orgs_cache_v2` localStorage list.
 - Frontend: `window.__ORG_SCOPED__` (`ORG_SCOPED` in app.js) skips Overview/Live
   Visitors/MQA loading, hides the check-run buttons and the portal-wide traffic

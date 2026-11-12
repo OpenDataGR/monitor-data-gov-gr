@@ -412,6 +412,9 @@ class User(db.Model):
     # Keycloak login) and nothing else -- enforced server-side, see _org_scope_route_ok.
     org_scoped    = db.Column(db.Boolean, nullable=False, default=False)
     ckan_orgs     = db.Column(db.Text)
+    # True when a superadmin chose the organizations by hand (POST /api/users/<id>/scope): the Keycloak login must then
+    # NOT overwrite ckan_orgs with CKAN's own list, or the admin's choice would vanish at the user's next sign-in.
+    scope_manual  = db.Column(db.Boolean, nullable=False, default=False)
 
     reset_tokens = db.relationship(
         "PasswordResetToken", backref="user", cascade="all, delete-orphan",
@@ -432,6 +435,7 @@ class User(db.Model):
             "allowed_tabs":  self.allowed_tabs.split(",") if self.allowed_tabs else None,
             "org_scoped":    bool(self.org_scoped),
             "ckan_orgs":     json.loads(self.ckan_orgs) if self.ckan_orgs else [],
+            "scope_manual":  bool(self.scope_manual),
         }
 
 

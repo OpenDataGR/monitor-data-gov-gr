@@ -654,6 +654,40 @@
     </div>
   </div>
 
+  <!-- Organization scope modal -->
+  <div class="modal fade" id="scopeModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold">
+            <i class="bi bi-building me-2"></i><span data-i18n="admin.scope_title">Organization scope</span> — <span id="scopeModalUserLabel"></span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body pt-3">
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="scopeSwitch" onchange="_scopeRenderState()">
+            <label class="form-check-label small fw-semibold" for="scopeSwitch" data-i18n="admin.scope_switch">Limit this user to specific organizations</label>
+          </div>
+          <p class="text-muted small" id="scopeOffHint" data-i18n="admin.scope_off_hint">This user is not limited to organizations.</p>
+          <div id="scopeBody" class="d-none">
+            <input type="text" id="scopeOrgSearch" class="form-control form-control-sm mb-1" autocomplete="off" data-i18n-ph="admin.me_orgs_search" placeholder="Search organizations…" oninput="_scopeRender()">
+            <div id="scopeOrgList" class="border rounded p-2 mb-1" style="max-height:200px;overflow-y:auto"></div>
+            <div id="scopeOrgChips" class="mb-2"></div>
+            <p class="text-muted small mb-1"><i class="bi bi-info-circle me-1"></i><span data-i18n="admin.scope_applies">Applies at the user's next sign-in. A limited user sees only the stats of these organizations and nothing else.</span></p>
+            <p class="text-muted small mb-0 d-none" id="scopeKeycloakNote"><i class="bi bi-exclamation-triangle me-1"></i><span data-i18n="admin.scope_keycloak_note">This user's organizations currently come from CKAN at each sign-in. Saving replaces them with your selection, which then stays until you lift the limit.</span></p>
+          </div>
+        </div>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="admin.cancel">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveScopeModal()">
+            <i class="bi bi-check me-1"></i><span data-i18n="admin.save">Save</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Parsed email detail modal -->
   <div class="modal fade" id="parsedEmailDetailModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1114,6 +1148,13 @@
         'admin.resend_invite_tooltip': 'Resend invite / reset link',
         'admin.admins_always_all_tabs': 'Admins always see every tab',
         'admin.manage_tab_access': 'Manage tab access', 'admin.never': 'Never',
+        'admin.manage_scope': 'Limit to organizations', 'admin.scope_title': 'Organization scope',
+        'admin.scope_switch': 'Limit this user to specific organizations',
+        'admin.scope_off_hint': 'This user is not limited to organizations.',
+        'admin.scope_applies': "Applies at the user's next sign-in. A limited user sees only the stats of these organizations and nothing else.",
+        'admin.scope_keycloak_note': "This user's organizations currently come from CKAN at each sign-in. Saving replaces them with your selection, which then stays until you lift the limit.",
+        'admin.scope_pick_one': 'Pick at least one organization.', 'admin.scope_badge': '{n} org(s)',
+        'admin.scope_not_for_admins': 'Admins and superadmins (and yourself) cannot be limited to organizations',
         'admin.set_tab_access': 'Set tab access before inviting',
         'admin.tabs_selected_tooltip': '{n} tab(s) selected — click to change',
         'admin.new_user_label': 'New user',
@@ -1336,6 +1377,13 @@
         'admin.resend_invite_tooltip': 'Επαναποστολή πρόσκλησης / συνδέσμου επαναφοράς',
         'admin.admins_always_all_tabs': 'Οι διαχειριστές βλέπουν πάντα όλες τις καρτέλες',
         'admin.manage_tab_access': 'Διαχείριση πρόσβασης καρτελών', 'admin.never': 'Ποτέ',
+        'admin.manage_scope': 'Περιορισμός σε οργανισμούς', 'admin.scope_title': 'Εύρος οργανισμών',
+        'admin.scope_switch': 'Περιορισμός αυτού του χρήστη σε συγκεκριμένους οργανισμούς',
+        'admin.scope_off_hint': 'Ο χρήστης δεν περιορίζεται σε οργανισμούς.',
+        'admin.scope_applies': 'Ισχύει από την επόμενη σύνδεση του χρήστη. Ένας περιορισμένος χρήστης βλέπει μόνο τα στατιστικά αυτών των οργανισμών και τίποτα άλλο.',
+        'admin.scope_keycloak_note': 'Οι οργανισμοί αυτού του χρήστη προέρχονται σήμερα από το CKAN σε κάθε σύνδεση. Η αποθήκευση τους αντικαθιστά με την επιλογή σας, η οποία μένει μέχρι να άρετε τον περιορισμό.',
+        'admin.scope_pick_one': 'Επιλέξτε τουλάχιστον έναν οργανισμό.', 'admin.scope_badge': '{n} οργ.',
+        'admin.scope_not_for_admins': 'Οι διαχειριστές και οι υπερδιαχειριστές (και εσείς οι ίδιοι) δεν μπορούν να περιοριστούν σε οργανισμούς',
         'admin.set_tab_access': 'Ορισμός πρόσβασης καρτελών πριν την πρόσκληση',
         'admin.tabs_selected_tooltip': 'Επιλεγμένες καρτέλες: {n} — κλικ για αλλαγή',
         'admin.new_user_label': 'Νέος χρήστης',
@@ -1588,6 +1636,7 @@
                                  ${canManageRoles ? `onclick="toggleAdmin(${u.id})"` : 'disabled'} title="${roleTitle}">
                            ${u.is_admin ? t('admin.badge_admin') : t('admin.badge_user')}
                          </button>`}
+                    ${u.org_scoped ? `<span class="badge bg-info text-dark ms-1" title="${esc((u.ckan_orgs || []).join(', '))}">${t('admin.scope_badge').replace('{n}', (u.ckan_orgs || []).length)}</span>` : ''}
                   </td>
                   ${CURRENT_USER_IS_SUPERADMIN ? `
                   <td>
@@ -1601,6 +1650,9 @@
                     ${u.is_admin
                       ? `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" disabled title="${t('admin.admins_always_all_tabs')}"><i class="bi bi-ui-checks-grid"></i></button>`
                       : `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" title="${t('admin.manage_tab_access')}" onclick="openTabsModal(${u.id})"><i class="bi bi-ui-checks-grid"></i></button>`}
+                    ${CURRENT_USER_IS_SUPERADMIN ? (u.is_admin || u.is_superadmin || isSelf
+                      ? `<button class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" disabled title="${t('admin.scope_not_for_admins')}"><i class="bi bi-building"></i></button>`
+                      : `<button class="btn btn-${u.org_scoped ? 'info' : 'outline-secondary'} btn-sm py-0 px-2 me-1" title="${t('admin.manage_scope')}" onclick="openScopeModal(${u.id})"><i class="bi bi-building"></i></button>`) : ''}
                     <button class="btn btn-outline-danger btn-sm py-0 px-2" ${canDelete ? `onclick="deleteUser(${u.id})"` : 'disabled'} title="${deleteTitle}"><i class="bi bi-trash"></i></button>
                   </td>
                 </tr>`;
@@ -2265,6 +2317,63 @@
       const data = await resp.json();
       if (!resp.ok) { alert(data.error || t('admin.failed')); return; }
       _tabsModal.hide();
+      loadUsers();
+    }
+
+    // ── Organization scope (superadmin): limit a user to chosen CKAN organizations ──
+    let _scopeModal = null, _scopeUserId = null;
+    const _scopeOrgs = new Set();
+
+    function _scopeRenderState() {
+      const on = document.getElementById('scopeSwitch').checked;
+      document.getElementById('scopeBody').classList.toggle('d-none', !on);
+      document.getElementById('scopeOffHint').classList.toggle('d-none', on);
+    }
+
+    function _scopeRender() {
+      const titles = Object.fromEntries(((_meOptions && _meOptions.orgs) || []).map(o => [o.slug, o.title]));
+      const q = _meNorm(document.getElementById('scopeOrgSearch').value);
+      const rows = ((_meOptions && _meOptions.orgs) || []).filter(o => !q || _meNorm(o.title).includes(q) || o.slug.includes(q)).slice(0, 80);
+      document.getElementById('scopeOrgList').innerHTML = rows.length ? rows.map(o => `
+        <div class="form-check"><input class="form-check-input" type="checkbox" id="scopeOrg_${esc(o.slug)}" value="${esc(o.slug)}" ${_scopeOrgs.has(o.slug) ? 'checked' : ''} onchange="_scopeToggleOrg(this.value, this.checked)">
+        <label class="form-check-label small" for="scopeOrg_${esc(o.slug)}">${esc(o.title)}</label></div>`).join('')
+        : `<p class="text-muted small mb-0">${t('admin.me_no_orgs')}</p>`;
+      document.getElementById('scopeOrgChips').innerHTML = [..._scopeOrgs].map(sl => `
+        <span class="badge text-bg-primary me-1 mb-1">${esc(titles[sl] || sl)} <a href="#" class="text-white ms-1 text-decoration-none" onclick="_scopeToggleOrg('${esc(sl)}', false);return false;">&times;</a></span>`).join('');
+    }
+
+    function _scopeToggleOrg(slug, on) {
+      if (on) _scopeOrgs.add(slug); else _scopeOrgs.delete(slug);
+      _scopeRender();
+    }
+
+    async function openScopeModal(id) {
+      const u = _usersCache.find(x => x.id === id);
+      if (!u) return;
+      _scopeUserId = id;
+      document.getElementById('scopeModalUserLabel').textContent = u.name;
+      _scopeOrgs.clear();
+      if (u.org_scoped) (u.ckan_orgs || []).forEach(sl => _scopeOrgs.add(sl));
+      document.getElementById('scopeSwitch').checked = !!u.org_scoped;
+      document.getElementById('scopeOrgSearch').value = '';
+      document.getElementById('scopeKeycloakNote').classList.toggle('d-none', !(u.org_scoped && !u.scope_manual));
+      _scopeRenderState();
+      if (!_scopeModal) _scopeModal = new bootstrap.Modal(document.getElementById('scopeModal'));
+      _scopeModal.show();
+      if (!_meOptions) await _loadMassEmailOptions();
+      _scopeRender();
+    }
+
+    async function saveScopeModal() {
+      const on = document.getElementById('scopeSwitch').checked;
+      if (on && !_scopeOrgs.size) { alert(t('admin.scope_pick_one')); return; }
+      const resp = await fetch(`../api/users/${_scopeUserId}/scope`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({org_scoped: on, orgs: [..._scopeOrgs].sort()}),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.error || t('admin.failed')); return; }
+      _scopeModal.hide();
       loadUsers();
     }
 

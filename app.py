@@ -477,6 +477,8 @@ if _is_main_process():
             db.session.commit()
         if 'ckan_orgs' not in _user_cols:
             db.session.execute(text('ALTER TABLE users ADD COLUMN ckan_orgs TEXT'))
+        if 'scope_manual' not in _user_cols:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN scope_manual BOOLEAN NOT NULL DEFAULT FALSE'))
             db.session.commit()
         _inbound_cols = [c['name'] for c in _insp.get_columns('inbound_emails')]
         if 'candidate_contact_ids' not in _inbound_cols:
@@ -1200,7 +1202,8 @@ def _keycloak_user_for(ident):
                     org_scoped=not ident.sysadmin,
                     allowed_tabs=None if ident.sysadmin else _ORG_SCOPED_TABS)
         db.session.add(user)
-    user.ckan_orgs = json.dumps(list(ident.organizations))
+    if not user.scope_manual:   # a superadmin's hand-picked organizations are not CKAN's to overwrite
+        user.ckan_orgs = json.dumps(list(ident.organizations))
     db.session.flush()  # a new row has no id until flushed; the session needs it
     return user
 
@@ -1382,6 +1385,43 @@ def users_set_tabs(user_id):
     user = User.query.get_or_404(user_id)
     body = _decode_payload()
     user.allowed_tabs = _clean_allowed_tabs(body.get("restricted"), body.get("tabs"))
+    db.session.commit()
+    return jsonify({"ok": True, "user": _user_dict_for_viewer(user)})
+
+
+@app.route("/api/users/<int:user_id>/scope", methods=["POST"])
+def users_set_scope(user_id):
+    """Superadmin: limit a (non-admin) user to the stats of the given CKAN organizations, or lift the limit. The limit is
+    enforced server-side exactly like a Keycloak org admin's (see _org_scope_route_ok) and is cached in the session at sign-in,
+    so it applies at the user's NEXT sign-in -- same as tab access. Hand-picked organizations are never overwritten by CKAN's
+    list at a later Keycloak login (`scope_manual`)."""
+    err = _require_superadmin()
+    if err:
+        return err
+    if user_id == session.get("user_id"):
+        return jsonify({"error": "You cannot change your own scope"}), 400
+    user = User.query.get_or_404(user_id)
+    if user.is_superadmin:
+        return jsonify({"error": "A superadmin can never be limited to organizations"}), 400
+    body = _decode_payload()
+    if not body.get("org_scoped"):
+        if user.scope_manual:
+            user.ckan_orgs = None   # the hand-picked list goes with the limit; a Keycloak-created user's own list stays
+        user.org_scoped = False
+        user.scope_manual = False
+        db.session.commit()
+        return jsonify({"ok": True, "user": _user_dict_for_viewer(user)})
+    if user.is_admin:
+        return jsonify({"error": "An admin cannot be limited to organizations -- remove their admin role first"}), 400
+    orgs = body.get("orgs")
+    if not isinstance(orgs, list):
+        return jsonify({"error": "orgs must be a list of organization slugs"}), 400
+    slugs = sorted({s for s in orgs if isinstance(s, str) and _SLUG_RE.match(s)})
+    if not slugs or len(slugs) != len({s for s in orgs if isinstance(s, str)}):
+        return jsonify({"error": "Pick at least one organization (valid slugs only)"}), 400
+    user.org_scoped = True
+    user.scope_manual = True
+    user.ckan_orgs = json.dumps(slugs)
     db.session.commit()
     return jsonify({"ok": True, "user": _user_dict_for_viewer(user)})
 
