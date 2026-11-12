@@ -4223,21 +4223,29 @@ def _ask_worker_where_it_is(p) -> None:
     """Before a straggler is killed, make it print its Python stack (faulthandler, registered in every spawned worker
     at import) and log its OS state, so the journal says WHAT it was doing a minute after its run ended -- the cause of
     the daily 'outlived their run' warnings is still unknown (a worker boots in ~0.6 s on the VM, so it is not slow boot)."""
+    # Every step logs what happened, including WHY it could not do its job: the first version swallowed its errors, and on
+    # 2026-11-12 it killed two workers without a single line (deployed, yet silent) -- so nobody could tell a worker that
+    # was stuck from one that simply exited in the second between is_alive() and the /proc read.
     pid = getattr(p, "pid", None)
+    try:
+        app.logger.warning("quality-check pool: straggler pid %s alive=%s exitcode=%s", pid, p.is_alive(), getattr(p, "exitcode", None))
+    except Exception as exc:
+        app.logger.warning("quality-check pool: straggler pid %s (state unreadable: %s)", pid, exc)
     if not pid:
         return
     try:
         stat = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
         ticks = os.sysconf("SC_CLK_TCK")
         app.logger.warning("quality-check pool: straggler pid %s state=%s cpu=%.1fs", pid, stat[0], (int(stat[11]) + int(stat[12])) / ticks)
-    except Exception:
-        pass   # not Linux, or already gone
+    except Exception as exc:
+        app.logger.warning("quality-check pool: straggler pid %s: /proc not readable (%s: %s) -- not Linux, or it exited just now",
+                           pid, type(exc).__name__, exc)
     try:
         import signal as _signal
         os.kill(pid, _signal.SIGUSR1)   # the worker's faulthandler writes every thread's stack to its stderr (the journal)
         time.sleep(1)
-    except Exception:
-        pass
+    except Exception as exc:
+        app.logger.warning("quality-check pool: straggler pid %s: could not signal it (%s: %s)", pid, type(exc).__name__, exc)
 
 
 def _reap_pool_processes(procs, grace=None):
@@ -4263,8 +4271,10 @@ def _reap_pool_processes(procs, grace=None):
                     if p.is_alive():
                         p.kill()
                         p.join(5)
-            except Exception:
-                pass   # already gone / closed by the pool's own teardown
+                    # exitcode: 0 = it left on its own just late, -15 = our terminate() ended it, -9 = it needed the kill
+                    app.logger.warning("quality-check pool: straggler pid %s exitcode after terminate = %s", getattr(p, "pid", None), getattr(p, "exitcode", None))
+            except Exception as exc:
+                app.logger.warning("quality-check pool: reaping a worker raised %s: %s", type(exc).__name__, exc)
         if stragglers:
             app.logger.warning("quality-check pool: terminated %d worker process(es) that outlived their run", stragglers)
 

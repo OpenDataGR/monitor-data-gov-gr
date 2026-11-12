@@ -97,6 +97,23 @@ def test_a_small_run_does_not_spawn_a_full_pool():
     assert appmod._pool_workers(5, 2186) == 5   # a big run keeps the configured concurrency
 
 
+def test_a_straggler_is_always_logged_even_when_it_cannot_be_inspected(caplog):
+    """2026-11-12: the diagnostic was deployed and the reaper killed two workers, yet the journal had NOT ONE straggler line --
+    it swallowed its errors, so a stuck worker could not be told from one that exited a moment earlier."""
+    class Gone(FakeProc):
+        pid = 2_000_000_000   # no such process (and not Linux's /proc on a dev machine)
+
+    stuck = Gone()
+    with caplog.at_level("WARNING"):
+        t = appmod._reap_pool_processes([stuck], grace=0.05)
+        t.join(5)
+    text = caplog.text
+    assert "straggler pid 2000000000 alive=" in text           # what we know about it
+    assert "/proc not readable" in text or "state=" in text    # why there is no OS state, or the state itself
+    assert "exitcode after terminate" in text                  # how it ended (0 = left by itself just late)
+    assert "outlived their run" in text
+
+
 def test_asking_a_vanished_or_unreachable_worker_where_it_is_never_raises():
     class Gone(FakeProc):
         pid = 2_000_000_000   # no such process (and not Linux's /proc on a dev machine)
