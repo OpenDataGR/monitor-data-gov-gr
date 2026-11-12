@@ -37,8 +37,10 @@ SMTP_PASSWORD       = os.environ.get("SMTP_PASSWORD", "").strip()
 SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL", "").strip()
 SENDGRID_FROM_NAME  = os.environ.get("SENDGRID_FROM_NAME", "data.gov.gr Monitor").strip()
 # The email provider's monthly cap (this SendGrid account: 1,000 a month). 0 = no cap known, nothing is enforced. A mass email that would
-# not fit in what is left of the month is REFUSED before anything is sent (otherwise it half-sends and the rest fail). EMAIL_MONTHLY_RESERVE
-# keeps part of the cap for the mail the app sends on its own (invites, password resets, test sends), which the mass-email count does not see.
+# not fit in what is left of the month is REFUSED before anything is sent (otherwise it half-sends and the rest fail). THE SAME SENDGRID ACCOUNT
+# ALSO SENDS THE data.gov.gr PORTAL'S OWN MAIL (account activation, system messages), and the mass-email count cannot see any of it: set
+# EMAIL_MONTHLY_RESERVE to the portal's real monthly volume (SendGrid's Stats page) plus a margin, or a mailing can use up the cap and
+# new portal users stop receiving their activation emails. (Also covers this app's invites, password resets and test sends.)
 EMAIL_MONTHLY_LIMIT   = int(os.environ.get("EMAIL_MONTHLY_LIMIT", "0") or 0)
 EMAIL_MONTHLY_RESERVE = int(os.environ.get("EMAIL_MONTHLY_RESERVE", "0") or 0)
 

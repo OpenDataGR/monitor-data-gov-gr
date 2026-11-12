@@ -380,8 +380,10 @@ time, refused (503) when SMTP isn't configured. **`admin_users.html` is a Jinja 
 `{{ '{{' }}name{{ '}}' }}`** or it renders as nothing. POSTs use the `d=<base64>` form (the WAF blocks raw HTML bodies). Tests: `tests/test_mass_email_audience.py`.
 
 **Monthly quota guard (2026-11-12).** The SendGrid account is capped at 1,000 emails a MONTH and the audience (all portal org users) is large and
-growing, with 2-3 mailings in a peak month. `EMAIL_MONTHLY_LIMIT` (0 = off, the default) and `EMAIL_MONTHLY_RESERVE` (kept for invites/resets/test sends,
-which are not counted) in `.env`; `_email_quota()` counts this calendar month's sent `MassEmailRecipient` rows + the older pick-users `MassEmailLog` successes;
+growing, with 2-3 mailings in a peak month. `EMAIL_MONTHLY_LIMIT` (0 = off, the default) and `EMAIL_MONTHLY_RESERVE` in `.env`. **The same SendGrid account also sends the data.gov.gr
+portal's own mail (activation, system messages)**, which this guard cannot see: the reserve must cover the portal's real monthly volume (SendGrid Stats)
+plus a margin, otherwise a mailing can exhaust the cap and block portal activations. Better long term: a separate SendGrid API key/subuser or provider
+for CRM mass mail, or reading SendGrid's own usage (Stats API, needs a key with the stats scope) instead of a manual reserve; `_email_quota()` counts this calendar month's sent `MassEmailRecipient` rows + the older pick-users `MassEmailLog` successes;
 a send, a resume or a pick-users send that does not fit is refused with 409 BEFORE anything is created or sent (`_quota_refusal`), and the preview shows
 "X of Y left (resets D)" in red when the audience is too big. `tests/test_email_quota.py`. SMTP is generic (`SMTP_SERVER`), so another provider is only
 config; the inbound Mail Parser stays on SendGrid's Inbound Parse.
