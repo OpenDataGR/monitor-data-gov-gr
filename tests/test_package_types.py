@@ -103,7 +103,7 @@ def test_org_rollups_count_datasets_only(app):
 
 
 def test_the_export_can_filter_to_data_services_and_says_which_row_is_which():
-    for check in ("dcat", "geodcat"):
+    for check in ("hvd", "dcat", "geodcat"):
         cfg = appmod._QUALITY_CHECKS[check]
         assert cfg["export_predicates"]["data_service"]({"pkg_type": "data-service"})
         assert not cfg["export_predicates"]["data_service"]({"pkg_type": "dataset"})

@@ -3612,6 +3612,7 @@ _HVD_EXPORT_PREDICATES = {
     "license_missing":      lambda d: d.get("license_status") == "missing",
     "license_non_open":     lambda d: d.get("license_status") == "non_open",
     "publisher_mismatch":   lambda d: bool(d.get("publisher_mismatch")),
+    "data_service":         lambda d: d.get("pkg_type") == "data-service",
 }
 _HVD_LICENSE_STATUS_LABELS = {"missing": "Missing", "non_open": "Not confirmed open", "open": "Open"}
 
@@ -4047,6 +4048,7 @@ _QUALITY_CHECKS = {
             ("no_api_access",        "No API access",        lambda d: "Yes" if d.get("no_api_access") else "No"),
             ("license_status",       "License status",       lambda d: _HVD_LICENSE_STATUS_LABELS.get(d.get("license_status"), d.get("license_status") or "")),
             ("publisher_mismatch",   "Publisher mismatch",   lambda d: "Yes" if d.get("publisher_mismatch") else "No"),
+            ("pkg_type",             "Type",                 lambda d: "Data service" if d.get("pkg_type") == "data-service" else "Dataset"),
         ],
     },
     "dcat": {

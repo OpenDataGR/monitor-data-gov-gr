@@ -3112,6 +3112,7 @@ const HVD_FILTER_PREDICATES = {
   license_missing:      d => d.license_status === 'missing',
   license_non_open:     d => d.license_status === 'non_open',
   publisher_mismatch:   d => d.publisher_mismatch,
+  data_service:         d => d.pkg_type === 'data-service',
 };
 
 // Datasets with no issue at all are hidden from the default (flagged-only)
@@ -3181,6 +3182,7 @@ function _renderHvdSummaryCards() {
     { key: 'non_conforming',       group: 'compliance', value: _hvdCardCount('non_conforming'),       label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
     { key: 'legal_citation_issue', group: 'compliance', value: _hvdCardCount('legal_citation_issue'), label: t('quality.hvd_legal_issue'),    bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
     { key: 'no_api_access',        group: 'compliance', value: _hvdCardCount('no_api_access'),        label: t('quality.hvd_no_api'),         bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-hdd-network' },
+    { key: 'data_service',         group: 'compliance', value: _hvdCardCount('data_service'),         label: t('quality.type_service'),       bg: 'bg-info bg-opacity-10',    text: 'text-info',    icon: 'bi-plug' },
     { ...checkedCard, group: 'metadata' },
     { key: 'license_missing',    group: 'metadata', value: _hvdCardCount('license_missing'),    label: t('quality.hvd_license_missing'),   bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-file-earmark-x' },
     { key: 'license_non_open',   group: 'metadata', value: _hvdCardCount('license_non_open'),   label: t('quality.hvd_license_non_open'),  bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-lock' },
@@ -3401,6 +3403,7 @@ function _renderHvdCheck(result) {
           <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">${t('filters.clear')}</span>
         </button>
       </div>
+      ${_byTypeLineHtml(s, false)}
       <div class="tab-content">
         <div class="tab-pane fade show active" id="hvdComplianceSummaryPane">
           <div id="hvdComplianceSummary" class="row g-2"></div>
@@ -3723,7 +3726,7 @@ function _dcatCardCount(key) {
 }
 
 // One pass-rate line per package type (datasets, data services) from summary.by_type -- the two are never blended.
-function _byTypeLineHtml(s) {
+function _byTypeLineHtml(s, withServiceNote = true) {
   const bt = s && s.by_type;
   if (!bt) return '';
   const line = (type, labelKey) => {
@@ -3732,7 +3735,7 @@ function _byTypeLineHtml(s) {
   };
   const parts = [line('dataset', 'quality.type_dataset'), line('data-service', 'quality.type_service')].filter(Boolean);
   if (!parts.length) return '';
-  const note = bt['data-service']
+  const note = withServiceNote && bt['data-service']
     ? `<div class="text-muted small mb-2"><i class="bi bi-info-circle me-1"></i>${esc(t('quality.type_service_note'))}</div>` : '';
   return `<div class="mb-1 small fw-semibold">${parts.join(' &middot; ')}</div>${note}`;
 }
