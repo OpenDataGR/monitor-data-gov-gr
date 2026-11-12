@@ -221,7 +221,9 @@ Verified on ONE dataset only; after the full re-run expect a real pass rate, and
 23,189 unfiltered. The header counts `type:dataset`; `_list_all_datasets` had no `fq` and pushed all 237 non-datasets through the dataset shapes
 and into the pass rate. Now all three listers go through `_list_packages(extra_fq)`, which queries each of `_CHECKED_PACKAGE_TYPES`
 (dataset, data-service) with its own `fq` and tags rows `pkg_type` -- `package_search` does NOT return `type` via `fl`, so the tag comes from the
-query. **Decisions are not checked** (not a DCAT class; their export is a dcat:Dataset with distributions). Every result row carries `pkg_type`
+query. **Decisions are not checked -- a decision by the user (2026-11-12), not an oversight** (not real datasets, though their export IS a
+dcat:Dataset with distributions and all 110 carried an HVD category: the HVD tab's checked count fell 1,278 -> 1,168 when the type split
+dropped them; if the EU turns out to harvest them as datasets, add "decision" to `_CHECKED_PACKAGE_TYPES` and a third line in `_byTypeLineHtml`). Every result row carries `pkg_type`
 (also a column on the 3 per-dataset caches; `unlisted` = no longer in the listing, NULL = not stamped yet = dataset), `summary.by_type` gives a
 separate pass rate per type, and `_rollup_check_by_org` (org analytics) counts datasets only.
 **The export does not say a service is a service:** `/dataset/<name>.rdf` redirects to `/dataset_series/<name>.rdf` for services and decisions, and a
