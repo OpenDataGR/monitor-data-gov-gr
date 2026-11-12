@@ -53,6 +53,37 @@ def test_organization_as_a_full_object_still_works(monkeypatch, lister):
     assert (d["org_slug"], d["org_title"]) == ("org-b", "Org B")
 
 
+def test_every_checked_package_type_is_listed_and_tagged_from_its_own_query(monkeypatch):
+    """package_search does not return a package's `type` through `fl`, so each type is listed with its own fq and tagged
+    from the query that found it. Decisions (110 on 2026-11-12) are not DCAT and are never asked for."""
+    seen = []
+
+    def get(url, params=None, **kw):
+        seen.append(params["fq"])
+        name = {'type:"dataset"': "a-dataset", 'type:"data-service"': "a-service"}[params["fq"]]
+        return _Resp({"success": True, "result": {"count": 1, "results": [
+            {"name": name, "metadata_modified": "m", "organization": "org-a"}]}})
+
+    monkeypatch.setattr(appmod.requests, "get", get)
+    items = {d["name"]: d["pkg_type"] for d in appmod._list_all_datasets()}
+    assert items == {"a-dataset": "dataset", "a-service": "data-service"}
+    assert not any("decision" in fq for fq in seen)
+
+
+def test_the_hvd_and_geo_lists_keep_their_own_filter_per_type(monkeypatch):
+    seen = []
+
+    def get(url, params=None, **kw):
+        seen.append(params["fq"])
+        return _Resp({"success": True, "result": {"count": 0, "results": []}})
+
+    monkeypatch.setattr(appmod.requests, "get", get)
+    appmod._list_hvd_datasets()
+    appmod._list_geo_datasets()
+    assert seen == ['type:"dataset" AND -hvd_category:"[]"', 'type:"data-service" AND -hvd_category:"[]"',
+                    'type:"dataset" AND dcat_type:*GEOSPATIAL*', 'type:"data-service" AND dcat_type:*GEOSPATIAL*']
+
+
 def test_a_cold_orgs_cache_is_filled_from_ckan(monkeypatch):
     monkeypatch.setitem(appmod._orgs_cache, "data", None)
 

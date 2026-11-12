@@ -217,6 +217,23 @@ and `spdx:Checksum` without `spdx:algorithm`. **`_GEODCAT_CHECK_VERSION` 2 (2026
 too** (`_geodcat_result_for_graph`): only structural findings count, class-membership ones are advisories (`tests/test_geodcat_layering.py`).
 Verified on ONE dataset only; after the full re-run expect a real pass rate, and check the top GeoDCAT rows of `tools/violation_report.sql`.
 
+**Package types: datasets vs data services (2026-11-12).** The portal's `type` facet reads dataset 22,952, data-service 127, **decision 110** =
+23,189 unfiltered. The header counts `type:dataset`; `_list_all_datasets` had no `fq` and pushed all 237 non-datasets through the dataset shapes
+and into the pass rate. Now all three listers go through `_list_packages(extra_fq)`, which queries each of `_CHECKED_PACKAGE_TYPES`
+(dataset, data-service) with its own `fq` and tags rows `pkg_type` -- `package_search` does NOT return `type` via `fl`, so the tag comes from the
+query. **Decisions are not checked** (not a DCAT class; their export is a dcat:Dataset with distributions). Every result row carries `pkg_type`
+(also a column on the 3 per-dataset caches; `unlisted` = no longer in the listing, NULL = not stamped yet = dataset), `summary.by_type` gives a
+separate pass rate per type, and `_rollup_check_by_org` (org analytics) counts datasets only.
+**The export does not say a service is a service:** `/dataset/<name>.rdf` redirects to `/dataset_series/<name>.rdf` for services and decisions, and a
+service's graph is a plain `dcat:Dataset` (no `dcat:DataService`, no endpoint; checked on `attica-region-traffic-data`). `_export_root_kind(graph)`
+says what the export is; a graph rooted in a `dcat:DataService` is validated with `_DCAT_SERVICE_SHAPES_GRAPH` (DCAT-AP 3 mandatory title +
+endpointURL -- the vendored SEMIC file has no DataService shape; the nested `dcat:accessService` services of a dataset are NOT held to it) and
+GeoDCAT-AP's own DataService shape; a CKAN data-service exported as `dcat:Dataset` is **non-compliant** (`_typed_augment_row`, `type_mismatch`,
+idempotent). So expect the 127 services to read 0% until the portal exports `dcat:DataService` (item for the contractor); no code change is needed then.
+No check-version bump: a cached data-service row without `exported_as` is simply re-checked (`_do_run_check`), datasets keep their cache.
+`tests/test_package_types.py`, `tests/test_quality_listers.py`. Not done: separate org-analytics pass rate for services (OrgSnapshot has dataset columns
+only), HVD per-type verdict.
+
 ## DCAT-AP compliance = the EU's structural layer (2026-11-02, `_DCAT_CHECK_VERSION` 4)
 
 `tools/violation_report.sql` (read-only, run on the VM) showed 23,001 of 23,568 datasets non-conforming and **0** flagged `vocabulary_issue`:

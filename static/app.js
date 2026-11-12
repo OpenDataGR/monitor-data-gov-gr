@@ -239,6 +239,10 @@ const TRANSLATIONS = {
     'quality.dcat_rerun_title': 'Run DCAT-AP Check Again?',
     'quality.dcat_rerun_line2': "Datasets are checked incrementally, so a new run only re-validates what actually changed on the portal — there's usually no need to run it again unless you know something major has changed on data.gov.gr. A full re-check of the whole catalog can take a long time.",
     'quality.dcat_structural_issue': 'Structural issue',
+    'quality.type_dataset': 'Datasets',
+    'quality.type_service': 'Data services',
+    'quality.type_line': '{label}: {conforms} of {checked} conform',
+    'quality.type_service_note': 'Data services are reported on their own, never blended into the dataset figure. The portal currently exports them as plain datasets (no endpoint), so they count as non-compliant until it exports them as data services.',
     'quality.dcat_vocabulary_issue': 'Vocabulary issue',
     'quality.dcat_col_structural': 'Structural',
     'quality.dcat_col_vocabulary': 'Vocabulary',
@@ -924,6 +928,10 @@ const TRANSLATIONS = {
     'quality.dcat_rerun_title': 'Εκτέλεση Ελέγχου DCAT-AP Ξανά;',
     'quality.dcat_rerun_line2': 'Ο έλεγχος γίνεται σταδιακά, οπότε μια νέα εκτέλεση επικυρώνει εκ νέου μόνο ό,τι έχει πράγματι αλλάξει στην πύλη — συνήθως δεν χρειάζεται να τον εκτελέσετε ξανά, εκτός αν γνωρίζετε ότι έχει γίνει κάποια σημαντική αλλαγή στο data.gov.gr. Μια πλήρης επανεκτέλεση σε όλο τον κατάλογο μπορεί να διαρκέσει πολύ.',
     'quality.dcat_structural_issue': 'Δομικό πρόβλημα',
+    'quality.type_dataset': 'Σύνολα δεδομένων',
+    'quality.type_service': 'Υπηρεσίες δεδομένων',
+    'quality.type_line': '{label}: {conforms} από {checked} συμμορφώνονται',
+    'quality.type_service_note': 'Οι υπηρεσίες δεδομένων αναφέρονται ξεχωριστά και δεν αναμειγνύονται ποτέ με τα σύνολα δεδομένων. Η πύλη τις εξάγει σήμερα ως απλά σύνολα δεδομένων (χωρίς endpoint), οπότε θεωρούνται μη συμμορφούμενες μέχρι να τις εξάγει ως υπηρεσίες δεδομένων.',
     'quality.dcat_vocabulary_issue': 'Πρόβλημα λεξιλογίου',
     'quality.dcat_col_structural': 'Δομή',
     'quality.dcat_col_vocabulary': 'Λεξιλόγιο',
@@ -3693,6 +3701,7 @@ const DCAT_FILTER_PREDICATES = {
   non_conforming:   d => !d.conforms,
   vocabulary_issue: d => d.vocabulary_issue,
   structural_issue: d => d.structural_issue,
+  data_service:     d => d.pkg_type === 'data-service',
 };
 
 // Single source of truth for "which datasets are currently visible", shared
@@ -3713,6 +3722,21 @@ function _dcatCardCount(key) {
   return _dcatFilteredDatasets(filters).length;
 }
 
+// One pass-rate line per package type (datasets, data services) from summary.by_type -- the two are never blended.
+function _byTypeLineHtml(s) {
+  const bt = s && s.by_type;
+  if (!bt) return '';
+  const line = (type, labelKey) => {
+    const x = bt[type];
+    return x ? esc(t('quality.type_line').replace('{label}', t(labelKey)).replace('{conforms}', fmt(x.conforms)).replace('{checked}', fmt(x.checked))) : '';
+  };
+  const parts = [line('dataset', 'quality.type_dataset'), line('data-service', 'quality.type_service')].filter(Boolean);
+  if (!parts.length) return '';
+  const note = bt['data-service']
+    ? `<div class="text-muted small mb-2"><i class="bi bi-info-circle me-1"></i>${esc(t('quality.type_service_note'))}</div>` : '';
+  return `<div class="mb-1 small fw-semibold">${parts.join(' &middot; ')}</div>${note}`;
+}
+
 function _renderDcatSummaryCards() {
   const s = _dcatLastResult.summary;
   _dcatSummaryCards = [
@@ -3720,6 +3744,7 @@ function _renderDcatSummaryCards() {
     { key: 'non_conforming',   value: _dcatCardCount('non_conforming'),   label: t('quality.hvd_non_conforming'),   bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
     { key: 'structural_issue', value: _dcatCardCount('structural_issue'), label: t('quality.dcat_structural_issue'), bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
     { key: 'vocabulary_issue', value: _dcatCardCount('vocabulary_issue'), label: t('quality.dcat_vocabulary_issue'), bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-tags' },
+    { key: 'data_service',     value: _dcatCardCount('data_service'),     label: t('quality.type_service'),          bg: 'bg-info bg-opacity-10',    text: 'text-info',    icon: 'bi-plug' },
   ];
   const prepared = _dcatSummaryCards.map(c => {
     const clickable = c.key !== null;
@@ -3861,6 +3886,7 @@ function _renderDcatCheck(result) {
           <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">${t('filters.clear')}</span>
         </button>
       </div>
+      ${_byTypeLineHtml(s)}
       <div id="dcatSummary" class="row g-2"></div>
     </div>`;
 
@@ -4123,6 +4149,7 @@ let _geodcatSummaryCards = [];
 
 const GEODCAT_FILTER_PREDICATES = {
   non_conforming: d => !d.conforms,
+  data_service:   d => d.pkg_type === 'data-service',
 };
 
 // Single source of truth for "which datasets are currently visible", shared
@@ -4148,6 +4175,7 @@ function _renderGeoDcatSummaryCards() {
   _geodcatSummaryCards = [
     { key: null, value: s.checked, label: t('quality.hvd_checked'), bg: 'bg-secondary bg-opacity-10', text: 'text-secondary', icon: 'bi-list-ul' },
     { key: 'non_conforming', value: _geodcatCardCount('non_conforming'), label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10', text: 'text-danger', icon: 'bi-x-octagon' },
+    { key: 'data_service',   value: _geodcatCardCount('data_service'),   label: t('quality.type_service'),         bg: 'bg-info bg-opacity-10',   text: 'text-info',   icon: 'bi-plug' },
   ];
   const prepared = _geodcatSummaryCards.map(c => {
     const clickable = c.key !== null;
@@ -4288,6 +4316,7 @@ function _renderGeoDcatCheck(result) {
           <i class="bi bi-x-circle me-1"></i><span data-i18n="filters.clear">${t('filters.clear')}</span>
         </button>
       </div>
+      ${_byTypeLineHtml(s)}
       <div id="geodcatSummary" class="row g-2"></div>
     </div>`;
 

@@ -144,6 +144,9 @@ class HvdDatasetCheckCache(db.Model):
     # needing a full re-check. Nullable: rows written before this column
     # existed backfill on the next scheduled check run for their check type.
     org_slug          = db.Column(db.String(200), index=True)
+    # CKAN package type of the row ('dataset' / 'data-service'; 'unlisted' = not in the check's current listing, e.g. a
+    # decision or a package that lost its HVD tag). NULL = not stamped yet, counted as a dataset. Org rollups count datasets only.
+    pkg_type          = db.Column(db.String(30))
 
     def result(self):
         return json.loads(self.result_json) if self.result_json else None
@@ -192,6 +195,9 @@ class DcatApDatasetCheckCache(db.Model):
     result_json       = db.Column(db.Text)
     checked_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     org_slug          = db.Column(db.String(200), index=True)  # see HvdDatasetCheckCache.org_slug
+    # CKAN package type of the row ('dataset' / 'data-service'; 'unlisted' = not in the check's current listing, e.g. a
+    # decision or a package that lost its HVD tag). NULL = not stamped yet, counted as a dataset. Org rollups count datasets only.
+    pkg_type          = db.Column(db.String(30))
 
     def result(self):
         return json.loads(self.result_json) if self.result_json else None
@@ -237,6 +243,9 @@ class GeoDcatDatasetCheckCache(db.Model):
     result_json       = db.Column(db.Text)
     checked_at        = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     org_slug          = db.Column(db.String(200), index=True)  # see HvdDatasetCheckCache.org_slug
+    # CKAN package type of the row ('dataset' / 'data-service'; 'unlisted' = not in the check's current listing, e.g. a
+    # decision or a package that lost its HVD tag). NULL = not stamped yet, counted as a dataset. Org rollups count datasets only.
+    pkg_type          = db.Column(db.String(30))
 
     def result(self):
         return json.loads(self.result_json) if self.result_json else None

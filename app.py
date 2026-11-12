@@ -517,6 +517,8 @@ if _is_main_process():
                 db.session.execute(text(f'ALTER TABLE {_tbl} ADD COLUMN org_slug VARCHAR(200)'))
                 db.session.commit()
             db.session.execute(text(f'CREATE INDEX IF NOT EXISTS ix_{_tbl}_org_slug ON {_tbl} (org_slug)'))
+            if 'pkg_type' not in _cols:   # package type (dataset / data-service), stamped on every run -- see the model's comment
+                db.session.execute(text(f'ALTER TABLE {_tbl} ADD COLUMN pkg_type VARCHAR(30)'))
         db.session.commit()
 
 
@@ -2012,6 +2014,8 @@ def _rollup_check_by_org(dataset_cache_model) -> dict:
         result = cached.get("result")
         if not result:
             continue
+        if (getattr(row, "pkg_type", None) or result.get("pkg_type") or "dataset") != "dataset":
+            continue   # data services (and rows no longer listed) are not datasets: blending them would skew an organization's dataset rate
         c = counts.setdefault(row.org_slug, {"checked": 0, "conforms": 0})
         c["checked"] += 1
         if result.get("conforms"):
@@ -3521,41 +3525,54 @@ def _package_org(p: dict, titles: dict):
     return slug, titles.get(slug, slug)
 
 
-def _list_hvd_datasets() -> list:
-    """[{"name":..., "metadata_modified":..., "org_title":..., "org_slug":...}, ...]
-    for every currently HVD-tagged dataset -- one bulk paginated call, used
-    both to know what to check and to detect which ones actually changed
-    since the last check. org_title/org_slug come from CKAN's own
-    organization record, NOT from the dataset's dct:publisher RDF field --
-    that field is free text set by each data owner and is often wrong (e.g.
-    a contact person's name instead of the organization), so it's unusable
-    for grouping."""
-    items = []
+# The portal holds three CKAN package types: "dataset", "data-service" and "decision" (2026-11-12: 22,952 / 127 / 110). The
+# quality checks cover datasets AND data services -- each is told apart in the results (`pkg_type`) and reported on its own,
+# never blended into one pass rate -- and skip decisions (not a DCAT class). package_search does not return a package's `type`
+# through `fl`, so each type is listed with its own `fq` and tagged from the query that found it.
+_CHECKED_PACKAGE_TYPES = ("dataset", "data-service")
+
+
+def _list_packages(extra_fq: str = "") -> list:
+    """[{"name", "metadata_modified", "org_title", "org_slug", "pkg_type"}, ...] for every checked package type, optionally
+    narrowed by `extra_fq` (a Solr filter such as the HVD or geospatial one). A name is listed once (CKAN's paging can shift
+    while we read it)."""
+    items, seen = [], set()
     titles = _org_title_by_slug()
-    start, batch = 0, 100
-    while True:
-        r = requests.get(
-            f"{config.API_BASE}/package_search",
-            params={"rows": batch, "start": start, "fq": '-hvd_category:"[]"', "fl": "name,metadata_modified,organization"},
-            headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
-        )
-        r.raise_for_status()
-        data = r.json()
-        if not data.get("success"):
-            break
-        results = data["result"]["results"]
-        if not results:
-            break
-        for p in results:
-            if not p.get("name"):
-                continue
-            slug, title = _package_org(p, titles)
-            items.append({"name": p["name"], "metadata_modified": p.get("metadata_modified"),
-                          "org_title": title, "org_slug": slug})
-        start += batch
-        if start >= data["result"]["count"]:
-            break
+    for pkg_type in _CHECKED_PACKAGE_TYPES:
+        fq = f'type:"{pkg_type}"' + (f" AND {extra_fq}" if extra_fq else "")
+        start, batch = 0, 100
+        while True:
+            r = requests.get(
+                f"{config.API_BASE}/package_search",
+                params={"rows": batch, "start": start, "fq": fq, "fl": "name,metadata_modified,organization"},
+                headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
+            )
+            r.raise_for_status()
+            data = r.json()
+            if not data.get("success"):
+                break
+            results = data["result"]["results"]
+            if not results:
+                break
+            for p in results:
+                if not p.get("name") or p["name"] in seen:
+                    continue
+                seen.add(p["name"])
+                slug, title = _package_org(p, titles)
+                items.append({"name": p["name"], "metadata_modified": p.get("metadata_modified"),
+                              "org_title": title, "org_slug": slug, "pkg_type": pkg_type})
+            start += batch
+            if start >= data["result"]["count"]:
+                break
     return items
+
+
+def _list_hvd_datasets() -> list:
+    """Every currently HVD-tagged dataset or data service -- one bulk paginated listing, used both to know what to check and
+    to detect which ones actually changed since the last check. org_title/org_slug come from CKAN's own organization
+    record, NOT from the dataset's dct:publisher RDF field -- that field is free text set by each data owner and is often
+    wrong (e.g. a contact person's name instead of the organization), so it's unusable for grouping."""
+    return _list_packages('-hvd_category:"[]"')
 
 
 # The two hooks below are HVD's contribution to the shared _do_run_check
@@ -3570,6 +3587,7 @@ def _list_hvd_datasets() -> list:
 def _hvd_augment_row(result: dict, d: dict) -> None:
     result["org_title"] = d.get("org_title", "")
     result["org_slug"] = d.get("org_slug", "")
+    result["pkg_type"] = d.get("pkg_type") or "dataset"
     result["publisher_mismatch"] = _publisher_mismatch(result.get("publisher_name", ""), result["org_title"])
 
 
@@ -3628,6 +3646,37 @@ _DCAT_SHAPES_GRAPH += _mdr_vocab_shapes
 # rules, flagged ~158k violations (found by comparing the two on the MQA tab, 2026-10-22). State the targets.
 for _shape in (_DCAT_NS.Catalog, _DCAT_NS.CatalogRecord, _DCAT_NS.Dataset, _DCAT_NS.Distribution):
     _DCAT_SHAPES_GRAPH.add((_shape, _SH_NS.targetClass, _shape))
+
+# The vendored SEMIC file has NO dcat:DataService shape (the HVD and GeoDCAT-AP files do), so a data service had nothing to be
+# checked against. The DCAT-AP 3 mandatory properties of a data service are its title and its endpoint URL; those are stated here
+# and used ONLY for a graph whose top-level resource is a data service (see _export_root_kind) -- not for the data services nested
+# in a dataset's graph (dcat:accessService), which keep being judged the way they always were.
+_DCAT_SERVICE_SHAPES_GRAPH = rdflib.Graph()
+_DCAT_SERVICE_SHAPES_GRAPH += _DCAT_SHAPES_GRAPH
+_DCAT_SERVICE_SHAPES_GRAPH.parse(format="turtle", data="""
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+<urn:monitor:dcat-ap-3:DataServiceShape> a sh:NodeShape ;
+    sh:targetClass dcat:DataService ;
+    sh:property [ sh:path dct:title ; sh:minCount 1 ; sh:severity sh:Violation ;
+                  sh:message "A data service must have a title (dct:title)."@en ] ;
+    sh:property [ sh:path dcat:endpointURL ; sh:minCount 1 ; sh:severity sh:Violation ;
+                  sh:message "A data service must have an endpoint URL (dcat:endpointURL)."@en ] .
+""")
+
+
+def _export_root_kind(graph: "rdflib.Graph"):
+    """What the portal's RDF export says the package IS: "dataset" if the graph describes a dcat:Dataset (or series),
+    "data-service" if its top-level resource is a dcat:DataService (one that no dataset points to through dcat:accessService),
+    else None. On 2026-11-12 the portal exported its CKAN data-service packages as plain dcat:Dataset with no endpoint at all,
+    so a service is only checked as a service once the export says it is one."""
+    if any(graph.subjects(rdflib.RDF.type, _DCAT_NS.Dataset)) or any(graph.subjects(rdflib.RDF.type, _DCAT_NS.DatasetSeries)):
+        return "dataset"
+    pointed_at = set(graph.objects(None, _DCAT_NS.accessService))
+    if any(s not in pointed_at for s in graph.subjects(rdflib.RDF.type, _DCAT_NS.DataService)):
+        return "data-service"
+    return None
 
 _DCAT_CHECK_REFRESH_INTERVAL = 24 * 3600
 _DCAT_CHECK_CONCURRENCY = 5   # same conservative pool as the HVD check -- gentle on data.gov.gr, not maximizing throughput
@@ -3791,8 +3840,10 @@ def _classify_dcat_results(results_graph: "rdflib.Graph"):
 def _dcat_result_for_graph(name: str, graph: "rdflib.Graph") -> dict:
     """Validates one dataset's (vocabulary-augmented) RDF graph and builds its result row. A dataset conforms when it
     has no structural violations -- pySHACL's own `conforms` would also fail it for the advisory findings."""
+    exported_as = _export_root_kind(graph)
     _conforms, results_graph, _ = pyshacl.validate(
-        graph, shacl_graph=_DCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
+        graph, shacl_graph=_DCAT_SERVICE_SHAPES_GRAPH if exported_as == "data-service" else _DCAT_SHAPES_GRAPH,
+        inference="rdfs", debug=False,
     )
     violations, warnings, vocabulary_issue, structural_issue = _classify_dcat_results(results_graph)
 
@@ -3804,6 +3855,7 @@ def _dcat_result_for_graph(name: str, graph: "rdflib.Graph") -> dict:
     return {
         "name":             name,
         "title":            title or name,
+        "exported_as":      exported_as,
         "conforms":         not violations,
         "violation_count":  len(violations),
         "warning_count":    len(warnings),
@@ -3824,35 +3876,9 @@ def _dcat_check_one(name: str) -> dict:
 
 
 def _list_all_datasets() -> list:
-    """[{"name":..., "metadata_modified":..., "org_title":..., "org_slug":...}, ...]
-    for every dataset on the portal -- same paginated package_search as
-    _list_hvd_datasets, just without the hvd_category filter."""
-    items = []
-    titles = _org_title_by_slug()
-    start, batch = 0, 100
-    while True:
-        r = requests.get(
-            f"{config.API_BASE}/package_search",
-            params={"rows": batch, "start": start, "fl": "name,metadata_modified,organization"},
-            headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
-        )
-        r.raise_for_status()
-        data = r.json()
-        if not data.get("success"):
-            break
-        results = data["result"]["results"]
-        if not results:
-            break
-        for p in results:
-            if not p.get("name"):
-                continue
-            slug, title = _package_org(p, titles)
-            items.append({"name": p["name"], "metadata_modified": p.get("metadata_modified"),
-                          "org_title": title, "org_slug": slug})
-        start += batch
-        if start >= data["result"]["count"]:
-            break
-    return items
+    """Every dataset and data service on the portal (decisions are not DCAT and are not checked). Without a `type` filter
+    package_search also returned the 110 decisions on 2026-11-12, and all 237 non-datasets went through the dataset shapes."""
+    return _list_packages()
 
 
 def _do_run_dcat_check() -> None: _do_run_check("dcat")
@@ -3862,6 +3888,7 @@ _DCAT_EXPORT_PREDICATES = {
     "non_conforming":   lambda d: not d.get("conforms"),
     "vocabulary_issue": lambda d: bool(d.get("vocabulary_issue")),
     "structural_issue": lambda d: bool(d.get("structural_issue")),
+    "data_service":     lambda d: d.get("pkg_type") == "data-service",
 }
 
 
@@ -3905,6 +3932,7 @@ def _geodcat_result_for_graph(name: str, graph: "rdflib.Graph") -> dict:
         graph, shacl_graph=_GEODCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
     )
     violations, warnings, _vocab, _structural = _classify_dcat_results(results_graph)
+    exported_as = _export_root_kind(graph)
 
     title = None
     for t in graph.objects(None, _DCT_NS.title):
@@ -3914,6 +3942,7 @@ def _geodcat_result_for_graph(name: str, graph: "rdflib.Graph") -> dict:
     return {
         "name":            name,
         "title":           title or name,
+        "exported_as":     exported_as,
         "conforms":        not violations,
         "violation_count": len(violations),
         "warning_count":   len(warnings),
@@ -3932,38 +3961,10 @@ def _geodcat_check_one(name: str) -> dict:
 
 
 def _list_geo_datasets() -> list:
-    """Same as _list_all_datasets, filtered server-side to datasets CKAN's
-    own dcat_type facet marks as geospatial (GIS layers, WMS/WFS services,
-    etc.) -- the identical test _is_geospatial() applies client-side to a
-    single package, expressed as a Solr fq so we don't have to paginate the
-    entire catalog just to filter it down here."""
-    items = []
-    titles = _org_title_by_slug()
-    start, batch = 0, 100
-    while True:
-        r = requests.get(
-            f"{config.API_BASE}/package_search",
-            params={"rows": batch, "start": start, "fq": 'dcat_type:*GEOSPATIAL*',
-                    "fl": "name,metadata_modified,organization"},
-            headers=_api_headers(), timeout=config.REQUEST_TIMEOUT,
-        )
-        r.raise_for_status()
-        data = r.json()
-        if not data.get("success"):
-            break
-        results = data["result"]["results"]
-        if not results:
-            break
-        for p in results:
-            if not p.get("name"):
-                continue
-            slug, title = _package_org(p, titles)
-            items.append({"name": p["name"], "metadata_modified": p.get("metadata_modified"),
-                          "org_title": title, "org_slug": slug})
-        start += batch
-        if start >= data["result"]["count"]:
-            break
-    return items
+    """Same as _list_all_datasets, filtered server-side to packages CKAN's own dcat_type facet marks as geospatial (GIS
+    layers, WMS/WFS services, etc.) -- the identical test _is_geospatial() applies client-side to a single package,
+    expressed as a Solr fq so we don't have to paginate the entire catalog just to filter it down here."""
+    return _list_packages("dcat_type:*GEOSPATIAL*")
 
 
 def _do_run_geodcat_check() -> None: _do_run_check("geodcat")
@@ -3987,6 +3988,24 @@ def _do_run_geodcat_check() -> None: _do_run_check("geodcat")
 def _default_augment_row(result: dict, d: dict) -> None:
     result["org_title"] = d.get("org_title", "")
     result["org_slug"] = d.get("org_slug", "")
+    result["pkg_type"] = d.get("pkg_type") or "dataset"
+
+
+def _typed_augment_row(result: dict, d: dict) -> None:
+    """_default_augment_row + the package-type verdict. A CKAN data-service whose export is a dcat:Dataset is NOT compliant:
+    the portal says it is something else than it is (no endpoint, no service class). Idempotent -- a cached row is
+    augmented again on every run."""
+    _default_augment_row(result, d)
+    if result["pkg_type"] == "data-service" and result.get("exported_as") == "dataset" and not result.get("type_mismatch"):
+        entry = {"severity": "violation", "category": "structural", "path": str(rdflib.RDF.type), "count": 1,
+                 "message": "This is a data service but the export describes it as a dcat:Dataset (it should be a dcat:DataService with an endpoint URL).",
+                 "raw_message": "data-service package exported as dcat:Dataset"}
+        result["details"] = (result.get("details") or []) + [entry]
+        result["violation_count"] = (result.get("violation_count") or 0) + 1
+        result["conforms"] = False
+        if "structural_issue" in result:
+            result["structural_issue"] = True
+        result["type_mismatch"] = True
 
 
 def _nonconforming_finalize_datasets(checked: list) -> list:
@@ -4036,7 +4055,7 @@ _QUALITY_CHECKS = {
         "run_fn": _do_run_dcat_check,
         "list_datasets": _list_all_datasets, "check_one": _dcat_check_one,
         "check_version": _DCAT_CHECK_VERSION, "concurrency": _DCAT_CHECK_CONCURRENCY,
-        "augment_row": _default_augment_row, "finalize_datasets": _nonconforming_finalize_datasets,
+        "augment_row": _typed_augment_row, "finalize_datasets": _nonconforming_finalize_datasets,
         "slim_blob": True, "aggregate_violations": True,
         "summary_flag_fields": [
             ("vocabulary_issue", lambda r: r["vocabulary_issue"]),
@@ -4055,6 +4074,7 @@ _QUALITY_CHECKS = {
         "export_extra_columns": [
             ("vocabulary_issue", "Vocabulary issue", lambda d: "Yes" if d.get("vocabulary_issue") else "No"),
             ("structural_issue", "Structural issue", lambda d: "Yes" if d.get("structural_issue") else "No"),
+            ("pkg_type", "Type", lambda d: "Data service" if d.get("pkg_type") == "data-service" else "Dataset"),
         ],
     },
     "geodcat": {
@@ -4063,17 +4083,20 @@ _QUALITY_CHECKS = {
         "run_fn": _do_run_geodcat_check,
         "list_datasets": _list_geo_datasets, "check_one": _geodcat_check_one,
         "check_version": _GEODCAT_CHECK_VERSION, "concurrency": _GEODCAT_CHECK_CONCURRENCY,
-        "augment_row": _default_augment_row, "finalize_datasets": _nonconforming_finalize_datasets,
+        "augment_row": _typed_augment_row, "finalize_datasets": _nonconforming_finalize_datasets,
         "slim_blob": True,
         "summary_flag_fields": [],
-        "export_predicates": {"non_conforming": lambda d: not d.get("conforms")},
+        "export_predicates": {"non_conforming": lambda d: not d.get("conforms"),
+                              "data_service": lambda d: d.get("pkg_type") == "data-service"},
         "export_default_exclude_compliant": False,
         "export_no_results_label": "GeoDCAT-AP",
         "export_sheet_name": "Flagged Datasets",
         "export_filename_prefix": "geodcat_ap_compliance",
         "export_total_label": "Total geospatial datasets",
         "export_extra_summary_rows": [],
-        "export_extra_columns": [],
+        "export_extra_columns": [
+            ("pkg_type", "Type", lambda d: "Data service" if d.get("pkg_type") == "data-service" else "Dataset"),
+        ],
     },
 }
 
@@ -4160,6 +4183,7 @@ def _load_check_result_for_user(check_type: str):
         "failed_to_fetch":   len(rows) - len(checked_rows),
         "reused_from_cache": 0,
         "conforms":          sum(1 for r in checked_rows if r.get("conforms")),
+        "by_type":           _summary_by_type(checked_rows),
     }
     for key, predicate in cfg["summary_flag_fields"]:
         summary[key] = sum(1 for r in datasets if predicate(r))
@@ -4264,6 +4288,7 @@ def _persist_checked_rows(cfg: dict, slug_by_name: dict, newly_checked: list) ->
             row.checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
             row.org_slug = slug_by_name.get(name) or row.org_slug
             if result is not None:
+                row.pkg_type = result.get("pkg_type") or row.pkg_type
                 # Only overwrite on success -- a transient fetch
                 # failure shouldn't erase a known-good cached result;
                 # leaving metadata_modified stale means it's simply
@@ -4316,6 +4341,18 @@ def _load_check_details(cfg: dict, names: list) -> dict:
     return out
 
 
+def _summary_by_type(checked: list) -> dict:
+    """{pkg_type: {"checked": n, "conforms": n}} -- datasets and data services get their own pass rate; blending them
+    would let ~127 services move (or hide in) the dataset figure."""
+    out: dict = {}
+    for r in checked:
+        t = out.setdefault(r.get("pkg_type") or "dataset", {"checked": 0, "conforms": 0})
+        t["checked"] += 1
+        if r.get("conforms"):
+            t["conforms"] += 1
+    return out
+
+
 def _do_run_check(check_type: str) -> None:
     cfg = _QUALITY_CHECKS[check_type]
     cancelled = False
@@ -4325,6 +4362,7 @@ def _do_run_check(check_type: str) -> None:
         datasets = cfg["list_datasets"]()
         _set_check_status(check_type, total=len(datasets))
         slug_by_name = {d["name"]: d.get("org_slug") for d in datasets}
+        type_by_name = {d["name"]: d.get("pkg_type") or "dataset" for d in datasets}
 
         with app.app_context():
             cached_rows = {row.name: row for row in cfg["dataset_cache_model"].query.all()}
@@ -4338,6 +4376,9 @@ def _do_run_check(check_type: str) -> None:
                 _slug = slug_by_name.get(_name)
                 if _slug and _row.org_slug != _slug:
                     _row.org_slug = _slug
+                _type = type_by_name.get(_name, "unlisted")
+                if _row.pkg_type != _type:
+                    _row.pkg_type = _type
             db.session.commit()
             # Plain copies of what the loop below needs, taken while the session is still
             # open: the commit above expires every cached ORM row, and once this app context
@@ -4356,7 +4397,9 @@ def _do_run_check(check_type: str) -> None:
             result_json, cached_mtime = cached_snap.pop(d["name"], (None, None))
             cached = json.loads(result_json) if result_json else None
             if (cached and isinstance(cached, dict) and cached.get("_cache_version") == cfg["check_version"]
-                    and cached_mtime == d["metadata_modified"]):
+                    and cached_mtime == d["metadata_modified"]
+                    # a data service cached before the export was recorded (`exported_as`) has no verdict yet
+                    and not (d.get("pkg_type") == "data-service" and "exported_as" not in (cached.get("result") or {}))):
                 cached_result = cached["result"]
                 cfg["augment_row"](cached_result, d)
                 if agg is not None:
@@ -4419,6 +4462,7 @@ def _do_run_check(check_type: str) -> None:
             "failed_to_fetch":   len(failed),
             "reused_from_cache": len(datasets) - len(to_fetch),
             "conforms":          sum(1 for r in checked if r["conforms"]),
+            "by_type":           _summary_by_type(checked),
         }
         for key, predicate in cfg["summary_flag_fields"]:
             summary[key] = sum(1 for r in checked if predicate(r))
