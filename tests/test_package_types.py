@@ -118,6 +118,29 @@ class _InlinePool(ThreadPoolExecutor):
         super().__init__(1)
 
 
+def test_a_cached_hvd_data_service_is_reused_not_refetched_on_every_run(app, monkeypatch):
+    """HVD rows never carry `exported_as`; treating that as 'no verdict yet' re-fetched every HVD-tagged data service
+    (99 of 1,278 on 2026-11-12: '1,179 of 1,278 served from cache') on every single run."""
+    from models import HvdDatasetCheckCache
+    calls = []
+    db.session.add(HvdDatasetCheckCache(name="svc1", org_slug="org", metadata_modified="m1", result_json=json.dumps(
+        {"_cache_version": appmod._HVD_CHECK_VERSION,
+         "result": {"name": "svc1", "title": "svc1", "publisher_name": "", "conforms": True, "violation_count": 0,
+                    "warning_count": 0, "legal_citation_issue": False, "no_api_access": False,
+                    "license_status": "open", "details": []}})))
+    db.session.commit()
+    monkeypatch.setitem(appmod._QUALITY_CHECKS["hvd"], "list_datasets", lambda: [
+        {"name": "svc1", "metadata_modified": "m1", "org_title": "O", "org_slug": "org", "pkg_type": "data-service"}])
+    monkeypatch.setitem(appmod._QUALITY_CHECKS["hvd"], "check_one", lambda name: calls.append(name))
+    monkeypatch.setattr(appmod, "ProcessPoolExecutor", _InlinePool)
+
+    appmod._do_run_check("hvd")
+
+    assert appmod._get_check_status("hvd")["error"] is None
+    assert calls == []
+    assert appmod._load_check_result("hvd")["summary"]["reused_from_cache"] == 1
+
+
 def test_a_cached_service_without_a_verdict_is_rechecked_but_a_dataset_is_reused(app, monkeypatch):
     """Rows cached before the export was recorded have no `exported_as`; datasets don't need it, services do."""
     calls = []

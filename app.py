@@ -4056,6 +4056,7 @@ _QUALITY_CHECKS = {
         "list_datasets": _list_all_datasets, "check_one": _dcat_check_one,
         "check_version": _DCAT_CHECK_VERSION, "concurrency": _DCAT_CHECK_CONCURRENCY,
         "augment_row": _typed_augment_row, "finalize_datasets": _nonconforming_finalize_datasets,
+        "records_export_kind": True,
         "slim_blob": True, "aggregate_violations": True,
         "summary_flag_fields": [
             ("vocabulary_issue", lambda r: r["vocabulary_issue"]),
@@ -4084,6 +4085,7 @@ _QUALITY_CHECKS = {
         "list_datasets": _list_geo_datasets, "check_one": _geodcat_check_one,
         "check_version": _GEODCAT_CHECK_VERSION, "concurrency": _GEODCAT_CHECK_CONCURRENCY,
         "augment_row": _typed_augment_row, "finalize_datasets": _nonconforming_finalize_datasets,
+        "records_export_kind": True,
         "slim_blob": True,
         "summary_flag_fields": [],
         "export_predicates": {"non_conforming": lambda d: not d.get("conforms"),
@@ -4409,7 +4411,9 @@ def _do_run_check(check_type: str) -> None:
             if (cached and isinstance(cached, dict) and cached.get("_cache_version") == cfg["check_version"]
                     and cached_mtime == d["metadata_modified"]
                     # a data service cached before the export was recorded (`exported_as`) has no verdict yet
-                    and not (d.get("pkg_type") == "data-service" and "exported_as" not in (cached.get("result") or {}))):
+                    # (only for checks whose rows record it -- HVD rows never do, and would be re-fetched on every run)
+                    and not (cfg.get("records_export_kind") and d.get("pkg_type") == "data-service"
+                             and "exported_as" not in (cached.get("result") or {}))):
                 cached_result = cached["result"]
                 cfg["augment_row"](cached_result, d)
                 if agg is not None:
