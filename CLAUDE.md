@@ -209,6 +209,11 @@ Expect the DCAT-AP tab and org-analytics DCAT pass rates to drop sharply after t
 not a regression. The EU's top issues are dct:format as a literal (IRI expected) and dcat:byteSize not
 xsd:decimal -- likely fixable once at the portal's DCAT export.
 
+**GeoDCAT-AP control (2026-11-12):** the check shows 0 of ~12,162 conforming, so it was tested for the DCAT-AP "can never fail" bug --
+it isn't: `tests/test_geodcat_positive_control.py` shows an empty dataset is flagged (title/description) and a title+description one
+conforms. The 0% is therefore about the portal's real RDF; the cause is NOT yet known -- read the violation details of one real
+GeoDCAT dataset in the tab (which properties/messages) before changing shapes or severity.
+
 ## DCAT-AP compliance = the EU's structural layer (2026-11-02, `_DCAT_CHECK_VERSION` 4)
 
 `tools/violation_report.sql` (read-only, run on the VM) showed 23,001 of 23,568 datasets non-conforming and **0** flagged `vocabulary_issue`:
