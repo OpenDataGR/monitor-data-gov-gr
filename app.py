@@ -3099,15 +3099,15 @@ _ADMS_NS   = rdflib.Namespace("http://www.w3.org/ns/adms#")
 _VCARD_NS  = rdflib.Namespace("http://www.w3.org/2006/vcard/ns#")
 _SKOS_NS   = rdflib.Namespace("http://www.w3.org/2004/02/skos/core#")
 
-_OPEN_LICENSE_MARKERS = (
-    "creativecommons.org/licenses/by",
-    "publications.europa.eu/resource/authority/licence/cc_by",
-    "publications.europa.eu/resource/authority/licence/cc0",
-    "creativecommons.org/publicdomain/zero",
-    "opendefinition.org/licenses/cc-by",
-    "opendefinition.org/licenses/odc-by",
-    "opendatacommons.org/licenses/by",
+# DCAT-AP HVD 3.0.0 accepts only these two licence URIs as open (CC BY 4.0 and CC0); a national licence counts when it is mapped to one
+# of them. Anything else -- another CC-BY version, CC BY-SA/NC/ND, ODC-By -- is not an HVD-compliant open licence, so the old substring
+# markers ("cc_by", "creativecommons.org/licenses/by", ...) that also matched those are gone.
+_HVD_OPEN_LICENCES = (
+    "http://publications.europa.eu/resource/authority/licence/CC_BY_4_0",
+    "http://publications.europa.eu/resource/authority/licence/CC0",
 )
+_LICENCE_MAPPING_PROPS = (_SKOS_NS.exactMatch, _SKOS_NS.narrowMatch, _SKOS_NS.broadMatch, _SKOS_NS.closeMatch,
+                          rdflib.OWL.sameAs, rdflib.RDFS.seeAlso)
 
 # Concept/service URI -> its parsed RDF graph (or None if unfetchable), kept
 # for the process lifetime. HVD category codes repeat across hundreds of
@@ -3137,7 +3137,7 @@ _HVD_CHECK_TIMEOUT = 30
 # that produced this cached result is now stale", only "the dataset changed".
 # A version bump forces every cached row to be treated as a miss once, so the
 # next run re-populates everything with the new/fixed shape.
-_HVD_CHECK_VERSION = 4
+_HVD_CHECK_VERSION = 5   # 5: licences read the DCAT-AP HVD way (see _license_status); a missing licence no longer flags
 
 def _save_hvd_check_cache(result: dict) -> None: _save_check_cache("hvd", result)
 def _load_hvd_check_result(): return _load_check_result("hvd")
@@ -3238,14 +3238,56 @@ def _augment_with_vocab(graph: "rdflib.Graph") -> None:
             graph += vocab_graph
 
 
+def _norm_iri(value) -> str:
+    return str(value).strip().rstrip("/").lower().replace("https://", "http://", 1)
+
+
+_HVD_OPEN_LICENCES_NORM = {_norm_iri(u) for u in _HVD_OPEN_LICENCES}
+
+
+def _licence_is_open(graph: "rdflib.Graph", licence) -> bool:
+    """True when `licence` is CC BY 4.0 / CC0, or is mapped to one of them (skos:exactMatch/narrowMatch/broadMatch/closeMatch,
+    owl:sameAs, rdfs:seeAlso) -- up to three hops through the licence documents already merged into the graph."""
+    seen, frontier = {_norm_iri(licence)}, [licence]
+    for _ in range(4):
+        nxt = []
+        for node in frontier:
+            if _norm_iri(node) in _HVD_OPEN_LICENCES_NORM:
+                return True
+            targets = [o for prop in _LICENCE_MAPPING_PROPS for o in graph.objects(node, prop)]
+            targets += list(graph.subjects(rdflib.OWL.sameAs, node))
+            for target in targets:
+                if isinstance(target, rdflib.URIRef) and _norm_iri(target) not in seen:
+                    seen.add(_norm_iri(target))
+                    nxt.append(target)
+        frontier = nxt
+    return False
+
+
 def _license_status(graph: "rdflib.Graph") -> str:
-    licenses = list(graph.objects(None, _DCT_NS.license))
-    if not licenses:
-        return "missing"
-    for lic in licenses:
-        if any(marker in str(lic).lower() for marker in _OPEN_LICENSE_MARKERS):
-            return "open"
-    return "non_open"
+    """"open" / "non_open" / "missing", read the way DCAT-AP HVD 3.0.0 (and the EU's HVD reporting tool) read it:
+      * only dct:license counts (dct:rights does not), and ONLY on a distribution or a data service -- a dataset's own licence is not read;
+      * a distribution's licence matters when it is a bulk download (has a dcat:downloadURL): stated and not open -> "non_open";
+      * a data service's own licence, else the licence of the distribution that points to it (dcat:accessService), likewise;
+      * no licence anywhere is only "missing" -- a recommendation for a distribution and optional for a service, not a failure."""
+    open_seen = False
+    for dist in set(graph.subjects(rdflib.RDF.type, _DCAT_NS.Distribution)):
+        bulk = any(True for _ in graph.objects(dist, _DCAT_NS.downloadURL))
+        for lic in graph.objects(dist, _DCT_NS.license):
+            if _licence_is_open(graph, lic):
+                open_seen = True
+            elif bulk:
+                return "non_open"
+    for service in set(graph.subjects(rdflib.RDF.type, _DCAT_NS.DataService)):
+        own = list(graph.objects(service, _DCT_NS.license))
+        if not own:
+            own = [lic for dist in graph.subjects(_DCAT_NS.accessService, service) for lic in graph.objects(dist, _DCT_NS.license)]
+        for lic in own:
+            if _licence_is_open(graph, lic):
+                open_seen = True
+            else:
+                return "non_open"
+    return "open" if open_seen else "missing"
 
 
 # Generic administrative words stripped before comparing a dataset's RDF
@@ -3594,7 +3636,7 @@ def _hvd_augment_row(result: dict, d: dict) -> None:
 def _hvd_finalize_datasets(checked: list) -> list:
     for r in checked:
         r["flagged"] = bool(
-            r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] != "open"
+            r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] == "non_open"
             or not r["conforms"] or r["publisher_mismatch"]
         )
     checked.sort(key=lambda r: (not r["flagged"], -r["violation_count"]))

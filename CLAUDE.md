@@ -236,9 +236,13 @@ No check-version bump: a cached data-service row without `exported_as` is simply
 `tests/test_package_types.py`, `tests/test_quality_listers.py`. All three Quality tabs show the per-type line, a "Data services" filter card and an
 Excel Type column; HVD rows get no type verdict (they don't record `exported_as`, hence `records_export_kind` on dcat/geodcat only -- without it every
 HVD-tagged service was re-fetched on every run, seen as "1,179 of 1,278 from cache" on 2026-11-12). Not done: separate org-analytics pass rate for
-services (OrgSnapshot has dataset columns only). Audit of the HVD check against the EU's HVD Reporting Tool (data.europa.eu/apps/hvd-reporting-tool):
-no English title/description check, no leaf-level category check, no `downloadURL` check on bulk downloads, `_license_status` reads any node (EU: distribution
-or data service only) and recognises neither CC BY 4.0-only nor skos/owl mappings; a missing licence is "recommended" there, flagged here.
+services (OrgSnapshot has dataset columns only). **Principle (user, 2026-11-12): comply with the official specs (DCAT-AP, DCAT-AP HVD, GeoDCAT-AP), not with a tool's reading of them; where the EU's reporting
+tool and the spec disagree follow the spec.** Audit of the HVD check against the spec and the EU's HVD Reporting Tool (data.europa.eu/apps/hvd-reporting-tool):
+**licences done (`_HVD_CHECK_VERSION` 5, `tests/test_hvd_license.py`)** -- `_license_status` reads only `dct:license` on distributions (bulk downloads, i.e. with a
+`downloadURL`) and data services (own licence, else the distribution's via `dcat:accessService`), never the dataset's; open = the EU authority URIs CC_BY_4_0 / CC0
+or a licence mapped to them (skos exact/narrow/broad/closeMatch, owl:sameAs, rdfs:seeAlso); other CC versions / BY-SA / NC / ODC-By are NOT open; a MISSING licence is
+only "recommended" (distribution) / optional (service) and no longer flags a dataset, a stated non-open one does. Still open: no English title/description check,
+no leaf-level category check, no `downloadURL` check on bulk downloads, no INSPIRE checks.
 
 ## DCAT-AP compliance = the EU's structural layer (2026-11-02, `_DCAT_CHECK_VERSION` 4)
 
