@@ -11007,6 +11007,36 @@ def _email_configured() -> bool:
     return bool(config.SMTP_USERNAME and config.SMTP_PASSWORD and config.SENDGRID_FROM_EMAIL)
 
 
+def _email_quota():
+    """The mass-email quota of the current calendar month (UTC), or None when no cap is configured (EMAIL_MONTHLY_LIMIT=0):
+    {"limit", "reserve", "used", "remaining", "resets_at"}. `used` counts what the mass-email tools actually sent this month -- the
+    recipients of audience sends marked sent plus the successes of the older pick-users sends. Mail the app sends on its own
+    (invites, resets) is not counted: keep EMAIL_MONTHLY_RESERVE for it."""
+    limit = config.EMAIL_MONTHLY_LIMIT
+    if limit <= 0:
+        return None
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    nxt = start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)
+    used = MassEmailRecipient.query.filter(MassEmailRecipient.status == "sent", MassEmailRecipient.sent_at >= start).count()
+    used += int(db.session.query(db.func.coalesce(db.func.sum(MassEmailLog.success_count), 0))
+                .filter(MassEmailLog.sent_at >= start).scalar() or 0)
+    reserve = max(0, config.EMAIL_MONTHLY_RESERVE)
+    return {"limit": limit, "reserve": reserve, "used": used, "remaining": max(0, limit - reserve - used),
+            "resets_at": nxt.isoformat()}
+
+
+def _quota_refusal(count: int):
+    """A (response, 409) when sending `count` emails would not fit in what is left of this month's quota, else None."""
+    q = _email_quota()
+    if q is None or count <= q["remaining"]:
+        return None
+    return jsonify({"error": f"That is {count} emails but only {q['remaining']} are left of this month's quota "
+                             f"({q['used']} sent of {q['limit']}" + (f", {q['reserve']} kept in reserve" if q["reserve"] else "") +
+                             f"). Narrow the audience, or wait until {q['resets_at'][:10]}.",
+                    "quota": q}), 409
+
+
 def _start_mass_email_job(subject: str, html: str, audience: dict, log_comms: bool):
     if not _email_configured():
         # Otherwise a job would be created and then fail for every single recipient.
@@ -11024,6 +11054,9 @@ def _start_mass_email_job(subject: str, html: str, audience: dict, log_comms: bo
         return jsonify({"error": "No one matches those criteria."}), 400
     if len(recipients) > _MASS_EMAIL_MAX_RECIPIENTS:
         return jsonify({"error": f"That is {len(recipients)} recipients; the limit is {_MASS_EMAIL_MAX_RECIPIENTS} per send. Narrow the criteria."}), 400
+    refused = _quota_refusal(len(recipients))
+    if refused:
+        return refused
     unknown = _unknown_merge_fields(subject, html)
     if unknown:
         return jsonify({"error": "Unknown merge field(s): " + ", ".join("{{" + u + "}}" for u in unknown)}), 400
@@ -11072,7 +11105,7 @@ def admin_mass_email_audience():
     row = lambda r: {"email": r["email"], "name": r["name"], "organization": r["orgs"][0][1] if r["orgs"] else "",
                      "organizations": [t for _slug, t in r["orgs"]], "pools": r["pools"], "roles": r["roles"]}
     out = {"total": len(recs), "diagnostics": resolved["diagnostics"], "max_recipients": _MASS_EMAIL_MAX_RECIPIENTS,
-           "sample": [row(r) for r in recs[:20]]}
+           "quota": _email_quota(), "sample": [row(r) for r in recs[:20]]}
     if body.get("full"):                     # the whole list, for the panel's searchable "view all" (never more than the audience itself)
         out["recipients"] = [row(r) for r in recs]
     return jsonify(out)
@@ -11156,6 +11189,9 @@ def admin_mass_email_job_resume(job_id):
         return jsonify({"error": "Nothing left to send."}), 400
     if job.status == "running" and not d["interrupted"]:
         return jsonify({"error": "This send is still running."}), 409
+    refused = _quota_refusal(d["pending"])
+    if refused:
+        return refused
     job.status = "running"
     job.heartbeat_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.session.commit()
@@ -11186,6 +11222,9 @@ def admin_mass_email():
     recipients = User.query.filter(User.id.in_(user_ids)).all()
     if not recipients:
         return jsonify({"error": "No matching recipients"}), 400
+    refused = _quota_refusal(len(recipients))
+    if refused:
+        return refused
 
     sent, failed = 0, []
     for u in recipients:

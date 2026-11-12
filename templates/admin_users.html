@@ -1012,6 +1012,8 @@
         'admin.me_diag_role': '{n} were left out by the role filter.',
         'admin.me_diag_org': '{n} were left out by the organization filters.',
         'admin.me_over_limit': 'Too many for one send (limit {max}). Narrow the criteria.',
+        'admin.me_quota_line': 'Monthly email quota: {remaining} of {limit} left (resets {date}).',
+        'admin.me_over_quota': 'This is more than what is left, so the send would be refused. Narrow the audience or wait.',
         'admin.me_sample_note': 'First {n} shown.',
         'admin.me_merge_help': 'Personalise each email: click a field to insert it where your cursor is. It is replaced by each recipient\'s own details.',
         'admin.me_field_last_name': 'Last name',
@@ -1240,6 +1242,8 @@
         'admin.me_diag_role': '{n} εξαιρέθηκαν από το φίλτρο ρόλου.',
         'admin.me_diag_org': '{n} εξαιρέθηκαν από τα φίλτρα οργανισμού.',
         'admin.me_over_limit': 'Πάρα πολλοί για μία αποστολή (όριο {max}). Περιορίστε τα κριτήρια.',
+        'admin.me_quota_line': 'Μηνιαίο όριο email: απομένουν {remaining} από {limit} (ανανεώνεται {date}).',
+        'admin.me_over_quota': 'Είναι περισσότεροι από όσους απομένουν, οπότε η αποστολή θα απορριφθεί. Περιορίστε το κοινό ή περιμένετε.',
         'admin.me_sample_note': 'Εμφανίζονται οι πρώτοι {n}.',
         'admin.me_merge_help': 'Εξατομίκευση κάθε email: πατήστε ένα πεδίο για να μπει εκεί που βρίσκεται ο δρομέας. Αντικαθίσταται με τα στοιχεία κάθε παραλήπτη.',
         'admin.me_field_last_name': 'Επώνυμο',
@@ -1853,7 +1857,11 @@
         if (d.no_matching_org) notes.push(t('admin.me_diag_no_org').replace('{n}', d.no_matching_org));
         if (d.role_filtered) notes.push(t('admin.me_diag_role').replace('{n}', d.role_filtered));
         if (d.org_filtered) notes.push(t('admin.me_diag_org').replace('{n}', d.org_filtered));
-        const over = data.total > data.max_recipients ? `<div class="text-danger">${t('admin.me_over_limit').replace('{max}', data.max_recipients)}</div>` : '';
+        let over = data.total > data.max_recipients ? `<div class="text-danger">${t('admin.me_over_limit').replace('{max}', data.max_recipients)}</div>` : '';
+        if (data.quota) {   // the provider's monthly cap: a send that would not fit is refused up front
+          const qd = (data.quota.resets_at || '').slice(0, 10);
+          over += `<div class="${data.total > data.quota.remaining ? 'text-danger fw-semibold' : 'text-muted'}">${t('admin.me_quota_line').replace('{remaining}', data.quota.remaining).replace('{limit}', data.quota.limit).replace('{date}', qd)}${data.total > data.quota.remaining ? ' ' + t('admin.me_over_quota') : ''}</div>`;
+        }
         el.innerHTML = `
           <div class="fw-semibold ${data.total ? '' : 'text-danger'}">${t('admin.me_preview_total').replace('{n}', data.total)}</div>
           <div class="text-muted">${esc(bits.join(' · '))}</div>

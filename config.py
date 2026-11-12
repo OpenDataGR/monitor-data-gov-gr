@@ -36,6 +36,11 @@ SMTP_USERNAME       = os.environ.get("SMTP_USERNAME", "").strip()
 SMTP_PASSWORD       = os.environ.get("SMTP_PASSWORD", "").strip()
 SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL", "").strip()
 SENDGRID_FROM_NAME  = os.environ.get("SENDGRID_FROM_NAME", "data.gov.gr Monitor").strip()
+# The email provider's monthly cap (this SendGrid account: 1,000 a month). 0 = no cap known, nothing is enforced. A mass email that would
+# not fit in what is left of the month is REFUSED before anything is sent (otherwise it half-sends and the rest fail). EMAIL_MONTHLY_RESERVE
+# keeps part of the cap for the mail the app sends on its own (invites, password resets, test sends), which the mass-email count does not see.
+EMAIL_MONTHLY_LIMIT   = int(os.environ.get("EMAIL_MONTHLY_LIMIT", "0") or 0)
+EMAIL_MONTHLY_RESERVE = int(os.environ.get("EMAIL_MONTHLY_RESERVE", "0") or 0)
 
 # Long random path segment SendGrid's Inbound Parse must include in its
 # configured destination URL. SendGrid can't sign or authenticate these

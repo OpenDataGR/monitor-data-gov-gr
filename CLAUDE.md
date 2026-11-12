@@ -379,6 +379,13 @@ case-less `Communication` per organization reached (source `mass-email`, Outboun
 time, refused (503) when SMTP isn't configured. **`admin_users.html` is a Jinja template: a literal `{{name}}` in it must be written
 `{{ '{{' }}name{{ '}}' }}`** or it renders as nothing. POSTs use the `d=<base64>` form (the WAF blocks raw HTML bodies). Tests: `tests/test_mass_email_audience.py`.
 
+**Monthly quota guard (2026-11-12).** The SendGrid account is capped at 1,000 emails a MONTH and the audience (all portal org users) is large and
+growing, with 2-3 mailings in a peak month. `EMAIL_MONTHLY_LIMIT` (0 = off, the default) and `EMAIL_MONTHLY_RESERVE` (kept for invites/resets/test sends,
+which are not counted) in `.env`; `_email_quota()` counts this calendar month's sent `MassEmailRecipient` rows + the older pick-users `MassEmailLog` successes;
+a send, a resume or a pick-users send that does not fit is refused with 409 BEFORE anything is created or sent (`_quota_refusal`), and the preview shows
+"X of Y left (resets D)" in red when the audience is too big. `tests/test_email_quota.py`. SMTP is generic (`SMTP_SERVER`), so another provider is only
+config; the inbound Mail Parser stays on SendGrid's Inbound Parse.
+
 **Full list + merge fields (2026-11-03):** the preview's "View the full list" posts the same audience with `full: true` and gets every recipient (email, name, organizations, roles, pools) for a client-side, accent-insensitive search modal. Merge fields are inserted with buttons, and the "if no name / no organization, write" fallbacks are inputs: `_meBakeFallbacks` turns `{{name}}` into `{{name|<fallback>}}` in the subject/message at send time (criteria mode only), so the backend and the stored job need no extra field. Never write a literal `{{x|y}}` in `admin_users.html` (even in a JS comment): Jinja reads it as a filter.
 
 **Roles come from CKAN (2026-11-03):** a portal member's role is `_capacity_role(capacity)` -- the CKAN capacity as reported, so a role the portal adds later appears in the Role filter by itself (`org_<capacity>`, labelled with CKAN's own word via `role_labels`; a capacity that equals a built-in role id joins it). Only the contact-directory roles (`_CONTACT_TYPE_ROLE`) are still a fixed list.
