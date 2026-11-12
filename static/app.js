@@ -264,6 +264,7 @@ const TRANSLATIONS = {
     'quality.hvd_non_conforming': 'Non-conforming',
     'quality.hvd_legal_issue': 'Legal citation not linked',
     'quality.hvd_no_api': 'No API access',
+    'quality.hvd_no_bulk': 'No bulk download',
     'quality.hvd_license_missing': 'License missing (recommended)',
     'quality.hvd_license_non_open': 'License not open (CC BY 4.0 / CC0)',
     'quality.hvd_license_open': 'Open license',
@@ -953,6 +954,7 @@ const TRANSLATIONS = {
     'quality.hvd_non_conforming': 'Μη συμμορφούμενα',
     'quality.hvd_legal_issue': 'Μη συνδεδεμένη νομική αναφορά',
     'quality.hvd_no_api': 'Χωρίς πρόσβαση API',
+    'quality.hvd_no_bulk': 'Χωρίς μαζική λήψη',
     'quality.hvd_license_missing': 'Λείπει άδεια χρήσης (προτείνεται)',
     'quality.hvd_license_non_open': 'Μη ανοιχτή άδεια (CC BY 4.0 / CC0)',
     'quality.hvd_license_open': 'Ανοιχτή άδεια',
@@ -3109,6 +3111,7 @@ const HVD_FILTER_PREDICATES = {
   non_conforming:       d => !d.conforms,
   legal_citation_issue: d => d.legal_citation_issue,
   no_api_access:        d => d.no_api_access,
+  no_bulk_download:     d => d.no_bulk_download,
   license_missing:      d => d.license_status === 'missing',
   license_non_open:     d => d.license_status === 'non_open',
   publisher_mismatch:   d => d.publisher_mismatch,
@@ -3118,7 +3121,8 @@ const HVD_FILTER_PREDICATES = {
 // Datasets with no issue at all are hidden from the default (flagged-only)
 // view -- same as before this became a filter card -- but selecting the
 // "Compliant" card explicitly asks for them, so it lifts that default hiding.
-const HVD_ISSUE_FILTER_KEYS = ['non_conforming', 'legal_citation_issue', 'no_api_access', 'license_missing', 'license_non_open', 'publisher_mismatch'];
+const HVD_ISSUE_FILTER_KEYS = ['non_conforming', 'legal_citation_issue', 'no_api_access', 'no_bulk_download', 'license_non_open', 'publisher_mismatch'];
+// (license_missing is NOT an issue flag any more: a missing licence is only recommended, so a compliant dataset may have one)
 
 // Pure -- what _hvdActiveFilters would become if `key` were toggled right
 // now, without mutating it. Shared by the real toggle handler and by
@@ -3182,6 +3186,7 @@ function _renderHvdSummaryCards() {
     { key: 'non_conforming',       group: 'compliance', value: _hvdCardCount('non_conforming'),       label: t('quality.hvd_non_conforming'), bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-x-octagon' },
     { key: 'legal_citation_issue', group: 'compliance', value: _hvdCardCount('legal_citation_issue'), label: t('quality.hvd_legal_issue'),    bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-file-earmark-text' },
     { key: 'no_api_access',        group: 'compliance', value: _hvdCardCount('no_api_access'),        label: t('quality.hvd_no_api'),         bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-hdd-network' },
+    { key: 'no_bulk_download',     group: 'compliance', value: _hvdCardCount('no_bulk_download'),     label: t('quality.hvd_no_bulk'),        bg: 'bg-warning bg-opacity-10', text: 'text-warning', icon: 'bi-download' },
     { key: 'data_service',         group: 'compliance', value: _hvdCardCount('data_service'),         label: t('quality.type_service'),       bg: 'bg-info bg-opacity-10',    text: 'text-info',    icon: 'bi-plug' },
     { ...checkedCard, group: 'metadata' },
     { key: 'license_missing',    group: 'metadata', value: _hvdCardCount('license_missing'),    label: t('quality.hvd_license_missing'),   bg: 'bg-danger bg-opacity-10',  text: 'text-danger',  icon: 'bi-file-earmark-x' },
@@ -3517,7 +3522,7 @@ function _hvdRowHtml(d, { indent = false, hidden = false, showOrg = false, revea
         ${showOrg ? `<td class="text-muted small">${esc(d.org_title || t('quality.hvd_unknown_org'))}</td>` : ''}
         <td>${d.conforms ? '' : `<span class="badge bg-danger" title="${esc(t('quality.hvd_non_conforming'))}">${d.violation_count}</span>`}</td>
         <td>${d.legal_citation_issue ? `<i class="bi bi-file-earmark-text text-warning" title="${esc(t('quality.hvd_legal_issue'))}"></i>` : ''}</td>
-        <td>${d.no_api_access ? `<i class="bi bi-hdd-network text-warning" title="${esc(t('quality.hvd_no_api'))}"></i>` : ''}</td>
+        <td>${d.no_api_access ? `<i class="bi bi-hdd-network text-warning" title="${esc(t('quality.hvd_no_api'))}"></i>` : ''}${d.no_bulk_download ? ` <i class="bi bi-download text-warning" title="${esc(t('quality.hvd_no_bulk'))}"></i>` : ''}</td>
         <td>${d.license_status === 'missing' ? `<span class="badge bg-danger">${t('quality.hvd_license_missing')}</span>`
             : d.license_status === 'non_open' ? `<span class="badge bg-warning text-dark">${t('quality.hvd_license_non_open')}</span>`
             : `<span class="badge bg-success">${t('quality.hvd_license_open')}</span>`}</td>

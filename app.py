@@ -3137,7 +3137,7 @@ _HVD_CHECK_TIMEOUT = 30
 # that produced this cached result is now stale", only "the dataset changed".
 # A version bump forces every cached row to be treated as a miss once, so the
 # next run re-populates everything with the new/fixed shape.
-_HVD_CHECK_VERSION = 5   # 5: licences read the DCAT-AP HVD way (see _license_status); a missing licence no longer flags
+_HVD_CHECK_VERSION = 6   # 6: rows carry no_bulk_download (a distribution with a dcat:downloadURL is required). 5: licences read the DCAT-AP HVD way (see _license_status); a missing licence no longer flags
 
 def _save_hvd_check_cache(result: dict) -> None: _save_check_cache("hvd", result)
 def _load_hvd_check_result(): return _load_check_result("hvd")
@@ -3527,17 +3527,26 @@ def _hvd_check_one(name: str) -> dict:
                 publisher_name = str(name_lit)
                 break
 
+        # Regulation (EU) 2023/138 art. 3: an HVD is made available through an API AND as a bulk download. A bulk download is a
+        # distribution with a dcat:downloadURL; the SHACL shapes only require an accessURL, so this is checked here.
+        no_bulk_download = not any(True for _ in graph.subjects(_DCAT_NS.downloadURL, None))
+        details = _dedupe_shacl_details(violations + warnings)
+        if no_bulk_download:
+            details.append({"severity": "warning", "path": str(_DCAT_NS.downloadURL), "count": 1,
+                            "message": "No bulk download: none of the distributions has a download URL (the HVD regulation requires both an API and a bulk download).",
+                            "raw_message": "no dcat:downloadURL on any distribution"})
         return {
             "name":                 name,
             "title":                title or name,
             "publisher_name":       publisher_name or "",
             "conforms":             conforms,
             "violation_count":      len(violations),
-            "warning_count":        len(warnings),
+            "warning_count":        len(warnings) + (1 if no_bulk_download else 0),
             "legal_citation_issue": legal_citation_issue,
             "no_api_access":        no_api_access,
+            "no_bulk_download":     no_bulk_download,
             "license_status":       _license_status(graph),
-            "details":              _dedupe_shacl_details(violations + warnings),
+            "details":              details,
         }
     except Exception as exc:
         return {"name": name, "error": str(exc)}
@@ -3636,7 +3645,7 @@ def _hvd_augment_row(result: dict, d: dict) -> None:
 def _hvd_finalize_datasets(checked: list) -> list:
     for r in checked:
         r["flagged"] = bool(
-            r["legal_citation_issue"] or r["no_api_access"] or r["license_status"] == "non_open"
+            r["legal_citation_issue"] or r["no_api_access"] or r.get("no_bulk_download") or r["license_status"] == "non_open"
             or not r["conforms"] or r["publisher_mismatch"]
         )
     checked.sort(key=lambda r: (not r["flagged"], -r["violation_count"]))
@@ -3651,6 +3660,7 @@ _HVD_EXPORT_PREDICATES = {
     "non_conforming":       lambda d: not d.get("conforms"),
     "legal_citation_issue": lambda d: bool(d.get("legal_citation_issue")),
     "no_api_access":        lambda d: bool(d.get("no_api_access")),
+    "no_bulk_download":     lambda d: bool(d.get("no_bulk_download")),
     "license_missing":      lambda d: d.get("license_status") == "missing",
     "license_non_open":     lambda d: d.get("license_status") == "non_open",
     "publisher_mismatch":   lambda d: bool(d.get("publisher_mismatch")),
@@ -4068,6 +4078,7 @@ _QUALITY_CHECKS = {
         "summary_flag_fields": [
             ("legal_citation_issue", lambda r: r["legal_citation_issue"]),
             ("no_api_access",        lambda r: r["no_api_access"]),
+            ("no_bulk_download",     lambda r: bool(r.get("no_bulk_download"))),
             ("license_missing",      lambda r: r["license_status"] == "missing"),
             ("license_non_open",     lambda r: r["license_status"] == "non_open"),
             ("publisher_mismatch",   lambda r: r["publisher_mismatch"]),
@@ -4081,6 +4092,7 @@ _QUALITY_CHECKS = {
         "export_extra_summary_rows": [
             ("Legal citation issue", "legal_citation_issue"),
             ("No API access", "no_api_access"),
+            ("No bulk download", "no_bulk_download"),
             ("License missing", "license_missing"),
             ("License not confirmed open", "license_non_open"),
             ("Publisher mismatch", "publisher_mismatch"),
@@ -4088,6 +4100,7 @@ _QUALITY_CHECKS = {
         "export_extra_columns": [
             ("legal_citation_issue", "Legal citation issue", lambda d: "Yes" if d.get("legal_citation_issue") else "No"),
             ("no_api_access",        "No API access",        lambda d: "Yes" if d.get("no_api_access") else "No"),
+            ("no_bulk_download",     "No bulk download",     lambda d: "Yes" if d.get("no_bulk_download") else "No"),
             ("license_status",       "License status",       lambda d: _HVD_LICENSE_STATUS_LABELS.get(d.get("license_status"), d.get("license_status") or "")),
             ("publisher_mismatch",   "Publisher mismatch",   lambda d: "Yes" if d.get("publisher_mismatch") else "No"),
             ("pkg_type",             "Type",                 lambda d: "Data service" if d.get("pkg_type") == "data-service" else "Dataset"),
