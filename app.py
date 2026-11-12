@@ -3878,7 +3878,7 @@ _GEODCAT_SHAPES_GRAPH.parse(
 _GEODCAT_CHECK_REFRESH_INTERVAL = 24 * 3600
 _GEODCAT_CHECK_CONCURRENCY = 5
 _GEODCAT_CHECK_TIMEOUT = 30
-_GEODCAT_CHECK_VERSION = 1
+_GEODCAT_CHECK_VERSION = 2   # 2: only structural findings count (class-membership ones are advisories)
 _GEODCAT_CHECK_STALE_AFTER = 10 * 60
 
 
@@ -3895,44 +3895,38 @@ def _set_geodcat_status(**fields) -> None: _set_check_status("geodcat", **fields
 def _bump_geodcat_progress(completed: int) -> bool: return _bump_check_progress("geodcat", completed)
 
 
+def _geodcat_result_for_graph(name: str, graph: "rdflib.Graph") -> dict:
+    """Same layering as the DCAT-AP check (_classify_dcat_results): only structural findings (a missing mandatory property,
+    a wrong datatype, a plain-text value where a resource is required) make a dataset non-conforming; class-membership
+    findings ("value does not have class skos:Concept", ...) need the ontologies the EU validates with and stay visible as
+    advisories. Before 2026-11-12 pySHACL's own `conforms` decided, and every one of ~12,162 datasets failed on those class
+    findings alone (0% conforming), which hid the real gaps (dct:format as text, spdx:Checksum without spdx:algorithm)."""
+    _conforms, results_graph, _ = pyshacl.validate(
+        graph, shacl_graph=_GEODCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
+    )
+    violations, warnings, _vocab, _structural = _classify_dcat_results(results_graph)
+
+    title = None
+    for t in graph.objects(None, _DCT_NS.title):
+        title = str(t)
+        break
+
+    return {
+        "name":            name,
+        "title":           title or name,
+        "conforms":        not violations,
+        "violation_count": len(violations),
+        "warning_count":   len(warnings),
+        "details":         _dedupe_shacl_details(violations + warnings),
+    }
+
+
 def _geodcat_check_one(name: str) -> dict:
     """Never raises -- see _hvd_check_one's docstring for why."""
     try:
         graph = _fetch_dataset_rdf_graph(name, _GEODCAT_CHECK_TIMEOUT)
         _augment_with_dcat_vocab(graph)
-
-        conforms, results_graph, _ = pyshacl.validate(
-            graph, shacl_graph=_GEODCAT_SHAPES_GRAPH, inference="rdfs", debug=False,
-        )
-        violations, warnings = [], []
-        for res in results_graph.subjects(rdflib.RDF.type, _SH_NS.ValidationResult):
-            sev   = results_graph.value(res, _SH_NS.resultSeverity)
-            msg   = results_graph.value(res, _SH_NS.resultMessage)
-            path  = results_graph.value(res, _SH_NS.resultPath)
-            comp  = results_graph.value(res, _SH_NS.sourceConstraintComponent)
-            path_s  = str(path) if path is not None else ""
-            raw_msg = str(msg) if msg else ""
-            entry = {
-                "severity":    "violation" if sev == _SH_NS.Violation else "warning",
-                "path":        path_s or None,
-                "message":     _friendly_dcat_message(path_s, comp, raw_msg),
-                "raw_message": raw_msg,
-            }
-            (violations if sev == _SH_NS.Violation else warnings).append(entry)
-
-        title = None
-        for t in graph.objects(None, _DCT_NS.title):
-            title = str(t)
-            break
-
-        return {
-            "name":            name,
-            "title":           title or name,
-            "conforms":        conforms,
-            "violation_count": len(violations),
-            "warning_count":   len(warnings),
-            "details":         _dedupe_shacl_details(violations + warnings),
-        }
+        return _geodcat_result_for_graph(name, graph)
     except Exception as exc:
         return {"name": name, "error": str(exc)}
 

@@ -211,8 +211,11 @@ xsd:decimal -- likely fixable once at the portal's DCAT export.
 
 **GeoDCAT-AP control (2026-11-12):** the check shows 0 of ~12,162 conforming, so it was tested for the DCAT-AP "can never fail" bug --
 it isn't: `tests/test_geodcat_positive_control.py` shows an empty dataset is flagged (title/description) and a title+description one
-conforms. The 0% is therefore about the portal's real RDF; the cause is NOT yet known -- read the violation details of one real
-GeoDCAT dataset in the tab (which properties/messages) before changing shapes or severity.
+conforms. The 0% was the portal's RDF plus no layering: a real dataset (`epicheirisiako-programma-2019-2023`) failed on class-membership
+findings (the export never types its skos:Concept / vcard:Email / dcat:DataService nodes), which hid the real gaps -- `dct:format` as text
+and `spdx:Checksum` without `spdx:algorithm`. **`_GEODCAT_CHECK_VERSION` 2 (2026-11-12): GeoDCAT-AP now uses `_classify_dcat_results`
+too** (`_geodcat_result_for_graph`): only structural findings count, class-membership ones are advisories (`tests/test_geodcat_layering.py`).
+Verified on ONE dataset only; after the full re-run expect a real pass rate, and check the top GeoDCAT rows of `tools/violation_report.sql`.
 
 ## DCAT-AP compliance = the EU's structural layer (2026-11-02, `_DCAT_CHECK_VERSION` 4)
 
