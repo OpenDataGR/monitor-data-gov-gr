@@ -6,3 +6,6 @@ instance/
 .env
 build_date.txt
 .pytest_cache/
+
+# Local presentation material, not part of the app
+/presentation/
