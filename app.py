@@ -4391,6 +4391,25 @@ def _ask_worker_where_it_is(p) -> None:
         app.logger.warning("quality-check pool: straggler pid %s: could not signal it (%s: %s)", pid, type(exc).__name__, exc)
 
 
+def _worker_exited(p, timeout: float) -> bool:
+    """True when the pool worker `p` has exited within `timeout` seconds. It waits on the process's own SENTINEL (readable once it exits),
+    NOT on join()/is_alive(): those poll with waitpid, and the pool's manager thread is blocked in waitpid on the very same child, so
+    when the child exits the two threads race -- one collects the status, the other gets ECHILD, and multiprocessing reads that as "still
+    running". Seen on the VM on 2026-11-13: `straggler pid N alive=True exitcode=None`, then `alive=True exitcode=0` and `alive=False
+    exitcode=0` in the same line, /proc/N gone, `exitcode after terminate = 0` -- workers that had exited cleanly and were reported as
+    "outlived their run" on EVERY run (since the reaper was added), a false alarm. Fakes without a sentinel fall back to join/is_alive."""
+    timeout = max(0.0, timeout)
+    try:
+        sentinel = p.sentinel
+    except Exception:
+        sentinel = None
+    if sentinel is None:
+        p.join(timeout)
+        return not p.is_alive()
+    from multiprocessing.connection import wait as _mp_wait
+    return bool(_mp_wait([sentinel], timeout))
+
+
 def _reap_pool_processes(procs, grace=None):
     """Make sure a finished run's spawn workers are really gone. On the VM (2026-11-04) 15 idle workers (0 CPU, ~110 MB
     each, up to 20 h old) were still alive in the worker unit after their runs had ended: shutdown(wait=False) hands
@@ -4405,17 +4424,16 @@ def _reap_pool_processes(procs, grace=None):
         stragglers = 0
         for p in procs:
             try:
-                p.join(max(0.0, deadline - time.monotonic()))
-                if p.is_alive():
-                    stragglers += 1
-                    _ask_worker_where_it_is(p)
-                    p.terminate()
-                    p.join(5)
-                    if p.is_alive():
-                        p.kill()
-                        p.join(5)
-                    # exitcode: 0 = it left on its own just late, -15 = our terminate() ended it, -9 = it needed the kill
-                    app.logger.warning("quality-check pool: straggler pid %s exitcode after terminate = %s", getattr(p, "pid", None), getattr(p, "exitcode", None))
+                if _worker_exited(p, deadline - time.monotonic()):
+                    continue   # it left on its own, in time
+                stragglers += 1
+                _ask_worker_where_it_is(p)
+                p.terminate()
+                if not _worker_exited(p, 5):
+                    p.kill()
+                    _worker_exited(p, 5)
+                # exitcode: 0 = it left on its own just late, -15 = our terminate() ended it, -9 = it needed the kill
+                app.logger.warning("quality-check pool: straggler pid %s exitcode after terminate = %s", getattr(p, "pid", None), getattr(p, "exitcode", None))
             except Exception as exc:
                 app.logger.warning("quality-check pool: reaping a worker raised %s: %s", type(exc).__name__, exc)
         if stragglers:

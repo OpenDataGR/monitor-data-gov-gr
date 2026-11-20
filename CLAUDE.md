@@ -192,6 +192,14 @@ was started to find it; the nightly checks only begin ~24 h after the worker boo
   did not stop them (11 Nov: still 3 + 2). **Cause still unknown.** `_reap_pool_processes` now logs each straggler's `/proc` state + CPU and sends it SIGUSR1 first -- every spawned worker
   registers `faulthandler` for it (top of app.py) -- so the next `journalctl -u monitor-data-gov-gr-worker | grep -A25 straggler` shows the Python stack it was stuck in. The worker's own
   RSS went 704 MB (30 min after boot) -> 936 MB (5 days): ~45 MB/day, to be watched, not yet a problem.
+  **RESOLVED 2026-11-20 -- the "stragglers" were a FALSE ALARM (a race in the reaper), not stuck workers.** The improved diagnostic's VM log (8 nightly runs) showed, for every
+  "straggler": `alive=True exitcode=None`, `/proc/<pid>` already gone, `could not signal it (No such process)`, `exitcode after terminate = 0` -- and in one line `alive=True
+  exitcode=0` and `alive=False exitcode=0`. Exit code 0 = the worker had exited CLEANLY on its own. `Process.join()`/`is_alive()` poll `waitpid`, and the pool's manager thread is
+  blocked in `waitpid` on the same child: when it exits the threads race, one collects the status, the other gets ECHILD and multiprocessing reads that as "still running". So
+  every `outlived their run` warning since the reaper was added was spurious (the 2026-11-04 leak itself was real and is fixed by the `__main__` guard). `_worker_exited(p, timeout)`
+  now waits on the process's SENTINEL (no waitpid race); only a worker whose sentinel does not fire within `_POOL_REAP_GRACE` is a straggler, so a future `outlived` line means a REAL
+  one (with its state/stack logged). `tests/test_quality_pool_reaping.py` reproduces the symptom (a process that exited but `is_alive()` says True) and checks real spawned processes.
+  The `tools/pool_probe.py` result (0 workers alive 5 s after a normal run) and `ps` showing no spawn children after a run were consistent with this all along.
 
 ## The DCAT-AP check validated nothing until 2026-10-22 (found via the MQA comparison)
 

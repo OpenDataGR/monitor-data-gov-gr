@@ -97,6 +97,72 @@ def test_a_small_run_does_not_spawn_a_full_pool():
     assert appmod._pool_workers(5, 2186) == 5   # a big run keeps the configured concurrency
 
 
+class SentinelProc(FakeProc):
+    """A worker with a real sentinel. `exited` closes its write end, which is exactly what makes a real process's sentinel readable."""
+
+    def __init__(self, exited, lies_alive=False):
+        super().__init__()
+        import multiprocessing
+        self._r, self._w = multiprocessing.Pipe(duplex=False)
+        self.sentinel = self._r
+        self.lies_alive = lies_alive
+        if exited:
+            self._w.close()
+
+    def is_alive(self):
+        return True if self.lies_alive else self.alive
+
+    def terminate(self):
+        super().terminate()
+        self._w.close()   # a terminated process's sentinel becomes readable
+
+    def kill(self):
+        super().kill()
+        if not self._w.closed:
+            self._w.close()
+
+
+def test_a_worker_that_exited_is_not_a_straggler_even_when_is_alive_says_it_is(caplog):
+    """The VM, 2026-11-13: workers that had EXITED CLEANLY were reported as 'outlived their run' on every run, because join()/is_alive()
+    poll waitpid while the pool's manager thread blocks in waitpid on the same child -- one wins, the other gets ECHILD and
+    multiprocessing reads that as 'still running' (`alive=True exitcode=0` in one log line). The sentinel does not race."""
+    gone = SentinelProc(exited=True, lies_alive=True)
+    with caplog.at_level("WARNING"):
+        t = appmod._reap_pool_processes([gone], grace=0.2)
+        t.join(5)
+    assert not gone.terminated and not gone.killed
+    assert "outlived" not in caplog.text and "straggler" not in caplog.text
+
+
+def test_a_worker_whose_sentinel_never_fires_is_still_terminated(caplog):
+    stuck = SentinelProc(exited=False)
+    with caplog.at_level("WARNING"):
+        t = appmod._reap_pool_processes([stuck], grace=0.1)
+        t.join(10)
+    assert stuck.terminated
+    assert "outlived their run" in caplog.text
+
+
+def test_worker_exited_works_on_real_spawned_processes():
+    """The fakes above stand in for a process; this is the real thing (a spawn process, as the quality-check pools use)."""
+    import multiprocessing
+    import time as _time
+    ctx = multiprocessing.get_context("spawn")
+    quick, slow = ctx.Process(target=_time.sleep, args=(0.2,)), ctx.Process(target=_time.sleep, args=(60,))
+    quick.start()
+    slow.start()
+    try:
+        assert appmod._worker_exited(quick, 20) is True       # exits by itself: seen at once, not after the timeout
+        assert appmod._worker_exited(slow, 0.3) is False      # still running: a genuine straggler
+        slow.terminate()
+        assert appmod._worker_exited(slow, 20) is True        # once terminated, its sentinel fires
+    finally:
+        for p in (quick, slow):
+            if p.is_alive():
+                p.kill()
+            p.join(5)
+
+
 def test_a_straggler_is_always_logged_even_when_it_cannot_be_inspected(caplog):
     """2026-11-12: the diagnostic was deployed and the reaper killed two workers, yet the journal had NOT ONE straggler line --
     it swallowed its errors, so a stuck worker could not be told from one that exited a moment earlier."""
