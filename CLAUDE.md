@@ -12,6 +12,31 @@ per-machine conversation history/auto-memory) specifically so it travels
 across machines/clones. Keep it updated as durable project facts change;
 don't let it go stale.
 
+## Where we stopped (handoff, 2026-11-20) -- delete a bullet when it is done, the whole section when empty
+
+Everything is pushed and deployed (checks, quota guard, org-scope toggle, services in org analytics, manual update). **Running on the VM after the 2026-11-20 deploy:**
+the DCAT-AP full re-run (`_DCAT_CHECK_VERSION` 5, hours, resumable), the HVD re-check (6) and the data-service re-checks -- the Quality tabs show "last run".
+
+- **SendGrid (the account is shared with the data.gov.gr portal's own mail; cap 1,000/month; the audience is ~2,400 portal members, 2-3 mailings in a peak month).**
+  Asked Mr. Μελετίου for ~10,000/month, a separate sending key/subuser for the CRM and a READ-ONLY usage key (`user.credits.read`, `stats.read`, `stats.global.read`).
+  His reply (2026-11-20): "some problem with the number" + DNS records for `monitor.data.gov.gr`. **DNS done** on the BIND servers (`n0.opengov.gr`/`n1.opengov.gr`, zone `data.gov.gr`,
+  serial 2026112004; `em9482.monitor`, `s1/s2._domainkey.monitor` CNAMEs -> `u40809394.wl145.sendgrid.net`, `_dmarc.monitor` TXT) and verified with `dig @n0/@n1`.
+  **Waiting for him to press Verify in SendGrid.** Then: set `SENDGRID_FROM_EMAIL` on the VM to an address at that domain (NOT before it is verified), test-send to yourself,
+  check `dkim=pass`, and look at where replies to a no-reply address go. The 1,000/month cap itself is NOT solved by the DNS records -- still ask: raise it? a separate subuser/limit?
+  Until then set `EMAIL_MONTHLY_LIMIT=1000` and `EMAIL_MONTHLY_RESERVE=500` in the VM `.env` (the guard is deployed but OFF without them). The current key is mail-send only (403 on
+  `/v3/user/credits` and `/v3/stats`), so reading real usage needs the new key; then add `SENDGRID_USAGE_API_KEY` and read usage instead of a manual reserve.
+- **After the DCAT-AP re-run finishes:** expect the pass rate to drop (law cited as text, `dct:identifier` as IRI, language/mediaType as text); compare the MQA tab's per-property table with the
+  EU's (should be close now); read the top GeoDCAT-AP rows of `tools/violation_report.sql` (run on the VM) -- that list is what the contractor must fix.
+- **Contractor list (Απόστολος, portal export):** `dct:format` as an EU file-type IRI, `dcat:byteSize` as `xsd:decimal`, `dcat:mediaType` as an IANA IRI, `applicableLegislation` as an ELI IRI,
+  `spdx:Checksum` with `spdx:algorithm`, data services exported as `dcat:DataService` with `dcat:endpointURL`, the 469 HVD datasets with no linked data service. After a portal fix bump the
+  matching `*_CHECK_VERSION` (the checks reuse a result until `metadata_modified` changes). Matomo owner: raise `datatable_archiving_maximum_rows_*` and re-archive.
+- **Manual (`static/manual.html`):** the header line "Υπουργείο Ψηφιακής Διακυβέρνησης · Τμ. Τεχνολογιών Δεδομένων" (~line 423) is unconfirmed -- ask the user for the correct department name.
+- **Watch:** the worker's own RSS (~45 MB/day creep seen 2026-11-09, not a problem yet); `--max-requests` for gunicorn only if web workers exceed ~250 MB.
+- **Decisions already taken (do not re-litigate):** CKAN "decision" packages are NOT checked; follow the official specs (DCAT-AP / HVD / GeoDCAT-AP) over a tool's reading of them; the pool reaper's old
+  "stragglers" were a waitpid race, now fixed (a future `outlived` log line is real).
+- **Not done / ideas:** HVD "most precise category" is only a spec recommendation (no check); INSPIRE has no HVD requirement; org-admin scoping of Contacts/Communications is blocked by the fuzzy
+  HRMS-title matching; trend/peer charts in Org Analytics are still datasets only.
+
 ## Architecture
 
 - `app.py` — the whole backend: one large Flask app, every route and most
